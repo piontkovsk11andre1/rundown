@@ -49,9 +49,13 @@ export async function runWorker(options: RunnerOptions): Promise<RunnerResult> {
   const mode = options.mode ?? "wait";
   const transport = options.transport ?? "file";
   const cwd = options.cwd ?? process.cwd();
+  const isOpenCode = isOpenCodeCommand(options.command[0] ?? "");
   const useWorkspacePromptFile = transport === "file"
     && mode === "tui"
-    && isOpenCodeCommand(options.command[0] ?? "");
+    && isOpenCode;
+  const useShell = process.platform === "win32"
+    && mode === "tui"
+    && isOpenCode;
 
   let tempFile: string | null = null;
 
@@ -68,7 +72,7 @@ export async function runWorker(options: RunnerOptions): Promise<RunnerResult> {
   }
 
   try {
-    const result = await executeCommand(cmd, cmdArgs, mode, cwd);
+    const result = await executeCommand(cmd, cmdArgs, mode, cwd, useShell);
     return result;
   } finally {
     // Clean up temp file after execution (not for detached)
@@ -136,10 +140,10 @@ function buildOpenCodeArgs(
   }
 
   if (tempFile) {
-    return [cmd, ...rest, buildOpenCodeTuiPromptArg(buildOpenCodeTuiBootstrapPrompt(tempFile, cwd))];
+    return [cmd, ...rest, "--prompt", buildOpenCodeTuiBootstrapPrompt(tempFile, cwd)];
   }
 
-  return [cmd, ...rest, buildOpenCodeTuiPromptArg(prompt)];
+  return [cmd, ...rest, "--prompt", prompt];
 }
 
 function buildOpenCodeRunBootstrapPrompt(): string {
@@ -153,15 +157,12 @@ function buildOpenCodeTuiBootstrapPrompt(tempFile: string, cwd: string): string 
   return `Read and follow the full task instructions in ${normalizedPath}. Start by opening that file, then continue the work from there.`;
 }
 
-function buildOpenCodeTuiPromptArg(prompt: string): string {
-  return `--prompt=${prompt}`;
-}
-
 function executeCommand(
   cmd: string,
   args: string[],
   mode: RunnerMode,
   cwd: string,
+  useShell: boolean,
 ): Promise<RunnerResult> {
   return new Promise((resolve, reject) => {
     if (mode === "tui") {
@@ -169,7 +170,7 @@ function executeCommand(
       const child = spawn(cmd, args, {
         stdio: "inherit",
         cwd,
-        shell: false,
+        shell: useShell,
       });
 
       child.on("close", (code: number | null) => {

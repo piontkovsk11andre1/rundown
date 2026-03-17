@@ -97,7 +97,7 @@ describe("runWorker", () => {
     expect(args).toEqual(["run", prompt]);
   });
 
-  it("uses a single --prompt=... argument for opencode tui in file transport", async () => {
+  it("uses --prompt plus the bootstrap message for opencode tui in file transport", async () => {
     spawnMock.mockImplementation((_cmd: string, _args: string[]) => {
       const child = new EventEmitter() as EventEmitter & {
         stdout: EventEmitter;
@@ -124,13 +124,15 @@ describe("runWorker", () => {
       cwd: process.cwd(),
     });
 
-    const [cmd, args] = spawnMock.mock.calls[0] as [string, string[]];
+    const [cmd, args, options] = spawnMock.mock.calls[0] as [string, string[], { shell?: boolean }];
     expect(cmd).toBe("opencode");
-    expect(args).toHaveLength(1);
-    expect(args[0]).toMatch(/^--prompt=Read and follow the full task instructions in \.md-todo\/runtime\/prompt-.*\.md\. Start by opening that file, then continue the work from there\.$/);
+    expect(args).toHaveLength(2);
+    expect(args[0]).toBe("--prompt");
+    expect(args[1]).toMatch(/^Read and follow the full task instructions in \.md-todo\/runtime\/prompt-.*\.md\. Start by opening that file, then continue the work from there\.$/);
+    expect(options.shell).toBe(true);
   });
 
-  it("uses a single --prompt=... argument for opencode tui in arg transport", async () => {
+  it("uses --prompt plus the message for opencode tui in arg transport", async () => {
     spawnMock.mockImplementation((_cmd: string, _args: string[]) => {
       const child = new EventEmitter() as EventEmitter & {
         stdout: EventEmitter;
@@ -158,8 +160,9 @@ describe("runWorker", () => {
       cwd: process.cwd(),
     });
 
-    const [cmd, args] = spawnMock.mock.calls[0] as [string, string[]];
+    const [cmd, args, options] = spawnMock.mock.calls[0] as [string, string[], { shell?: boolean }];
     expect(cmd).toBe("opencode");
-    expect(args).toEqual([`--prompt=${prompt}`]);
+    expect(args).toEqual(["--prompt", prompt]);
+    expect(options.shell).toBe(true);
   });
 });

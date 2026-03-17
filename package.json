@@ -1,6 +1,6 @@
 {
-  "name": "@p10i/md-tool",
-  "version": "1.0.0-rc.2",
+  "name": "@p10i/md-todo",
+  "version": "1.0.0-rc.3",
   "description": "A Markdown-native task runtime for agentic workflows. Execute, validate, and correct work directly from Markdown TODOs.",
   "type": "module",
   "bin": {

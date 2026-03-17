@@ -407,7 +407,7 @@ npm install -g .
 npm release candidate package:
 
 ```bash
-npm install -g @p10i/md-tool
+npm install -g @p10i/md-todo@rc
 ```
 
 Or use it directly:
@@ -420,7 +420,7 @@ npx md-todo run docs/ -- opencode run
 
 ## Status
 
-`md-todo` is in release candidate status as `1.0.0-rc.2`, ready for GitHub and being finalized for npm release.
+`md-todo` is in release candidate status as `1.0.0-rc.3`, published on npm as `@p10i/md-todo` under the `rc` dist-tag.
 
 Built with TypeScript, AST-based Markdown parsing, and a clean modular architecture.
 

@@ -1,0 +1,71 @@
+{
+  "name": "md-todo",
+  "version": "1.0.0",
+  "description": "A Markdown-native task runtime for agentic workflows. Execute, validate, and correct work directly from Markdown TODOs.",
+  "type": "module",
+  "bin": {
+    "md-todo": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "release:check": "npm run lint && npm run test && npm run build",
+    "prepublishOnly": "npm run release:check"
+  },
+  "keywords": [
+    "markdown",
+    "todo",
+    "task-runner",
+    "agentic",
+    "cli",
+    "automation",
+    "opencode",
+    "ai-agent",
+    "workflow"
+  ],
+  "author": "Piontkovskii Andrei",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/piontkovsk11andre1/md-todo.git"
+  },
+  "homepage": "https://github.com/piontkovsk11andre1/md-todo#readme",
+  "bugs": {
+    "url": "https://github.com/piontkovsk11andre1/md-todo/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "cross-spawn": "^7.0.6",
+    "fast-glob": "^3.3.3",
+    "mdast-util-from-markdown": "^2.0.2",
+    "mdast-util-gfm-task-list-item": "^2.0.0",
+    "micromark-extension-gfm-task-list-item": "^2.1.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/cross-spawn": "^6.0.6",
+    "@types/node": "^22.0.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.1.0"
+  }
+}

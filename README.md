@@ -96,6 +96,14 @@ Given a document like this:
 
 Run:
 
+PowerShell 5.1 users should prefer the `--worker` form:
+
+```powershell
+md-todo run docs/ --worker opencode run
+```
+
+Other shells can use:
+
 ```bash
 md-todo run docs/ -- opencode run
 ```

@@ -49,9 +49,7 @@ export async function runWorker(options: RunnerOptions): Promise<RunnerResult> {
   const mode = options.mode ?? "wait";
   const transport = options.transport ?? "file";
   const cwd = options.cwd ?? process.cwd();
-  const useWorkspacePromptFile = transport === "file"
-    && mode === "tui"
-    && isOpenCodeCommand(options.command[0] ?? "");
+  const useWorkspacePromptFile = shouldUseWorkspacePromptFile(options.command, mode, transport);
 
   let tempFile: string | null = null;
 
@@ -71,11 +69,22 @@ export async function runWorker(options: RunnerOptions): Promise<RunnerResult> {
     const result = await executeCommand(cmd, cmdArgs, mode, cwd);
     return result;
   } finally {
-    // Clean up temp file after execution (not for detached)
-    if (tempFile && mode !== "detached") {
+    // Clean up transient temp files after execution (not for detached).
+    // Workspace-staged prompt files for opencode TUI are preserved for inspection.
+    if (tempFile && mode !== "detached" && !useWorkspacePromptFile) {
       cleanupTemp(tempFile);
     }
   }
+}
+
+function shouldUseWorkspacePromptFile(
+  command: string[],
+  mode: RunnerMode,
+  transport: PromptTransport,
+): boolean {
+  return transport === "file"
+    && mode === "tui"
+    && isOpenCodeCommand(command[0] ?? "");
 }
 
 function buildWorkerArgs(
@@ -150,7 +159,7 @@ function buildOpenCodeTuiBootstrapPrompt(tempFile: string, cwd: string): string 
   const displayPath = path.relative(cwd, tempFile) || path.basename(tempFile);
   const normalizedPath = displayPath.split(path.sep).join("/");
 
-  return `Read and follow the full task instructions in ${normalizedPath}. Start by opening that file, then continue the work from there.`;
+  return `The full rendered md-todo task prompt is staged in ${normalizedPath}. Open and read that file completely before taking any action, then continue the work in this session.`;
 }
 
 function buildOpenCodeTuiPromptArg(prompt: string): string {

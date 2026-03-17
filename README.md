@@ -174,6 +174,8 @@ md-todo run roadmap.md -- opencode run
 
 After execution, `md-todo` renders `.md-todo/validate.md`.
 
+You can also skip execution and run validation directly with `--only-validate`.
+
 Validation produces a task-specific sidecar file next to the source document, for example:
 
 ```text
@@ -191,6 +193,8 @@ If validation fails, `md-todo` can render `.md-todo/correct.md` and run a correc
 Then it validates again.
 
 This loop can run multiple times until the task validates or retries are exhausted.
+
+Correction stays off by default with `--retries 0`, and can also be disabled explicitly with `--no-correct`.
 
 ---
 
@@ -327,6 +331,8 @@ This is the most robust option, especially on Windows, where quoting and long co
 
 For `opencode`, `file` transport attaches the generated Markdown file and uses a short bootstrap message instead of pushing the entire rendered prompt through command-line arguments.
 
+For `opencode` TUI mode, `md-todo` stages the fully rendered prompt under `.md-todo/runtime/` and starts the session with a short instruction telling `opencode` to open that staged file first.
+
 ### `arg`
 Pass the prompt as command arguments.
 
@@ -343,6 +349,8 @@ A practical default integration looks like this:
 - prompt transport → `file`
 
 In `wait` mode, `md-todo` attaches the rendered prompt file to `opencode run` and sends a short instruction telling it to read the attachment first.
+
+In `tui` mode, `md-todo` stages the rendered prompt in `.md-todo/runtime/` so the handoff remains file-based instead of relying on a huge inline prompt.
 
 This gives a clean workflow:
 
@@ -423,11 +431,25 @@ Options:
 | `--transport <transport>` | `file` or `arg` | `file` |
 | `--sort <sort>` | `name-sort`, `none`, `old-first`, `new-first` | `name-sort` |
 | `--validate` | Run validation after execution | off |
+| `--only-validate` | Skip execution and run validation directly | off |
 | `--retries <n>` | Max correction attempts on failure | `0` |
+| `--no-correct` | Disable correction even when retries are set | off |
 | `--dry-run` | Show what would run without executing | off |
 | `--print-prompt` | Print the rendered prompt and exit | off |
 | `--vars-file [path]` | Load extra template variables from a JSON file, defaulting to `.md-todo/vars.json` | — |
 | `--var <key=value>` | Extra template variable, repeatable | — |
+
+Validate the current project state without running the task step first:
+
+```bash
+md-todo run roadmap.md --only-validate --worker opencode run
+```
+
+Run validation without allowing correction retries:
+
+```bash
+md-todo run roadmap.md --validate --no-correct --worker opencode run
+```
 
 ### `md-todo next <source>`
 

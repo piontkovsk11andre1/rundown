@@ -21,6 +21,7 @@ import {
   resolveTemplateVarsFilePath,
   type ExtraTemplateVars,
 } from "./template-vars.js";
+import { requiresWorkerCommand, resolveRunBehavior } from "./run-options.js";
 import type { SortMode } from "./sorting.js";
 import * as log from "./log.js";
 import fs from "node:fs";
@@ -62,7 +63,9 @@ program
   .option("--transport <transport>", "Prompt transport: file, arg", "file")
   .option("--sort <sort>", "File sort mode: name-sort, none, old-first, new-first", "name-sort")
   .option("--validate", "Run validation after task execution", false)
+  .option("--only-validate", "Skip execution and run validation directly", false)
   .option("--retries <n>", "Max correction retries on validation failure", "0")
+  .option("--no-correct", "Disable correction even when retries are set", false)
   .option("--dry-run", "Show what would be executed without running it", false)
   .option("--print-prompt", "Print the rendered prompt and exit", false)
   .option("--vars-file [path]", "Load extra template variables from a JSON file (default: .md-todo/vars.json)")
@@ -74,8 +77,16 @@ program
     const mode = opts.mode as RunnerMode;
     const transport = opts.transport as PromptTransport;
     const sortMode = opts.sort as SortMode;
-    const shouldValidate = opts.validate as boolean;
-    const maxRetries = parseInt(opts.retries as string, 10) || 0;
+    const runBehavior = resolveRunBehavior({
+      validate: opts.validate as boolean,
+      onlyValidate: opts.onlyValidate as boolean,
+      noCorrect: opts.noCorrect as boolean,
+      retries: parseInt(opts.retries as string, 10) || 0,
+    });
+    const shouldValidate = runBehavior.shouldValidate;
+    const onlyValidate = runBehavior.onlyValidate;
+    const allowCorrection = runBehavior.allowCorrection;
+    const maxRetries = runBehavior.maxRetries;
     const dryRun = opts.dryRun as boolean;
     const printPrompt = opts.printPrompt as boolean;
     const varsFilePath = resolveTemplateVarsFilePath(opts.varsFile as string | boolean | undefined);
@@ -114,6 +125,67 @@ program
       // 3. Load templates
       const templates = loadProjectTemplates();
 
+      const vars: TemplateVars = {
+        ...extraTemplateVars,
+        task: task.text,
+        file: task.file,
+        context: contextBefore,
+        taskIndex: task.index,
+        taskLine: task.line,
+        source: fileSource,
+      };
+
+      const prompt = renderTemplate(templates.task, vars);
+      const validationPrompt = shouldValidate
+        ? renderTemplate(templates.validate, vars)
+        : "";
+
+      if (printPrompt && onlyValidate) {
+        console.log(validationPrompt);
+        process.exit(0);
+      }
+
+      if (dryRun && onlyValidate) {
+        log.info("Dry run — would run validation with: " + automationCommand.join(" "));
+        log.info("Prompt length: " + validationPrompt.length + " chars");
+        process.exit(0);
+      }
+
+      if (requiresWorkerCommand({
+        workerCommand,
+        isInlineCli: task.isInlineCli,
+        shouldValidate,
+        onlyValidate,
+      })) {
+        log.error("No worker command specified. Use --worker <command...> or -- <command>.");
+        process.exit(1);
+      }
+
+      if (onlyValidate) {
+        log.info("Only validate mode — skipping task execution.");
+
+        const valid = await runValidation(
+          task,
+          fileSource,
+          contextBefore,
+          templates,
+          automationCommand,
+          mode,
+          transport,
+          maxRetries,
+          allowCorrection,
+          extraTemplateVars,
+        );
+        if (!valid) {
+          log.error("Validation failed after all retries. Task not checked.");
+          process.exit(2);
+        }
+
+        checkTask(task);
+        log.success("Task checked: " + task.text);
+        process.exit(0);
+      }
+
       // 4. Handle inline CLI tasks
       if (task.isInlineCli) {
         if (dryRun) {
@@ -129,7 +201,7 @@ program
 
         if (cliResult.exitCode === 0) {
           if (shouldValidate) {
-            const valid = await runValidation(task, fileSource, contextBefore, templates, automationCommand, mode, transport, maxRetries, extraTemplateVars);
+            const valid = await runValidation(task, fileSource, contextBefore, templates, automationCommand, mode, transport, maxRetries, allowCorrection, extraTemplateVars);
             if (!valid) {
               log.error("Validation failed. Task not checked.");
               process.exit(2);
@@ -145,19 +217,6 @@ program
         }
       }
 
-      // 5. Build the task prompt
-      const vars: TemplateVars = {
-        ...extraTemplateVars,
-        task: task.text,
-        file: task.file,
-        context: contextBefore,
-        taskIndex: task.index,
-        taskLine: task.line,
-        source: fileSource,
-      };
-
-      const prompt = renderTemplate(templates.task, vars);
-
       if (printPrompt) {
         console.log(prompt);
         process.exit(0);
@@ -169,13 +228,7 @@ program
         process.exit(0);
       }
 
-      // 6. Ensure we have a worker command
-      if (workerCommand.length === 0) {
-        log.error("No worker command specified. Use --worker <command...> or -- <command>.");
-        process.exit(1);
-      }
-
-      // 7. Execute the worker
+      // 5. Execute the worker
       log.info("Running: " + workerCommand.join(" ") + " [mode=" + mode + ", transport=" + transport + "]");
       const runResult = await runWorker({
         command: workerCommand,
@@ -194,11 +247,11 @@ program
         process.exit(1);
       }
 
-      // 8. Validation
+      // 6. Validation
       if (shouldValidate) {
         const valid = await runValidation(
           task, fileSource, contextBefore, templates, automationCommand,
-          mode, transport, maxRetries, extraTemplateVars, runResult.stdout,
+          mode, transport, maxRetries, allowCorrection, extraTemplateVars, runResult.stdout,
         );
         if (!valid) {
           log.error("Validation failed after all retries. Task not checked.");
@@ -206,7 +259,7 @@ program
         }
       }
 
-      // 9. Check the task
+      // 7. Check the task
       if (mode !== "detached") {
         checkTask(task);
         log.success("Task checked: " + task.text);
@@ -339,6 +392,7 @@ async function runValidation(
   mode: RunnerMode,
   transport: PromptTransport,
   maxRetries: number,
+  allowCorrection: boolean,
   extraTemplateVars: ExtraTemplateVars,
   commandOutput?: string,
 ): Promise<boolean> {
@@ -361,7 +415,7 @@ async function runValidation(
     return true;
   }
 
-  if (maxRetries > 0) {
+  if (allowCorrection) {
     log.warn("Validation failed. Running correction (" + maxRetries + " retries)…");
     const result = await correct({
       task,

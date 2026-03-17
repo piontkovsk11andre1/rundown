@@ -217,8 +217,10 @@ The CLI should also allow repeatable extra template variables such as `--var bra
 - For a normal task, `md-todo` should render the task template and pass the result to the external command.
 - Validation is a second step, separate from execution.
 - With `--validate`, after the task is processed, `md-todo` should render the validation template and ask whether the task is truly complete.
+- With `--only-validate`, `md-todo` should skip the task execution step and run validation directly against the selected unchecked task.
 - If validation fails and a corrector is enabled, `md-todo` should run the corrector, then validate again.
 - This fix-and-validate cycle may be repeated multiple times, controlled by a CLI argument.
+- Correction should remain disabled by default when retries are `0`, and the CLI may also expose an explicit way to suppress correction even when retries are configured.
 - The worker must not mark the Markdown TODO as complete on its own by flipping `[ ]` to `[x]` or otherwise editing the task item for completion tracking.
 - The worker may edit the Markdown source file only when the task itself genuinely requires changes there, not as a way to self-certify completion.
 - Only if validation confirms completion should the tool mark the TODO as checked.

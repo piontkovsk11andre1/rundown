@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -11,6 +12,7 @@ vi.mock("cross-spawn", () => ({
 describe("runWorker", () => {
   afterEach(() => {
     spawnMock.mockReset();
+    cleanupWorkspaceRuntime();
   });
 
   it("uses an attached prompt file plus a short bootstrap message for opencode run in file transport", async () => {
@@ -98,6 +100,9 @@ describe("runWorker", () => {
   });
 
   it("uses a single --prompt=... argument for opencode tui in file transport", async () => {
+    let capturedPromptFile = "";
+    let capturedPromptFileContent = "";
+
     spawnMock.mockImplementation((_cmd: string, _args: string[]) => {
       const child = new EventEmitter() as EventEmitter & {
         stdout: EventEmitter;
@@ -106,6 +111,14 @@ describe("runWorker", () => {
 
       child.stdout = new EventEmitter();
       child.stderr = new EventEmitter();
+
+      const runtimeDir = path.join(process.cwd(), ".md-todo", "runtime");
+      const [promptFile] = fs.readdirSync(runtimeDir)
+        .filter((entry) => entry.endsWith(".md"))
+        .map((entry) => path.join(runtimeDir, entry));
+
+      capturedPromptFile = promptFile!;
+      capturedPromptFileContent = fs.readFileSync(capturedPromptFile, "utf-8");
 
       queueMicrotask(() => {
         child.emit("close", 0);
@@ -127,7 +140,10 @@ describe("runWorker", () => {
     const [cmd, args] = spawnMock.mock.calls[0] as [string, string[]];
     expect(cmd).toBe("opencode");
     expect(args).toHaveLength(1);
-    expect(args[0]).toMatch(/^--prompt=Read and follow the full task instructions in \.md-todo\/runtime\/prompt-.*\.md\. Start by opening that file, then continue the work from there\.$/);
+    expect(args[0]).toMatch(/^--prompt=The full rendered md-todo task prompt is staged in \.md-todo\/runtime\/prompt-.*\.md\. Open and read that file completely before taking any action, then continue the work in this session\.$/);
+    expect(capturedPromptFile).toMatch(/\.md-todo[\\/]runtime[\\/]prompt-.*\.md$/);
+    expect(capturedPromptFileContent).toBe("full prompt content");
+    expect(fs.existsSync(capturedPromptFile)).toBe(true);
   });
 
   it("uses a single --prompt=... argument for opencode tui in arg transport", async () => {
@@ -163,3 +179,16 @@ describe("runWorker", () => {
     expect(args).toEqual([`--prompt=${prompt}`]);
   });
 });
+
+function cleanupWorkspaceRuntime(): void {
+  const runtimeDir = path.join(process.cwd(), ".md-todo", "runtime");
+  if (!fs.existsSync(runtimeDir)) {
+    return;
+  }
+
+  for (const entry of fs.readdirSync(runtimeDir)) {
+    fs.unlinkSync(path.join(runtimeDir, entry));
+  }
+
+  fs.rmSync(runtimeDir, { recursive: true, force: true });
+}

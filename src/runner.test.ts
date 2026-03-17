@@ -96,4 +96,70 @@ describe("runWorker", () => {
     expect(cmd).toBe("opencode");
     expect(args).toEqual(["run", prompt]);
   });
+
+  it("uses a single --prompt=... argument for opencode tui in file transport", async () => {
+    spawnMock.mockImplementation((_cmd: string, _args: string[]) => {
+      const child = new EventEmitter() as EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+      };
+
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+
+      queueMicrotask(() => {
+        child.emit("close", 0);
+      });
+
+      return child;
+    });
+
+    const { runWorker } = await import("./runner.js");
+
+    await runWorker({
+      command: ["opencode"],
+      prompt: "full prompt content",
+      mode: "tui",
+      transport: "file",
+      cwd: process.cwd(),
+    });
+
+    const [cmd, args] = spawnMock.mock.calls[0] as [string, string[]];
+    expect(cmd).toBe("opencode");
+    expect(args).toHaveLength(1);
+    expect(args[0]).toMatch(/^--prompt=Read and follow the full task instructions in \.md-todo\/runtime\/prompt-.*\.md\. Start by opening that file, then continue the work from there\.$/);
+  });
+
+  it("uses a single --prompt=... argument for opencode tui in arg transport", async () => {
+    spawnMock.mockImplementation((_cmd: string, _args: string[]) => {
+      const child = new EventEmitter() as EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+      };
+
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+
+      queueMicrotask(() => {
+        child.emit("close", 0);
+      });
+
+      return child;
+    });
+
+    const { runWorker } = await import("./runner.js");
+    const prompt = "Open the task and do the work.";
+
+    await runWorker({
+      command: ["opencode"],
+      prompt,
+      mode: "tui",
+      transport: "arg",
+      cwd: process.cwd(),
+    });
+
+    const [cmd, args] = spawnMock.mock.calls[0] as [string, string[]];
+    expect(cmd).toBe("opencode");
+    expect(args).toEqual([`--prompt=${prompt}`]);
+  });
 });

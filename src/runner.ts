@@ -136,10 +136,10 @@ function buildOpenCodeArgs(
   }
 
   if (tempFile) {
-    return [cmd, ...rest, "--prompt", buildOpenCodeTuiBootstrapPrompt(tempFile, cwd)];
+    return [cmd, ...rest, buildOpenCodeTuiPromptArg(buildOpenCodeTuiBootstrapPrompt(tempFile, cwd))];
   }
 
-  return [cmd, ...rest, "--prompt", prompt];
+  return [cmd, ...rest, buildOpenCodeTuiPromptArg(prompt)];
 }
 
 function buildOpenCodeRunBootstrapPrompt(): string {
@@ -151,6 +151,10 @@ function buildOpenCodeTuiBootstrapPrompt(tempFile: string, cwd: string): string 
   const normalizedPath = displayPath.split(path.sep).join("/");
 
   return `Read and follow the full task instructions in ${normalizedPath}. Start by opening that file, then continue the work from there.`;
+}
+
+function buildOpenCodeTuiPromptArg(prompt: string): string {
+  return `--prompt=${prompt}`;
 }
 
 function executeCommand(

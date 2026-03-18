@@ -60,4 +60,13 @@ describe("markChecked", () => {
 
     expect(result).toBe("- [ ] Parent\n  - [x] Child\n");
   });
+
+  it("should preserve CRLF line endings", () => {
+    const source = "# Title\r\n\r\n- [ ] First task\r\n- [ ] Second task\r\n";
+    const task = { line: 3, file: "test.md" } as any;
+
+    const result = markChecked(source, task);
+
+    expect(result).toBe("# Title\r\n\r\n- [x] First task\r\n- [ ] Second task\r\n");
+  });
 });

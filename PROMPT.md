@@ -110,6 +110,8 @@ This makes TUI mode a temporary interactive phase inside a larger automated task
 
 `detached` is possible, but it is weaker for immediate validation and should be treated as a more advanced mode.
 
+When detached mode is used, the tool should keep the staged runtime artifacts on disk, skip immediate validation/correction, and leave the task unchecked.
+
 ## Prompt transport
 
 The tool should also separate how the prompt is delivered to the external runner.
@@ -117,15 +119,19 @@ The tool should also separate how the prompt is delivered to the external runner
 The main prompt transport options are:
 
 - `arg` — pass prompt content as command arguments,
-- `file` — write the rendered prompt to a temporary Markdown file and pass that file to the runner.
+- `file` — write the rendered prompt to a Markdown file under `.md-todo/runs/` and pass that file to the runner.
 
 The default should be `file`.
 
 This is especially important on Windows, where large prompts and shell quoting become fragile.
 
-Using a temporary Markdown file is more robust for long prompts, template output, code blocks, and paths with quotes.
+Using a runtime Markdown file is more robust for long prompts, template output, code blocks, and paths with quotes.
 
 For `opencode run`, `file` transport should avoid passing the full rendered multiline prompt as a positional argument. Instead, it should attach the rendered Markdown file and use a short bootstrap instruction that tells the runner to read that attachment first.
+
+The runtime artifact directory should also be able to preserve prompts, captured output where available, and run metadata. Cleanup should be the default, with an explicit CLI option to keep those artifacts for inspection.
+
+The CLI should also expose a small artifact-management command so users can inspect saved runs, print them as structured JSON, filter failed runs, open a saved run folder by id or `latest`, and prune `.md-todo/runs/` when needed, including failed-only cleanup.
 
 ## OpenCode integration direction
 
@@ -203,23 +209,29 @@ The tool should support Markdown templates instead of raw built-in prompt string
 
 There are four templates:
 
-- a task template,
-- a validation template,
-- a corrector template,
+- an execute template,
+- a verify template,
+- a repair template,
 - and a planner template.
 
 These should live in a hidden project folder:
 
-- [.md-todo/task.md](.md-todo/task.md)
-- [.md-todo/validate.md](.md-todo/validate.md)
-- [.md-todo/correct.md](.md-todo/correct.md)
+- [.md-todo/execute.md](.md-todo/execute.md)
+- [.md-todo/verify.md](.md-todo/verify.md)
+- [.md-todo/repair.md](.md-todo/repair.md)
 - [.md-todo/plan.md](.md-todo/plan.md)
+
+Legacy aliases should remain supported for backward compatibility:
+
+- [.md-todo/task.md](.md-todo/task.md) as execute template,
+- [.md-todo/validate.md](.md-todo/validate.md) as verify template,
+- [.md-todo/correct.md](.md-todo/correct.md) as repair template.
 
 This keeps the project prompt-driven, easy to edit, and easy to version.
 
 The final task prompt should be built from three layers:
 
-1. instructions from the task template,
+1. instructions from the execute template,
 2. document context from the Markdown file,
 3. the exact TODO being processed.
 
@@ -232,17 +244,25 @@ The CLI should also allow repeatable extra template variables such as `--var bra
 - A TODO item may contain either:
 	- plain instructions for an agent, or
 	- a CLI command to be executed directly by `md-todo` instead of the agent.
-- For a normal task, `md-todo` should render the task template and pass the result to the external command.
-- Validation is a second step, separate from execution.
-- With `--validate`, after the task is processed, `md-todo` should render the validation template and ask whether the task is truly complete.
-- With `--only-validate`, `md-todo` should skip the task execution step and run validation directly against the selected unchecked task.
-- If validation fails and a corrector is enabled, `md-todo` should run the corrector, then validate again.
+- For a normal task, `md-todo` should render the execute template and pass the result to the external command.
+- Verification is a second step, separate from execution, and should be on by default.
+- With default run behavior (or explicit `--verify`), after the task is processed, `md-todo` should render the verify template and ask whether the task is truly complete.
+- With `--no-verify`, execution should run without the verification step.
+- With `--only-verify`, `md-todo` should skip the task execution step and run verification directly against the selected unchecked task.
+- If verification fails and a repair pass is enabled, `md-todo` should run repair, then verify again.
 - This fix-and-validate cycle may be repeated multiple times, controlled by a CLI argument.
-- Correction should remain disabled by default when retries are `0`, and the CLI may also expose an explicit way to suppress correction even when retries are configured.
+- Repair should remain disabled by default when retries are `0`, and the CLI may also expose an explicit way to suppress repair even when retries are configured.
 - The worker must not mark the Markdown TODO as complete on its own by flipping `[ ]` to `[x]` or otherwise editing the task item for completion tracking.
 - The worker may edit the Markdown source file only when the task itself genuinely requires changes there, not as a way to self-certify completion.
 - Only if validation confirms completion should the tool mark the TODO as checked.
 - If validation does not confirm completion, the TODO should remain unchecked.
+
+Legacy flag aliases should remain supported:
+
+- `--validate` as alias for `--verify`,
+- `--no-validate` as alias for `--no-verify`,
+- `--only-validate` as alias for `--only-verify`,
+- `--no-correct` as alias for `--no-repair`.
 
 ## Validation
 

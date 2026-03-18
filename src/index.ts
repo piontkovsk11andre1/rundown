@@ -15,3 +15,18 @@ export { executeInlineCli } from "./inline-cli.js";
 export { checkTask } from "./checkbox.js";
 export { insertSubitems } from "./planner.js";
 export { loadProjectTemplates, type ProjectTemplates } from "./templates-loader.js";
+export {
+	createRuntimeArtifactsContext,
+	displayArtifactsPath,
+	findSavedRuntimeArtifact,
+	latestSavedRuntimeArtifact,
+	listFailedRuntimeArtifacts,
+	listSavedRuntimeArtifacts,
+	removeFailedRuntimeArtifacts,
+	removeSavedRuntimeArtifacts,
+	runtimeArtifactsRootDir,
+	isFailedRuntimeArtifactStatus,
+	type RuntimeArtifactsContext,
+	type RuntimeTaskMetadata,
+	type SavedRuntimeArtifactRun,
+} from "./runtime-artifacts.js";

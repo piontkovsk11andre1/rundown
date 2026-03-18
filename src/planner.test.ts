@@ -156,4 +156,27 @@ describe("insertSubitems", () => {
 
     expect(result).toBe("# Doc\n\n- [ ] Last task\n  - [ ] Sub");
   });
+
+  it("preserves CRLF line endings when inserting subitems", () => {
+    const source = [
+      "# Plan",
+      "",
+      "- [ ] Parent task",
+      "- [ ] Another task",
+    ].join("\r\n");
+
+    const task = makeTask({ line: 3 });
+    const subitems = ["- [ ] Step one", "- [ ] Step two"];
+
+    const result = insertSubitems(source, task, subitems);
+
+    expect(result).toBe([
+      "# Plan",
+      "",
+      "- [ ] Parent task",
+      "  - [ ] Step one",
+      "  - [ ] Step two",
+      "- [ ] Another task",
+    ].join("\r\n"));
+  });
 });

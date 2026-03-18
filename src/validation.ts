@@ -10,6 +10,7 @@ import type { Task } from "./parser.js";
 import { renderTemplate, type TemplateVars } from "./template.js";
 import type { ExtraTemplateVars } from "./template-vars.js";
 import { runWorker, type RunnerMode, type PromptTransport } from "./runner.js";
+import type { RuntimeArtifactsContext } from "./runtime-artifacts.js";
 
 /**
  * Build the validation sidecar file path for a given task.
@@ -64,6 +65,7 @@ export interface ValidateOptions {
   transport?: PromptTransport;
   cwd?: string;
   templateVars?: ExtraTemplateVars;
+  artifactContext?: RuntimeArtifactsContext;
 }
 
 /**
@@ -84,13 +86,21 @@ export async function validate(options: ValidateOptions): Promise<boolean> {
 
   const prompt = renderTemplate(options.template, vars);
 
-  await runWorker({
+  removeValidationFile(options.task);
+
+  const runResult = await runWorker({
     command: options.command,
     prompt,
     mode: options.mode ?? "wait",
     transport: options.transport ?? "file",
     cwd: options.cwd,
+    artifactContext: options.artifactContext,
+    artifactPhase: "verify",
   });
+
+  if (runResult.exitCode !== 0) {
+    return false;
+  }
 
   return isValidationOk(options.task);
 }

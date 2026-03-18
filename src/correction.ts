@@ -9,6 +9,7 @@ import { renderTemplate, type TemplateVars } from "./template.js";
 import type { ExtraTemplateVars } from "./template-vars.js";
 import { runWorker, type RunnerMode, type PromptTransport } from "./runner.js";
 import { validate, readValidationFile, type ValidateOptions } from "./validation.js";
+import type { RuntimeArtifactsContext } from "./runtime-artifacts.js";
 
 export interface CorrectionOptions {
   task: Task;
@@ -22,6 +23,7 @@ export interface CorrectionOptions {
   transport?: PromptTransport;
   cwd?: string;
   templateVars?: ExtraTemplateVars;
+  artifactContext?: RuntimeArtifactsContext;
 }
 
 export interface CorrectionResult {
@@ -69,6 +71,9 @@ export async function correct(options: CorrectionOptions): Promise<CorrectionRes
       mode: options.mode ?? "wait",
       transport: options.transport ?? "file",
       cwd: options.cwd,
+      artifactContext: options.artifactContext,
+      artifactPhase: "repair",
+      artifactExtra: { attempt: attempts },
     });
 
     // Re-validate
@@ -82,6 +87,7 @@ export async function correct(options: CorrectionOptions): Promise<CorrectionRes
       transport: options.transport,
       cwd: options.cwd,
       templateVars: options.templateVars,
+      artifactContext: options.artifactContext,
     });
 
     if (valid) {

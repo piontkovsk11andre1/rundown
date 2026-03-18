@@ -2,18 +2,16 @@
  * Built-in default templates.
  *
  * Used when a project does not provide .md-todo/ templates.
+ *
+ * Layout principle: templates are structured for KV-cache efficiency.
+ * Large, stable content (document context) appears first so that
+ * consecutive tasks in the same file share a long common prefix.
+ * Per-task variables (task text, line number, validation result)
+ * appear after the context block.
  */
 
 export const DEFAULT_TASK_TEMPLATE = `\
 You are working on a project. A Markdown TODO has been selected for you to complete.
-
-## Task
-
-{{task}}
-
-## Source file
-
-\`{{file}}\` (line {{taskLine}})
 
 ## Document context
 
@@ -24,6 +22,14 @@ The following is the content of the Markdown file up to the point of this task:
 {{context}}
 
 ---
+
+## Source file
+
+\`{{file}}\` (line {{taskLine}})
+
+## Task
+
+{{task}}
 
 Complete the task described above. Make the necessary changes to the project, but do not edit the source Markdown task file as part of completion tracking.
 
@@ -36,19 +42,19 @@ Complete the task described above. Make the necessary changes to the project, bu
 export const DEFAULT_VALIDATE_TEMPLATE = `\
 A task was just executed. Your job is to validate whether it was completed successfully.
 
-## Task
-
-{{task}}
-
-## Source file
-
-\`{{file}}\` (line {{taskLine}})
-
 ## Document context
 
 {{context}}
 
 ---
+
+## Source file
+
+\`{{file}}\` (line {{taskLine}})
+
+## Task
+
+{{task}}
 
 Evaluate whether the task above has been completed.
 
@@ -65,23 +71,23 @@ Do not write anything else.
 export const DEFAULT_CORRECT_TEMPLATE = `\
 A task was executed but validation determined it is not yet complete.
 
-## Task
-
-{{task}}
-
-## Source file
-
-\`{{file}}\` (line {{taskLine}})
-
-## Previous validation result
-
-{{validationResult}}
-
 ## Document context
 
 {{context}}
 
 ---
+
+## Source file
+
+\`{{file}}\` (line {{taskLine}})
+
+## Task
+
+{{task}}
+
+## Previous validation result
+
+{{validationResult}}
 
 Please fix what is missing or incorrect. The validation above explains what still needs to be done.
 
@@ -101,14 +107,6 @@ export const DEFAULT_VARS_FILE_CONTENT = `{
 export const DEFAULT_PLAN_TEMPLATE = `\
 A Markdown TODO has been selected for planning. Your job is to decompose it into concrete subtasks.
 
-## Task to plan
-
-{{task}}
-
-## Source file
-
-\`{{file}}\` (line {{taskLine}})
-
 ## Document context
 
 The following is the content of the Markdown file up to the point of this task:
@@ -118,6 +116,14 @@ The following is the content of the Markdown file up to the point of this task:
 {{context}}
 
 ---
+
+## Source file
+
+\`{{file}}\` (line {{taskLine}})
+
+## Task to plan
+
+{{task}}
 
 Break this task into smaller, actionable subtasks.
 

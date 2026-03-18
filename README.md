@@ -82,11 +82,11 @@ It treats Markdown as an executable workflow surface:
 - the task lives in Markdown,
 - the surrounding document becomes context,
 - the worker command does the work,
-- validation decides whether the task is truly done,
-- correction retries when needed,
+- verification decides whether the task is truly done,
+- repair retries when needed,
 - and the checkbox changes only after success.
 
-The worker should not edit the Markdown task file to mark the task complete. `md-todo` owns checkbox updates and only applies them after validation succeeds.
+The worker should not edit the Markdown task file to mark the task complete. `md-todo` owns checkbox updates and only applies them after verification succeeds.
 
 ---
 
@@ -124,7 +124,7 @@ md-todo run docs/ -- opencode run
 4. run the worker,
 5. validate the outcome,
 6. optionally correct and retry,
-7. then check the box only if validation passes.
+7. then check the box only if verification passes.
 
 That means the worker should complete the underlying work, not manually flip `[ ]` to `[x]` in the task file.
 
@@ -142,7 +142,7 @@ It picks the next task in a predictable way and supports explicit sorting.
 
 ### Template-driven
 
-The execution, validation, and correction behavior live in repository-local Markdown templates.
+The execution, verification, and repair behavior live in repository-local Markdown templates.
 
 ### Agent-friendly and CLI-friendly
 
@@ -152,17 +152,24 @@ Tasks can be handled by an external worker such as `opencode`, or executed direc
 
 A task is not considered done just because a command ran. It must validate.
 
-The worker does not own checkbox updates. `md-todo` marks the task complete only after validation returns `OK`.
+The worker does not own checkbox updates. `md-todo` marks the task complete only after verification returns `OK`.
 
 ---
 
 ## How it works
 
-`md-todo` has three phases:
+`md-todo` uses a four-step loop:
+
+1. Plan (optional)
+2. Execute
+3. Verify
+4. Repair
+
+Plan runs through `md-todo plan` and inserts nested subtasks before execution.
 
 ### 1. Execute
 
-The tool finds the next unchecked task and renders `.md-todo/task.md`.
+The tool finds the next unchecked task and renders `.md-todo/execute.md`.
 
 That rendered prompt is passed to a worker command such as:
 
@@ -170,13 +177,13 @@ That rendered prompt is passed to a worker command such as:
 md-todo run roadmap.md -- opencode run
 ```
 
-### 2. Validate
+### 2. Verify
 
-After execution, `md-todo` renders `.md-todo/validate.md`.
+After execution, `md-todo` renders `.md-todo/verify.md`.
 
-You can also skip execution and run validation directly with `--only-validate`.
+You can also skip execution and run verification directly with `--only-verify`.
 
-Validation produces a task-specific sidecar file next to the source document, for example:
+Verification produces a task-specific sidecar file next to the source document, for example:
 
 ```text
 Tasks.md.3.validation
@@ -186,15 +193,15 @@ If that file contains exactly `OK`, the task is considered complete.
 
 If it contains anything else, the task remains unchecked and the file stays as evidence.
 
-### 3. Correct
+### 3. Repair
 
-If validation fails, `md-todo` can render `.md-todo/correct.md` and run a correction pass.
+If verification fails, `md-todo` can render `.md-todo/repair.md` and run a repair pass.
 
 Then it validates again.
 
 This loop can run multiple times until the task validates or retries are exhausted.
 
-Correction stays off by default with `--retries 0`, and can also be disabled explicitly with `--no-correct`.
+Repair stays off by default with `--retries 0`, and can also be disabled explicitly with `--no-repair`.
 
 ---
 
@@ -204,16 +211,16 @@ The workflow is configured with Markdown templates stored in the repository:
 
 ```text
 .md-todo/
-  task.md
-  validate.md
-  correct.md
+  execute.md
+  verify.md
+  repair.md
   plan.md
   vars.json
 ```
 
 This keeps the system readable, versionable, and close to the project itself.
 
-You can also inject extra template variables from the CLI with repeatable `--var key=value` flags or load them from a JSON file with `--vars-file`. Those values are available in `task.md`, `validate.md`, `correct.md`, and `plan.md` as `{{key}}`.
+You can also inject extra template variables from the CLI with repeatable `--var key=value` flags or load them from a JSON file with `--vars-file`. Those values are available in `execute.md`, `verify.md`, `repair.md`, and `plan.md` as `{{key}}`.
 
 ```bash
 md-todo run roadmap.md --var branch=main --var ticket=ENG-42 -- opencode run
@@ -225,17 +232,23 @@ When `--vars-file` is used without a path, `md-todo` loads `.md-todo/vars.json`.
 
 When both are provided, direct `--var` entries override values loaded from `--vars-file`.
 
-### `task.md`
+### `execute.md`
 Defines how the worker should perform the task.
 
-### `validate.md`
+### `verify.md`
 Defines how completion should be judged.
 
-### `correct.md`
+### `repair.md`
 Defines how to repair a failed attempt.
 
 ### `plan.md`
 Defines how a task should be decomposed into subtasks.
+
+Legacy template filenames remain supported for backward compatibility:
+
+- `task.md` → `execute.md`
+- `validate.md` → `verify.md`
+- `correct.md` → `repair.md`
 
 This makes `md-todo` feel less like a hardcoded integration and more like a small agentic framework you shape per repository.
 
@@ -305,7 +318,7 @@ If a CLI command is written in a saved Markdown document, that is treated as int
 ### `wait`
 Launch the runner and wait for it to finish.
 
-This is the default and works best with validation and correction.
+This is the default and works best with verification and repair.
 
 ### `tui`
 Launch an interactive terminal UI runner, let the user steer it, then continue the workflow after exit.
@@ -317,12 +330,14 @@ This is especially useful with tools like `opencode`:
 3. launches `opencode`,
 4. you inspect and steer the session,
 5. you quit,
-6. `md-todo` resumes validation and correction.
+6. `md-todo` resumes verification and repair.
 
 ### `detached`
 Start the runner without waiting.
 
-This is possible, but weaker for immediate validation.
+This is possible, but weaker for immediate verification.
+
+In detached mode, `md-todo` keeps the runtime artifacts on disk, skips immediate verification, and leaves the task unchecked.
 
 ---
 
@@ -331,18 +346,41 @@ This is possible, but weaker for immediate validation.
 Rendered prompts can be passed to the worker in different ways.
 
 ### `file` (default)
-Write the rendered prompt to a temporary Markdown file and pass that file to the runner.
+Write the rendered prompt to a runtime Markdown file under `.md-todo/runs/` and pass that file to the runner.
 
 This is the most robust option, especially on Windows, where quoting and long command lines become fragile.
 
 For `opencode`, `file` transport attaches the generated Markdown file and uses a short bootstrap message instead of pushing the entire rendered prompt through command-line arguments.
 
-For `opencode` TUI mode, `md-todo` stages the fully rendered prompt under `.md-todo/runtime/` and starts the session with a short instruction telling `opencode` to open that staged file first.
+For `opencode` TUI mode, `md-todo` still starts the session with a short instruction telling `opencode` to open the staged prompt file first.
 
 ### `arg`
 Pass the prompt as command arguments.
 
 Useful for smaller prompts, but less reliable for large Markdown context.
+
+Even with `arg` transport, `md-todo` still records the rendered prompt inside the runtime artifact folder so the run remains inspectable.
+
+### Runtime artifacts
+
+Each real `run` or `plan` execution can create a per-run folder under `.md-todo/runs/`.
+
+Typical contents include:
+
+- `run.json`
+- phase folders such as `01-execute/`, `02-verify/`, `03-repair/`
+- `prompt.md`
+- `stdout.log`
+- `stderr.log`
+- `metadata.json`
+
+This gives `md-todo` a consistent place to store prompts, captured output, and run metadata.
+
+By default, those runtime artifacts are cleaned up after a normal completed run.
+
+Use `--keep-artifacts` to preserve them for inspection.
+
+Detached mode always keeps its runtime artifacts because the runner may still need the staged prompt file after `md-todo` returns.
 
 ---
 
@@ -356,7 +394,7 @@ A practical default integration looks like this:
 
 In `wait` mode, `md-todo` attaches the rendered prompt file to `opencode run` and sends a short instruction telling it to read the attachment first.
 
-In `tui` mode, `md-todo` stages the rendered prompt in `.md-todo/runtime/` so the handoff remains file-based instead of relying on a huge inline prompt.
+In `tui` mode, `md-todo` stages the rendered prompt inside that run folder so the handoff remains file-based instead of relying on a huge inline prompt.
 
 This gives a clean workflow:
 
@@ -372,9 +410,9 @@ md-todo run roadmap.md --mode tui -- opencode
 
 ---
 
-## Validation sidecar files
+## Verification sidecar files
 
-Validation should be inspectable.
+Verification should be inspectable.
 
 Instead of trusting terminal output alone, `md-todo` uses task-specific sidecar files such as:
 
@@ -385,7 +423,7 @@ Tasks.md.3.validation
 Rules:
 
 - `OK` means the task is complete
-- anything else means validation failed
+- anything else means verification failed
 - on success, the file is removed
 - on failure, it stays for inspection
 
@@ -398,15 +436,69 @@ This gives the workflow a concrete artifact instead of relying on vague free-for
 ```text
 .
 ├─ .md-todo/
-│  ├─ task.md
-│  ├─ validate.md
-│  └─ correct.md
+│  ├─ execute.md
+│  ├─ verify.md
+│  └─ repair.md
 ├─ README.md
 ├─ roadmap.md
 └─ docs/
    ├─ 01. Idea.md
    └─ 02. Plan.md
 ```
+
+---
+
+## Manual playground
+
+This repository includes a copyable manual verification playground under `playground/manual`.
+
+It is intended for:
+
+- contributor smoke-testing,
+- client-facing acceptance checks,
+- worker command comparisons,
+- and validating the full execute → verify → repair loop against real Markdown tasks.
+
+The playground includes:
+
+- seeded Markdown task files,
+- project-local templates,
+- a client-friendly checklist,
+- reset helpers,
+- sorting and glob examples,
+- and a safe `init` sandbox.
+
+Typical workflow:
+
+1. build `md-todo`,
+2. change into `playground/manual`,
+3. run the checklist with either `md-todo` or `node ../../dist/cli.js`,
+4. reset with `node scripts/reset.mjs` between passes.
+
+Quick scenario commands:
+
+- next-task preview → `md-todo next tasks/01-happy-path.md`
+- list all unchecked tasks → `md-todo list tasks`
+- standard execute + verify → `md-todo run tasks/01-happy-path.md --worker opencode run`
+- nested child-before-parent flow → `md-todo run tasks/02-nested.md --worker opencode run`
+- verify-only failure → `md-todo run tasks/03-verify-repair.md --only-verify --worker opencode run`
+- verify + repair retry → `md-todo run tasks/03-verify-repair.md --only-verify --retries 1 --worker opencode run`
+- inline CLI task → `md-todo run tasks/05-inline-cli.md --no-verify`
+- planner flow → `md-todo plan tasks/04-plan.md --worker opencode run`
+- glob scan → `md-todo next "tasks/glob/**/*.md" --sort name-sort`
+- artifact inspection → `md-todo run tasks/01-happy-path.md --keep-artifacts --worker opencode run` then `md-todo artifacts`
+- init sandbox → change into `sandboxes/init-target` and run `md-todo init`
+
+PowerShell 5.1 equivalents:
+
+- standard execute + verify → `node ../../dist/cli.js run tasks/01-happy-path.md --worker opencode run`
+- nested child-before-parent flow → `node ../../dist/cli.js run tasks/02-nested.md --worker opencode run`
+- verify-only failure → `node ../../dist/cli.js run tasks/03-verify-repair.md --only-verify --worker opencode run`
+- verify + repair retry → `node ../../dist/cli.js run tasks/03-verify-repair.md --only-verify --retries 1 --worker opencode run`
+- planner flow → `node ../../dist/cli.js plan tasks/04-plan.md --worker opencode run`
+- artifact inspection → `node ../../dist/cli.js run tasks/01-happy-path.md --keep-artifacts --worker opencode run`
+
+See `playground/manual/README.md` and `playground/manual/CHECKLIST.md` for the full manual flow.
 
 ---
 
@@ -436,25 +528,46 @@ Options:
 | `--mode <mode>` | `wait`, `tui`, or `detached` | `wait` |
 | `--transport <transport>` | `file` or `arg` | `file` |
 | `--sort <sort>` | `name-sort`, `none`, `old-first`, `new-first` | `name-sort` |
-| `--validate` | Run validation after execution | off |
-| `--only-validate` | Skip execution and run validation directly | off |
-| `--retries <n>` | Max correction attempts on failure | `0` |
-| `--no-correct` | Disable correction even when retries are set | off |
+| `--verify` | Run verification after execution (default behavior) | on |
+| `--no-verify` | Disable verification after execution | off |
+| `--only-verify` | Skip execution and run verification directly | off |
+| `--retries <n>` | Max repair attempts on failure | `0` |
+| `--no-repair` | Disable repair even when retries are set | off |
 | `--dry-run` | Show what would run without executing | off |
 | `--print-prompt` | Print the rendered prompt and exit | off |
+| `--keep-artifacts` | Preserve runtime prompts, logs, and metadata under `.md-todo/runs` | off |
 | `--vars-file [path]` | Load extra template variables from a JSON file, defaulting to `.md-todo/vars.json` | — |
 | `--var <key=value>` | Extra template variable, repeatable | — |
 
-Validate the current project state without running the task step first:
+Legacy aliases are still supported:
+
+- `--validate` → `--verify`
+- `--no-validate` → `--no-verify`
+- `--only-validate` → `--only-verify`
+- `--no-correct` → `--no-repair`
+
+Verify the current project state without running the task step first:
 
 ```bash
-md-todo run roadmap.md --only-validate --worker opencode run
+md-todo run roadmap.md --only-verify --worker opencode run
 ```
 
-Run validation without allowing correction retries:
+Run verification without allowing repair retries:
 
 ```bash
-md-todo run roadmap.md --validate --no-correct --worker opencode run
+md-todo run roadmap.md --verify --no-repair --worker opencode run
+```
+
+Run execution only (no verification step):
+
+```bash
+md-todo run roadmap.md --no-verify --worker opencode run
+```
+
+Keep prompts, logs, and metadata for inspection:
+
+```bash
+md-todo run roadmap.md --keep-artifacts -- opencode run
 ```
 
 ### `md-todo plan <source> -- <command>`
@@ -484,11 +597,12 @@ Options:
 |------|-------------|---------|
 | `--at <file:line>` | Target a specific task by file and line number | next task |
 | `--worker <command...>` | Worker command | — |
-| `--mode <mode>` | `wait`, `tui`, or `detached` | `wait` |
+| `--mode <mode>` | `wait` | `wait` |
 | `--transport <transport>` | `file` or `arg` | `file` |
 | `--sort <sort>` | `name-sort`, `none`, `old-first`, `new-first` | `name-sort` |
 | `--dry-run` | Show what would be planned without executing | off |
 | `--print-prompt` | Print the plan prompt and exit | off |
+| `--keep-artifacts` | Preserve runtime prompts, logs, and metadata under `.md-todo/runs` | off |
 | `--vars-file [path]` | Load extra template variables | — |
 | `--var <key=value>` | Extra template variable, repeatable | — |
 
@@ -513,9 +627,34 @@ md-todo list .
 md-todo list --all roadmap.md
 ```
 
+### `md-todo artifacts`
+
+Inspect or prune saved runtime artifact runs under `.md-todo/runs`.
+
+```bash
+md-todo artifacts
+md-todo artifacts --json
+md-todo artifacts --failed
+md-todo artifacts --open latest
+md-todo artifacts --open run-20260317T000000000Z-abcd1234
+md-todo artifacts --clean --failed
+md-todo artifacts --clean
+```
+
+Use this after `--keep-artifacts` runs, or after detached runs that intentionally preserve their staged prompt files and metadata.
+
+Options:
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--json` | Print the saved runs as JSON | off |
+| `--failed` | Show only failed runs | off |
+| `--open <runId>` | Open a saved run folder by full id, unique prefix, or `latest` | — |
+| `--clean` | Remove all saved runs | off |
+
 ### `md-todo init`
 
-Create a `.md-todo/` directory with default templates (including `plan.md`).
+Create a `.md-todo/` directory with default templates (`plan.md`, `execute.md`, `verify.md`, `repair.md`) and `vars.json`.
 
 ```bash
 md-todo init
@@ -527,10 +666,10 @@ md-todo init
 
 | Code | Meaning |
 |------|---------|
-| `0` | Task completed successfully |
+| `0` | Command completed successfully |
 | `1` | Execution error |
 | `2` | Validation failed |
-| `3` | No tasks found |
+| `3` | No actionable target (for example: no matching Markdown files, no unchecked task, or no task at `--at` location) |
 
 ---
 

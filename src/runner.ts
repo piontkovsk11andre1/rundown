@@ -7,15 +7,21 @@
  * - detached: spawn the command and return immediately
  *
  * Supports two prompt transport mechanisms:
- * - file: write prompt to a temp .md file and append the path as an argument
+ * - file: write prompt to a .md-todo runtime file and append the path as an argument
  * - arg:  append the prompt text directly as a trailing argument
  */
 
-import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { randomBytes } from "node:crypto";
 import spawn from "cross-spawn";
+import {
+  beginRuntimePhase,
+  completeRuntimePhase,
+  createRuntimeArtifactsContext,
+  finalizeRuntimeArtifacts,
+  type RuntimeArtifactsContext,
+  type RuntimePhase,
+} from "./runtime-artifacts.js";
 
 export type RunnerMode = "wait" | "tui" | "detached";
 export type PromptTransport = "file" | "arg";
@@ -31,6 +37,14 @@ export interface RunnerOptions {
   transport?: PromptTransport;
   /** Working directory for the command. */
   cwd?: string;
+  /** Optional shared runtime artifact context. */
+  artifactContext?: RuntimeArtifactsContext;
+  /** The phase name for persisted runtime artifacts. */
+  artifactPhase?: RuntimePhase;
+  /** Extra metadata to attach to the artifact phase. */
+  artifactExtra?: Record<string, unknown>;
+  /** Preserve artifacts after completion. */
+  keepArtifacts?: boolean;
 }
 
 export interface RunnerResult {
@@ -49,15 +63,35 @@ export async function runWorker(options: RunnerOptions): Promise<RunnerResult> {
   const mode = options.mode ?? "wait";
   const transport = options.transport ?? "file";
   const cwd = options.cwd ?? process.cwd();
-  const useWorkspacePromptFile = shouldUseWorkspacePromptFile(options.command, mode, transport);
+  let ownedArtifactContext: RuntimeArtifactsContext | null = null;
+  let artifactContext: RuntimeArtifactsContext;
 
-  let tempFile: string | null = null;
-
-  if (transport === "file") {
-    tempFile = writeTempPrompt(options.prompt, cwd, useWorkspacePromptFile);
+  if (options.artifactContext) {
+    artifactContext = options.artifactContext;
+  } else {
+    ownedArtifactContext = createRuntimeArtifactsContext({
+      cwd,
+      commandName: "worker",
+      workerCommand: options.command,
+      mode,
+      transport,
+      keepArtifacts: options.keepArtifacts ?? false,
+    });
+    artifactContext = ownedArtifactContext;
   }
 
-  const args = buildWorkerArgs(options.command, options.prompt, transport, tempFile, cwd);
+  const phase = beginRuntimePhase(artifactContext, {
+    phase: options.artifactPhase ?? "worker",
+    prompt: options.prompt,
+    command: options.command,
+    mode,
+    transport,
+    notes: buildCaptureNotes(mode),
+    extra: options.artifactExtra,
+  });
+
+  const transportPromptFile = transport === "file" ? phase.promptFile : null;
+  const args = buildWorkerArgs(options.command, options.prompt, transport, transportPromptFile, cwd);
 
   const [cmd, ...cmdArgs] = args;
 
@@ -67,31 +101,36 @@ export async function runWorker(options: RunnerOptions): Promise<RunnerResult> {
 
   try {
     const result = await executeCommand(cmd, cmdArgs, mode, cwd);
+    completeRuntimePhase(phase, {
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      outputCaptured: mode === "wait",
+    });
     return result;
+  } catch (error) {
+    completeRuntimePhase(phase, {
+      exitCode: null,
+      outputCaptured: mode === "wait",
+      notes: error instanceof Error ? error.message : String(error),
+      extra: { error: true },
+    });
+    throw error;
   } finally {
-    // Clean up transient temp files after execution (not for detached).
-    // Workspace-staged prompt files for opencode TUI are preserved for inspection.
-    if (tempFile && mode !== "detached" && !useWorkspacePromptFile) {
-      cleanupTemp(tempFile);
+    if (ownedArtifactContext) {
+      finalizeRuntimeArtifacts(ownedArtifactContext, {
+        status: mode === "detached" ? "detached" : "completed",
+        preserve: (options.keepArtifacts ?? false) || mode === "detached",
+      });
     }
   }
-}
-
-function shouldUseWorkspacePromptFile(
-  command: string[],
-  mode: RunnerMode,
-  transport: PromptTransport,
-): boolean {
-  return transport === "file"
-    && mode === "tui"
-    && isOpenCodeCommand(command[0] ?? "");
 }
 
 function buildWorkerArgs(
   command: string[],
   prompt: string,
   transport: PromptTransport,
-  tempFile: string | null,
+  promptFile: string | null,
   cwd: string,
 ): string[] {
   if (command.length === 0) {
@@ -99,15 +138,15 @@ function buildWorkerArgs(
   }
 
   if (isOpenCodeCommand(command[0])) {
-    return buildOpenCodeArgs(command, prompt, tempFile, cwd);
+    return buildOpenCodeArgs(command, prompt, promptFile, cwd);
   }
 
   const args = [...command];
   if (transport === "file") {
-    if (!tempFile) {
-      throw new Error("Prompt file transport requested but no temp file was created.");
+    if (!promptFile) {
+      throw new Error("Prompt file transport requested but no prompt file was created.");
     }
-    args.push(tempFile);
+    args.push(promptFile);
   } else {
     args.push(prompt);
   }
@@ -126,7 +165,7 @@ function isOpenCodeCommand(command: string): boolean {
 function buildOpenCodeArgs(
   command: string[],
   prompt: string,
-  tempFile: string | null,
+  promptFile: string | null,
   cwd: string,
 ): string[] {
   const [cmd, ...rest] = command;
@@ -134,9 +173,9 @@ function buildOpenCodeArgs(
   if (rest[0] === "run") {
     const args = [cmd, ...rest];
 
-    if (tempFile) {
+    if (promptFile) {
       args.push(buildOpenCodeRunBootstrapPrompt());
-      args.push("--file", tempFile);
+      args.push("--file", promptFile);
       return args;
     }
 
@@ -144,8 +183,8 @@ function buildOpenCodeArgs(
     return args;
   }
 
-  if (tempFile) {
-    return [cmd, ...rest, buildOpenCodeTuiPromptArg(buildOpenCodeTuiBootstrapPrompt(tempFile, cwd))];
+  if (promptFile) {
+    return [cmd, ...rest, buildOpenCodeTuiPromptArg(buildOpenCodeTuiBootstrapPrompt(promptFile, cwd))];
   }
 
   return [cmd, ...rest, buildOpenCodeTuiPromptArg(prompt)];
@@ -240,25 +279,14 @@ function executeCommand(
   });
 }
 
-function writeTempPrompt(
-  prompt: string,
-  cwd?: string,
-  useWorkspacePromptFile: boolean = false,
-): string {
-  const dir = useWorkspacePromptFile && cwd
-    ? path.join(cwd, ".md-todo", "runtime")
-    : path.join(os.tmpdir(), "md-todo");
-  fs.mkdirSync(dir, { recursive: true });
-  const id = randomBytes(8).toString("hex");
-  const file = path.join(dir, `prompt-${id}.md`);
-  fs.writeFileSync(file, prompt, "utf-8");
-  return file;
-}
-
-function cleanupTemp(file: string): void {
-  try {
-    fs.unlinkSync(file);
-  } catch {
-    // Ignore cleanup failures
+function buildCaptureNotes(mode: RunnerMode): string | undefined {
+  if (mode === "wait") {
+    return undefined;
   }
+
+  if (mode === "tui") {
+    return "Interactive TUI mode does not capture worker stdout/stderr transcripts.";
+  }
+
+  return "Detached mode does not capture worker stdout/stderr and leaves runtime artifacts in place.";
 }

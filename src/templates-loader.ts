@@ -25,21 +25,46 @@ const CONFIG_DIR = ".md-todo";
 /**
  * Load templates from the project directory, falling back to built-in defaults.
  *
- * Looks for:
+ * Primary names:
+ *   .md-todo/execute.md
+ *   .md-todo/verify.md
+ *   .md-todo/repair.md
+ *   .md-todo/plan.md
+ *
+ * Backward-compatible aliases:
  *   .md-todo/task.md
  *   .md-todo/validate.md
  *   .md-todo/correct.md
- *   .md-todo/plan.md
  */
 export function loadProjectTemplates(cwd: string = process.cwd()): ProjectTemplates {
   const dir = path.join(cwd, CONFIG_DIR);
 
   return {
-    task: loadFile(path.join(dir, "task.md")) ?? DEFAULT_TASK_TEMPLATE,
-    validate: loadFile(path.join(dir, "validate.md")) ?? DEFAULT_VALIDATE_TEMPLATE,
-    correct: loadFile(path.join(dir, "correct.md")) ?? DEFAULT_CORRECT_TEMPLATE,
+    task: loadFirstAvailable(
+      path.join(dir, "execute.md"),
+      path.join(dir, "task.md"),
+    ) ?? DEFAULT_TASK_TEMPLATE,
+    validate: loadFirstAvailable(
+      path.join(dir, "verify.md"),
+      path.join(dir, "validate.md"),
+    ) ?? DEFAULT_VALIDATE_TEMPLATE,
+    correct: loadFirstAvailable(
+      path.join(dir, "repair.md"),
+      path.join(dir, "correct.md"),
+    ) ?? DEFAULT_CORRECT_TEMPLATE,
     plan: loadFile(path.join(dir, "plan.md")) ?? DEFAULT_PLAN_TEMPLATE,
   };
+}
+
+function loadFirstAvailable(...filePaths: string[]): string | null {
+  for (const filePath of filePaths) {
+    const loaded = loadFile(filePath);
+    if (loaded !== null) {
+      return loaded;
+    }
+  }
+
+  return null;
 }
 
 function loadFile(filePath: string): string | null {

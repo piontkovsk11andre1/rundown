@@ -53,7 +53,8 @@ export function insertSubitems(
 ): string {
   if (subitemLines.length === 0) return source;
 
-  const lines = source.split("\n");
+  const eol = source.includes("\r\n") ? "\r\n" : "\n";
+  const lines = source.split(/\r?\n/);
   const parentLineIndex = task.line - 1;
 
   if (parentLineIndex < 0 || parentLineIndex >= lines.length) {
@@ -73,7 +74,7 @@ export function insertSubitems(
   // Insert after the parent line
   lines.splice(parentLineIndex + 1, 0, ...indented);
 
-  return lines.join("\n");
+  return lines.join(eol);
 }
 
 /**

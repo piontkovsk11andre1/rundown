@@ -26,7 +26,8 @@ export function checkTask(task: Task): void {
  * Uses the task's line number for safety.
  */
 export function markChecked(source: string, task: Task): string {
-  const lines = source.split("\n");
+  const eol = source.includes("\r\n") ? "\r\n" : "\n";
+  const lines = source.split(/\r?\n/);
   const lineIndex = task.line - 1;
 
   if (lineIndex < 0 || lineIndex >= lines.length) {
@@ -41,5 +42,5 @@ export function markChecked(source: string, task: Task): string {
   }
 
   lines[lineIndex] = updated;
-  return lines.join("\n");
+  return lines.join(eol);
 }

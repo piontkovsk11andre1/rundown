@@ -1,5 +1,5 @@
 /**
- * md-todo — Markdown-native task runtime.
+ * rundown — Markdown-native task runtime.
  *
  * Default programmatic entrypoint: app composition.
  */

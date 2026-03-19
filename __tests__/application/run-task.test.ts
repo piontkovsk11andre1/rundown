@@ -37,10 +37,10 @@ describe("run-task commit behavior", () => {
     expect(gitClient.run).toHaveBeenNthCalledWith(2, ["add", "--", "tasks.md"], cwd);
     expect(gitClient.run).toHaveBeenNthCalledWith(
       3,
-      ["commit", "-m", "md-todo: complete \"cli: echo hello\" in tasks.md"],
+      ["commit", "-m", "rundown: complete \"cli: echo hello\" in tasks.md"],
       cwd,
     );
-    expect(events.some((event) => event.kind === "success" && event.message === "Committed: md-todo: complete \"cli: echo hello\" in tasks.md")).toBe(true);
+    expect(events.some((event) => event.kind === "success" && event.message === "Committed: rundown: complete \"cli: echo hello\" in tasks.md")).toBe(true);
   });
 
   it("uses commit message template placeholders in commit path", async () => {
@@ -172,11 +172,11 @@ describe("run-task on-complete hook behavior", () => {
       timeoutMs: 60_000,
     });
     expect(firstCall?.env).toMatchObject({
-      MD_TODO_TASK: "cli: echo hello",
-      MD_TODO_FILE: path.resolve(taskFile),
-      MD_TODO_LINE: "1",
-      MD_TODO_INDEX: "0",
-      MD_TODO_SOURCE: "tasks.md",
+      RUNDOWN_TASK: "cli: echo hello",
+      RUNDOWN_FILE: path.resolve(taskFile),
+      RUNDOWN_LINE: "1",
+      RUNDOWN_INDEX: "0",
+      RUNDOWN_SOURCE: "tasks.md",
     });
     expect(events.some((event) => event.kind === "text" && event.text === "hook out")).toBe(true);
     expect(events.some((event) => event.kind === "stderr" && event.text === "hook err")).toBe(true);
@@ -333,7 +333,7 @@ function createDependencies(options: {
   const artifactStore: ArtifactStore = {
     createContext: vi.fn(() => ({
       runId: "run-test",
-      rootDir: path.join(options.cwd, ".md-todo", "runs", "run-test"),
+      rootDir: path.join(options.cwd, ".rundown", "runs", "run-test"),
       cwd: options.cwd,
       keepArtifacts: false,
       commandName: "run",
@@ -341,8 +341,8 @@ function createDependencies(options: {
     beginPhase: vi.fn(),
     completePhase: vi.fn(),
     finalize: vi.fn(),
-    displayPath: vi.fn(() => path.join(options.cwd, ".md-todo", "runs", "run-test")),
-    rootDir: vi.fn(() => path.join(options.cwd, ".md-todo", "runs")),
+    displayPath: vi.fn(() => path.join(options.cwd, ".rundown", "runs", "run-test")),
+    rootDir: vi.fn(() => path.join(options.cwd, ".rundown", "runs")),
     listSaved: vi.fn(() => []),
     listFailed: vi.fn(() => []),
     latest: vi.fn(() => null),

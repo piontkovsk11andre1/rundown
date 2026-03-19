@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 function writeTempVarsFile(content: string): { dir: string; file: string } {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "md-todo-vars-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-vars-"));
   tempDirs.push(dir);
   const file = path.join(dir, "vars.json");
   fs.writeFileSync(file, content, "utf-8");

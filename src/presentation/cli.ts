@@ -10,7 +10,7 @@ const RUNNER_MODES: readonly ProcessRunMode[] = ["wait", "tui", "detached"];
 const PLANNER_MODES: readonly ProcessRunMode[] = ["wait"];
 const PROMPT_TRANSPORTS: readonly PromptTransport[] = ["file", "arg"];
 const SORT_MODES: readonly SortMode[] = ["name-sort", "none", "old-first", "new-first"];
-const EXIT_TEST_MODE_ENV = "MD_TODO_TEST_MODE";
+const EXIT_TEST_MODE_ENV = "RUNDOWN_TEST_MODE";
 
 class CliExitSignal extends Error {
   readonly code: number;
@@ -42,7 +42,7 @@ const app = createApp({
 
 type CliActionResult = number | Promise<number>;
 program
-  .name("md-todo")
+  .name("rundown")
   .description("A Markdown-native task runtime for agentic workflows.")
   .version(readCliVersion());
 program
@@ -59,8 +59,8 @@ program
   .option("--no-repair", "Disable repair even when retries are set", false)
   .option("--dry-run", "Show what would be executed without running it", false)
   .option("--print-prompt", "Print the rendered prompt and exit", false)
-  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under .md-todo/runs", false)
-  .option("--vars-file [path]", "Load extra template variables from a JSON file (default: .md-todo/vars.json)")
+  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under .rundown/runs", false)
+  .option("--vars-file [path]", "Load extra template variables from a JSON file (default: .rundown/vars.json)")
   .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
   .option("--commit", "Auto-commit checked task file after successful completion", false)
   .option("--commit-message <template>", "Commit message template (supports {{task}} and {{file}})")
@@ -136,7 +136,7 @@ program
   }));
 program
   .command("artifacts")
-  .description("List or clean saved runtime artifact runs under .md-todo/runs.")
+  .description("List or clean saved runtime artifact runs under .rundown/runs.")
   .option("--clean", "Remove all saved runtime artifact runs", false)
   .option("--json", "Print saved runtime artifacts as JSON", false)
   .option("--failed", "Show only failed runtime artifact runs", false)
@@ -159,8 +159,8 @@ program
   .option("--sort <sort>", "File sort mode: name-sort, none, old-first, new-first", "name-sort")
   .option("--dry-run", "Show what would be planned without executing", false)
   .option("--print-prompt", "Print the rendered plan prompt and exit", false)
-  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under .md-todo/runs", false)
-  .option("--vars-file [path]", "Load extra template variables from a JSON file (default: .md-todo/vars.json)")
+  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under .rundown/runs", false)
+  .option("--vars-file [path]", "Load extra template variables from a JSON file (default: .rundown/vars.json)")
   .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
   .option("--worker <command...>", "Worker command to run (alternative to -- <command>)")
   .allowUnknownOption(false)
@@ -195,7 +195,7 @@ program
   }));
 program
   .command("init")
-  .description("Create a .md-todo/ directory with default templates (plan, execute, verify, repair).")
+  .description("Create a .rundown/ directory with default templates (plan, execute, verify, repair).")
   .action(withCliAction(() => app.initProject()));
 function collectOption(value: string, previous: string[]): string[] {
   return [...previous, value];
@@ -273,12 +273,12 @@ function withCliAction<Args extends unknown[]>(
 }
 
 export async function parseCliArgs(argv: string[]): Promise<void> {
-  const { mdTodoArgs, workerFromSeparator: workerCommandArgs } = splitWorkerFromSeparator(argv);
+  const { rundownArgs, workerFromSeparator: workerCommandArgs } = splitWorkerFromSeparator(argv);
   workerFromSeparator = workerCommandArgs;
-  await program.parseAsync(mdTodoArgs, { from: "user" });
+  await program.parseAsync(rundownArgs, { from: "user" });
 }
 
-if (process.env.MD_TODO_DISABLE_AUTO_PARSE !== "1") {
+if (process.env.RUNDOWN_DISABLE_AUTO_PARSE !== "1") {
   parseCliArgs(process.argv.slice(2)).catch((err) => {
     if (isCliExitSignal(err)) {
       process.exit(err.code);
@@ -288,10 +288,10 @@ if (process.env.MD_TODO_DISABLE_AUTO_PARSE !== "1") {
   });
 }
 
-function splitWorkerFromSeparator(argv: string[]): { mdTodoArgs: string[]; workerFromSeparator: string[] } {
+function splitWorkerFromSeparator(argv: string[]): { rundownArgs: string[]; workerFromSeparator: string[] } {
   const sepIndex = argv.indexOf("--");
   return {
-    mdTodoArgs: sepIndex !== -1 ? argv.slice(0, sepIndex) : argv,
+    rundownArgs: sepIndex !== -1 ? argv.slice(0, sepIndex) : argv,
     workerFromSeparator: sepIndex !== -1 ? argv.slice(sepIndex + 1) : [],
   };
 }

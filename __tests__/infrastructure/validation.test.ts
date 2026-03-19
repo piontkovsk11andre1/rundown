@@ -35,7 +35,7 @@ describe("validate", () => {
   });
 
   it("removes stale sidecar before running validation", async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "md-todo-validation-"));
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-validation-"));
     const file = path.join(tempDir, "Tasks.md");
     fs.writeFileSync(file, "# Tasks\n", "utf-8");
 
@@ -62,7 +62,7 @@ describe("validate", () => {
   });
 
   it("returns false when validator exits non-zero even if sidecar says OK", async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "md-todo-validation-"));
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-validation-"));
     const file = path.join(tempDir, "Tasks.md");
     fs.writeFileSync(file, "# Tasks\n", "utf-8");
 
@@ -90,7 +90,7 @@ describe("validate", () => {
   });
 
   it("accepts case-insensitive OK on successful validator exit", async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "md-todo-validation-"));
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-validation-"));
     const file = path.join(tempDir, "Tasks.md");
     fs.writeFileSync(file, "# Tasks\n", "utf-8");
 

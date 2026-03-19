@@ -7,7 +7,7 @@
  * - detached: spawn the command and return immediately
  *
  * Supports two prompt transport mechanisms:
- * - file: write prompt to a .md-todo runtime file and append the path as an argument
+ * - file: write prompt to a .rundown runtime file and append the path as an argument
  * - arg:  append the prompt text directly as a trailing argument
  */
 
@@ -201,7 +201,7 @@ function buildOpenCodeTuiBootstrapPrompt(tempFile: string, cwd: string): string 
   const displayPath = path.relative(cwd, tempFile) || path.basename(tempFile);
   const normalizedPath = displayPath.split(path.sep).join("/");
 
-  return `The full rendered md-todo task prompt is staged in ${normalizedPath}. Open and read that file completely before taking any action, then continue the work in this session.`;
+  return `The full rendered rundown task prompt is staged in ${normalizedPath}. Open and read that file completely before taking any action, then continue the work in this session.`;
 }
 
 function buildOpenCodeTuiPromptArg(prompt: string): string {

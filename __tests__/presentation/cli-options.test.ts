@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 type RunTaskCall = Record<string, unknown>;
 
-const envKeys = ["MD_TODO_DISABLE_AUTO_PARSE", "MD_TODO_TEST_MODE"] as const;
+const envKeys = ["RUNDOWN_DISABLE_AUTO_PARSE", "RUNDOWN_TEST_MODE"] as const;
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -70,8 +70,8 @@ describe("CLI run option normalization", () => {
 async function invokeRunAndCaptureCall(args: string[], runTask: ReturnType<typeof vi.fn>): Promise<RunTaskCall> {
   const previousEnv = captureEnv();
 
-  process.env.MD_TODO_DISABLE_AUTO_PARSE = "1";
-  process.env.MD_TODO_TEST_MODE = "1";
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
 
   vi.doMock("../../src/create-app.js", () => ({
     createApp: () => ({
@@ -102,8 +102,8 @@ async function invokeRunAndCaptureCall(args: string[], runTask: ReturnType<typeo
 
 function captureEnv(): Record<(typeof envKeys)[number], string | undefined> {
   return {
-    MD_TODO_DISABLE_AUTO_PARSE: process.env.MD_TODO_DISABLE_AUTO_PARSE,
-    MD_TODO_TEST_MODE: process.env.MD_TODO_TEST_MODE,
+    RUNDOWN_DISABLE_AUTO_PARSE: process.env.RUNDOWN_DISABLE_AUTO_PARSE,
+    RUNDOWN_TEST_MODE: process.env.RUNDOWN_TEST_MODE,
   };
 }
 

@@ -1,7 +1,7 @@
 /**
  * Built-in default templates.
  *
- * Used when a project does not provide .md-todo/ templates.
+ * Used when a project does not provide .rundown/ templates.
  *
  * Layout principle: templates are structured for KV-cache efficiency.
  * Every default template starts with the exact same prefix.
@@ -38,7 +38,7 @@ Complete the task described above. Make the necessary changes to the project, bu
 - Do not change the checkbox in the source Markdown file.
 - Do not rewrite the task item to make it look completed.
 - Do not treat editing the TODO file itself as evidence that the task is done unless the task explicitly requires documentation changes in that file.
-- md-todo is responsible for marking the task complete after validation succeeds.
+- rundown is responsible for marking the task complete after validation succeeds.
 `;
 
 export const DEFAULT_VALIDATE_TEMPLATE = `\
@@ -75,7 +75,7 @@ Please fix what is missing or incorrect. The validation above explains what stil
 
 - Do not change the checkbox in the source Markdown file.
 - Do not mark the task complete yourself.
-- md-todo will update task completion only after validation succeeds.
+- rundown will update task completion only after validation succeeds.
 
 After making corrections, the task will be validated again.
 `;

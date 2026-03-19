@@ -1,6 +1,6 @@
-# md-todo manual playground
+# rundown manual playground
 
-This directory is a copyable manual verification playground for `md-todo`.
+This directory is a copyable manual verification playground for `rundown`.
 
 Use it to walk through the full CLI surface with a real worker command, verify expected file changes by hand, and hand the same directory to a client as a structured acceptance checklist.
 
@@ -27,7 +27,7 @@ Inside this repository:
 3. Change into this directory
 4. Use `node ../../dist/cli.js` as the CLI prefix
 
-If you copy this playground into another repository where `md-todo` is already installed, replace `node ../../dist/cli.js` with `md-todo`.
+If you copy this playground into another repository where `rundown` is already installed, replace `node ../../dist/cli.js` with `rundown`.
 
 ## Recommended worker commands
 
@@ -53,7 +53,7 @@ Run this before a new verification pass:
 node scripts/reset.mjs
 ```
 
-That script restores the Markdown task files, removes generated outputs, clears validation sidecars, removes `.md-todo/runs`, and resets the `init` sandbox.
+That script restores the Markdown task files, removes generated outputs, clears validation sidecars, removes `.rundown/runs`, and resets the `init` sandbox.
 
 ## Sorting helper
 
@@ -68,7 +68,7 @@ Reset afterward with `node scripts/reset.mjs`.
 ## Files
 
 - `CHECKLIST.md` — step-by-step client-facing manual verification
-- `.md-todo/` — playground templates and variables
+- `.rundown/` — playground templates and variables
 - `tasks/` — scenario files
 - `scripts/` — helper scripts for reset and sorting demos
-- `sandboxes/init-target/` — safe directory for `md-todo init`
+- `sandboxes/init-target/` — safe directory for `rundown init`

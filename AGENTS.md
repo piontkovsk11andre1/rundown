@@ -2,7 +2,7 @@
 
 ## Mission
 
-Build `md-todo` as a serious, polished, publishable open source product.
+Build `rundown` as a serious, polished, publishable open source product.
 
 This repository is not a toy demo. It should become a professional CLI and an agentic framework for executing work directly from Markdown TODOs.
 
@@ -18,7 +18,7 @@ The core idea:
 
 ## Product understanding
 
-`md-todo` is a Markdown-native task runtime.
+`rundown` is a Markdown-native task runtime.
 
 It is more than a todo parser and more than a wrapper around an AI CLI. It is a small agentic framework with three distinct phases:
 
@@ -28,10 +28,10 @@ It is more than a todo parser and more than a wrapper around an AI CLI. It is a 
 
 The framework is driven by Markdown templates stored in project-local files:
 
-- `.md-todo/execute.md`
-- `.md-todo/verify.md`
-- `.md-todo/repair.md`
-- `.md-todo/plan.md`
+- `.rundown/execute.md`
+- `.rundown/verify.md`
+- `.rundown/repair.md`
+- `.rundown/plan.md`
 
 The behavior and concepts in [PROMPT.md](PROMPT.md) are the source product definition. Keep implementation aligned with that document unless the user explicitly changes direction.
 
@@ -84,13 +84,13 @@ It must look strong from the first screen.
 
 It should quickly communicate:
 
-- what `md-todo` is,
+- what `rundown` is,
 - why it is different,
 - why it matters,
 - how it works,
 - and how to use it in under a minute.
 
-The README should present `md-todo` as an agentic framework for Markdown workflows.
+The README should present `rundown` as an agentic framework for Markdown workflows.
 
 It should feel catchy, professional, and credible.
 
@@ -222,7 +222,7 @@ That means:
 
 ## What success looks like
 
-A successful version of `md-todo` should make a technically strong first impression:
+A successful version of `rundown` should make a technically strong first impression:
 
 - the idea is instantly understandable,
 - the README is memorable,

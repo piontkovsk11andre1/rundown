@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 function makeTempWorkspace(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "md-todo-cli-int-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-cli-int-"));
   tempDirs.push(dir);
   return dir;
 }
@@ -32,12 +32,12 @@ async function runCli(args: string[], cwd: string): Promise<{
   stderrWrites: string[];
 }> {
   const previousCwd = process.cwd();
-  const previousEnv = process.env.MD_TODO_DISABLE_AUTO_PARSE;
-  const previousTestModeEnv = process.env.MD_TODO_TEST_MODE;
+  const previousEnv = process.env.RUNDOWN_DISABLE_AUTO_PARSE;
+  const previousTestModeEnv = process.env.RUNDOWN_TEST_MODE;
 
   process.chdir(cwd);
-  process.env.MD_TODO_DISABLE_AUTO_PARSE = "1";
-  process.env.MD_TODO_TEST_MODE = "1";
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
 
   vi.resetModules();
 
@@ -119,15 +119,15 @@ async function runCli(args: string[], cwd: string): Promise<{
     process.chdir(previousCwd);
 
     if (previousEnv === undefined) {
-      delete process.env.MD_TODO_DISABLE_AUTO_PARSE;
+      delete process.env.RUNDOWN_DISABLE_AUTO_PARSE;
     } else {
-      process.env.MD_TODO_DISABLE_AUTO_PARSE = previousEnv;
+      process.env.RUNDOWN_DISABLE_AUTO_PARSE = previousEnv;
     }
 
     if (previousTestModeEnv === undefined) {
-      delete process.env.MD_TODO_TEST_MODE;
+      delete process.env.RUNDOWN_TEST_MODE;
     } else {
-      process.env.MD_TODO_TEST_MODE = previousTestModeEnv;
+      process.env.RUNDOWN_TEST_MODE = previousTestModeEnv;
     }
   }
 }
@@ -422,7 +422,7 @@ describe.sequential("CLI integration", () => {
     const hookScript = path.join(workspace, "hook.mjs");
     fs.writeFileSync(
       hookScript,
-      "console.log([process.env.MD_TODO_TASK, process.env.MD_TODO_SOURCE].join('|'));\n",
+      "console.log([process.env.RUNDOWN_TASK, process.env.RUNDOWN_SOURCE].join('|'));\n",
       "utf-8",
     );
 
@@ -478,8 +478,8 @@ describe.sequential("CLI integration", () => {
     fs.writeFileSync(roadmapPath, "- [ ] cli: echo hello\n", "utf-8");
 
     execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.email", "test@md-todo.dev"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.name", "md-todo test"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
     execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
     execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
 
@@ -491,13 +491,13 @@ describe.sequential("CLI integration", () => {
     ], workspace);
 
     expect(result.code).toBe(0);
-    expect(result.logs.some((line) => line.includes("Committed: md-todo: complete \"cli: echo hello\" in roadmap.md"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Committed: rundown: complete \"cli: echo hello\" in roadmap.md"))).toBe(true);
 
     const commitSubject = execFileSync("git", ["log", "-1", "--pretty=%s"], {
       cwd: workspace,
       encoding: "utf-8",
     }).trim();
-    expect(commitSubject).toBe("md-todo: complete \"cli: echo hello\" in roadmap.md");
+    expect(commitSubject).toBe("rundown: complete \"cli: echo hello\" in roadmap.md");
   });
 
   it("run parses --commit-message without requiring --commit", async () => {
@@ -520,7 +520,7 @@ describe.sequential("CLI integration", () => {
   it("run returns 1 on execution failure and skips completion side effects", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");
-    fs.writeFileSync(roadmapPath, "- [ ] cli: __md_todo_missing_command__\n", "utf-8");
+    fs.writeFileSync(roadmapPath, "- [ ] cli: __rundown_missing_command__\n", "utf-8");
 
     const result = await runCli([
       "run",
@@ -535,7 +535,7 @@ describe.sequential("CLI integration", () => {
     expect(result.errors.some((line) => line.includes("Inline CLI exited with code"))).toBe(true);
     expect(result.logs.some((line) => line.includes("Committed:"))).toBe(false);
     expect(result.logs.some((line) => line.includes("hook-ran"))).toBe(false);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: __md_todo_missing_command__");
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: __rundown_missing_command__");
   });
 
   it("run returns 2 on verification failure and skips completion side effects", async () => {
@@ -577,8 +577,8 @@ describe.sequential("CLI integration", () => {
     fs.writeFileSync(roadmapPath, "- [ ] cli: echo hello\n", "utf-8");
 
     execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.email", "test@md-todo.dev"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.name", "md-todo test"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
     execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
     execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
 
@@ -607,15 +607,15 @@ describe.sequential("CLI integration", () => {
     fs.writeFileSync(roadmapPath, "- [ ] cli: echo hello\n", "utf-8");
 
     execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.email", "test@md-todo.dev"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.name", "md-todo test"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
     execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
     execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
 
     const hookScript = path.join(workspace, "hook.mjs");
     fs.writeFileSync(
       hookScript,
-      "console.log([process.env.MD_TODO_TASK, process.env.MD_TODO_SOURCE].join('|'));\n",
+      "console.log([process.env.RUNDOWN_TASK, process.env.RUNDOWN_SOURCE].join('|'));\n",
       "utf-8",
     );
 
@@ -711,7 +711,7 @@ describe.sequential("CLI integration", () => {
     expect(spawnMock).toHaveBeenCalledTimes(1);
     expect(result.logs.some((line) => line.includes("skipping immediate verification"))).toBe(true);
 
-    const runsDir = path.join(workspace, ".md-todo", "runs");
+    const runsDir = path.join(workspace, ".rundown", "runs");
     expect(fs.existsSync(runsDir)).toBe(true);
     expect(fs.readdirSync(runsDir).length).toBe(1);
   });
@@ -747,7 +747,7 @@ describe.sequential("CLI integration", () => {
 
     expect(result.code).toBe(0);
     expect(result.logs.some((line) => line.includes("Removed 2 runtime artifact runs."))).toBe(true);
-    expect(fs.readdirSync(path.join(workspace, ".md-todo", "runs")).length).toBe(0);
+    expect(fs.readdirSync(path.join(workspace, ".rundown", "runs")).length).toBe(0);
   });
 
   it("artifacts --json prints saved runtime runs as JSON", async () => {
@@ -816,7 +816,7 @@ describe.sequential("CLI integration", () => {
         ? "open"
         : "xdg-open";
     expect(cmd).toBe(expectedCommand);
-    expect(args[0]).toBe(path.join(workspace, ".md-todo", "runs", "run-20260317T000000000Z-open"));
+    expect(args[0]).toBe(path.join(workspace, ".rundown", "runs", "run-20260317T000000000Z-open"));
     expect(result.logs.some((line) => line.includes("Opened runtime artifacts"))).toBe(true);
   });
 
@@ -851,7 +851,7 @@ describe.sequential("CLI integration", () => {
     expect(spawnMock).toHaveBeenCalledTimes(1);
 
     const [, args] = spawnMock.mock.calls[0] as [string, string[]];
-    expect(args[0]).toBe(path.join(workspace, ".md-todo", "runs", "run-20260317T000100000Z-new"));
+    expect(args[0]).toBe(path.join(workspace, ".rundown", "runs", "run-20260317T000100000Z-new"));
   });
 
   it("artifacts --clean --failed removes only failed runtime runs", async () => {
@@ -870,8 +870,8 @@ describe.sequential("CLI integration", () => {
 
     expect(result.code).toBe(0);
     expect(result.logs.some((line) => line.includes("Removed 1 failed runtime artifact run."))).toBe(true);
-    expect(fs.existsSync(path.join(workspace, ".md-todo", "runs", "run-20260317T000000000Z-keep"))).toBe(true);
-    expect(fs.existsSync(path.join(workspace, ".md-todo", "runs", "run-20260317T000100000Z-drop"))).toBe(false);
+    expect(fs.existsSync(path.join(workspace, ".rundown", "runs", "run-20260317T000000000Z-keep"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, ".rundown", "runs", "run-20260317T000100000Z-drop"))).toBe(false);
   });
 
   it("list exits with 0 when source has no tasks", async () => {
@@ -895,32 +895,32 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("Child"))).toBe(true);
   });
 
-  it("init creates .md-todo defaults and exits with 0", async () => {
+  it("init creates .rundown defaults and exits with 0", async () => {
     const workspace = makeTempWorkspace();
 
     const result = await runCli(["init"], workspace);
 
     expect(result.code).toBe(0);
-    expect(fs.existsSync(path.join(workspace, ".md-todo", "execute.md"))).toBe(true);
-    expect(fs.existsSync(path.join(workspace, ".md-todo", "verify.md"))).toBe(true);
-    expect(fs.existsSync(path.join(workspace, ".md-todo", "repair.md"))).toBe(true);
-    expect(fs.existsSync(path.join(workspace, ".md-todo", "plan.md"))).toBe(true);
-    expect(fs.existsSync(path.join(workspace, ".md-todo", "vars.json"))).toBe(true);
-    expect(result.logs.some((line) => line.includes("Initialized .md-todo/ with default templates."))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, ".rundown", "execute.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, ".rundown", "verify.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, ".rundown", "repair.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, ".rundown", "plan.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, ".rundown", "vars.json"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Initialized .rundown/ with default templates."))).toBe(true);
   });
 
   it("init keeps existing files and warns when defaults already exist", async () => {
     const workspace = makeTempWorkspace();
 
-    fs.mkdirSync(path.join(workspace, ".md-todo"), { recursive: true });
-    fs.writeFileSync(path.join(workspace, ".md-todo", "execute.md"), "custom execute", "utf-8");
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, ".rundown", "execute.md"), "custom execute", "utf-8");
 
     const result = await runCli(["init"], workspace);
 
     expect(result.code).toBe(0);
-    expect(fs.readFileSync(path.join(workspace, ".md-todo", "execute.md"), "utf-8")).toBe("custom execute");
-    expect(result.logs.some((line) => line.includes(".md-todo/execute.md already exists, skipping."))).toBe(true);
-    expect(result.logs.some((line) => line.includes("Initialized .md-todo/ with default templates."))).toBe(true);
+    expect(fs.readFileSync(path.join(workspace, ".rundown", "execute.md"), "utf-8")).toBe("custom execute");
+    expect(result.logs.some((line) => line.includes(".rundown/execute.md already exists, skipping."))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Initialized .rundown/ with default templates."))).toBe(true);
   });
 });
 
@@ -932,7 +932,7 @@ function writeSavedRun(
     startedAt?: string;
   },
 ): void {
-  const runDir = path.join(workspace, ".md-todo", "runs", options.runId);
+  const runDir = path.join(workspace, ".rundown", "runs", options.runId);
   fs.mkdirSync(runDir, { recursive: true });
   fs.writeFileSync(path.join(runDir, "run.json"), JSON.stringify({
     runId: options.runId,

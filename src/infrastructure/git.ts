@@ -2,8 +2,8 @@
  * Git integration — auto-commit after task completion.
  *
  * Provides a small, focused API for committing the checked Markdown file
- * after md-todo marks a task as complete. The commit uses a structured
- * message so that `git log --grep="md-todo:"` can trace task completions.
+ * after rundown marks a task as complete. The commit uses a structured
+ * message so that `git log --grep="rundown:"` can trace task completions.
  */
 
 import { execFile } from "node:child_process";
@@ -25,7 +25,7 @@ export interface CommitTaskOptions {
   messageTemplate?: string;
 }
 
-const DEFAULT_COMMIT_MESSAGE_TEMPLATE = "md-todo: complete \"{{task}}\" in {{file}}";
+const DEFAULT_COMMIT_MESSAGE_TEMPLATE = "rundown: complete \"{{task}}\" in {{file}}";
 
 /**
  * Check whether the current directory is inside a git repository.
@@ -43,7 +43,7 @@ export async function isGitRepo(cwd: string): Promise<boolean> {
  * Stage the task file and create a commit with a structured message.
  *
  * The default commit message format is:
- *   md-todo: complete "<task text>" in <relative file path>
+ *   rundown: complete "<task text>" in <relative file path>
  *
  * A custom message template can be supplied via `messageTemplate`.
  * It supports `{{task}}` and `{{file}}` placeholders.

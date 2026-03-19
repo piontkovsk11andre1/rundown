@@ -17,15 +17,15 @@ afterEach(() => {
 });
 
 function makeTempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "md-todo-git-test-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-git-test-"));
   tempDirs.push(dir);
   return dir;
 }
 
 function gitInit(dir: string): void {
   execFileSync("git", ["init"], { cwd: dir, stdio: "ignore" });
-  execFileSync("git", ["config", "user.email", "test@md-todo.dev"], { cwd: dir, stdio: "ignore" });
-  execFileSync("git", ["config", "user.name", "md-todo test"], { cwd: dir, stdio: "ignore" });
+  execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: dir, stdio: "ignore" });
+  execFileSync("git", ["config", "user.name", "rundown test"], { cwd: dir, stdio: "ignore" });
 }
 
 function gitLog(dir: string): string {
@@ -73,8 +73,8 @@ describe("commitCheckedTask", () => {
       cwd: dir,
     });
 
-    expect(message).toBe('md-todo: complete "Initial task" in tasks.md');
-    expect(gitLog(dir)).toContain('md-todo: complete "Initial task" in tasks.md');
+    expect(message).toBe('rundown: complete "Initial task" in tasks.md');
+    expect(gitLog(dir)).toContain('rundown: complete "Initial task" in tasks.md');
     expect(gitStatus(dir)).toBe("");
   });
 
@@ -151,7 +151,7 @@ describe("commitCheckedTask", () => {
       cwd: dir,
     });
 
-    expect(message).toBe('md-todo: complete "Deploy" in docs/tasks/sprint.md');
+    expect(message).toBe('rundown: complete "Deploy" in docs/tasks/sprint.md');
   });
 
   it("throws when there are no changes to commit", async () => {

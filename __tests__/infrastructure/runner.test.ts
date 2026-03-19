@@ -58,7 +58,7 @@ describe("runWorker", () => {
     expect(args[0]).toBe("run");
     expect(args[1]).toBe("Read the attached Markdown file first. It contains the full task instructions and context for this run.");
     expect(args).toContain("--file");
-    expect(capturedPromptFile).toMatch(/\.md-todo[\\/]runs[\\/]run-.*[\\/]01-worker[\\/]prompt\.md$/);
+    expect(capturedPromptFile).toMatch(/\.rundown[\\/]runs[\\/]run-.*[\\/]01-worker[\\/]prompt\.md$/);
     expect(capturedPromptFileContent).toBe(prompt);
     expect(args.at(-2)).toBe("--file");
     expect(args.at(-1)).toBe(capturedPromptFile);
@@ -137,13 +137,13 @@ describe("runWorker", () => {
       expect(cmd).toBe("cmd");
       expect(args.slice(0, 4)).toEqual(["/c", "start", "/wait", '""']);
       expect(args[4]).toBe("opencode");
-      expect(args[5]).toMatch(/^--prompt=The full rendered md-todo task prompt is staged in \.md-todo\/runs\/run-.*\/01-worker\/prompt\.md\. Open and read that file completely before taking any action, then continue the work in this session\.$/);
+      expect(args[5]).toMatch(/^--prompt=The full rendered rundown task prompt is staged in \.rundown\/runs\/run-.*\/01-worker\/prompt\.md\. Open and read that file completely before taking any action, then continue the work in this session\.$/);
     } else {
       expect(cmd).toBe("opencode");
       expect(args).toHaveLength(1);
-      expect(args[0]).toMatch(/^--prompt=The full rendered md-todo task prompt is staged in \.md-todo\/runs\/run-.*\/01-worker\/prompt\.md\. Open and read that file completely before taking any action, then continue the work in this session\.$/);
+      expect(args[0]).toMatch(/^--prompt=The full rendered rundown task prompt is staged in \.rundown\/runs\/run-.*\/01-worker\/prompt\.md\. Open and read that file completely before taking any action, then continue the work in this session\.$/);
     }
-    expect(capturedPromptFile).toMatch(/\.md-todo[\\/]runs[\\/]run-.*[\\/]01-worker[\\/]prompt\.md$/);
+    expect(capturedPromptFile).toMatch(/\.rundown[\\/]runs[\\/]run-.*[\\/]01-worker[\\/]prompt\.md$/);
     expect(capturedPromptFileContent).toBe("full prompt content");
     expect(fs.existsSync(capturedPromptFile)).toBe(false);
   });
@@ -216,7 +216,7 @@ describe("runWorker", () => {
       keepArtifacts: true,
     });
 
-    const runsDir = path.join(process.cwd(), ".md-todo", "runs");
+    const runsDir = path.join(process.cwd(), ".rundown", "runs");
     const [runDirName] = fs.readdirSync(runsDir);
     const phaseDir = path.join(runsDir, runDirName!, "01-worker");
 
@@ -250,13 +250,13 @@ describe("runWorker", () => {
     expect(result.exitCode).toBeNull();
 
     const promptFile = findFirstPromptFile();
-    expect(promptFile).toMatch(/\.md-todo[\\/]runs[\\/]run-.*[\\/]01-worker[\\/]prompt\.md$/);
+    expect(promptFile).toMatch(/\.rundown[\\/]runs[\\/]run-.*[\\/]01-worker[\\/]prompt\.md$/);
     expect(fs.readFileSync(promptFile, "utf-8")).toBe("detached prompt");
   });
 });
 
 function cleanupWorkspaceRuns(): void {
-  const runsDir = path.join(process.cwd(), ".md-todo", "runs");
+  const runsDir = path.join(process.cwd(), ".rundown", "runs");
   if (!fs.existsSync(runsDir)) {
     return;
   }
@@ -265,7 +265,7 @@ function cleanupWorkspaceRuns(): void {
 }
 
 function findFirstPromptFile(): string {
-  const runsDir = path.join(process.cwd(), ".md-todo", "runs");
+  const runsDir = path.join(process.cwd(), ".rundown", "runs");
   for (const runDir of fs.readdirSync(runsDir)) {
     const phaseDir = path.join(runsDir, runDir, "01-worker", "prompt.md");
     if (fs.existsSync(phaseDir)) {
@@ -273,5 +273,5 @@ function findFirstPromptFile(): string {
     }
   }
 
-  throw new Error("No prompt file found under .md-todo/runs.");
+  throw new Error("No prompt file found under .rundown/runs.");
 }

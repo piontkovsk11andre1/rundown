@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 function writeTempScript(content: string): string {
-  const file = path.join(os.tmpdir(), `md-todo-hook-test-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`);
+  const file = path.join(os.tmpdir(), `rundown-hook-test-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`);
   fs.writeFileSync(file, content, "utf-8");
   tempFiles.push(file);
   return file;
@@ -50,7 +50,7 @@ describe("runOnCompleteHook", () => {
   it("passes task metadata as environment variables", async () => {
     const script = writeTempScript(`
 const e = process.env;
-console.log([e.MD_TODO_TASK, e.MD_TODO_FILE, e.MD_TODO_LINE, e.MD_TODO_INDEX, e.MD_TODO_SOURCE].join("|"));
+console.log([e.RUNDOWN_TASK, e.RUNDOWN_FILE, e.RUNDOWN_LINE, e.RUNDOWN_INDEX, e.RUNDOWN_SOURCE].join("|"));
 `);
 
     const result = await runOnCompleteHook({

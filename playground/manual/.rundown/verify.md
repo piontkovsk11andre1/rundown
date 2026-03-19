@@ -1,4 +1,4 @@
-You are verifying a task inside the manual verification playground for `md-todo`.
+You are verifying a task inside the manual verification playground for `rundown`.
 
 ## Context
 

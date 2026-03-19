@@ -6,11 +6,11 @@
  * can perform arbitrary actions (git push, notify, log, etc.).
  *
  * Environment variables set for the hook command:
- *   MD_TODO_TASK    — The task text
- *   MD_TODO_FILE    — Absolute path to the Markdown file
- *   MD_TODO_LINE    — 1-based line number of the task
- *   MD_TODO_INDEX   — Zero-based task index
- *   MD_TODO_SOURCE  — The original source argument passed to md-todo
+ *   RUNDOWN_TASK    — The task text
+ *   RUNDOWN_FILE    — Absolute path to the Markdown file
+ *   RUNDOWN_LINE    — 1-based line number of the task
+ *   RUNDOWN_INDEX   — Zero-based task index
+ *   RUNDOWN_SOURCE  — The original source argument passed to rundown
  */
 
 import { execFile } from "node:child_process";
@@ -60,11 +60,11 @@ export async function runOnCompleteHook(options: OnCompleteHookOptions): Promise
 
   const env: Record<string, string> = {
     ...process.env,
-    MD_TODO_TASK: taskInfo.task,
-    MD_TODO_FILE: path.resolve(taskInfo.file),
-    MD_TODO_LINE: String(taskInfo.line),
-    MD_TODO_INDEX: String(taskInfo.index),
-    MD_TODO_SOURCE: source,
+    RUNDOWN_TASK: taskInfo.task,
+    RUNDOWN_FILE: path.resolve(taskInfo.file),
+    RUNDOWN_LINE: String(taskInfo.line),
+    RUNDOWN_INDEX: String(taskInfo.index),
+    RUNDOWN_SOURCE: source,
   };
 
   return new Promise((resolve) => {

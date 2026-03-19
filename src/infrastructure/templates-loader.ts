@@ -1,7 +1,7 @@
 /**
  * Template loader.
  *
- * Loads project-local templates from .md-todo/ or falls back to built-in defaults.
+ * Loads project-local templates from .rundown/ or falls back to built-in defaults.
  */
 
 import fs from "node:fs";
@@ -20,16 +20,16 @@ export interface ProjectTemplates {
   plan: string;
 }
 
-const CONFIG_DIR = ".md-todo";
+const CONFIG_DIR = ".rundown";
 
 /**
  * Load templates from the project directory, falling back to built-in defaults.
  *
  * Template names:
- *   .md-todo/execute.md
- *   .md-todo/verify.md
- *   .md-todo/repair.md
- *   .md-todo/plan.md
+ *   .rundown/execute.md
+ *   .rundown/verify.md
+ *   .rundown/repair.md
+ *   .rundown/plan.md
  */
 export function loadProjectTemplates(cwd: string = process.cwd()): ProjectTemplates {
   const dir = path.join(cwd, CONFIG_DIR);

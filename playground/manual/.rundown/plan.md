@@ -1,4 +1,4 @@
-You are planning work inside the manual verification playground for `md-todo`.
+You are planning work inside the manual verification playground for `rundown`.
 
 ## Context
 

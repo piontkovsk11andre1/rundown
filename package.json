@@ -1,10 +1,10 @@
 {
-  "name": "@p10i/md-todo",
+  "name": "@p10i/rundown",
   "version": "1.0.0-rc.12",
   "description": "A Markdown-native task runtime for agentic workflows. Execute, validate, and correct work directly from Markdown TODOs.",
   "type": "module",
   "bin": {
-    "md-todo": "./dist/cli.js"
+    "rundown": "dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -43,11 +43,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/piontkovsk11andre1/md-todo.git"
+    "url": "git+https://github.com/piontkovsk11andre1/rundown.git"
   },
-  "homepage": "https://github.com/piontkovsk11andre1/md-todo#readme",
+  "homepage": "https://github.com/piontkovsk11andre1/rundown#readme",
   "bugs": {
-    "url": "https://github.com/piontkovsk11andre1/md-todo/issues"
+    "url": "https://github.com/piontkovsk11andre1/rundown/issues"
   },
   "engines": {
     "node": ">=18"

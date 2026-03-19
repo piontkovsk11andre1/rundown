@@ -21,13 +21,13 @@ afterEach(() => {
 });
 
 function makeTempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "md-todo-templates-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-templates-"));
   tempDirs.push(dir);
   return dir;
 }
 
 function writeTemplate(baseDir: string, fileName: string, content: string): void {
-  const configDir = path.join(baseDir, ".md-todo");
+  const configDir = path.join(baseDir, ".rundown");
   fs.mkdirSync(configDir, { recursive: true });
   fs.writeFileSync(path.join(configDir, fileName), content, "utf-8");
 }

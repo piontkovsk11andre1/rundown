@@ -1,5 +1,5 @@
 export type ExtraTemplateVars = Record<string, string>;
-export const DEFAULT_TEMPLATE_VARS_FILE = ".md-todo/vars.json";
+export const DEFAULT_TEMPLATE_VARS_FILE = ".rundown/vars.json";
 
 const TEMPLATE_VAR_KEY = /^[A-Za-z_]\w*$/;
 

@@ -8,7 +8,7 @@ import {
 import type { FileSystem } from "../domain/ports/file-system.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
-const CONFIG_DIR = ".md-todo";
+const CONFIG_DIR = ".rundown";
 
 export interface InitProjectDependencies {
   fileSystem: FileSystem;
@@ -42,7 +42,7 @@ export function createInitProject(
     write("plan.md", DEFAULT_PLAN_TEMPLATE);
     write("vars.json", DEFAULT_VARS_FILE_CONTENT);
 
-    emit({ kind: "success", message: "Initialized .md-todo/ with default templates." });
+    emit({ kind: "success", message: "Initialized .rundown/ with default templates." });
     return 0;
   };
 }

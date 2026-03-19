@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 function makeTempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "md-todo-sources-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-sources-"));
   tempDirs.push(dir);
   return dir;
 }

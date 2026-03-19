@@ -340,7 +340,7 @@ function loadTemplateVarsFileFromPorts(
 }
 
 function loadPlanTemplateFromPorts(cwd: string, templateLoader: TemplateLoader): string {
-  return templateLoader.load(path.join(cwd, ".md-todo", "plan.md")) ?? DEFAULT_PLAN_TEMPLATE;
+  return templateLoader.load(path.join(cwd, ".rundown", "plan.md")) ?? DEFAULT_PLAN_TEMPLATE;
 }
 
 function applyPlannerOutputWithFileSystem(

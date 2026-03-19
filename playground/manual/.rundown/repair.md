@@ -1,4 +1,4 @@
-A verification step failed inside the manual verification playground for `md-todo`.
+A verification step failed inside the manual verification playground for `rundown`.
 
 ## Context
 
@@ -21,4 +21,4 @@ Rules:
 - Only change the files needed to satisfy the task.
 - Keep the result deterministic.
 - Do not change the Markdown checkbox.
-- `md-todo` will re-run verification after your repair.
+- `rundown` will re-run verification after your repair.

@@ -119,7 +119,7 @@ export function createRuntimeArtifactsContext(options: {
   keepArtifacts?: boolean;
 }): RuntimeArtifactsContext {
   const cwd = options.cwd ?? process.cwd();
-  const rootBase = path.join(cwd, ".md-todo", "runs");
+  const rootBase = path.join(cwd, ".rundown", "runs");
   fs.mkdirSync(rootBase, { recursive: true });
 
   const runId = buildRunId();
@@ -156,7 +156,7 @@ export function createRuntimeArtifactsContext(options: {
 }
 
 export function runtimeArtifactsRootDir(cwd: string = process.cwd()): string {
-  return path.join(cwd, ".md-todo", "runs");
+  return path.join(cwd, ".rundown", "runs");
 }
 
 export function listSavedRuntimeArtifacts(cwd: string = process.cwd()): SavedRuntimeArtifactRun[] {

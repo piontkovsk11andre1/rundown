@@ -529,7 +529,7 @@ export function finalizeRunArtifacts(
 }
 
 const TEMPLATE_VAR_KEY = /^[A-Za-z_]\w*$/;
-const DEFAULT_COMMIT_MESSAGE_TEMPLATE = "md-todo: complete \"{{task}}\" in {{file}}";
+const DEFAULT_COMMIT_MESSAGE_TEMPLATE = "rundown: complete \"{{task}}\" in {{file}}";
 
 function loadTemplateVarsFileFromPorts(
   filePath: string,
@@ -572,7 +572,7 @@ function loadTemplateVarsFileFromPorts(
 }
 
 function loadProjectTemplatesFromPorts(cwd: string, templateLoader: TemplateLoader): ProjectTemplates {
-  const dir = path.join(cwd, ".md-todo");
+  const dir = path.join(cwd, ".rundown");
   return {
     task: templateLoader.load(path.join(dir, "execute.md")) ?? DEFAULT_TASK_TEMPLATE,
     validate: templateLoader.load(path.join(dir, "verify.md")) ?? DEFAULT_VALIDATE_TEMPLATE,
@@ -640,11 +640,11 @@ async function runOnCompleteHookWithProcessRunner(
       timeoutMs: 60_000,
       env: {
         ...process.env,
-        MD_TODO_TASK: task.text,
-        MD_TODO_FILE: path.resolve(task.file),
-        MD_TODO_LINE: String(task.line),
-        MD_TODO_INDEX: String(task.index),
-        MD_TODO_SOURCE: source,
+        RUNDOWN_TASK: task.text,
+        RUNDOWN_FILE: path.resolve(task.file),
+        RUNDOWN_LINE: String(task.line),
+        RUNDOWN_INDEX: String(task.index),
+        RUNDOWN_SOURCE: source,
       },
     });
 

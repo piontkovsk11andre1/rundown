@@ -1,15 +1,15 @@
 # Templates
 
-`md-todo` is template-driven.
+`rundown` is template-driven.
 
 Repository-local Markdown templates define how tasks are executed, verified, repaired, and planned.
 
 ## Template files
 
-Store templates in `.md-todo/`:
+Store templates in `.rundown/`:
 
 ```text
-.md-todo/
+.rundown/
   execute.md
   verify.md
   repair.md
@@ -33,7 +33,7 @@ Templates keep workflow behavior close to the repository:
 - versioned,
 - and easy to review.
 
-That makes `md-todo` feel like a reusable framework instead of a hardcoded integration.
+That makes `rundown` feel like a reusable framework instead of a hardcoded integration.
 
 ## Prompt construction
 
@@ -52,12 +52,12 @@ You can inject additional variables into templates.
 Examples:
 
 ```bash
-md-todo run roadmap.md --var branch=main --var ticket=ENG-42 -- opencode run
-md-todo run roadmap.md --vars-file .md-todo/vars.json -- opencode run
-md-todo run roadmap.md --vars-file -- opencode run
+rundown run roadmap.md --var branch=main --var ticket=ENG-42 -- opencode run
+rundown run roadmap.md --vars-file .rundown/vars.json -- opencode run
+rundown run roadmap.md --vars-file -- opencode run
 ```
 
-When `--vars-file` is used without a path, `md-todo` loads `.md-todo/vars.json`.
+When `--vars-file` is used without a path, `rundown` loads `.rundown/vars.json`.
 
 When both are provided, direct `--var` entries override file-loaded values.
 
@@ -65,7 +65,7 @@ These values are available in templates as placeholders such as `{{branch}}` or 
 
 ## Example template content
 
-The examples below show realistic `execute.md` and `verify.md` templates you can copy into `.md-todo/` and customize.
+The examples below show realistic `execute.md` and `verify.md` templates you can copy into `.rundown/` and customize.
 
 ### `execute.md`
 
@@ -144,7 +144,7 @@ Example:
 - [ ] Tighten the installation section
 ```
 
-`md-todo` parses those items and inserts them beneath the selected parent task at one indentation level deeper.
+`rundown` parses those items and inserts them beneath the selected parent task at one indentation level deeper.
 
 ## Verification contract
 

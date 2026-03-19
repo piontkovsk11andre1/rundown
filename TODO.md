@@ -42,7 +42,7 @@ Out of scope for first iteration:
 - [x] Add application use case (e.g. `src/application/reverify-task.ts`) that:
 - [x] Loads target run metadata (`latest`/explicit run id) from `ArtifactStore`.
 - [x] Validates run/task metadata presence and emits clear actionable errors.
-- [ ] Resolves the task in the current Markdown file using persisted metadata (line/index/text fallback strategy).
+- [x] Resolves the task in the current Markdown file using persisted metadata (line/index/text fallback strategy).
 - [ ] Reconstructs template vars/context needed by verify/repair prompts.
 - [ ] Executes verify/repair loop using existing ports and retry policy.
 - [ ] Ensures no checkbox mutation occurs in reverify flow.

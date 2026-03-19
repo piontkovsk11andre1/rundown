@@ -1,5 +1,3 @@
-﻿# feat(cli): add reverify command for previous task
-
 ## Feature: Re-verify the previous task
 
 <details>

@@ -175,6 +175,24 @@ export function listSavedRuntimeArtifacts(cwd: string = process.cwd()): SavedRun
     const runDir = path.join(rootDir, entry.name);
     const metadata = readJson<RuntimeArtifactsMetadata>(path.join(runDir, "run.json"));
     if (!metadata) {
+      const stats = fs.statSync(runDir);
+      const fallbackStartedAt = (stats.birthtime ?? stats.mtime).toISOString();
+
+      runs.push({
+        runId: entry.name,
+        rootDir: runDir,
+        relativePath: path.relative(cwd, runDir).split(path.sep).join("/"),
+        commandName: "unknown",
+        workerCommand: undefined,
+        mode: undefined,
+        transport: undefined,
+        source: undefined,
+        task: undefined,
+        keepArtifacts: true,
+        startedAt: fallbackStartedAt,
+        completedAt: undefined,
+        status: "metadata-missing",
+      });
       continue;
     }
 
@@ -322,12 +340,16 @@ export function completeRuntimePhase(
   handle.metadata.completedAt = new Date().toISOString();
 
   if (options.stdout !== undefined && options.stdout.length > 0) {
-    fs.writeFileSync(path.join(handle.dir, "stdout.log"), options.stdout, "utf-8");
+    const stdoutFile = path.join(handle.dir, "stdout.log");
+    ensureParentDir(stdoutFile);
+    fs.writeFileSync(stdoutFile, options.stdout, "utf-8");
     handle.metadata.stdoutFile = "stdout.log";
   }
 
   if (options.stderr !== undefined && options.stderr.length > 0) {
-    fs.writeFileSync(path.join(handle.dir, "stderr.log"), options.stderr, "utf-8");
+    const stderrFile = path.join(handle.dir, "stderr.log");
+    ensureParentDir(stderrFile);
+    fs.writeFileSync(stderrFile, options.stderr, "utf-8");
     handle.metadata.stderrFile = "stderr.log";
   }
 
@@ -349,6 +371,15 @@ export function finalizeRuntimeArtifacts(
   context: RuntimeArtifactsContext,
   options: FinalizeRuntimeArtifactsOptions,
 ): void {
+  const rootDirMissing = !fs.existsSync(context.rootDir);
+  if (rootDirMissing && !options.preserve) {
+    return;
+  }
+
+  if (rootDirMissing && options.preserve) {
+    fs.mkdirSync(context.rootDir, { recursive: true });
+  }
+
   const metadataFile = path.join(context.rootDir, "run.json");
   const metadata = readJson<RuntimeArtifactsMetadata>(metadataFile) ?? {
     runId: context.runId,
@@ -363,7 +394,20 @@ export function finalizeRuntimeArtifacts(
 
   metadata.completedAt = new Date().toISOString();
   metadata.status = options.status;
-  writeJson(metadataFile, metadata);
+  try {
+    writeJson(metadataFile, metadata);
+  } catch (error) {
+    if (!isEnoentError(error)) {
+      throw error;
+    }
+
+    if (!options.preserve) {
+      return;
+    }
+
+    fs.mkdirSync(context.rootDir, { recursive: true });
+    writeJson(metadataFile, metadata);
+  }
 
   if (!options.preserve) {
     fs.rmSync(context.rootDir, { recursive: true, force: true });
@@ -382,6 +426,7 @@ function buildRunId(): string {
 }
 
 function writeJson(filePath: string, value: unknown): void {
+  ensureParentDir(filePath);
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
 }
 
@@ -391,4 +436,16 @@ function readJson<T>(filePath: string): T | null {
   } catch {
     return null;
   }
+}
+
+function isEnoentError(error: unknown): boolean {
+  return typeof error === "object"
+    && error !== null
+    && "code" in error
+    && (error as { code?: unknown }).code === "ENOENT";
+}
+
+function ensureParentDir(filePath: string): void {
+  const parentDir = path.dirname(filePath);
+  fs.mkdirSync(parentDir, { recursive: true });
 }

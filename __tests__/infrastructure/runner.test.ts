@@ -253,6 +253,39 @@ describe("runWorker", () => {
     expect(promptFile).toMatch(/\.rundown[\\/]runs[\\/]run-.*[\\/]01-worker[\\/]prompt\.md$/);
     expect(fs.readFileSync(promptFile, "utf-8")).toBe("detached prompt");
   });
+
+  it("does not fail when artifact directory is deleted before finalization", async () => {
+    spawnMock.mockImplementation((_cmd: string, _args: string[]) => {
+      const child = new EventEmitter() as EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+      };
+
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+
+      queueMicrotask(() => {
+        fs.rmSync(path.join(process.cwd(), ".md-todo"), { recursive: true, force: true });
+        child.emit("close", 0);
+      });
+
+      return child;
+    });
+
+    const { runWorker } = await import("./runner.js");
+
+    await expect(runWorker({
+      command: ["opencode", "run"],
+      prompt: "ephemeral prompt",
+      mode: "wait",
+      transport: "file",
+      cwd: process.cwd(),
+    })).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+  });
 });
 
 function cleanupWorkspaceRuns(): void {

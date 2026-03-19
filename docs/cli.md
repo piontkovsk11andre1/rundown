@@ -20,6 +20,36 @@ PowerShell-safe form:
 rundown run docs/ --worker opencode run
 ```
 
+### `rundown reverify`
+
+Re-run verification for a previously completed task from saved run artifacts, without selecting a new unchecked task and without mutating Markdown checkboxes.
+
+By default, `reverify` targets the latest completed task in the current repository (`--run latest`).
+
+Options:
+
+| Option | Description |
+|---|---|
+| `--run <id|latest>` | Choose the artifact run to inspect for the completed task to re-verify. Default: `latest`. |
+| `--retries <n>` | Retry repair up to `n` times when verification fails. |
+| `--no-repair` | Disable repair retries and fail immediately on verification failure. |
+| `--transport <file|arg>` | Prompt transport for verify/repair worker invocations. |
+| `--worker <command...>` | Worker command to execute verify/repair phases (preferred on PowerShell). |
+| `--print-prompt` | Print the rendered verify prompt and exit `0` without running the worker. |
+| `--dry-run` | Resolve the target task, render the verify prompt, print planned execution, and exit `0`. |
+| `--keep-artifacts` | Keep the reverify run folder under `.rundown/runs/`. |
+
+Examples:
+
+```bash
+rundown reverify -- opencode run
+rundown reverify --run latest -- opencode run
+rundown reverify --run run-20260319T222645632Z-04e84d73 --retries 2 -- opencode run
+rundown reverify --run latest --no-repair --worker opencode run
+rundown reverify --print-prompt --worker opencode run
+rundown reverify --dry-run --worker opencode run
+```
+
 ### `rundown plan <source>`
 
 Select a task and expand it into nested unchecked subtasks using the planner template.
@@ -204,6 +234,7 @@ Behavior notes:
 - If both flags are provided, `--print-prompt` takes precedence.
 - For `run`, `--print-prompt` and `--dry-run` target the execute prompt by default.
 - For `run --only-verify`, `--print-prompt` and `--dry-run` target the verify prompt instead.
+- For `reverify`, `--print-prompt` and `--dry-run` target the verify prompt for the resolved historical task.
 - For `plan`, both flags apply to the planner prompt.
 
 Examples:
@@ -268,3 +299,8 @@ rundown run roadmap.md --mode tui -- opencode
 - `1` — execution error
 - `2` — validation failed
 - `3` — no actionable target
+
+`rundown reverify` uses the same exit-code contract:
+
+- `2` when verification still fails after retries (or immediately with `--no-repair`)
+- `3` when no completed task can be resolved from the selected run artifacts

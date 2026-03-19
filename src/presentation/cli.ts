@@ -111,6 +111,62 @@ program
   }));
 
 program
+  .command("reverify")
+  .description("Re-run verification for the previously completed task from saved artifacts.")
+  .option("--run <id|latest>", "Choose artifact run id or 'latest'", "latest")
+  .option("--transport <transport>", "Prompt transport: file, arg", "file")
+  .option("--retries <n>", "Max repair retries on verification failure", "0")
+  .option("--no-repair", "Disable repair even when retries are set", false)
+  .option("--dry-run", "Show what would be executed without running it", false)
+  .option("--print-prompt", "Print the rendered verify prompt and exit", false)
+  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under .rundown/runs", false)
+  .option("--worker <command...>", "Worker command to run (alternative to -- <command>)")
+  .allowUnknownOption(false)
+  .action(withCliAction((opts: Record<string, string | string[] | boolean>) => {
+    const transport = parsePromptTransport(opts.transport as string | undefined);
+    const retries = parseRetries(opts.retries as string | undefined);
+    const noRepair = Boolean(opts.noRepair as boolean);
+    const dryRun = opts.dryRun as boolean;
+    const printPrompt = opts.printPrompt as boolean;
+    const keepArtifacts = opts.keepArtifacts as boolean;
+    const targetRun = normalizeOptionalString(opts.run) ?? "latest";
+
+    const workerCommand = Array.isArray(opts.worker)
+      ? opts.worker
+      : typeof opts.worker === "string"
+        ? [opts.worker]
+        : workerFromSeparator;
+
+    const reverifyTask = (app as {
+      reverifyTask?: (options: {
+        runId: string;
+        transport: PromptTransport;
+        retries: number;
+        noRepair: boolean;
+        dryRun: boolean;
+        printPrompt: boolean;
+        keepArtifacts: boolean;
+        workerCommand: string[];
+      }) => Promise<number>;
+    }).reverifyTask;
+
+    if (!reverifyTask) {
+      throw new Error("Reverify command is not available in this build.");
+    }
+
+    return reverifyTask({
+      runId: targetRun,
+      transport,
+      retries,
+      noRepair,
+      dryRun,
+      printPrompt,
+      keepArtifacts,
+      workerCommand,
+    });
+  }));
+
+program
   .command("next")
   .description("Show the next unchecked task without executing it.")
   .argument("<source>", "File, directory, or glob to scan for Markdown tasks")

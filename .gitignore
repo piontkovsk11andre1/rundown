@@ -1,6 +1,6 @@
 node_modules/
 dist/
 *.validation
-.md-todo-tmp/
-**/.md-todo/runtime/
-**/.md-todo/runs/
+.rundown-tmp/
+**/.rundown/runtime/
+**/.rundown/runs/

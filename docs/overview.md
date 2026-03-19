@@ -1,6 +1,6 @@
 # Overview
 
-`md-todo` is a Markdown-native task runtime.
+`rundown` is a Markdown-native task runtime.
 
 It scans Markdown, selects the next runnable unchecked task, builds a structured prompt from the document context, runs a worker command or inline CLI task, validates the result, optionally repairs it, and only then marks the checkbox complete.
 
@@ -16,9 +16,51 @@ The workflow is intentionally simple:
 
 This makes the checkbox a consequence of successful work, not a guess.
 
+## Output boundary
+
+Application use-cases are output-agnostic.
+
+Instead of writing directly to `console`, `process.stderr`, or presentation helpers, they publish typed output events through an application-facing output contract.
+
+The CLI layer implements that contract and decides how to render messages and errors. This keeps application logic testable, framework-independent, and stable across future presentation surfaces.
+
+Architecture decision record: `docs/adr/0001-application-output-boundary.md`.
+
+## Port/adapter map
+
+`src/create-app.ts` is the single composition boundary: application use-cases depend on ports, and infrastructure adapters are wired there.
+
+| Port (domain) | Adapter (infrastructure) |
+| --- | --- |
+| `FileSystem` | `createNodeFileSystem` |
+| `ProcessRunner` | `createCrossSpawnProcessRunner` |
+| `GitClient` | `createExecFileGitClient` |
+| `TemplateLoader` | `createFsTemplateLoader` |
+| `ValidationSidecar` | `createFsValidationSidecar` |
+| `ArtifactStore` | `createFsArtifactStore` |
+| `Clock` | `createSystemClock` |
+| `SourceResolverPort` | `createSourceResolverAdapter` |
+| `TaskSelectorPort` | `createTaskSelectorAdapter` |
+| `WorkerExecutorPort` | `createWorkerExecutorAdapter` |
+| `TaskValidationPort` | `createTaskValidationAdapter` |
+| `TaskCorrectionPort` | `createTaskCorrectionAdapter` |
+| `WorkingDirectoryPort` | `createWorkingDirectoryAdapter` |
+| `DirectoryOpenerPort` | `createDirectoryOpenerAdapter` |
+
+## Port-first dependency rule
+
+The dependency direction is strict:
+
+- `src/domain` defines pure logic and contracts.
+- `src/application` orchestrates use-cases and depends only on domain contracts (ports).
+- `src/infrastructure` implements those ports with side-effecting adapters.
+- `src/presentation` renders output and delegates orchestration to application use-cases.
+
+`src/application/*` should not import `src/infrastructure/*` directly. Infrastructure dependencies must flow through injected ports from `createApp(...)`.
+
 ## Sources
 
-`md-todo` can scan:
+`rundown` can scan:
 
 - a single Markdown file,
 - a directory,
@@ -75,7 +117,7 @@ Example:
 
 ### Inline CLI tasks
 
-A task beginning with `cli:` is executed directly by `md-todo`.
+A task beginning with `cli:` is executed directly by `rundown`.
 
 The working directory is the directory containing the Markdown file.
 
@@ -86,7 +128,7 @@ Example:
 - [ ] cli: node scripts/build-index.js
 ```
 
-If a CLI command is written in a saved Markdown file, `md-todo` treats that as explicit permission to run it.
+If a CLI command is written in a saved Markdown file, `rundown` treats that as explicit permission to run it.
 
 ## Runner modes
 
@@ -116,7 +158,7 @@ Rendered prompts can be delivered in two ways.
 
 ### `file`
 
-Write the rendered prompt to a Markdown file under `.md-todo/runs/` and pass that file to the worker.
+Write the rendered prompt to a Markdown file under `.rundown/runs/` and pass that file to the worker.
 
 This is the default because it is robust, especially on Windows where large prompts and shell quoting are fragile.
 
@@ -128,7 +170,7 @@ This can be useful for smaller prompts, but it is less reliable for large Markdo
 
 ## Runtime artifacts
 
-Each real `run` or `plan` execution can create a per-run folder under `.md-todo/runs/`.
+Each real `run` or `plan` execution can create a per-run folder under `.rundown/runs/`.
 
 Typical contents include:
 
@@ -149,7 +191,7 @@ Detached mode always keeps them.
 
 Verification is a separate phase from execution.
 
-After execution, `md-todo` renders the verify template and produces a task-specific sidecar file next to the source document, for example:
+After execution, `rundown` renders the verify template and produces a task-specific sidecar file next to the source document, for example:
 
 ```text
 Tasks.md.3.validation
@@ -159,11 +201,11 @@ If that file contains exactly `OK`, the task is considered complete.
 
 Anything else means the task stays unchecked.
 
-If verification fails and retries are enabled, `md-todo` renders the repair template, runs another pass, and validates again.
+If verification fails and retries are enabled, `rundown` renders the repair template, runs another pass, and validates again.
 
 ## Planning
 
-`md-todo plan` expands a selected task into nested subtasks.
+`rundown plan` expands a selected task into nested subtasks.
 
 The planner worker should return only unchecked Markdown task items. Those items are inserted directly beneath the parent task at one indentation level deeper.
 
@@ -173,7 +215,7 @@ After planning, the parent task becomes blocked until its new children are compl
 
 Many AI workflows still depend on copy-paste handoffs and human memory.
 
-`md-todo` replaces that with a visible, file-based loop:
+`rundown` replaces that with a visible, file-based loop:
 
 - Markdown provides the intent,
 - templates provide the instructions,

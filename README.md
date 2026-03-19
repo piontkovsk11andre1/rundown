@@ -1,4 +1,4 @@
-# md-todo
+# rundown
 
 **Your Markdown already describes the work. Now it does the work.**
 
@@ -9,7 +9,7 @@
 ```
 
 ```bash
-md-todo run docs/ -- opencode run
+rundown run docs/ -- opencode run
 ```
 
 One command. Every unchecked box becomes a real execution: prompted, run, verified, and only then marked complete.
@@ -26,7 +26,7 @@ The gap between *writing down what needs to happen* and *making it happen* is st
 
 ## The fix
 
-`md-todo` closes the gap. It treats a Markdown checkbox as a **durable contract between intent and execution**:
+`rundown` closes the gap. It treats a Markdown checkbox as a **durable contract between intent and execution**:
 
 1. **Find** the next unchecked task.
 2. **Build** a prompt from the surrounding document context.
@@ -50,7 +50,7 @@ A task is done because it *passed*.
 
 **Deterministic.** Task selection is predictable. No surprising reordering, no ambient "intelligence" deciding what to run next.
 
-**Agent-agnostic.** Use `opencode`, `claude`, `aider`, or any CLI-shaped worker. `md-todo` doesn't care what does the work — it cares that the work got done.
+**Agent-agnostic.** Use `opencode`, `claude`, `aider`, or any CLI-shaped worker. `rundown` doesn't care what does the work — it cares that the work got done.
 
 **Git-aware.** `--commit` auto-commits each checked task with a structured message. Trace exactly which commit completed which task with `git log --grep`.
 
@@ -61,19 +61,19 @@ A task is done because it *passed*.
 Install:
 
 ```bash
-npm install -g @p10i/md-todo@rc
+npm install -g @p10i/rundown@rc
 ```
 
 Initialize templates in your repo:
 
 ```bash
-md-todo init
+rundown init
 ```
 
 This creates your prompt templates:
 
 ```
-.md-todo/
+.rundown/
   execute.md     # what the agent sees when doing the task
   verify.md      # how completion is checked
   repair.md      # what to try when verification fails
@@ -83,16 +83,24 @@ This creates your prompt templates:
 Run against any Markdown file:
 
 ```bash
-md-todo run roadmap.md -- opencode run
+rundown run roadmap.md -- opencode run
 ```
 
 PowerShell-safe form:
 
 ```powershell
-md-todo run roadmap.md --worker opencode run
+rundown run roadmap.md --worker opencode run
 ```
 
 That's it. Write tasks. Run the command. Watch checkboxes earn their marks.
+
+Common Git-aware forms:
+
+```bash
+rundown run roadmap.md --commit -- opencode run
+rundown run roadmap.md --commit --commit-message "rundown: complete \"{{task}}\" in {{file}}" -- opencode run
+rundown run roadmap.md --on-complete "git push" -- opencode run
+```
 
 ---
 
@@ -100,7 +108,7 @@ That's it. Write tasks. Run the command. Watch checkboxes earn their marks.
 
 ### Plan
 
-Use `md-todo plan` to expand a high-level task into concrete subtasks before execution begins. Big goals become small, runnable steps.
+Use `rundown plan` to expand a high-level task into concrete subtasks before execution begins. Big goals become small, runnable steps.
 
 ### Execute
 
@@ -120,7 +128,7 @@ If verification fails, a repair prompt fires, the worker retries, and verificati
 
 AI tools keep getting better. The bottleneck is no longer capability — it's **coordination**. Who told the agent what to do? Did it actually work? How do you pick up where it left off?
 
-`md-todo` answers all three with the most boring technology possible: a text file with checkboxes.
+`rundown` answers all three with the most boring technology possible: a text file with checkboxes.
 
 That's the point. The interface should be so simple you can reconstruct it from memory. Plain files. Visible prompts. Predictable selection. Auditable results.
 
@@ -141,9 +149,34 @@ You already know Markdown. Now Markdown knows how to finish.
 
 ---
 
+## Migration notes (programmatic API)
+
+### Breaking: root exports are now intentionally narrow
+
+The package root (`@p10i/rundown`) now exports only `createApp`.
+
+If you previously imported low-level helpers from the root barrel (for example `parseTasks`, `runWorker`, `validate`, `correct`, `resolveSources`, runtime artifact helpers, or Git/hook helpers), those imports are no longer part of the supported root API.
+
+Use `createApp()` as the stable programmatic entrypoint.
+
+### Breaking: `createApp(...)` override shape changed
+
+Dependency injection now uses a structured shape:
+
+```ts
+createApp({
+  ports: { output: myOutputPort },
+  useCaseFactories: { /* optional factory overrides */ },
+})
+```
+
+Direct root-level use-case overrides such as `createApp({ runTask: ... })` are no longer supported. Use `useCaseFactories` for explicit, port-first wiring.
+
+---
+
 ## Status
 
-`md-todo` is usable today and intentionally small.
+`rundown` is usable today and intentionally small.
 
 It is not trying to become an orchestration platform. It is trying to make one workflow feel inevitable:
 
@@ -154,6 +187,6 @@ It is not trying to become an orchestration platform. It is trying to make one w
 ## Install
 
 ```bash
-npm install -g @p10i/md-todo@rc
-md-todo --help
+npm install -g @p10i/rundown@rc
+rundown --help
 ```

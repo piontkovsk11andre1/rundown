@@ -1,34 +1,13 @@
 /**
- * md-todo — Markdown-native task runtime.
+ * rundown — Markdown-native task runtime.
  *
- * Public API surface for programmatic usage.
+ * Default programmatic entrypoint: app composition.
  */
 
-export { parseTasks, type Task } from "./parser.js";
-export { resolveSources } from "./sources.js";
-export { selectNextTask, selectTaskByLocation, hasUncheckedDescendants, filterRunnable } from "./selector.js";
-export { renderTemplate, type TemplateVars } from "./template.js";
-export { runWorker, type RunnerMode } from "./runner.js";
-export { validate, readValidationFile, removeValidationFile } from "./validation.js";
-export { correct } from "./correction.js";
-export { executeInlineCli } from "./inline-cli.js";
-export { checkTask } from "./checkbox.js";
-export { isGitRepo, commitCheckedTask, type CommitTaskOptions } from "./git.js";
-export { runOnCompleteHook, type OnCompleteHookOptions, type HookResult, type HookTaskInfo } from "./hooks.js";
-export { insertSubitems } from "./planner.js";
-export { loadProjectTemplates, type ProjectTemplates } from "./templates-loader.js";
 export {
-	createRuntimeArtifactsContext,
-	displayArtifactsPath,
-	findSavedRuntimeArtifact,
-	latestSavedRuntimeArtifact,
-	listFailedRuntimeArtifacts,
-	listSavedRuntimeArtifacts,
-	removeFailedRuntimeArtifacts,
-	removeSavedRuntimeArtifacts,
-	runtimeArtifactsRootDir,
-	isFailedRuntimeArtifactStatus,
-	type RuntimeArtifactsContext,
-	type RuntimeTaskMetadata,
-	type SavedRuntimeArtifactRun,
-} from "./runtime-artifacts.js";
+  createApp,
+  type App,
+  type AppPorts,
+  type AppUseCaseFactories,
+  type CreateAppDependencies,
+} from "./create-app.js";

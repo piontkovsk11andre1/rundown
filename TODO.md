@@ -57,7 +57,7 @@ Out of scope for first iteration:
 - [x] invalid run id.
 - [x] Add tests to confirm reverify does not modify Markdown checkboxes.
 - [x] Add tests for `--dry-run` and `--print-prompt` behavior.
-- [ ] Document residual edge cases and follow-up work (e.g., handling heavily edited files).
+- [x] Document residual edge cases and follow-up work (e.g., handling heavily edited files).
 
 ## Acceptance criteria
 

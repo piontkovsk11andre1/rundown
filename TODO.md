@@ -48,7 +48,7 @@ Out of scope for first iteration:
 - [x] Ensures no checkbox mutation occurs in reverify flow.
 - [x] Persists runtime artifacts for the reverify command with explicit status values (e.g. `reverify-completed`, `reverify-failed`).
 - [x] Update docs: `README.md` and `docs/cli.md` with command purpose and examples.
-- [ ] Add unit tests for target resolution and metadata mismatch scenarios.
+- [x] Add unit tests for target resolution and metadata mismatch scenarios.
 - [ ] Add integration tests for CLI behavior and exit codes:
 - [ ] success path (verification passes),
 - [ ] failure path (verification fails),

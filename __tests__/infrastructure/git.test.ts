@@ -102,7 +102,7 @@ describe("commitCheckedTask", () => {
     expect(gitLog(dir)).toContain("done: Build feature (work.md)");
   });
 
-  it("stages only the task file, not other changes", async () => {
+  it("stages and commits all worktree changes", async () => {
     const dir = makeTempDir();
     gitInit(dir);
 
@@ -125,9 +125,14 @@ describe("commitCheckedTask", () => {
       cwd: dir,
     });
 
-    // The other file should still be in working directory (unstaged)
-    const status = gitStatus(dir);
-    expect(status).toContain("unrelated.txt");
+    // Both modified files are included in the completion commit.
+    expect(gitStatus(dir)).toBe("");
+    const changedFiles = execFileSync("git", ["show", "--name-only", "--pretty=", "HEAD"], {
+      cwd: dir,
+      encoding: "utf-8",
+    }).trim();
+    expect(changedFiles).toContain("tasks.md");
+    expect(changedFiles).toContain("unrelated.txt");
   });
 
   it("handles files in subdirectories", async () => {

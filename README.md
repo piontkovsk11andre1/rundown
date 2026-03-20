@@ -52,7 +52,7 @@ A task is done because it *passed*.
 
 **Agent-agnostic.** Use `opencode`, `claude`, `aider`, or any CLI-shaped worker. `rundown` doesn't care what does the work — it cares that the work got done.
 
-**Git-aware.** `--commit` auto-commits each checked task with a structured message. Trace exactly which commit completed which task with `git log --grep`.
+**Git-aware.** `--commit` auto-commits current worktree changes with a structured message tied to the checked task. Trace exactly which commit completed which task with `git log --grep`.
 
 ---
 

@@ -34,7 +34,7 @@ describe("run-task commit behavior", () => {
     expect(code).toBe(0);
     expect(fileSystem.readText(taskFile)).toBe("- [x] cli: echo hello\n");
     expect(gitClient.run).toHaveBeenNthCalledWith(1, ["rev-parse", "--is-inside-work-tree"], cwd);
-    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["add", "--", "tasks.md"], cwd);
+    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["add", "-A", "--", ".", ":(exclude).rundown/runs/**"], cwd);
     expect(gitClient.run).toHaveBeenNthCalledWith(
       3,
       ["commit", "-m", "rundown: complete \"cli: echo hello\" in tasks.md"],
@@ -63,7 +63,7 @@ describe("run-task commit behavior", () => {
     }));
 
     expect(code).toBe(0);
-    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["add", "--", "docs/roadmap.md"], cwd);
+    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["add", "-A", "--", ".", ":(exclude).rundown/runs/**"], cwd);
     expect(gitClient.run).toHaveBeenNthCalledWith(
       3,
       ["commit", "-m", "done: cli: echo ship @ docs/roadmap.md"],

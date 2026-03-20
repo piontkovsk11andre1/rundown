@@ -577,8 +577,8 @@ async function commitCheckedTaskWithGitClient(
   cwd: string,
   message: string,
 ): Promise<void> {
-  const relativePath = path.relative(cwd, task.file).replace(/\\/g, "/");
-  await gitClient.run(["add", "--", relativePath], cwd);
+  // Stage full worktree output for the task, but skip transient runtime artifacts.
+  await gitClient.run(["add", "-A", "--", ".", ":(exclude).rundown/runs/**"], cwd);
   await gitClient.run(["commit", "-m", message], cwd);
 }
 

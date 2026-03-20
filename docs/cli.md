@@ -190,7 +190,7 @@ These options are available on `rundown run`.
 
 | Option | Description | Default |
 |---|---|---|
-| `--commit` | Auto-commit checked task file after successful completion. | off |
+| `--commit` | Auto-commit current worktree changes after successful completion (excluding transient `.rundown/runs` artifacts). | off |
 | `--commit-message <template>` | Commit message template (supports `{{task}}` and `{{file}}`). | `rundown: complete "{{task}}" in {{file}}` |
 | `--on-complete <command>` | Run a shell command after successful task completion. | unset |
 
@@ -205,7 +205,7 @@ rundown run docs/todos/phase-3.md --on-complete "git push" -- opencode run
 rundown run docs/todos/phase-3.md --commit --on-complete "npm run release:notes" -- opencode run
 ```
 
-`--commit` creates a focused commit containing only the checked Markdown file, with a structured message:
+`--commit` stages and commits current worktree changes (excluding transient `.rundown/runs` artifacts), with a structured message tied to the completed task:
 
 ```
 rundown: complete "Rewrite the README intro" in docs/README.md

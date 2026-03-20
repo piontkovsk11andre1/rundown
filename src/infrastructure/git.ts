@@ -1,9 +1,9 @@
 /**
  * Git integration — auto-commit after task completion.
  *
- * Provides a small, focused API for committing the checked Markdown file
- * after rundown marks a task as complete. The commit uses a structured
- * message so that `git log --grep="rundown:"` can trace task completions.
+ * Provides a small, focused API for committing task completion after rundown
+ * marks a task as complete. The commit uses a structured message so that
+ * `git log --grep="rundown:"` can trace task completions.
  */
 
 import { execFile } from "node:child_process";
@@ -40,7 +40,7 @@ export async function isGitRepo(cwd: string): Promise<boolean> {
 }
 
 /**
- * Stage the task file and create a commit with a structured message.
+ * Stage all worktree changes and create a commit with a structured message.
  *
  * The default commit message format is:
  *   rundown: complete "<task text>" in <relative file path>
@@ -60,7 +60,7 @@ export async function commitCheckedTask(options: CommitTaskOptions): Promise<str
     { task, file: relativePath, line, index },
   );
 
-  await git(["add", "--", relativePath], cwd);
+  await git(["add", "-A", "--", ".", ":(exclude).rundown/runs/**"], cwd);
   await git(["commit", "-m", message], cwd);
 
   return message;

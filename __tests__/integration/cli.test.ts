@@ -830,6 +830,47 @@ describe.sequential("CLI integration", () => {
     expect(commitSubject).toBe("rundown: complete \"cli: echo hello\" in roadmap.md");
   });
 
+  it("run --commit includes other worktree changes in the same commit", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const otherFilePath = path.join(workspace, "src", "notes.txt");
+    fs.mkdirSync(path.dirname(otherFilePath), { recursive: true });
+    fs.writeFileSync(roadmapPath, "- [ ] cli: echo hello\n", "utf-8");
+    fs.writeFileSync(otherFilePath, "before\n", "utf-8");
+
+    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
+
+    // Simulate task side effects outside the Markdown file.
+    fs.writeFileSync(otherFilePath, "after\n", "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--commit",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Committed:"))).toBe(true);
+
+    const status = execFileSync("git", ["status", "--porcelain"], {
+      cwd: workspace,
+      encoding: "utf-8",
+    }).trim();
+    expect(status).toBe("");
+
+    const changedFiles = execFileSync("git", ["show", "--name-only", "--pretty=", "HEAD"], {
+      cwd: workspace,
+      encoding: "utf-8",
+    }).trim();
+    expect(changedFiles).toContain("roadmap.md");
+    expect(changedFiles).toContain("src/notes.txt");
+  });
+
   it("run parses --commit-message without requiring --commit", async () => {
     const workspace = makeTempWorkspace();
     fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] cli: echo hello\n", "utf-8");

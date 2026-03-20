@@ -52,7 +52,7 @@ Out of scope for first iteration:
 - [x] Add integration tests for CLI behavior and exit codes:
 - [x] success path (verification passes),
 - [x] failure path (verification fails),
-- [ ] missing artifacts,
+- [x] missing artifacts,
 - [ ] stale task reference (task moved/edited),
 - [ ] invalid run id.
 - [ ] Add tests to confirm reverify does not modify Markdown checkboxes.

@@ -47,7 +47,7 @@ Out of scope for first iteration:
 - [x] Executes verify/repair loop using existing ports and retry policy.
 - [x] Ensures no checkbox mutation occurs in reverify flow.
 - [x] Persists runtime artifacts for the reverify command with explicit status values (e.g. `reverify-completed`, `reverify-failed`).
-- [ ] Update docs: `README.md` and `docs/cli.md` with command purpose and examples.
+- [x] Update docs: `README.md` and `docs/cli.md` with command purpose and examples.
 - [ ] Add unit tests for target resolution and metadata mismatch scenarios.
 - [ ] Add integration tests for CLI behavior and exit codes:
 - [ ] success path (verification passes),

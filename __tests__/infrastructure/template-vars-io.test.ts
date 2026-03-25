@@ -45,4 +45,24 @@ describe("loadTemplateVarsFile", () => {
     expect(() => loadTemplateVarsFile(file))
       .toThrow(`Template variable \"meta\" in \"${file}\" must be a string, number, boolean, or null.`);
   });
+
+  it("resolves the file path relative to cwd", () => {
+    const { dir } = writeTempVarsFile(JSON.stringify({ release: "stable" }));
+
+    expect(loadTemplateVarsFile("vars.json", dir)).toEqual({ release: "stable" });
+  });
+
+  it("rejects malformed JSON input", () => {
+    const { file } = writeTempVarsFile("{not valid json");
+
+    expect(() => loadTemplateVarsFile(file))
+      .toThrow(`Failed to read template vars file \"${file}\":`);
+  });
+
+  it("rejects invalid template variable names", () => {
+    const { file } = writeTempVarsFile(JSON.stringify({ "bad-key": true }));
+
+    expect(() => loadTemplateVarsFile(file))
+      .toThrow(`Invalid template variable name \"bad-key\" in \"${file}\". Use letters, numbers, and underscores only.`);
+  });
 });

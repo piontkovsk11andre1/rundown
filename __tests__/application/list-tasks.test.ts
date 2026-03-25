@@ -91,6 +91,65 @@ describe("list-tasks", () => {
     expect(vi.mocked(fileSystem.stat)).toHaveBeenCalledWith("a.md");
     expect(vi.mocked(fileSystem.stat)).toHaveBeenCalledWith("b.md");
   });
+
+  it("uses birthtime when available for created sorting", async () => {
+    const { dependencies, events } = createDependencies({
+      files: ["b.md", "a.md"],
+      fileContentByPath: {
+        "a.md": "- [ ] A\n",
+        "b.md": "- [ ] B\n",
+      },
+      statsByPath: {
+        "a.md": { isFile: true, isDirectory: false, birthtimeMs: 10, mtimeMs: 50 },
+        "b.md": { isFile: true, isDirectory: false, birthtimeMs: 20, mtimeMs: 1 },
+      },
+    });
+
+    const listTasks = createListTasks(dependencies);
+    const code = await listTasks(createOptions({ sortMode: "old-first" }));
+
+    expect(code).toBe(0);
+    const taskEvents = events.filter((event): event is Extract<ApplicationOutputEvent, { kind: "task" }> => event.kind === "task");
+    expect(taskEvents.map((event) => event.task.text)).toEqual(["A", "B"]);
+  });
+
+  it("throws when file stats are missing during birthtime sorting", async () => {
+    const { dependencies } = createDependencies({
+      files: ["present.md", "missing.md"],
+      fileContentByPath: {
+        "present.md": "- [ ] Present\n",
+        "missing.md": "- [ ] Missing\n",
+      },
+      statsByPath: {
+        "present.md": { isFile: true, isDirectory: false, birthtimeMs: 1, mtimeMs: 1 },
+        "missing.md": null,
+      },
+    });
+
+    const listTasks = createListTasks(dependencies);
+
+    await expect(listTasks(createOptions({ sortMode: "old-first" })))
+      .rejects.toThrow("ENOENT: no such file or directory, stat 'missing.md'");
+  });
+
+  it("throws when neither birthtime nor mtime are available", async () => {
+    const { dependencies } = createDependencies({
+      files: ["present.md", "unstamped.md"],
+      fileContentByPath: {
+        "present.md": "- [ ] Present\n",
+        "unstamped.md": "- [ ] Missing time\n",
+      },
+      statsByPath: {
+        "present.md": { isFile: true, isDirectory: false, birthtimeMs: 1, mtimeMs: 1 },
+        "unstamped.md": { isFile: true, isDirectory: false, birthtimeMs: Number.NaN, mtimeMs: Number.NaN },
+      },
+    });
+
+    const listTasks = createListTasks(dependencies);
+
+    await expect(listTasks(createOptions({ sortMode: "old-first" })))
+      .rejects.toThrow("birthtime unavailable for 'unstamped.md'");
+  });
 });
 
 function createDependencies(options: {

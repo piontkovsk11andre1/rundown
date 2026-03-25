@@ -1,9 +1,18 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { createRunTask, type RunTaskDependencies, type RunTaskOptions } from "../../src/application/run-task.js";
+import {
+  createRunTask,
+  finalizeRunArtifacts,
+  getAutomationWorkerCommand,
+  isOpenCodeWorkerCommand,
+  toRuntimeTaskMetadata,
+  type RunTaskDependencies,
+  type RunTaskOptions,
+} from "../../src/application/run-task.js";
 import type { Task } from "../../src/domain/parser.js";
 import type {
   ApplicationOutputEvent,
+  ApplicationOutputPort,
   ArtifactStore,
   FileSystem,
   GitClient,
@@ -130,6 +139,77 @@ describe("run-task commit behavior", () => {
     expect(code).toBe(0);
     expect(fileSystem.readText(taskFile)).toBe("- [x] cli: echo hello\n");
     expect(events.some((event) => event.kind === "warn" && event.message === "--commit: not inside a git repository, skipping.")).toBe(true);
+  });
+});
+
+describe("run-task helper exports", () => {
+  it("normalizes opencode tui worker commands", () => {
+    expect(getAutomationWorkerCommand(["opencode"], "tui")).toEqual(["opencode", "run"]);
+    expect(getAutomationWorkerCommand(["opencode", "run"], "tui")).toEqual(["opencode", "run"]);
+    expect(getAutomationWorkerCommand(["agent"], "tui")).toEqual(["agent"]);
+    expect(getAutomationWorkerCommand(["opencode"], "wait")).toEqual(["opencode"]);
+  });
+
+  it("detects supported opencode executable names", () => {
+    expect(isOpenCodeWorkerCommand([])).toBe(false);
+    expect(isOpenCodeWorkerCommand(["opencode"])).toBe(true);
+    expect(isOpenCodeWorkerCommand([String.raw`C:\tools\opencode.cmd`])).toBe(true);
+    expect(isOpenCodeWorkerCommand(["/usr/local/bin/opencode.exe"])).toBe(true);
+    expect(isOpenCodeWorkerCommand(["node"])).toBe(false);
+  });
+
+  it("finalizes runtime artifacts and emits the saved path when preserved", () => {
+    const emit = vi.fn<ApplicationOutputPort["emit"]>();
+    const artifactStore: ArtifactStore = {
+      createContext: vi.fn(),
+      beginPhase: vi.fn(),
+      completePhase: vi.fn(),
+      finalize: vi.fn(),
+      displayPath: vi.fn(() => ".rundown/runs/run-1"),
+      rootDir: vi.fn(),
+      listSaved: vi.fn(() => []),
+      listFailed: vi.fn(() => []),
+      latest: vi.fn(() => null),
+      find: vi.fn(() => null),
+      removeSaved: vi.fn(() => 0),
+      removeFailed: vi.fn(() => 0),
+      isFailedStatus: vi.fn(() => false),
+    };
+
+    finalizeRunArtifacts(
+      artifactStore,
+      {
+        runId: "run-1",
+        rootDir: "/workspace/.rundown/runs/run-1",
+        cwd: "/workspace",
+        keepArtifacts: true,
+        commandName: "run",
+      },
+      true,
+      "completed",
+      emit,
+    );
+
+    expect(artifactStore.finalize).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: "run-1" }),
+      { status: "completed", preserve: true },
+    );
+    expect(emit).toHaveBeenCalledWith({
+      kind: "info",
+      message: "Runtime artifacts saved at .rundown/runs/run-1.",
+    });
+  });
+
+  it("maps a task into runtime metadata", () => {
+    const task = createInlineTask("/workspace/tasks.md", "cli: echo hello");
+
+    expect(toRuntimeTaskMetadata(task, "tasks.md")).toEqual({
+      text: "cli: echo hello",
+      file: "/workspace/tasks.md",
+      line: 1,
+      index: 0,
+      source: "tasks.md",
+    });
   });
 });
 

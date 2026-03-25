@@ -24,8 +24,6 @@ Instead of writing directly to `console`, `process.stderr`, or presentation help
 
 The CLI layer implements that contract and decides how to render messages and errors. This keeps application logic testable, framework-independent, and stable across future presentation surfaces.
 
-Architecture decision record: `docs/adr/0001-application-output-boundary.md`.
-
 ## Port/adapter map
 
 `src/create-app.ts` is the single composition boundary: application use-cases depend on ports, and infrastructure adapters are wired there.

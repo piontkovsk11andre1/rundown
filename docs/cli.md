@@ -231,8 +231,8 @@ When both are used, `--commit` runs first so that `--on-complete` can safely pus
 
 ### Inspection and dry runs
 
-- `--dry-run` — select the task and render the prompt, then print what command would run and exit `0` without executing, verifying, repairing, or editing Markdown files.
-- `--print-prompt` — print the fully rendered prompt and exit `0` without executing the worker.
+- `--dry-run` — select the task and render the prompt, then print what command would run and exit without executing, verifying, repairing, or editing Markdown files.
+- `--print-prompt` — print the fully rendered prompt and exit without executing the worker.
 
 Behavior notes:
 
@@ -241,6 +241,8 @@ Behavior notes:
 - For `run --only-verify`, `--print-prompt` and `--dry-run` target the verify prompt instead.
 - For `reverify`, `--print-prompt` and `--dry-run` target the verify prompt for the resolved historical task.
 - For `plan`, both flags apply to the planner prompt.
+- For inline `cli:` tasks on `run`, `--print-prompt` prints the inline command and exits without executing it.
+- Worker command validation still applies before execution for flows that require a worker command. Invalid or missing worker command input can still return exit code `1`.
 
 Examples:
 

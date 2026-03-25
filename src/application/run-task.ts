@@ -244,6 +244,12 @@ export function createRunTask(
         }
       }
 
+      if (!onlyValidate && task.isInlineCli && printPrompt) {
+        emit({ kind: "info", message: "Selected task is inline CLI; no worker prompt is rendered." });
+        emit({ kind: "text", text: "cli: " + task.cliCommand! });
+        return 0;
+      }
+
       if (!onlyValidate && task.isInlineCli && dryRun) {
         emit({ kind: "info", message: "Dry run — would execute inline CLI: " + task.cliCommand! });
         return 0;

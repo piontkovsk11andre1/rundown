@@ -710,6 +710,31 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("would execute inline CLI"))).toBe(true);
   });
 
+  it("run --print-prompt does not execute inline CLI tasks", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const markerPath = path.join(workspace, "inline-ran.txt");
+
+    fs.writeFileSync(
+      roadmapPath,
+      `- [ ] cli: node -e "require('node:fs').writeFileSync(${JSON.stringify(markerPath)},'1')"\n`,
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--print-prompt",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("inline CLI; no worker prompt is rendered"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("cli: node -e"))).toBe(true);
+    expect(fs.existsSync(markerPath)).toBe(false);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli:");
+  });
+
   it("run --help lists Git and completion hook options with clear descriptions", async () => {
     const workspace = makeTempWorkspace();
 

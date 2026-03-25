@@ -179,4 +179,11 @@ describe("insertSubitems", () => {
       "- [ ] Another task",
     ].join("\r\n"));
   });
+
+  it("throws when the task line is outside the source range", () => {
+    const source = "- [ ] Parent task\n";
+    const task = makeTask({ line: 5 });
+
+    expect(() => insertSubitems(source, task, ["- [ ] Child"])).toThrow("Task line 5 is out of range.");
+  });
 });

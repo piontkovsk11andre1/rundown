@@ -214,6 +214,52 @@ describe("run-task helper exports", () => {
 });
 
 describe("run-task prompt and mode behavior", () => {
+  it("returns 3 when no markdown files match the source", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Build release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Build release\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
+    vi.mocked(dependencies.sourceResolver.resolveSources).mockResolvedValue([]);
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "missing/**/*.md",
+      verify: false,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(3);
+    expect(vi.mocked(dependencies.taskSelector.selectNextTask)).not.toHaveBeenCalled();
+    expect(vi.mocked(dependencies.artifactStore.createContext)).not.toHaveBeenCalled();
+    expect(events.some((event) => event.kind === "warn" && event.message.includes("No Markdown files found matching: missing/**/*.md"))).toBe(true);
+  });
+
+  it("returns 3 when no unchecked task can be selected", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Build release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [x] Build release\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
+    vi.mocked(dependencies.taskSelector.selectNextTask).mockReturnValue(null);
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      verify: false,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(3);
+    expect(vi.mocked(dependencies.artifactStore.createContext)).not.toHaveBeenCalled();
+    expect(events.some((event) => event.kind === "info" && event.message.includes("No unchecked tasks found."))).toBe(true);
+  });
+
   it("prints the rendered worker prompt for non-inline tasks", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");
@@ -318,6 +364,121 @@ describe("run-task prompt and mode behavior", () => {
       expect.objectContaining({ status: "detached", preserve: true }),
     );
     expect(events.some((event) => event.kind === "info" && event.message.includes("Detached mode"))).toBe(true);
+  });
+
+  it("runs explicit only-verify mode with the automation worker command", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Build release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Build release\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      mode: "tui",
+      onlyVerify: true,
+      verify: false,
+      workerCommand: ["opencode"],
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.workerExecutor.runWorker)).not.toHaveBeenCalled();
+    expect(vi.mocked(dependencies.artifactStore.createContext)).toHaveBeenCalledWith(expect.objectContaining({
+      workerCommand: ["opencode", "run"],
+    }));
+    expect(vi.mocked(dependencies.taskVerification.verify)).toHaveBeenCalledWith(expect.objectContaining({
+      command: ["opencode", "run"],
+    }));
+    expect(fileSystem.readText(taskFile)).toBe("- [x] Build release\n");
+    expect(events).toContainEqual({
+      kind: "info",
+      message: "Only verify mode — skipping task execution.",
+    });
+  });
+
+  it("auto-skips execution for verify-only tasks and checks them after passing verification", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "verify: release docs are consistent");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] verify: release docs are consistent\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      verify: false,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.workerExecutor.runWorker)).not.toHaveBeenCalled();
+    expect(vi.mocked(dependencies.taskVerification.verify)).toHaveBeenCalledTimes(1);
+    expect(fileSystem.readText(taskFile)).toBe("- [x] verify: release docs are consistent\n");
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Task classified as verify-only"))).toBe(true);
+    expect(events).toContainEqual({
+      kind: "info",
+      message: "Verify-only task mode — skipping task execution.",
+    });
+  });
+
+  it("returns execution failure for non-inline workers and emits wait-mode output", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Build release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Build release\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
+    vi.mocked(dependencies.workerExecutor.runWorker).mockResolvedValue({
+      exitCode: 7,
+      stdout: "worker out",
+      stderr: "worker err",
+    });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      verify: false,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(1);
+    expect(fileSystem.readText(taskFile)).toBe("- [ ] Build release\n");
+    expect(vi.mocked(dependencies.artifactStore.finalize)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "execution-failed", preserve: false }),
+    );
+    expect(events).toContainEqual({ kind: "text", text: "worker out" });
+    expect(events).toContainEqual({ kind: "stderr", text: "worker err" });
+    expect(events.some((event) => event.kind === "error" && event.message.includes("Worker exited with code 7"))).toBe(true);
+  });
+
+  it("finalizes artifacts as failed when the worker throws", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Build release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Build release\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient });
+    vi.mocked(dependencies.workerExecutor.runWorker).mockRejectedValue(new Error("worker exploded"));
+
+    const runTask = createRunTask(dependencies);
+
+    await expect(runTask(createOptions({
+      verify: false,
+      workerCommand: ["opencode", "run"],
+    }))).rejects.toThrow("worker exploded");
+    expect(vi.mocked(dependencies.artifactStore.finalize)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "failed", preserve: false }),
+    );
   });
 });
 

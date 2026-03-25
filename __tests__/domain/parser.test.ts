@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseTasks } from "../../src/domain/parser.js";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.resetModules();
+  vi.doUnmock("mdast-util-from-markdown");
+});
 
 describe("parseTasks", () => {
   it("should find unchecked tasks with - [ ]", () => {
@@ -80,6 +86,75 @@ describe("parseTasks", () => {
     expect(tasks).toHaveLength(1);
     expect(tasks[0]!.isInlineCli).toBe(true);
     expect(tasks[0]!.cliCommand).toBe("git status");
+  });
+
+  it("should trim whitespace around inline CLI commands", () => {
+    const md = `- [ ] cli:    npm test -- --runInBand   \n`;
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.isInlineCli).toBe(true);
+    expect(tasks[0]!.cliCommand).toBe("npm test -- --runInBand");
+  });
+
+  it("should include inline code text in extracted task text", () => {
+    const md = "- [ ] Use `npm test` before release\n";
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.text).toBe("Use npm test before release");
+  });
+
+  it("should preserve nested formatting text while skipping nested child task text", () => {
+    const md = [
+      "- [ ] Parent with **bold** text",
+      "  - [ ] Nested child",
+    ].join("\n");
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]!.text).toBe("Parent with bold text");
+    expect(tasks[1]!.text).toBe("Nested child");
+    expect(tasks[1]!.depth).toBe(1);
+  });
+
+  it("should fall back to zero-based position defaults when markdown nodes omit location metadata", async () => {
+    vi.doMock("mdast-util-from-markdown", () => ({
+      fromMarkdown: () => ({
+        type: "root",
+        children: [
+          {
+            type: "list",
+            ordered: false,
+            spread: false,
+            children: [
+              {
+                type: "listItem",
+                checked: false,
+                spread: false,
+                children: [
+                  {
+                    type: "paragraph",
+                    children: [
+                      { type: "text", value: "Task without position" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    }));
+
+    const { parseTasks: parseTasksWithoutPositions } = await import("../../src/domain/parser.js?missing-positions");
+    const tasks = parseTasksWithoutPositions("- [ ] Task without position", "test.md");
+
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.line).toBe(0);
+    expect(tasks[0]!.column).toBe(0);
+    expect(tasks[0]!.offsetStart).toBe(0);
+    expect(tasks[0]!.offsetEnd).toBe(0);
   });
 
   it("should track line numbers correctly", () => {

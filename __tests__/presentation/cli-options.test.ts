@@ -345,6 +345,82 @@ describe("CLI reverify option normalization", () => {
 
     expect(reverifyTask).toHaveBeenCalledTimes(1);
   });
+
+});
+
+describe("CLI plan and utility command normalization", () => {
+  it("passes plan options through with separator worker command", async () => {
+    const planTask = vi.fn(async () => 0);
+    const call = await invokePlanAndCaptureCall([
+      "plan",
+      "tasks.md",
+      "--at",
+      "tasks.md:7",
+      "--dry-run",
+      "--print-prompt",
+      "--keep-artifacts",
+      "--vars-file",
+      "custom-vars.json",
+      "--var",
+      "env=prod",
+      "--",
+      "opencode",
+      "run",
+    ], planTask);
+
+    expect(call.source).toBe("tasks.md");
+    expect(call.at).toBe("tasks.md:7");
+    expect(call.mode).toBe("wait");
+    expect(call.transport).toBe("file");
+    expect(call.sortMode).toBe("name-sort");
+    expect(call.dryRun).toBe(true);
+    expect(call.printPrompt).toBe(true);
+    expect(call.keepArtifacts).toBe(true);
+    expect(call.varsFileOption).toBe("custom-vars.json");
+    expect(call.cliTemplateVarArgs).toEqual(["env=prod"]);
+    expect(call.workerCommand).toEqual(["opencode", "run"]);
+  });
+
+  it("passes list options to the application layer", async () => {
+    const listTasks = vi.fn(async () => 0);
+    const call = await invokeListAndCaptureCall([
+      "list",
+      "tasks.md",
+      "--sort",
+      "none",
+      "--all",
+    ], listTasks);
+
+    expect(call).toEqual({
+      source: "tasks.md",
+      sortMode: "none",
+      includeAll: true,
+    });
+  });
+
+  it("passes artifacts options with default open fallback", async () => {
+    const manageArtifacts = vi.fn(() => 0);
+    const call = await invokeArtifactsAndCaptureCall([
+      "artifacts",
+      "--clean",
+      "--failed",
+    ], manageArtifacts);
+
+    expect(call).toEqual({
+      clean: true,
+      json: false,
+      failed: true,
+      open: "",
+    });
+  });
+
+  it("dispatches init to the application layer", async () => {
+    const initProject = vi.fn(async () => 0);
+
+    await invokeInitAndCaptureCall(["init"], initProject);
+
+    expect(initProject).toHaveBeenCalledTimes(1);
+  });
 });
 
 async function invokeRunAndCaptureCall(args: string[], runTask: ReturnType<typeof vi.fn>): Promise<RunTaskCall> {
@@ -481,6 +557,139 @@ async function invokeReverifyAndExpectExit(args: string[], reverifyTask: ReturnT
   }
 
   throw new Error("Expected CLI exit");
+}
+
+async function invokePlanAndCaptureCall(args: string[], planTask: ReturnType<typeof vi.fn>): Promise<RunTaskCall> {
+  const previousEnv = captureEnv();
+
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
+
+  vi.doMock("../../src/create-app.js", () => ({
+    createApp: () => ({
+      runTask: vi.fn(async () => 0),
+      reverifyTask: vi.fn(async () => 0),
+      nextTask: vi.fn(async () => 0),
+      listTasks: vi.fn(async () => 0),
+      planTask,
+      initProject: vi.fn(async () => 0),
+      manageArtifacts: vi.fn(() => 0),
+    }),
+  }));
+
+  try {
+    const { parseCliArgs } = await import("../../src/presentation/cli.js");
+    await parseCliArgs(args);
+  } catch (error) {
+    const message = String(error);
+    if (!/CLI exited with code \d+/.test(message)) {
+      throw error;
+    }
+  } finally {
+    restoreEnv(previousEnv);
+  }
+
+  expect(planTask).toHaveBeenCalledTimes(1);
+  return planTask.mock.calls[0][0] as RunTaskCall;
+}
+
+async function invokeListAndCaptureCall(args: string[], listTasks: ReturnType<typeof vi.fn>): Promise<RunTaskCall> {
+  const previousEnv = captureEnv();
+
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
+
+  vi.doMock("../../src/create-app.js", () => ({
+    createApp: () => ({
+      runTask: vi.fn(async () => 0),
+      reverifyTask: vi.fn(async () => 0),
+      nextTask: vi.fn(async () => 0),
+      listTasks,
+      planTask: vi.fn(async () => 0),
+      initProject: vi.fn(async () => 0),
+      manageArtifacts: vi.fn(() => 0),
+    }),
+  }));
+
+  try {
+    const { parseCliArgs } = await import("../../src/presentation/cli.js");
+    await parseCliArgs(args);
+  } catch (error) {
+    const message = String(error);
+    if (!/CLI exited with code \d+/.test(message)) {
+      throw error;
+    }
+  } finally {
+    restoreEnv(previousEnv);
+  }
+
+  expect(listTasks).toHaveBeenCalledTimes(1);
+  return listTasks.mock.calls[0][0] as RunTaskCall;
+}
+
+async function invokeArtifactsAndCaptureCall(args: string[], manageArtifacts: ReturnType<typeof vi.fn>): Promise<RunTaskCall> {
+  const previousEnv = captureEnv();
+
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
+
+  vi.doMock("../../src/create-app.js", () => ({
+    createApp: () => ({
+      runTask: vi.fn(async () => 0),
+      reverifyTask: vi.fn(async () => 0),
+      nextTask: vi.fn(async () => 0),
+      listTasks: vi.fn(async () => 0),
+      planTask: vi.fn(async () => 0),
+      initProject: vi.fn(async () => 0),
+      manageArtifacts,
+    }),
+  }));
+
+  try {
+    const { parseCliArgs } = await import("../../src/presentation/cli.js");
+    await parseCliArgs(args);
+  } catch (error) {
+    const message = String(error);
+    if (!/CLI exited with code \d+/.test(message)) {
+      throw error;
+    }
+  } finally {
+    restoreEnv(previousEnv);
+  }
+
+  expect(manageArtifacts).toHaveBeenCalledTimes(1);
+  return manageArtifacts.mock.calls[0][0] as RunTaskCall;
+}
+
+async function invokeInitAndCaptureCall(args: string[], initProject: ReturnType<typeof vi.fn>): Promise<void> {
+  const previousEnv = captureEnv();
+
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
+
+  vi.doMock("../../src/create-app.js", () => ({
+    createApp: () => ({
+      runTask: vi.fn(async () => 0),
+      reverifyTask: vi.fn(async () => 0),
+      nextTask: vi.fn(async () => 0),
+      listTasks: vi.fn(async () => 0),
+      planTask: vi.fn(async () => 0),
+      initProject,
+      manageArtifacts: vi.fn(() => 0),
+    }),
+  }));
+
+  try {
+    const { parseCliArgs } = await import("../../src/presentation/cli.js");
+    await parseCliArgs(args);
+  } catch (error) {
+    const message = String(error);
+    if (!/CLI exited with code \d+/.test(message)) {
+      throw error;
+    }
+  } finally {
+    restoreEnv(previousEnv);
+  }
 }
 
 function captureEnv(): Record<(typeof envKeys)[number], string | undefined> {

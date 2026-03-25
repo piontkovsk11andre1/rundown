@@ -87,4 +87,19 @@ describe("renderTemplate", () => {
 
     expect(result).toBe("Verification: Missing tests");
   });
+
+  it("should replace known optional placeholders with an empty string when undefined", () => {
+    const template = "Verification: {{verificationResult}}";
+    const result = renderTemplate(template, {
+      task: "",
+      file: "",
+      context: "",
+      taskIndex: 0,
+      taskLine: 1,
+      source: "",
+      verificationResult: undefined,
+    });
+
+    expect(result).toBe("Verification: ");
+  });
 });

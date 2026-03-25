@@ -78,6 +78,41 @@ describe("plan-task", () => {
     expect(events.some((event) => event.kind === "error" && event.message.includes("Invalid --at format"))).toBe(true);
   });
 
+  it("returns 1 for invalid --at line number", async () => {
+    const cwd = "/workspace";
+    const { dependencies, events, taskSelector } = createDependencies({
+      cwd,
+      selectedTask: null,
+      files: [],
+      fileContent: "",
+    });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ at: "roadmap.md:0" }));
+
+    expect(code).toBe(1);
+    expect(vi.mocked(taskSelector.selectTaskByLocation)).not.toHaveBeenCalled();
+    expect(events.some((event) => event.kind === "error" && event.message.includes("Invalid line number in --at: 0"))).toBe(true);
+  });
+
+  it("returns 3 when no task is found at an explicit location", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "roadmap.md");
+    const { dependencies, events, taskSelector } = createDependencies({
+      cwd,
+      selectedTask: null,
+      files: [taskFile],
+      fileContent: "# Roadmap\n- [ ] Build release\n",
+    });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ at: `${taskFile}:2` }));
+
+    expect(code).toBe(3);
+    expect(vi.mocked(taskSelector.selectTaskByLocation)).toHaveBeenCalledWith(taskFile, 2);
+    expect(events.some((event) => event.kind === "error" && event.message.includes(`No task found at ${taskFile}:2`))).toBe(true);
+  });
+
   it("returns 3 when no files match source", async () => {
     const cwd = "/workspace";
     const { dependencies, events } = createDependencies({
@@ -130,6 +165,29 @@ describe("plan-task", () => {
       expect.anything(),
       expect.objectContaining({ status: "execution-failed" }),
     );
+  });
+
+  it("completes with warning when planner produces no output", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "roadmap.md");
+    const { dependencies, workerExecutor, artifactStore, fileSystem, events } = createDependencies({
+      cwd,
+      selectedTask: createSelection(taskFile),
+      files: [taskFile],
+      fileContent: "# Roadmap\n- [ ] Build release\n",
+    });
+    vi.mocked(workerExecutor.runWorker).mockResolvedValue({ exitCode: 0, stdout: "   \n", stderr: "" });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions());
+
+    expect(code).toBe(0);
+    expect(vi.mocked(fileSystem.writeText)).not.toHaveBeenCalled();
+    expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "completed" }),
+    );
+    expect(events.some((event) => event.kind === "warn" && event.message.includes("Planner produced no output"))).toBe(true);
   });
 
   it("completes with warning when planner output has no task items", async () => {
@@ -185,6 +243,37 @@ describe("plan-task", () => {
       expect.objectContaining({ status: "completed" }),
     );
     expect(events.some((event) => event.kind === "success" && event.message.includes("Inserted 2 subtasks"))).toBe(true);
+  });
+
+  it("uses explicit location selection and preserves artifacts for a single subtask", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "roadmap.md");
+    const content = "# Roadmap\n- [ ] Build release\n";
+    const { dependencies, workerExecutor, fileSystem, artifactStore, events, taskSelector } = createDependencies({
+      cwd,
+      selectedTask: createSelection(taskFile),
+      files: [taskFile],
+      fileContent: content,
+    });
+
+    vi.mocked(workerExecutor.runWorker).mockResolvedValue({
+      exitCode: 0,
+      stdout: "- [ ] Write changelog\n",
+      stderr: "",
+    });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ at: `${taskFile}:2`, keepArtifacts: true }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(taskSelector.selectTaskByLocation)).toHaveBeenCalledWith(taskFile, 2);
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "completed", preserve: true }),
+    );
+    expect(events.some((event) => event.kind === "success" && event.message.includes("Inserted 1 subtask under"))).toBe(true);
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Runtime artifacts saved at"))).toBe(true);
   });
 });
 
@@ -276,7 +365,13 @@ function createDependencies(options: {
     workerExecutor,
     workingDirectory: { cwd: vi.fn(() => options.cwd) },
     fileSystem,
-    pathOperations: { join: vi.fn((...parts: string[]) => parts.join("/")) },
+    pathOperations: {
+      join: vi.fn((...parts: string[]) => parts.join("/")),
+      resolve: vi.fn((...parts: string[]) => parts.join("/")),
+      dirname: vi.fn((filePath: string) => filePath.split("/").slice(0, -1).join("/") || "/"),
+      relative: vi.fn((_from: string, to: string) => to),
+      isAbsolute: vi.fn((filePath: string) => filePath.startsWith("/")),
+    },
     templateVarsLoader: { load: vi.fn(() => ({})) },
     templateLoader: { load: vi.fn(() => null) },
     artifactStore,

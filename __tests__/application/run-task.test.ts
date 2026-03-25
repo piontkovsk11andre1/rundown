@@ -213,6 +213,114 @@ describe("run-task helper exports", () => {
   });
 });
 
+describe("run-task prompt and mode behavior", () => {
+  it("prints the rendered worker prompt for non-inline tasks", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Build release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Build release\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      printPrompt: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.workerExecutor.runWorker)).not.toHaveBeenCalled();
+    expect(vi.mocked(dependencies.artifactStore.createContext)).not.toHaveBeenCalled();
+    expect(events.some((event) => event.kind === "text" && event.text.includes("Build release"))).toBe(true);
+  });
+
+  it("reports dry-run details for non-inline tasks", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Build release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Build release\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      dryRun: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.workerExecutor.runWorker)).not.toHaveBeenCalled();
+    expect(vi.mocked(dependencies.artifactStore.createContext)).not.toHaveBeenCalled();
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Dry run — would run: opencode run"))).toBe(true);
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Prompt length:"))).toBe(true);
+  });
+
+  it("prints inline CLI text when prompt output is requested", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createInlineTask(taskFile, "cli: echo hello");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] cli: echo hello\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      printPrompt: true,
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.workerExecutor.executeInlineCli)).not.toHaveBeenCalled();
+    expect(vi.mocked(dependencies.artifactStore.createContext)).not.toHaveBeenCalled();
+    expect(events).toContainEqual({
+      kind: "info",
+      message: "Selected task is inline CLI; no worker prompt is rendered.",
+    });
+    expect(events).toContainEqual({
+      kind: "text",
+      text: "cli: echo hello",
+    });
+  });
+
+  it("keeps tasks unchecked in detached mode and preserves runtime artifacts", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Build release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Build release\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      mode: "detached",
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(fileSystem.readText(taskFile)).toBe("- [ ] Build release\n");
+    expect(vi.mocked(dependencies.taskVerification.verify)).not.toHaveBeenCalled();
+    expect(vi.mocked(dependencies.artifactStore.finalize)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "detached", preserve: true }),
+    );
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Detached mode"))).toBe(true);
+  });
+});
+
 describe("run-task on-complete hook behavior", () => {
   it("runs on-complete hook with task metadata after successful completion", async () => {
     const cwd = "/workspace";
@@ -536,6 +644,21 @@ function createInlineTask(file: string, text: string): Task {
     file,
     isInlineCli: true,
     cliCommand: text.replace(/^cli:\s*/i, ""),
+    depth: 0,
+  };
+}
+
+function createTask(file: string, text: string): Task {
+  return {
+    text,
+    checked: false,
+    index: 0,
+    line: 1,
+    column: 1,
+    offsetStart: 0,
+    offsetEnd: text.length,
+    file,
+    isInlineCli: false,
     depth: 0,
   };
 }

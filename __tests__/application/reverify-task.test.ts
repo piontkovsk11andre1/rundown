@@ -415,6 +415,42 @@ describe("reverify-task", () => {
     expect(events.some((event) => event.kind === "error" && event.message.includes("regenerate runtime artifacts"))).toBe(true);
   });
 
+  it("returns 1 when no worker command can be resolved", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "roadmap.md");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [x] Build release\n",
+    });
+    const completedRun = {
+      ...createRunMetadata({
+        runId: "run-no-worker",
+        status: "completed",
+        task: {
+          text: "Build release",
+          file: taskFile,
+          line: 1,
+          index: 0,
+          source: "roadmap.md",
+        },
+      }),
+      workerCommand: undefined,
+    } as ArtifactRunMetadata;
+
+    const { dependencies, events, artifactStore, taskVerification } = createDependencies({
+      cwd,
+      fileSystem,
+      runs: [completedRun],
+    });
+
+    const reverifyTask = createReverifyTask(dependencies);
+    const code = await reverifyTask(createOptions({ runId: "run-no-worker" }));
+
+    expect(code).toBe(1);
+    expect(vi.mocked(artifactStore.createContext)).not.toHaveBeenCalled();
+    expect(vi.mocked(taskVerification.verify)).not.toHaveBeenCalled();
+    expect(events.some((event) => event.kind === "error" && event.message.includes("No worker command specified"))).toBe(true);
+  });
+
   it("returns 3 when historical task metadata cannot be resolved in markdown", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "roadmap.md");
@@ -536,6 +572,114 @@ describe("reverify-task", () => {
     expect(vi.mocked(taskVerification.verify)).toHaveBeenCalledWith(expect.objectContaining({
       task: expect.objectContaining({ text: "Build release", index: 0, line: 3 }),
     }));
+  });
+
+  it("resolves relative task file metadata and falls back to a unique text match", async () => {
+    const cwd = "/workspace";
+    const absoluteTaskFile = path.resolve(cwd, "roadmap.md");
+    const fileSystem = createInMemoryFileSystem({
+      [absoluteTaskFile]: "# Roadmap\n- [x] Ship release\n",
+    });
+    const completedRun = createRunMetadata({
+      runId: "run-relative-path",
+      status: "completed",
+      task: {
+        text: "Ship release",
+        file: "roadmap.md",
+        line: 99,
+        index: 99,
+        source: "roadmap.md",
+      },
+    });
+
+    const { dependencies, taskVerification } = createDependencies({
+      cwd,
+      fileSystem,
+      runs: [completedRun],
+    });
+    vi.mocked(taskVerification.verify).mockResolvedValue(true);
+
+    const reverifyTask = createReverifyTask(dependencies);
+    const code = await reverifyTask(createOptions({ runId: "run-relative-path", workerCommand: ["opencode", "run"] }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(taskVerification.verify)).toHaveBeenCalledWith(expect.objectContaining({
+      task: expect.objectContaining({ text: "Ship release", file: absoluteTaskFile, line: 2 }),
+    }));
+  });
+
+  it("accepts previously reverified runs and reports preserved artifact paths", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "roadmap.md");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [x] Build release\n",
+    });
+    const completedRun = createRunMetadata({
+      runId: "run-reverified",
+      status: "reverify-completed",
+      task: {
+        text: "Build release",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "roadmap.md",
+      },
+    });
+
+    const { dependencies, events, artifactStore, taskVerification } = createDependencies({
+      cwd,
+      fileSystem,
+      runs: [completedRun],
+    });
+    vi.mocked(taskVerification.verify).mockResolvedValue(true);
+
+    const reverifyTask = createReverifyTask(dependencies);
+    const code = await reverifyTask(createOptions({
+      runId: "run-reverified",
+      keepArtifacts: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "reverify-completed", preserve: true }),
+    );
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Runtime artifacts saved at .rundown/runs/run-reverify."))).toBe(true);
+  });
+
+  it("finalizes reverify artifacts as failed when verification throws", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "roadmap.md");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [x] Build release\n",
+    });
+    const completedRun = createRunMetadata({
+      runId: "run-throws",
+      status: "completed",
+      task: {
+        text: "Build release",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "roadmap.md",
+      },
+    });
+
+    const { dependencies, artifactStore, taskVerification } = createDependencies({
+      cwd,
+      fileSystem,
+      runs: [completedRun],
+    });
+    vi.mocked(taskVerification.verify).mockRejectedValue(new Error("verification exploded"));
+
+    const reverifyTask = createReverifyTask(dependencies);
+
+    await expect(reverifyTask(createOptions({ runId: "run-throws", workerCommand: ["opencode", "run"] }))).rejects.toThrow("verification exploded");
+    expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "reverify-failed", preserve: false }),
+    );
   });
 });
 

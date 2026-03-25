@@ -85,6 +85,13 @@ A task is runnable only when it has **no unchecked descendants**.
 
 That means child tasks always run before their parent. This is what makes planning safe: once a task is decomposed into subtasks, the parent is blocked until those subtasks are completed.
 
+Nested checkbox contract:
+
+- A parent checkbox is treated as a separate task.
+- A parent task does not run until every descendant task is checked.
+- Child tasks therefore execute before the parent.
+- If you want a heading that only groups items, use a plain list bullet without a checkbox.
+
 ## Sorting
 
 Default sorting is `name-sort`, a human-friendly natural sort that works well for filenames such as:

@@ -125,6 +125,13 @@ rundown run roadmap.md --force-execute -- opencode run
 
 Use `rundown plan` to expand a high-level task into concrete subtasks before execution begins. Big goals become small, runnable steps.
 
+Nested checkbox contract:
+
+- A parent checkbox is a real task, not a passive container.
+- A parent task is blocked while any descendant checkbox remains unchecked.
+- A parent becomes runnable only after all descendants are checked.
+- Use a plain bullet (without a checkbox) for grouping-only headings.
+
 ### Execute
 
 The task context — the surrounding Markdown, the template, the file paths — gets rendered into a prompt and sent to your worker.

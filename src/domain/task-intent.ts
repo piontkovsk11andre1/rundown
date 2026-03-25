@@ -5,8 +5,8 @@ export interface TaskIntentDecision {
   reason: string;
 }
 
-const EXPLICIT_VERIFY_PREFIX = /^(?:\[(verify|confirm|validate|check)\]\s*|(verify|confirm|validate|check)\s*:)/i;
-const VERIFY_VERB = /\b(verify|confirm|validate|check|assert|ensure)\b/i;
+const EXPLICIT_VERIFY_PREFIX = /^(?:\[(verify|confirm|check)\]\s*|(verify|confirm|check)\s*:)/i;
+const VERIFY_VERB = /\b(verify|confirm|check|assert|ensure)\b/i;
 const IMPLEMENTATION_VERB = /\b(implement|add|create|build|refactor|fix|update|write|introduce|remove|rename)\b/i;
 
 export function classifyTaskIntent(taskText: string): TaskIntentDecision {

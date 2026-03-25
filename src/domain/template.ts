@@ -21,7 +21,7 @@ export interface TemplateVars {
   /** Full source file content. */
   source: string;
   /** Content of the validation sidecar file (available during correction). */
-  validationResult?: string;
+  verificationResult?: string;
   /** Command output from the previous run (if captured). */
   commandOutput?: string;
 }

@@ -9,7 +9,7 @@ import type {
   GitClient,
   ProcessRunner,
   TemplateLoader,
-  ValidationSidecar,
+  VerificationSidecar,
 } from "../../src/domain/ports/index.js";
 
 describe("run-task commit behavior", () => {
@@ -296,7 +296,7 @@ describe("run-task exit code behavior with completion side effects", () => {
       })),
     };
     const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient, processRunner });
-    dependencies.taskValidation.validate = vi.fn(async () => false);
+    dependencies.taskVerification.verify = vi.fn(async () => false);
 
     const runTask = createRunTask(dependencies);
 
@@ -324,7 +324,7 @@ function createDependencies(options: {
 }): { dependencies: RunTaskDependencies; events: ApplicationOutputEvent[] } {
   const events: ApplicationOutputEvent[] = [];
   const templateLoader: TemplateLoader = { load: vi.fn(() => null) };
-  const validationSidecar: ValidationSidecar = {
+  const verificationSidecar: VerificationSidecar = {
     filePath: vi.fn(() => ""),
     read: vi.fn(() => null),
     remove: vi.fn(),
@@ -372,21 +372,31 @@ function createDependencies(options: {
       runWorker: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
       executeInlineCli: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
     },
-    taskValidation: {
-      validate: vi.fn(async () => true),
+    taskVerification: {
+      verify: vi.fn(async () => true),
     },
-    taskCorrection: {
-      correct: vi.fn(async () => ({ valid: true, attempts: 0 })),
+    taskRepair: {
+      repair: vi.fn(async () => ({ valid: true, attempts: 0 })),
     },
     workingDirectory: {
       cwd: vi.fn(() => options.cwd),
     },
     fileSystem: options.fileSystem,
     templateLoader,
-    validationSidecar,
+    verificationSidecar,
     artifactStore,
     gitClient: options.gitClient,
     processRunner,
+    pathOperations: {
+      join: (...parts) => path.join(...parts),
+      resolve: (...parts) => path.resolve(...parts),
+      dirname: (filePath) => path.dirname(filePath),
+      relative: (from, to) => path.relative(from, to),
+      isAbsolute: (filePath) => path.isAbsolute(filePath),
+    },
+    templateVarsLoader: {
+      load: vi.fn(() => ({})),
+    },
     output: {
       emit: (event) => {
         events.push(event);

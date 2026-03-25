@@ -1,8 +1,8 @@
 import {
-  DEFAULT_CORRECT_TEMPLATE,
+  DEFAULT_REPAIR_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_TASK_TEMPLATE,
-  DEFAULT_VALIDATE_TEMPLATE,
+  DEFAULT_VERIFY_TEMPLATE,
   DEFAULT_VARS_FILE_CONTENT,
 } from "../domain/defaults.js";
 import type { FileSystem } from "../domain/ports/file-system.js";
@@ -37,8 +37,8 @@ export function createInitProject(
     };
 
     write("execute.md", DEFAULT_TASK_TEMPLATE);
-    write("verify.md", DEFAULT_VALIDATE_TEMPLATE);
-    write("repair.md", DEFAULT_CORRECT_TEMPLATE);
+    write("verify.md", DEFAULT_VERIFY_TEMPLATE);
+    write("repair.md", DEFAULT_REPAIR_TEMPLATE);
     write("plan.md", DEFAULT_PLAN_TEMPLATE);
     write("vars.json", DEFAULT_VARS_FILE_CONTENT);
 

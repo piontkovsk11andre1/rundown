@@ -41,7 +41,7 @@ Complete the task described above. Make the necessary changes to the project, bu
 - rundown is responsible for marking the task complete after validation succeeds.
 `;
 
-export const DEFAULT_VALIDATE_TEMPLATE = `\
+export const DEFAULT_VERIFY_TEMPLATE = `\
 ${DEFAULT_TEMPLATE_SHARED_PREFIX}
 
 ## Phase
@@ -62,7 +62,7 @@ Do not modify the source Markdown task file or change its checkbox state.
 Do not write anything else.
 `;
 
-export const DEFAULT_CORRECT_TEMPLATE = `\
+export const DEFAULT_REPAIR_TEMPLATE = `\
 ${DEFAULT_TEMPLATE_SHARED_PREFIX}
 
 ## Phase
@@ -71,7 +71,7 @@ Repair the selected task after a failed verification pass.
 
 ## Previous validation result
 
-{{validationResult}}
+{{verificationResult}}
 
 Please fix what is missing or incorrect. The validation above explains what still needs to be done.
 
@@ -112,3 +112,4 @@ Example output format:
 - [ ] Second concrete step
 - [ ] Third concrete step
 `;
+

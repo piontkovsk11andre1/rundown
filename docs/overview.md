@@ -2,7 +2,7 @@
 
 `rundown` is a Markdown-native task runtime.
 
-It scans Markdown, selects the next runnable unchecked task, builds a structured prompt from the document context, runs a worker command or inline CLI task, validates the result, optionally repairs it, and only then marks the checkbox complete.
+It scans Markdown, selects the next runnable unchecked task, builds a structured prompt from the document context, runs a worker command or inline CLI task, verifies the result, optionally repairs it, and only then marks the checkbox complete.
 
 ## Core model
 
@@ -34,14 +34,14 @@ The CLI layer implements that contract and decides how to render messages and er
 | `ProcessRunner` | `createCrossSpawnProcessRunner` |
 | `GitClient` | `createExecFileGitClient` |
 | `TemplateLoader` | `createFsTemplateLoader` |
-| `ValidationSidecar` | `createFsValidationSidecar` |
+| `VerificationSidecar` | `createFsVerificationSidecar` |
 | `ArtifactStore` | `createFsArtifactStore` |
 | `Clock` | `createSystemClock` |
 | `SourceResolverPort` | `createSourceResolverAdapter` |
 | `TaskSelectorPort` | `createTaskSelectorAdapter` |
 | `WorkerExecutorPort` | `createWorkerExecutorAdapter` |
-| `TaskValidationPort` | `createTaskValidationAdapter` |
-| `TaskCorrectionPort` | `createTaskCorrectionAdapter` |
+| `TaskVerificationPort` | `createTaskVerificationAdapter` |
+| `TaskRepairPort` | `createTaskRepairAdapter` |
 | `WorkingDirectoryPort` | `createWorkingDirectoryAdapter` |
 | `DirectoryOpenerPort` | `createDirectoryOpenerAdapter` |
 
@@ -211,7 +211,7 @@ If the sidecar file contains exactly `OK`, the task is considered complete.
 
 Anything else means the task stays unchecked.
 
-If verification fails and repair attempts are enabled, `rundown` renders the repair template, runs another pass, and validates again.
+If verification fails and repair attempts are enabled, `rundown` renders the repair template, runs another pass, and verifies again.
 
 ## Reverify historical tasks
 

@@ -73,8 +73,8 @@ describe("renderTemplate", () => {
     expect(result).toContain("Task: Do it");
   });
 
-  it("should include optional validationResult", () => {
-    const template = "Validation: {{validationResult}}";
+  it("should include optional verificationResult", () => {
+    const template = "Verification: {{verificationResult}}";
     const result = renderTemplate(template, {
       task: "",
       file: "",
@@ -82,9 +82,9 @@ describe("renderTemplate", () => {
       taskIndex: 0,
       taskLine: 1,
       source: "",
-      validationResult: "Missing tests",
+      verificationResult: "Missing tests",
     });
 
-    expect(result).toBe("Validation: Missing tests");
+    expect(result).toBe("Verification: Missing tests");
   });
 });

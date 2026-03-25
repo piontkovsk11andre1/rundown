@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { markChecked } from "../../src/domain/checkbox.js";
 
 describe("markChecked", () => {
-  it("should replace [ ] with [x] on the correct line", () => {
+  it("should replace [ ] with [x] on the target line", () => {
     const source = "# Title\n\n- [ ] First task\n- [ ] Second task\n";
     const task = { line: 3, file: "test.md" } as any;
 

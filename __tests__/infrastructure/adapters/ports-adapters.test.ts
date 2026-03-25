@@ -6,16 +6,18 @@ const {
   selectTaskByLocationMock,
   runWorkerMock,
   executeInlineCliMock,
-  validateMock,
-  correctMock,
+  verifyMock,
+  repairMock,
+  readVerificationFileMock,
 } = vi.hoisted(() => ({
   resolveSourcesMock: vi.fn(),
   selectNextTaskMock: vi.fn(),
   selectTaskByLocationMock: vi.fn(),
   runWorkerMock: vi.fn(),
   executeInlineCliMock: vi.fn(),
-  validateMock: vi.fn(),
-  correctMock: vi.fn(),
+  verifyMock: vi.fn(),
+  repairMock: vi.fn(),
+  readVerificationFileMock: vi.fn(() => "missing tests"),
 }));
 
 vi.mock("../../../src/infrastructure/sources.js", () => ({
@@ -35,19 +37,20 @@ vi.mock("../../../src/infrastructure/inline-cli.js", () => ({
   executeInlineCli: executeInlineCliMock,
 }));
 
-vi.mock("../../../src/infrastructure/validation.js", () => ({
-  validate: validateMock,
+vi.mock("../../../src/infrastructure/verification.js", () => ({
+  verify: verifyMock,
+  readVerificationFile: readVerificationFileMock,
 }));
 
-vi.mock("../../../src/infrastructure/correction.js", () => ({
-  correct: correctMock,
+vi.mock("../../../src/infrastructure/repair.js", () => ({
+  repair: repairMock,
 }));
 
 import { createSourceResolverAdapter } from "../../../src/infrastructure/adapters/source-resolver-adapter.js";
 import { createTaskSelectorAdapter } from "../../../src/infrastructure/adapters/task-selector-adapter.js";
 import { createWorkerExecutorAdapter } from "../../../src/infrastructure/adapters/worker-executor-adapter.js";
-import { createTaskValidationAdapter } from "../../../src/infrastructure/adapters/task-validation-adapter.js";
-import { createTaskCorrectionAdapter } from "../../../src/infrastructure/adapters/task-correction-adapter.js";
+import { createTaskVerificationAdapter } from "../../../src/infrastructure/adapters/task-verification-adapter.js";
+import { createTaskRepairAdapter } from "../../../src/infrastructure/adapters/task-repair-adapter.js";
 import { createWorkingDirectoryAdapter } from "../../../src/infrastructure/adapters/working-directory-adapter.js";
 
 describe("infrastructure adapters", () => {
@@ -138,10 +141,10 @@ describe("infrastructure adapters", () => {
     expect(result).toEqual({ exitCode: 0, stdout: "done", stderr: "" });
   });
 
-  it("task validation adapter delegates to validate", async () => {
-    validateMock.mockResolvedValue(true);
+  it("task verification adapter delegates to verify", async () => {
+    verifyMock.mockResolvedValue(true);
 
-    const adapter = createTaskValidationAdapter();
+    const adapter = createTaskVerificationAdapter();
     const task = {
       text: "Task",
       checked: false,
@@ -156,7 +159,7 @@ describe("infrastructure adapters", () => {
     };
     const templateVars = { owner: "cli" };
     const artifactContext = { runId: "run-3" };
-    const result = await adapter.validate({
+    const result = await adapter.verify({
       task,
       source: "tasks.md",
       contextBefore: "# Tasks",
@@ -169,8 +172,8 @@ describe("infrastructure adapters", () => {
       artifactContext,
     });
 
-    expect(validateMock).toHaveBeenCalledTimes(1);
-    expect(validateMock).toHaveBeenCalledWith({
+    expect(verifyMock).toHaveBeenCalledTimes(1);
+    expect(verifyMock).toHaveBeenCalledWith({
       task,
       source: "tasks.md",
       contextBefore: "# Tasks",
@@ -185,10 +188,10 @@ describe("infrastructure adapters", () => {
     expect(result).toBe(true);
   });
 
-  it("task correction adapter delegates to correct", async () => {
-    correctMock.mockResolvedValue({ valid: true, attempts: 1 });
+  it("task repair adapter delegates to repair", async () => {
+    repairMock.mockResolvedValue({ valid: true, attempts: 1 });
 
-    const adapter = createTaskCorrectionAdapter();
+    const adapter = createTaskRepairAdapter();
     const task = {
       text: "Task",
       checked: false,
@@ -203,12 +206,12 @@ describe("infrastructure adapters", () => {
     };
     const templateVars = { owner: "cli" };
     const artifactContext = { runId: "run-4" };
-    const result = await adapter.correct({
+    const result = await adapter.repair({
       task,
       source: "tasks.md",
       contextBefore: "# Tasks",
-      correctTemplate: "repair",
-      validateTemplate: "verify",
+      repairTemplate: "repair",
+      verifyTemplate: "verify",
       command: ["worker", "run"],
       maxRetries: 2,
       mode: "wait",
@@ -218,13 +221,13 @@ describe("infrastructure adapters", () => {
       artifactContext,
     });
 
-    expect(correctMock).toHaveBeenCalledTimes(1);
-    expect(correctMock).toHaveBeenCalledWith({
+    expect(repairMock).toHaveBeenCalledTimes(1);
+    expect(repairMock).toHaveBeenCalledWith({
       task,
       source: "tasks.md",
       contextBefore: "# Tasks",
-      correctTemplate: "repair",
-      validateTemplate: "verify",
+      repairTemplate: "repair",
+      verifyTemplate: "verify",
       command: ["worker", "run"],
       maxRetries: 2,
       mode: "wait",

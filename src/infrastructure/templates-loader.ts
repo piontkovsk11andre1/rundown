@@ -7,16 +7,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  DEFAULT_REPAIR_TEMPLATE,
   DEFAULT_TASK_TEMPLATE,
-  DEFAULT_VALIDATE_TEMPLATE,
-  DEFAULT_CORRECT_TEMPLATE,
+  DEFAULT_VERIFY_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
 } from "../domain/defaults.js";
 
 export interface ProjectTemplates {
   task: string;
-  validate: string;
-  correct: string;
+  verify: string;
+  repair: string;
   plan: string;
 }
 
@@ -36,8 +36,8 @@ export function loadProjectTemplates(cwd: string = process.cwd()): ProjectTempla
 
   return {
     task: loadFile(path.join(dir, "execute.md")) ?? DEFAULT_TASK_TEMPLATE,
-    validate: loadFile(path.join(dir, "verify.md")) ?? DEFAULT_VALIDATE_TEMPLATE,
-    correct: loadFile(path.join(dir, "repair.md")) ?? DEFAULT_CORRECT_TEMPLATE,
+    verify: loadFile(path.join(dir, "verify.md")) ?? DEFAULT_VERIFY_TEMPLATE,
+    repair: loadFile(path.join(dir, "repair.md")) ?? DEFAULT_REPAIR_TEMPLATE,
     plan: loadFile(path.join(dir, "plan.md")) ?? DEFAULT_PLAN_TEMPLATE,
   };
 }

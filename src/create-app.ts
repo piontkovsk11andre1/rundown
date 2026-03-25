@@ -16,12 +16,14 @@ import type {
   FileSystem,
   GitClient,
   ProcessRunner,
+  PathOperationsPort,
   SourceResolverPort,
-  TaskCorrectionPort,
+  TaskRepairPort,
   TaskSelectorPort,
-  TaskValidationPort,
+  TaskVerificationPort,
   TemplateLoader,
-  ValidationSidecar,
+  TemplateVarsLoaderPort,
+  VerificationSidecar,
   WorkerExecutorPort,
   WorkingDirectoryPort,
 } from "./domain/ports/index.js";
@@ -31,13 +33,15 @@ import {
   createExecFileGitClient,
   createFsArtifactStore,
   createFsTemplateLoader,
-  createFsValidationSidecar,
+  createFsVerificationSidecar,
+  createFsTemplateVarsLoaderAdapter,
   createNodeFileSystem,
+  createNodePathOperationsAdapter,
   createSourceResolverAdapter,
   createSystemClock,
-  createTaskCorrectionAdapter,
+  createTaskRepairAdapter,
   createTaskSelectorAdapter,
-  createTaskValidationAdapter,
+  createTaskVerificationAdapter,
   createWorkerExecutorAdapter,
   createWorkingDirectoryAdapter,
 } from "./infrastructure/adapters/index.js";
@@ -61,16 +65,18 @@ export interface AppPorts {
   processRunner: ProcessRunner;
   gitClient: GitClient;
   templateLoader: TemplateLoader;
-  validationSidecar: ValidationSidecar;
+  verificationSidecar: VerificationSidecar;
   artifactStore: ArtifactStore;
   clock: Clock;
   directoryOpener: DirectoryOpenerPort;
   sourceResolver: SourceResolverPort;
   taskSelector: TaskSelectorPort;
   workerExecutor: WorkerExecutorPort;
-  taskValidation: TaskValidationPort;
-  taskCorrection: TaskCorrectionPort;
+  taskVerification: TaskVerificationPort;
+  taskRepair: TaskRepairPort;
   workingDirectory: WorkingDirectoryPort;
+  pathOperations: PathOperationsPort;
+  templateVarsLoader: TemplateVarsLoaderPort;
   output: ApplicationOutputPort;
 }
 
@@ -85,16 +91,18 @@ function createAppPorts(overrides: Partial<AppPorts> = {}): AppPorts {
     processRunner: overrides.processRunner ?? createCrossSpawnProcessRunner(),
     gitClient: overrides.gitClient ?? createExecFileGitClient(),
     templateLoader: overrides.templateLoader ?? createFsTemplateLoader(),
-    validationSidecar: overrides.validationSidecar ?? createFsValidationSidecar(),
+    verificationSidecar: overrides.verificationSidecar ?? createFsVerificationSidecar(),
     artifactStore: overrides.artifactStore ?? createFsArtifactStore(),
     clock: overrides.clock ?? createSystemClock(),
     directoryOpener: overrides.directoryOpener ?? createDirectoryOpenerAdapter(),
     sourceResolver: overrides.sourceResolver ?? createSourceResolverAdapter(),
     taskSelector: overrides.taskSelector ?? createTaskSelectorAdapter(),
     workerExecutor: overrides.workerExecutor ?? createWorkerExecutorAdapter(),
-    taskValidation: overrides.taskValidation ?? createTaskValidationAdapter(),
-    taskCorrection: overrides.taskCorrection ?? createTaskCorrectionAdapter(),
+    taskVerification: overrides.taskVerification ?? createTaskVerificationAdapter(),
+    taskRepair: overrides.taskRepair ?? createTaskRepairAdapter(),
     workingDirectory: overrides.workingDirectory ?? createWorkingDirectoryAdapter(),
+    pathOperations: overrides.pathOperations ?? createNodePathOperationsAdapter(),
+    templateVarsLoader: overrides.templateVarsLoader ?? createFsTemplateVarsLoaderAdapter(),
     output: overrides.output ?? createNoopOutputPort(),
   };
 }
@@ -111,25 +119,28 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       sourceResolver: ports.sourceResolver,
       taskSelector: ports.taskSelector,
       workerExecutor: ports.workerExecutor,
-      taskValidation: ports.taskValidation,
-      taskCorrection: ports.taskCorrection,
+      taskVerification: ports.taskVerification,
+      taskRepair: ports.taskRepair,
       workingDirectory: ports.workingDirectory,
       fileSystem: ports.fileSystem,
       templateLoader: ports.templateLoader,
-      validationSidecar: ports.validationSidecar,
+      verificationSidecar: ports.verificationSidecar,
       artifactStore: ports.artifactStore,
       gitClient: ports.gitClient,
       processRunner: ports.processRunner,
+      pathOperations: ports.pathOperations,
+      templateVarsLoader: ports.templateVarsLoader,
       output: ports.output,
     }),
     reverifyTask: (ports) => createReverifyTask({
       artifactStore: ports.artifactStore,
-      taskValidation: ports.taskValidation,
-      taskCorrection: ports.taskCorrection,
-      validationSidecar: ports.validationSidecar,
+      taskVerification: ports.taskVerification,
+      taskRepair: ports.taskRepair,
+      verificationSidecar: ports.verificationSidecar,
       workingDirectory: ports.workingDirectory,
       fileSystem: ports.fileSystem,
       templateLoader: ports.templateLoader,
+      pathOperations: ports.pathOperations,
       output: ports.output,
     }),
     planTask: (ports) => createPlanTask({
@@ -139,6 +150,8 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       workingDirectory: ports.workingDirectory,
       fileSystem: ports.fileSystem,
       templateLoader: ports.templateLoader,
+      pathOperations: ports.pathOperations,
+      templateVarsLoader: ports.templateVarsLoader,
       artifactStore: ports.artifactStore,
       output: ports.output,
     }),

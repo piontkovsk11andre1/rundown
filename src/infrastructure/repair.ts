@@ -1,22 +1,22 @@
 /**
- * Auto-correction loop.
+ * Auto-repair loop.
  *
- * Runs the corrector, then re-validates. Repeats up to a maximum number of attempts.
+ * Runs the repair worker, then re-verifies. Repeats up to a maximum number of attempts.
  */
 
 import type { Task } from "../domain/parser.js";
 import { renderTemplate, type TemplateVars } from "../domain/template.js";
 import type { ExtraTemplateVars } from "../domain/template-vars.js";
 import { runWorker, type RunnerMode, type PromptTransport } from "./runner.js";
-import { validate, readValidationFile } from "./validation.js";
+import { verify, readVerificationFile } from "./verification.js";
 import type { RuntimeArtifactsContext } from "./runtime-artifacts.js";
 
-export interface CorrectionOptions {
+export interface RepairOptions {
   task: Task;
   source: string;
   contextBefore: string;
-  correctTemplate: string;
-  validateTemplate: string;
+  repairTemplate: string;
+  verifyTemplate: string;
   command: string[];
   maxRetries: number;
   mode?: RunnerMode;
@@ -26,30 +26,30 @@ export interface CorrectionOptions {
   artifactContext?: RuntimeArtifactsContext;
 }
 
-export interface CorrectionResult {
-  /** Whether validation eventually passed. */
+export interface RepairResult {
+  /** Whether verification eventually passed. */
   valid: boolean;
   /** How many correction attempts were made. */
   attempts: number;
 }
 
 /**
- * Run the correction loop.
+ * Run the repair loop.
  *
  * For each attempt:
- * 1. Render the correction template (including previous validation result).
- * 2. Run the corrector command.
- * 3. Re-validate.
+ * 1. Render the repair template (including previous verification result).
+ * 2. Run the repair command.
+ * 3. Re-verify.
  * 4. If valid, stop. Otherwise, retry up to maxRetries.
  */
-export async function correct(options: CorrectionOptions): Promise<CorrectionResult> {
+export async function repair(options: RepairOptions): Promise<RepairResult> {
   let attempts = 0;
 
   for (let i = 0; i < options.maxRetries; i++) {
     attempts++;
 
-    // Read current validation failure reason
-    const validationResult = readValidationFile(options.task) ?? "Validation failed (no details).";
+    // Read current verification failure reason
+    const verificationResult = readVerificationFile(options.task) ?? "Verification failed (no details).";
 
     const vars: TemplateVars = {
       ...options.templateVars,
@@ -59,12 +59,12 @@ export async function correct(options: CorrectionOptions): Promise<CorrectionRes
       taskIndex: options.task.index,
       taskLine: options.task.line,
       source: options.source,
-      validationResult,
+      verificationResult,
     };
 
-    const prompt = renderTemplate(options.correctTemplate, vars);
+    const prompt = renderTemplate(options.repairTemplate, vars);
 
-    // Run corrector
+    // Run repair worker
     await runWorker({
       command: options.command,
       prompt,
@@ -76,12 +76,12 @@ export async function correct(options: CorrectionOptions): Promise<CorrectionRes
       artifactExtra: { attempt: attempts },
     });
 
-    // Re-validate
-    const valid = await validate({
+    // Re-verify
+    const valid = await verify({
       task: options.task,
       source: options.source,
       contextBefore: options.contextBefore,
-      template: options.validateTemplate,
+      template: options.verifyTemplate,
       command: options.command,
       mode: options.mode,
       transport: options.transport,

@@ -2,12 +2,14 @@ import type { Task } from "../parser.js";
 import type { ProcessRunMode } from "./process-runner.js";
 import type { PromptTransport } from "./worker-executor-port.js";
 
-export interface TaskValidationOptions {
+export interface TaskRepairOptions {
   task: Task;
   source: string;
   contextBefore: string;
-  template: string;
+  repairTemplate: string;
+  verifyTemplate: string;
   command: string[];
+  maxRetries: number;
   mode?: ProcessRunMode;
   transport?: PromptTransport;
   cwd?: string;
@@ -15,6 +17,11 @@ export interface TaskValidationOptions {
   artifactContext?: unknown;
 }
 
-export interface TaskValidationPort {
-  validate(options: TaskValidationOptions): Promise<boolean>;
+export interface TaskRepairResult {
+  valid: boolean;
+  attempts: number;
+}
+
+export interface TaskRepairPort {
+  repair(options: TaskRepairOptions): Promise<TaskRepairResult>;
 }

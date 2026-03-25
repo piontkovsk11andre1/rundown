@@ -4,7 +4,6 @@
  * Provides sorting strategies for resolved Markdown file paths.
  */
 
-import path from "node:path";
 
 export type SortMode = "name-sort" | "none" | "old-first" | "new-first";
 
@@ -30,7 +29,7 @@ export function sortFiles(
       return files;
 
     case "name-sort":
-      return [...files].sort((a, b) => naturalCompare(path.basename(a), path.basename(b)));
+      return [...files].sort((a, b) => naturalCompare(fileName(a), fileName(b)));
 
     case "old-first":
       return [...files].sort((a, b) => getBirthtime(a, options) - getBirthtime(b, options));
@@ -92,4 +91,9 @@ function tokenize(s: string): (string | number)[] {
 function getBirthtime(filePath: string, options: SortFilesOptions): number {
   if (!options.getBirthtimeMs) return 0;
   return options.getBirthtimeMs(filePath);
+}
+
+function fileName(filePath: string): string {
+  const parts = filePath.split(/[\\/]/);
+  return parts[parts.length - 1] ?? filePath;
 }

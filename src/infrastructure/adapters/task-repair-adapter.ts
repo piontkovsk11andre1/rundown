@@ -1,16 +1,16 @@
 import type {
-  TaskCorrectionOptions,
-  TaskCorrectionPort,
-  TaskCorrectionResult,
-} from "../../domain/ports/task-correction-port.js";
+  TaskRepairOptions,
+  TaskRepairPort,
+  TaskRepairResult,
+} from "../../domain/ports/task-repair-port.js";
 import type { ExtraTemplateVars } from "../../domain/template-vars.js";
 import type { RuntimeArtifactsContext } from "../runtime-artifacts.js";
-import { correct } from "../correction.js";
+import { repair } from "../repair.js";
 
-export function createTaskCorrectionAdapter(): TaskCorrectionPort {
+export function createTaskRepairAdapter(): TaskRepairPort {
   return {
-    correct(options: TaskCorrectionOptions): Promise<TaskCorrectionResult> {
-      return correct({
+    repair(options: TaskRepairOptions): Promise<TaskRepairResult> {
+      return repair({
         ...options,
         templateVars: options.templateVars as ExtraTemplateVars | undefined,
         artifactContext: options.artifactContext as RuntimeArtifactsContext | undefined,

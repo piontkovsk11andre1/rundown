@@ -2,7 +2,7 @@ export type { FileSystem, FileSystemDirent, FileSystemStat } from "./file-system
 export type { ProcessRunner, ProcessRunOptions, ProcessRunResult, ProcessRunMode } from "./process-runner.js";
 export type { GitClient } from "./git-client.js";
 export type { TemplateLoader } from "./template-loader.js";
-export type { ValidationSidecar } from "./validation-sidecar.js";
+export type { VerificationSidecar } from "./verification-sidecar.js";
 export type {
   ArtifactStore,
   ArtifactStoreStatus,
@@ -23,11 +23,13 @@ export type {
   InlineCliExecutionOptions,
   WorkerExecutorPort,
 } from "./worker-executor-port.js";
-export type { TaskValidationOptions, TaskValidationPort } from "./task-validation-port.js";
+export type { TaskVerificationOptions, TaskVerificationPort } from "./task-verification-port.js";
 export type {
-  TaskCorrectionOptions,
-  TaskCorrectionResult,
-  TaskCorrectionPort,
-} from "./task-correction-port.js";
+  TaskRepairOptions,
+  TaskRepairResult,
+  TaskRepairPort,
+} from "./task-repair-port.js";
 export type { WorkingDirectoryPort } from "./working-directory-port.js";
 export type { DirectoryOpenerPort } from "./directory-opener-port.js";
+export type { PathOperationsPort } from "./path-operations-port.js";
+export type { TemplateVarsLoaderPort } from "./template-vars-loader-port.js";

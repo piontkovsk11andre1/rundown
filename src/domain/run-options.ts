@@ -1,36 +1,36 @@
 export interface RunBehaviorInput {
-  validate: boolean;
-  onlyValidate: boolean;
-  noCorrect: boolean;
+  verify: boolean;
+  onlyVerify: boolean;
+  noRepair: boolean;
   repairAttempts: number;
 }
 
 export interface RunBehavior {
-  shouldValidate: boolean;
-  onlyValidate: boolean;
-  allowCorrection: boolean;
+  shouldVerify: boolean;
+  onlyVerify: boolean;
+  allowRepair: boolean;
   maxRepairAttempts: number;
 }
 
 export interface WorkerRequirementInput {
   workerCommand: string[];
   isInlineCli: boolean;
-  shouldValidate: boolean;
-  onlyValidate: boolean;
+  shouldVerify: boolean;
+  onlyVerify: boolean;
 }
 
 export function resolveRunBehavior(input: RunBehaviorInput): RunBehavior {
   const maxRepairAttempts = Number.isFinite(input.repairAttempts) && input.repairAttempts > 0
     ? Math.floor(input.repairAttempts)
     : 0;
-  const onlyValidate = input.onlyValidate;
-  const shouldValidate = input.validate || onlyValidate;
-  const allowCorrection = !input.noCorrect && maxRepairAttempts > 0;
+  const onlyVerify = input.onlyVerify;
+  const shouldVerify = input.verify || onlyVerify;
+  const allowRepair = !input.noRepair && maxRepairAttempts > 0;
 
   return {
-    shouldValidate,
-    onlyValidate,
-    allowCorrection,
+    shouldVerify,
+    onlyVerify,
+    allowRepair,
     maxRepairAttempts,
   };
 }
@@ -40,7 +40,7 @@ export function requiresWorkerCommand(input: WorkerRequirementInput): boolean {
     return false;
   }
 
-  if (input.onlyValidate) {
+  if (input.onlyVerify) {
     return true;
   }
 
@@ -48,5 +48,5 @@ export function requiresWorkerCommand(input: WorkerRequirementInput): boolean {
     return true;
   }
 
-  return input.shouldValidate;
+  return input.shouldVerify;
 }

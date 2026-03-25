@@ -2,44 +2,44 @@ import { describe, expect, it } from "vitest";
 import { requiresWorkerCommand, resolveRunBehavior } from "../../src/domain/run-options.js";
 
 describe("resolveRunBehavior", () => {
-  it("implies validation for only-validate mode", () => {
+  it("implies verification for only-verify mode", () => {
     expect(resolveRunBehavior({
-      validate: false,
-      onlyValidate: true,
-      noCorrect: false,
+      verify: false,
+      onlyVerify: true,
+      noRepair: false,
       repairAttempts: 0,
     })).toEqual({
-      shouldValidate: true,
-      onlyValidate: true,
-      allowCorrection: false,
+      shouldVerify: true,
+      onlyVerify: true,
+      allowRepair: false,
       maxRepairAttempts: 0,
     });
   });
 
-  it("disables correction when no-correct is set", () => {
+  it("disables repair when no-repair is set", () => {
     expect(resolveRunBehavior({
-      validate: true,
-      onlyValidate: false,
-      noCorrect: true,
+      verify: true,
+      onlyVerify: false,
+      noRepair: true,
       repairAttempts: 3,
     })).toEqual({
-      shouldValidate: true,
-      onlyValidate: false,
-      allowCorrection: false,
+      shouldVerify: true,
+      onlyVerify: false,
+      allowRepair: false,
       maxRepairAttempts: 3,
     });
   });
 
-  it("enables correction when repair attempts are positive and no-correct is false", () => {
+  it("enables repair when repair attempts are positive and no-repair is false", () => {
     expect(resolveRunBehavior({
-      validate: true,
-      onlyValidate: false,
-      noCorrect: false,
+      verify: true,
+      onlyVerify: false,
+      noRepair: false,
       repairAttempts: 2,
     })).toEqual({
-      shouldValidate: true,
-      onlyValidate: false,
-      allowCorrection: true,
+      shouldVerify: true,
+      onlyVerify: false,
+      allowRepair: true,
       maxRepairAttempts: 2,
     });
   });
@@ -50,8 +50,8 @@ describe("requiresWorkerCommand", () => {
     expect(requiresWorkerCommand({
       workerCommand: [],
       isInlineCli: false,
-      shouldValidate: false,
-      onlyValidate: false,
+      shouldVerify: false,
+      onlyVerify: false,
     })).toBe(true);
   });
 
@@ -59,17 +59,17 @@ describe("requiresWorkerCommand", () => {
     expect(requiresWorkerCommand({
       workerCommand: [],
       isInlineCli: true,
-      shouldValidate: false,
-      onlyValidate: false,
+      shouldVerify: false,
+      onlyVerify: false,
     })).toBe(false);
   });
 
-  it("requires a worker for validate-only mode", () => {
+  it("requires a worker for verify-only mode", () => {
     expect(requiresWorkerCommand({
       workerCommand: [],
       isInlineCli: true,
-      shouldValidate: true,
-      onlyValidate: true,
+      shouldVerify: true,
+      onlyVerify: true,
     })).toBe(true);
   });
 
@@ -77,8 +77,8 @@ describe("requiresWorkerCommand", () => {
     expect(requiresWorkerCommand({
       workerCommand: ["opencode", "run"],
       isInlineCli: false,
-      shouldValidate: true,
-      onlyValidate: true,
+      shouldVerify: true,
+      onlyVerify: true,
     })).toBe(false);
   });
 });

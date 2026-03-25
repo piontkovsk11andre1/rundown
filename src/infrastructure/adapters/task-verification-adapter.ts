@@ -1,15 +1,15 @@
 import type {
-  TaskValidationOptions,
-  TaskValidationPort,
-} from "../../domain/ports/task-validation-port.js";
+  TaskVerificationOptions,
+  TaskVerificationPort,
+} from "../../domain/ports/task-verification-port.js";
 import type { ExtraTemplateVars } from "../../domain/template-vars.js";
 import type { RuntimeArtifactsContext } from "../runtime-artifacts.js";
-import { validate } from "../validation.js";
+import { verify } from "../verification.js";
 
-export function createTaskValidationAdapter(): TaskValidationPort {
+export function createTaskVerificationAdapter(): TaskVerificationPort {
   return {
-    validate(options: TaskValidationOptions) {
-      return validate({
+    verify(options: TaskVerificationOptions) {
+      return verify({
         ...options,
         templateVars: options.templateVars as ExtraTemplateVars | undefined,
         artifactContext: options.artifactContext as RuntimeArtifactsContext | undefined,

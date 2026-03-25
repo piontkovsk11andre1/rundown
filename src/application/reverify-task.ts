@@ -1,7 +1,6 @@
-import path from "node:path";
 import {
-  DEFAULT_CORRECT_TEMPLATE,
-  DEFAULT_VALIDATE_TEMPLATE,
+  DEFAULT_REPAIR_TEMPLATE,
+  DEFAULT_VERIFY_TEMPLATE,
 } from "../domain/defaults.js";
 import { type Task, parseTasks } from "../domain/parser.js";
 import { resolveRunBehavior } from "../domain/run-options.js";
@@ -12,18 +11,19 @@ import type {
   ArtifactRunMetadata,
   ArtifactStore,
   FileSystem,
+  PathOperationsPort,
   PromptTransport,
-  TaskCorrectionPort,
-  TaskValidationPort,
+  TaskRepairPort,
+  TaskVerificationPort,
   TemplateLoader,
-  ValidationSidecar,
+  VerificationSidecar,
   WorkingDirectoryPort,
 } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
 interface ReverifyTemplates {
-  validate: string;
-  correct: string;
+  verify: string;
+  repair: string;
 }
 
 interface RuntimeTaskMetadata {
@@ -42,16 +42,17 @@ interface ResolvedTaskContext {
 
 interface ReverifyPromptContext {
   vars: TemplateVars;
-  validationPrompt: string;
+  verificationPrompt: string;
 }
 
 export interface ReverifyTaskDependencies {
   artifactStore: ArtifactStore;
-  taskValidation: TaskValidationPort;
-  taskCorrection: TaskCorrectionPort;
-  validationSidecar: ValidationSidecar;
+  taskVerification: TaskVerificationPort;
+  taskRepair: TaskRepairPort;
+  verificationSidecar: VerificationSidecar;
   workingDirectory: WorkingDirectoryPort;
   fileSystem: FileSystem;
+  pathOperations: PathOperationsPort;
   templateLoader: TemplateLoader;
   output: ApplicationOutputPort;
 }
@@ -128,7 +129,12 @@ export function createReverifyTask(
       return 3;
     }
 
-    const taskContext = resolveTaskContextFromMetadata(selectedRun.task, cwd, dependencies.fileSystem);
+    const taskContext = resolveTaskContextFromMetadata(
+      selectedRun.task,
+      cwd,
+      dependencies.fileSystem,
+      dependencies.pathOperations,
+    );
     if (!taskContext) {
       emit({
         kind: "error",
@@ -139,11 +145,11 @@ export function createReverifyTask(
 
     emit({ kind: "info", message: "Re-verify task: " + formatTaskLabel(taskContext.task) });
 
-    const templates = loadProjectTemplates(cwd, dependencies.templateLoader);
-    const promptContext = buildReverifyPromptContext(taskContext, templates.validate);
+    const templates = loadProjectTemplates(cwd, dependencies.templateLoader, dependencies.pathOperations);
+    const promptContext = buildReverifyPromptContext(taskContext, templates.verify);
 
     if (printPrompt) {
-      emit({ kind: "text", text: promptContext.validationPrompt });
+      emit({ kind: "text", text: promptContext.verificationPrompt });
       return 0;
     }
 
@@ -153,7 +159,7 @@ export function createReverifyTask(
 
     if (dryRun) {
       emit({ kind: "info", message: "Dry run - would run verification with: " + effectiveWorkerCommand.join(" ") });
-      emit({ kind: "info", message: "Prompt length: " + promptContext.validationPrompt.length + " chars" });
+      emit({ kind: "info", message: "Prompt length: " + promptContext.verificationPrompt.length + " chars" });
       return 0;
     }
 
@@ -163,9 +169,9 @@ export function createReverifyTask(
     }
 
     const runBehavior = resolveRunBehavior({
-      validate: true,
-      onlyValidate: true,
-      noCorrect: noRepair,
+      verify: true,
+      onlyVerify: true,
+      noRepair: noRepair,
       repairAttempts,
     });
 
@@ -197,20 +203,20 @@ export function createReverifyTask(
 
     try {
       const valid = await runVerifyRepairLoop({
-        taskValidation: dependencies.taskValidation,
-        taskCorrection: dependencies.taskCorrection,
-        validationSidecar: dependencies.validationSidecar,
+        taskVerification: dependencies.taskVerification,
+        taskRepair: dependencies.taskRepair,
+        verificationSidecar: dependencies.verificationSidecar,
         output: dependencies.output,
       }, {
         task: taskContext.task,
         source: taskContext.source,
         contextBefore: taskContext.contextBefore,
-        validateTemplate: templates.validate,
-        correctTemplate: templates.correct,
+        verifyTemplate: templates.verify,
+        repairTemplate: templates.repair,
         workerCommand: effectiveWorkerCommand,
         transport,
         maxRepairAttempts: runBehavior.maxRepairAttempts,
-        allowCorrection: runBehavior.allowCorrection,
+        allowRepair: runBehavior.allowRepair,
         templateVars: promptContext.vars,
         artifactContext,
       });
@@ -235,10 +241,14 @@ export function createReverifyTask(
   };
 }
 
-function loadProjectTemplates(cwd: string, templateLoader: TemplateLoader): ReverifyTemplates {
+function loadProjectTemplates(
+  cwd: string,
+  templateLoader: TemplateLoader,
+  pathOperations: PathOperationsPort,
+): ReverifyTemplates {
   return {
-    validate: templateLoader.load(path.join(cwd, ".rundown", "verify.md")) ?? DEFAULT_VALIDATE_TEMPLATE,
-    correct: templateLoader.load(path.join(cwd, ".rundown", "repair.md")) ?? DEFAULT_CORRECT_TEMPLATE,
+    verify: templateLoader.load(pathOperations.join(cwd, ".rundown", "verify.md")) ?? DEFAULT_VERIFY_TEMPLATE,
+    repair: templateLoader.load(pathOperations.join(cwd, ".rundown", "repair.md")) ?? DEFAULT_REPAIR_TEMPLATE,
   };
 }
 
@@ -294,10 +304,11 @@ function resolveTaskContextFromMetadata(
   metadata: RuntimeTaskMetadata,
   cwd: string,
   fileSystem: FileSystem,
+  pathOperations: PathOperationsPort,
 ): ResolvedTaskContext | null {
-  const resolvedFilePath = path.isAbsolute(metadata.file)
+  const resolvedFilePath = pathOperations.isAbsolute(metadata.file)
     ? metadata.file
-    : path.resolve(cwd, metadata.file);
+    : pathOperations.resolve(cwd, metadata.file);
 
   if (!fileSystem.exists(resolvedFilePath)) {
     return null;
@@ -349,7 +360,7 @@ function toRuntimeTaskMetadata(task: Task, source: string): RuntimeTaskMetadata 
 
 function buildReverifyPromptContext(
   taskContext: ResolvedTaskContext,
-  validateTemplate: string,
+  verifyTemplate: string,
 ): ReverifyPromptContext {
   const vars: TemplateVars = {
     task: taskContext.task.text,
@@ -362,7 +373,7 @@ function buildReverifyPromptContext(
 
   return {
     vars,
-    validationPrompt: renderTemplate(validateTemplate, vars),
+    verificationPrompt: renderTemplate(verifyTemplate, vars),
   };
 }
 

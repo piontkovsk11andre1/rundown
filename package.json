@@ -1,7 +1,7 @@
 {
   "name": "@p10i/rundown",
   "version": "1.0.0-rc.13",
-  "description": "A Markdown-native task runtime for agentic workflows. Execute, validate, and correct work directly from Markdown TODOs.",
+  "description": "A Markdown-native task runtime for agentic workflows. Execute, verify, and repair work directly from Markdown TODOs.",
   "type": "module",
   "bin": {
     "rundown": "dist/cli.js"

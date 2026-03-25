@@ -1,9 +1,8 @@
-import path from "node:path";
 import {
-  DEFAULT_CORRECT_TEMPLATE,
+  DEFAULT_REPAIR_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_TASK_TEMPLATE,
-  DEFAULT_VALIDATE_TEMPLATE,
+  DEFAULT_VERIFY_TEMPLATE,
 } from "../domain/defaults.js";
 import { markChecked } from "../domain/checkbox.js";
 import type { Task } from "../domain/parser.js";
@@ -18,20 +17,23 @@ import {
 } from "../domain/template-vars.js";
 import { runVerifyRepairLoop } from "./verify-repair-loop.js";
 import type {
+  ArtifactRunContext,
   ArtifactStoreStatus,
   ArtifactStore,
   FileSystem,
   GitClient,
+  PathOperationsPort,
   ProcessRunMode,
   ProcessRunner,
   PromptTransport as PortPromptTransport,
   SourceResolverPort,
-  TaskCorrectionPort,
+  TaskRepairPort,
   TaskSelectionResult as PortTaskSelectionResult,
   TaskSelectorPort,
-  TaskValidationPort,
+  TaskVerificationPort,
   TemplateLoader,
-  ValidationSidecar,
+  TemplateVarsLoaderPort,
+  VerificationSidecar,
   WorkerExecutorPort,
   WorkingDirectoryPort,
 } from "../domain/ports/index.js";
@@ -39,12 +41,12 @@ import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
 export type RunnerMode = ProcessRunMode;
 export type PromptTransport = PortPromptTransport;
-type ArtifactContext = any;
+type ArtifactContext = ArtifactRunContext;
 
 interface ProjectTemplates {
   task: string;
-  validate: string;
-  correct: string;
+  verify: string;
+  repair: string;
   plan: string;
 }
 
@@ -62,15 +64,17 @@ export interface RunTaskDependencies {
   sourceResolver: SourceResolverPort;
   taskSelector: TaskSelectorPort;
   workerExecutor: WorkerExecutorPort;
-  taskValidation: TaskValidationPort;
-  taskCorrection: TaskCorrectionPort;
+  taskVerification: TaskVerificationPort;
+  taskRepair: TaskRepairPort;
   workingDirectory: WorkingDirectoryPort;
   fileSystem: FileSystem;
   templateLoader: TemplateLoader;
-  validationSidecar: ValidationSidecar;
+  verificationSidecar: VerificationSidecar;
   artifactStore: ArtifactStore;
   gitClient: GitClient;
   processRunner: ProcessRunner;
+  pathOperations: PathOperationsPort;
+  templateVarsLoader: TemplateVarsLoaderPort;
   output: ApplicationOutputPort;
 }
 
@@ -123,19 +127,19 @@ export function createRunTask(
     } = options;
 
     const runBehavior = resolveRunBehavior({
-      validate: verify,
-      onlyValidate: onlyVerify,
-      noCorrect: noRepair,
+      verify: verify,
+      onlyVerify: onlyVerify,
+      noRepair: noRepair,
       repairAttempts,
     });
-    const configuredShouldValidate = runBehavior.shouldValidate;
-    const configuredOnlyValidate = runBehavior.onlyValidate;
-    const allowCorrection = runBehavior.allowCorrection;
+    const configuredShouldVerify = runBehavior.shouldVerify;
+    const configuredOnlyVerify = runBehavior.onlyVerify;
+    const allowRepair = runBehavior.allowRepair;
     const maxRepairAttempts = runBehavior.maxRepairAttempts;
 
     const varsFilePath = resolveTemplateVarsFilePath(varsFileOption);
     const fileTemplateVars = varsFilePath
-      ? loadTemplateVarsFileFromPorts(varsFilePath, dependencies.workingDirectory.cwd(), dependencies.fileSystem)
+      ? dependencies.templateVarsLoader.load(varsFilePath, dependencies.workingDirectory.cwd())
       : {};
     const cliTemplateVars = parseCliTemplateVars(cliTemplateVarArgs);
     const extraTemplateVars: ExtraTemplateVars = {
@@ -178,12 +182,12 @@ export function createRunTask(
       const automationCommand = getAutomationWorkerCommand(workerCommand, mode);
 
       const taskIntent = classifyTaskIntent(task.text);
-      const shouldUseVerifyOnly = configuredOnlyValidate
+      const shouldUseVerifyOnly = configuredOnlyVerify
         || (taskIntent.intent === "verify-only" && !forceExecute);
-      const shouldValidate = configuredShouldValidate || shouldUseVerifyOnly;
-      const onlyValidate = shouldUseVerifyOnly;
+      const shouldVerify = configuredShouldVerify || shouldUseVerifyOnly;
+      const onlyVerify = shouldUseVerifyOnly;
 
-      if (!configuredOnlyValidate && taskIntent.intent === "verify-only") {
+      if (!configuredOnlyVerify && taskIntent.intent === "verify-only") {
         if (forceExecute) {
           emit({ kind: "info", message: "Task classified as verify-only (" + taskIntent.reason + "), but --force-execute is enabled; running execution." });
         } else {
@@ -194,6 +198,7 @@ export function createRunTask(
       const templates = loadProjectTemplatesFromPorts(
         dependencies.workingDirectory.cwd(),
         dependencies.templateLoader,
+        dependencies.pathOperations,
       );
       const vars: TemplateVars = {
         ...extraTemplateVars,
@@ -206,32 +211,32 @@ export function createRunTask(
       };
 
       const prompt = renderTemplate(templates.task, vars);
-      const validationPrompt = shouldValidate
-        ? renderTemplate(templates.validate, vars)
+      const verificationPrompt = shouldVerify
+        ? renderTemplate(templates.verify, vars)
         : "";
 
-      if (printPrompt && onlyValidate) {
-        emit({ kind: "text", text: validationPrompt });
+      if (printPrompt && onlyVerify) {
+        emit({ kind: "text", text: verificationPrompt });
         return 0;
       }
 
-      if (dryRun && onlyValidate) {
+      if (dryRun && onlyVerify) {
         emit({ kind: "info", message: "Dry run — would run verification with: " + automationCommand.join(" ") });
-        emit({ kind: "info", message: "Prompt length: " + validationPrompt.length + " chars" });
+        emit({ kind: "info", message: "Prompt length: " + verificationPrompt.length + " chars" });
         return 0;
       }
 
       if (requiresWorkerCommand({
         workerCommand,
         isInlineCli: task.isInlineCli,
-        shouldValidate,
-        onlyValidate,
+        shouldVerify,
+        onlyVerify,
       })) {
         emit({ kind: "error", message: "No worker command specified. Use --worker <command...> or -- <command>." });
         return 1;
       }
 
-      if (!onlyValidate && !task.isInlineCli) {
+      if (!onlyVerify && !task.isInlineCli) {
         if (printPrompt) {
           emit({ kind: "text", text: prompt });
           return 0;
@@ -244,13 +249,13 @@ export function createRunTask(
         }
       }
 
-      if (!onlyValidate && task.isInlineCli && printPrompt) {
+      if (!onlyVerify && task.isInlineCli && printPrompt) {
         emit({ kind: "info", message: "Selected task is inline CLI; no worker prompt is rendered." });
         emit({ kind: "text", text: "cli: " + task.cliCommand! });
         return 0;
       }
 
-      if (!onlyValidate && task.isInlineCli && dryRun) {
+      if (!onlyVerify && task.isInlineCli && dryRun) {
         emit({ kind: "info", message: "Dry run — would execute inline CLI: " + task.cliCommand! });
         return 0;
       }
@@ -258,7 +263,7 @@ export function createRunTask(
          artifactContext = dependencies.artifactStore.createContext({
          cwd: dependencies.workingDirectory.cwd(),
          commandName: "run",
-         workerCommand: onlyValidate ? automationCommand : workerCommand,
+         workerCommand: onlyVerify ? automationCommand : workerCommand,
         mode,
         transport,
         source,
@@ -266,13 +271,13 @@ export function createRunTask(
         keepArtifacts,
       });
 
-      if (onlyValidate) {
-        emit({ kind: "info", message: configuredOnlyValidate
+      if (onlyVerify) {
+        emit({ kind: "info", message: configuredOnlyVerify
           ? "Only verify mode — skipping task execution."
           : "Verify-only task mode — skipping task execution."
         });
 
-        const valid = await runValidation(
+        const valid = await runVerification(
           dependencies,
           task,
           fileSource,
@@ -281,7 +286,7 @@ export function createRunTask(
           automationCommand,
           transport,
           maxRepairAttempts,
-          allowCorrection,
+          allowRepair,
           extraTemplateVars,
           artifactContext,
         );
@@ -304,7 +309,9 @@ export function createRunTask(
       }
 
       if (task.isInlineCli) {
-        const inlineCliCwd = path.dirname(path.resolve(task.file));
+        const inlineCliCwd = dependencies.pathOperations.dirname(
+          dependencies.pathOperations.resolve(task.file),
+        );
         emit({ kind: "info", message: "Executing inline CLI: " + task.cliCommand! + " [cwd=" + inlineCliCwd + "]" });
         const cliResult = await dependencies.workerExecutor.executeInlineCli(task.cliCommand!, inlineCliCwd, {
           artifactContext,
@@ -320,8 +327,8 @@ export function createRunTask(
           return finishRun(1, "execution-failed");
         }
 
-        if (shouldValidate) {
-          const valid = await runValidation(
+        if (shouldVerify) {
+          const valid = await runVerification(
             dependencies,
             task,
             fileSource,
@@ -330,7 +337,7 @@ export function createRunTask(
             automationCommand,
             transport,
             maxRepairAttempts,
-            allowCorrection,
+            allowRepair,
             extraTemplateVars,
             artifactContext,
           );
@@ -379,8 +386,8 @@ export function createRunTask(
         return finishRun(0, "detached", true);
       }
 
-      if (shouldValidate) {
-        const valid = await runValidation(
+      if (shouldVerify) {
+        const valid = await runVerification(
           dependencies,
           task,
           fileSource,
@@ -389,7 +396,7 @@ export function createRunTask(
           automationCommand,
           transport,
           maxRepairAttempts,
-          allowCorrection,
+          allowRepair,
           extraTemplateVars,
           artifactContext,
         );
@@ -417,34 +424,34 @@ export function createRunTask(
   };
 }
 
-async function runValidation(
+async function runVerification(
   dependencies: RunTaskDependencies,
   task: Task,
   fileSource: string,
   contextBefore: string,
-  templates: { validate: string; correct: string },
+  templates: { verify: string; repair: string },
   workerCommand: string[],
   transport: PromptTransport,
   maxRepairAttempts: number,
-  allowCorrection: boolean,
+  allowRepair: boolean,
   extraTemplateVars: ExtraTemplateVars,
   artifactContext: ArtifactContext,
 ): Promise<boolean> {
   return runVerifyRepairLoop({
-    taskValidation: dependencies.taskValidation,
-    taskCorrection: dependencies.taskCorrection,
-    validationSidecar: dependencies.validationSidecar,
+    taskVerification: dependencies.taskVerification,
+    taskRepair: dependencies.taskRepair,
+    verificationSidecar: dependencies.verificationSidecar,
     output: dependencies.output,
   }, {
     task,
     source: fileSource,
     contextBefore,
-    validateTemplate: templates.validate,
-    correctTemplate: templates.correct,
+    verifyTemplate: templates.verify,
+    repairTemplate: templates.repair,
     workerCommand,
     transport,
     maxRepairAttempts,
-    allowCorrection,
+    allowRepair,
     templateVars: extraTemplateVars,
     artifactContext,
   });
@@ -467,7 +474,7 @@ async function afterTaskComplete(
       if (!inGitRepo) {
         emit({ kind: "warn", message: "--commit: not inside a git repository, skipping." });
       } else {
-        const message = buildCommitMessage(task, cwd, commitMessageTemplate);
+        const message = buildCommitMessage(task, cwd, commitMessageTemplate, dependencies.pathOperations);
         await commitCheckedTaskWithGitClient(dependencies.gitClient, task, cwd, message);
         emit({ kind: "success", message: "Committed: " + message });
       }
@@ -484,6 +491,7 @@ async function afterTaskComplete(
         task,
         source,
         cwd,
+        dependencies.pathOperations,
       );
 
       if (result.stdout) emit({ kind: "text", text: result.stdout });
@@ -529,56 +537,19 @@ export function finalizeRunArtifacts(
   }
 }
 
-const TEMPLATE_VAR_KEY = /^[A-Za-z_]\w*$/;
 const DEFAULT_COMMIT_MESSAGE_TEMPLATE = "rundown: complete \"{{task}}\" in {{file}}";
 
-function loadTemplateVarsFileFromPorts(
-  filePath: string,
+function loadProjectTemplatesFromPorts(
   cwd: string,
-  fileSystem: FileSystem,
-): ExtraTemplateVars {
-  const resolvedPath = path.resolve(cwd, filePath);
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(fileSystem.readText(resolvedPath));
-  } catch (error) {
-    throw new Error(`Failed to read template vars file \"${filePath}\": ${String(error)}`);
-  }
-
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`Template vars file \"${filePath}\" must contain a JSON object.`);
-  }
-
-  const vars: ExtraTemplateVars = {};
-  for (const [key, value] of Object.entries(parsed)) {
-    if (!TEMPLATE_VAR_KEY.test(key)) {
-      throw new Error(`Invalid template variable name \"${key}\" in \"${filePath}\". Use letters, numbers, and underscores only.`);
-    }
-
-    if (value === null || value === undefined) {
-      vars[key] = "";
-      continue;
-    }
-
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      vars[key] = String(value);
-      continue;
-    }
-
-    throw new Error(`Template variable \"${key}\" in \"${filePath}\" must be a string, number, boolean, or null.`);
-  }
-
-  return vars;
-}
-
-function loadProjectTemplatesFromPorts(cwd: string, templateLoader: TemplateLoader): ProjectTemplates {
-  const dir = path.join(cwd, ".rundown");
+  templateLoader: TemplateLoader,
+  pathOperations: PathOperationsPort,
+): ProjectTemplates {
+  const dir = pathOperations.join(cwd, ".rundown");
   return {
-    task: templateLoader.load(path.join(dir, "execute.md")) ?? DEFAULT_TASK_TEMPLATE,
-    validate: templateLoader.load(path.join(dir, "verify.md")) ?? DEFAULT_VALIDATE_TEMPLATE,
-    correct: templateLoader.load(path.join(dir, "repair.md")) ?? DEFAULT_CORRECT_TEMPLATE,
-    plan: templateLoader.load(path.join(dir, "plan.md")) ?? DEFAULT_PLAN_TEMPLATE,
+    task: templateLoader.load(pathOperations.join(dir, "execute.md")) ?? DEFAULT_TASK_TEMPLATE,
+    verify: templateLoader.load(pathOperations.join(dir, "verify.md")) ?? DEFAULT_VERIFY_TEMPLATE,
+    repair: templateLoader.load(pathOperations.join(dir, "repair.md")) ?? DEFAULT_REPAIR_TEMPLATE,
+    plan: templateLoader.load(pathOperations.join(dir, "plan.md")) ?? DEFAULT_PLAN_TEMPLATE,
   };
 }
 
@@ -612,8 +583,9 @@ function buildCommitMessage(
   task: Task,
   cwd: string,
   messageTemplate: string | undefined,
+  pathOperations: PathOperationsPort,
 ): string {
-  const relativePath = path.relative(cwd, task.file).replace(/\\/g, "/");
+  const relativePath = pathOperations.relative(cwd, task.file).replace(/\\/g, "/");
   return renderTemplate(messageTemplate ?? DEFAULT_COMMIT_MESSAGE_TEMPLATE, {
     task: task.text,
     file: relativePath,
@@ -630,6 +602,7 @@ async function runOnCompleteHookWithProcessRunner(
   task: Task,
   source: string,
   cwd: string,
+  pathOperations: PathOperationsPort,
 ): Promise<{ success: boolean; exitCode: number | null; stdout: string; stderr: string }> {
   try {
     const result = await processRunner.run({
@@ -642,7 +615,7 @@ async function runOnCompleteHookWithProcessRunner(
       env: {
         ...process.env,
         RUNDOWN_TASK: task.text,
-        RUNDOWN_FILE: path.resolve(task.file),
+        RUNDOWN_FILE: pathOperations.resolve(task.file),
         RUNDOWN_LINE: String(task.line),
         RUNDOWN_INDEX: String(task.index),
         RUNDOWN_SOURCE: source,

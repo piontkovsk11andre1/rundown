@@ -11,8 +11,8 @@ import type {
   ArtifactStoreStatus,
   ArtifactStore,
   FileSystem,
-  TaskCorrectionResult,
-  ValidationSidecar,
+  TaskRepairResult,
+  VerificationSidecar,
 } from "../../src/domain/ports/index.js";
 import type { Task } from "../../src/domain/parser.js";
 
@@ -36,7 +36,7 @@ describe("reverify-task", () => {
       },
     });
 
-    const { dependencies, events, artifactStore, taskValidation, taskCorrection, validationSidecar } =
+    const { dependencies, events, artifactStore, taskVerification, taskRepair, verificationSidecar } =
       createDependencies({
         cwd,
         fileSystem,
@@ -48,9 +48,9 @@ describe("reverify-task", () => {
 
     expect(code).toBe(0);
     expect(vi.mocked(artifactStore.createContext)).not.toHaveBeenCalled();
-    expect(vi.mocked(taskValidation.validate)).not.toHaveBeenCalled();
-    expect(vi.mocked(taskCorrection.correct)).not.toHaveBeenCalled();
-    expect(vi.mocked(validationSidecar.remove)).not.toHaveBeenCalled();
+    expect(vi.mocked(taskVerification.verify)).not.toHaveBeenCalled();
+    expect(vi.mocked(taskRepair.repair)).not.toHaveBeenCalled();
+    expect(vi.mocked(verificationSidecar.remove)).not.toHaveBeenCalled();
     expect(events.some((event) => event.kind === "text" && event.text.includes("Build release"))).toBe(true);
     expect(events.some((event) => event.kind === "text" && event.text.includes("## Phase"))).toBe(true);
   });
@@ -74,7 +74,7 @@ describe("reverify-task", () => {
       },
     });
 
-    const { dependencies, events, artifactStore, taskValidation, taskCorrection, validationSidecar } =
+    const { dependencies, events, artifactStore, taskVerification, taskRepair, verificationSidecar } =
       createDependencies({
         cwd,
         fileSystem,
@@ -86,9 +86,9 @@ describe("reverify-task", () => {
 
     expect(code).toBe(0);
     expect(vi.mocked(artifactStore.createContext)).not.toHaveBeenCalled();
-    expect(vi.mocked(taskValidation.validate)).not.toHaveBeenCalled();
-    expect(vi.mocked(taskCorrection.correct)).not.toHaveBeenCalled();
-    expect(vi.mocked(validationSidecar.remove)).not.toHaveBeenCalled();
+    expect(vi.mocked(taskVerification.verify)).not.toHaveBeenCalled();
+    expect(vi.mocked(taskRepair.repair)).not.toHaveBeenCalled();
+    expect(vi.mocked(verificationSidecar.remove)).not.toHaveBeenCalled();
     expect(events.some((event) => event.kind === "info" && event.message.includes("Dry run - would run verification with: opencode run"))).toBe(true);
     expect(events.some((event) => event.kind === "info" && event.message.includes("Prompt length:"))).toBe(true);
   });
@@ -124,22 +124,22 @@ describe("reverify-task", () => {
       startedAt: "2026-03-19T18:01:00.000Z",
     });
 
-    const { dependencies, events, artifactStore, taskValidation, taskCorrection, validationSidecar } =
+    const { dependencies, events, artifactStore, taskVerification, taskRepair, verificationSidecar } =
       createDependencies({
         cwd,
         fileSystem,
         runs: [failedRun, completedRun],
       });
-    vi.mocked(taskValidation.validate).mockResolvedValue(true);
+    vi.mocked(taskVerification.verify).mockResolvedValue(true);
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({ runId: "latest", workerCommand: ["opencode", "run"] }));
 
     expect(code).toBe(0);
     expect(vi.mocked(fileSystem.writeText)).not.toHaveBeenCalled();
-    expect(vi.mocked(taskValidation.validate)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(taskCorrection.correct)).not.toHaveBeenCalled();
-    expect(vi.mocked(validationSidecar.remove)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(taskVerification.verify)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(taskRepair.repair)).not.toHaveBeenCalled();
+    expect(vi.mocked(verificationSidecar.remove)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ status: "reverify-completed", preserve: false }),
@@ -164,20 +164,20 @@ describe("reverify-task", () => {
         source: "roadmap.md",
       },
     });
-    const { dependencies, artifactStore, taskValidation, taskCorrection, validationSidecar } = createDependencies({
+    const { dependencies, artifactStore, taskVerification, taskRepair, verificationSidecar } = createDependencies({
       cwd,
       fileSystem,
       runs: [completedRun],
     });
-    vi.mocked(taskValidation.validate).mockResolvedValue(false);
+    vi.mocked(taskVerification.verify).mockResolvedValue(false);
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({ runId: "latest", noRepair: true, repairAttempts: 2 }));
 
     expect(code).toBe(2);
     expect(vi.mocked(fileSystem.writeText)).not.toHaveBeenCalled();
-    expect(vi.mocked(taskCorrection.correct)).not.toHaveBeenCalled();
-    expect(vi.mocked(validationSidecar.remove)).not.toHaveBeenCalled();
+    expect(vi.mocked(taskRepair.repair)).not.toHaveBeenCalled();
+    expect(vi.mocked(verificationSidecar.remove)).not.toHaveBeenCalled();
     expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ status: "reverify-failed", preserve: false }),
@@ -199,7 +199,7 @@ describe("reverify-task", () => {
       },
     });
 
-    const { dependencies, events, artifactStore, taskValidation } = createDependencies({
+    const { dependencies, events, artifactStore, taskVerification } = createDependencies({
       cwd,
       fileSystem,
       runs: [failedRun],
@@ -210,7 +210,7 @@ describe("reverify-task", () => {
 
     expect(code).toBe(3);
     expect(vi.mocked(artifactStore.createContext)).not.toHaveBeenCalled();
-    expect(vi.mocked(taskValidation.validate)).not.toHaveBeenCalled();
+    expect(vi.mocked(taskVerification.verify)).not.toHaveBeenCalled();
     expect(events.some((event) => event.kind === "error" && event.message.includes("latest completed"))).toBe(true);
   });
 
@@ -248,18 +248,18 @@ describe("reverify-task", () => {
       },
     });
 
-    const { dependencies, taskValidation } = createDependencies({
+    const { dependencies, taskVerification } = createDependencies({
       cwd,
       fileSystem,
       runs: [completedWithoutTask, completedWithTask],
     });
-    vi.mocked(taskValidation.validate).mockResolvedValue(true);
+    vi.mocked(taskVerification.verify).mockResolvedValue(true);
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({ runId: "latest", workerCommand: ["opencode", "run"] }));
 
     expect(code).toBe(0);
-    expect(vi.mocked(taskValidation.validate)).toHaveBeenCalledWith(expect.objectContaining({
+    expect(vi.mocked(taskVerification.verify)).toHaveBeenCalledWith(expect.objectContaining({
       task: expect.objectContaining({ text: "Build release", line: 1, index: 0 }),
     }));
   });
@@ -295,7 +295,7 @@ describe("reverify-task", () => {
       startedAt: "2026-03-19T17:59:00.000Z",
     });
 
-    const { dependencies, events, taskValidation } = createDependencies({
+    const { dependencies, events, taskVerification } = createDependencies({
       cwd,
       fileSystem,
       runs: [failedRun, completedRun],
@@ -305,7 +305,7 @@ describe("reverify-task", () => {
     const code = await reverifyTask(createOptions({ runId: "run-failed" }));
 
     expect(code).toBe(3);
-    expect(vi.mocked(taskValidation.validate)).not.toHaveBeenCalled();
+    expect(vi.mocked(taskVerification.verify)).not.toHaveBeenCalled();
     expect(events.some((event) => event.kind === "error" && event.message.includes("not completed"))).toBe(true);
   });
 
@@ -324,7 +324,7 @@ describe("reverify-task", () => {
       },
     });
 
-    const { dependencies, events, taskValidation } = createDependencies({
+    const { dependencies, events, taskVerification } = createDependencies({
       cwd,
       fileSystem,
       runs: [runWithMissingMetadata],
@@ -334,7 +334,7 @@ describe("reverify-task", () => {
     const code = await reverifyTask(createOptions({ runId: "run-metadata-missing" }));
 
     expect(code).toBe(3);
-    expect(vi.mocked(taskValidation.validate)).not.toHaveBeenCalled();
+    expect(vi.mocked(taskVerification.verify)).not.toHaveBeenCalled();
     expect(events.some((event) => event.kind === "error" && event.message.includes("run.json"))).toBe(true);
     expect(events.some((event) => event.kind === "error" && event.message.includes("--keep-artifacts"))).toBe(true);
   });
@@ -357,7 +357,7 @@ describe("reverify-task", () => {
       task: undefined,
     } as ArtifactRunMetadata;
 
-    const { dependencies, events, taskValidation } = createDependencies({
+    const { dependencies, events, taskVerification } = createDependencies({
       cwd,
       fileSystem,
       runs: [completedRunWithoutTask],
@@ -367,7 +367,7 @@ describe("reverify-task", () => {
     const code = await reverifyTask(createOptions({ runId: "run-no-task" }));
 
     expect(code).toBe(3);
-    expect(vi.mocked(taskValidation.validate)).not.toHaveBeenCalled();
+    expect(vi.mocked(taskVerification.verify)).not.toHaveBeenCalled();
     expect(events.some((event) => event.kind === "error" && event.message.includes("no task metadata"))).toBe(true);
     expect(events.some((event) => event.kind === "error" && event.message.includes("different run"))).toBe(true);
   });
@@ -399,7 +399,7 @@ describe("reverify-task", () => {
       },
     } as ArtifactRunMetadata;
 
-    const { dependencies, events, taskValidation } = createDependencies({
+    const { dependencies, events, taskVerification } = createDependencies({
       cwd,
       fileSystem,
       runs: [completedRunWithInvalidTask],
@@ -409,7 +409,7 @@ describe("reverify-task", () => {
     const code = await reverifyTask(createOptions({ runId: "run-invalid-task-metadata" }));
 
     expect(code).toBe(3);
-    expect(vi.mocked(taskValidation.validate)).not.toHaveBeenCalled();
+    expect(vi.mocked(taskVerification.verify)).not.toHaveBeenCalled();
     expect(events.some((event) => event.kind === "error" && event.message.includes("invalid task metadata"))).toBe(true);
     expect(events.some((event) => event.kind === "error" && event.message.includes("non-negative integer"))).toBe(true);
     expect(events.some((event) => event.kind === "error" && event.message.includes("regenerate runtime artifacts"))).toBe(true);
@@ -433,7 +433,7 @@ describe("reverify-task", () => {
       },
     });
 
-    const { dependencies, taskValidation } = createDependencies({
+    const { dependencies, taskVerification } = createDependencies({
       cwd,
       fileSystem,
       runs: [completedRun],
@@ -443,7 +443,7 @@ describe("reverify-task", () => {
     const code = await reverifyTask(createOptions({ runId: "latest" }));
 
     expect(code).toBe(3);
-    expect(vi.mocked(taskValidation.validate)).not.toHaveBeenCalled();
+    expect(vi.mocked(taskVerification.verify)).not.toHaveBeenCalled();
   });
 
   it("returns 3 when metadata does not uniquely match task text", async () => {
@@ -464,7 +464,7 @@ describe("reverify-task", () => {
       },
     });
 
-    const { dependencies, taskValidation } = createDependencies({
+    const { dependencies, taskVerification } = createDependencies({
       cwd,
       fileSystem,
       runs: [completedRun],
@@ -474,7 +474,7 @@ describe("reverify-task", () => {
     const code = await reverifyTask(createOptions({ runId: "latest" }));
 
     expect(code).toBe(3);
-    expect(vi.mocked(taskValidation.validate)).not.toHaveBeenCalled();
+    expect(vi.mocked(taskVerification.verify)).not.toHaveBeenCalled();
   });
 
   it("returns 3 when metadata file path no longer exists", async () => {
@@ -491,7 +491,7 @@ describe("reverify-task", () => {
       },
     });
 
-    const { dependencies, taskValidation } = createDependencies({
+    const { dependencies, taskVerification } = createDependencies({
       cwd,
       fileSystem: createInMemoryFileSystem({}),
       runs: [completedRun],
@@ -501,7 +501,7 @@ describe("reverify-task", () => {
     const code = await reverifyTask(createOptions({ runId: "latest" }));
 
     expect(code).toBe(3);
-    expect(vi.mocked(taskValidation.validate)).not.toHaveBeenCalled();
+    expect(vi.mocked(taskVerification.verify)).not.toHaveBeenCalled();
   });
 
   it("resolves moved task by index and text fallback", async () => {
@@ -522,18 +522,18 @@ describe("reverify-task", () => {
       },
     });
 
-    const { dependencies, taskValidation } = createDependencies({
+    const { dependencies, taskVerification } = createDependencies({
       cwd,
       fileSystem,
       runs: [completedRun],
     });
-    vi.mocked(taskValidation.validate).mockResolvedValue(true);
+    vi.mocked(taskVerification.verify).mockResolvedValue(true);
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({ runId: "run-completed", workerCommand: ["opencode", "run"] }));
 
     expect(code).toBe(0);
-    expect(vi.mocked(taskValidation.validate)).toHaveBeenCalledWith(expect.objectContaining({
+    expect(vi.mocked(taskVerification.verify)).toHaveBeenCalledWith(expect.objectContaining({
       task: expect.objectContaining({ text: "Build release", index: 0, line: 3 }),
     }));
   });
@@ -547,24 +547,24 @@ function createDependencies(options: {
   dependencies: ReverifyTaskDependencies;
   events: ApplicationOutputEvent[];
   artifactStore: ArtifactStore;
-  taskValidation: { validate: ReturnType<typeof vi.fn> };
-  taskCorrection: { correct: ReturnType<typeof vi.fn> };
-  validationSidecar: ValidationSidecar;
+  taskVerification: { verify: ReturnType<typeof vi.fn> };
+  taskRepair: { repair: ReturnType<typeof vi.fn> };
+  verificationSidecar: VerificationSidecar;
 } {
   const events: ApplicationOutputEvent[] = [];
 
-  const taskValidation = {
-    validate: vi.fn(async () => true),
+  const taskVerification = {
+    verify: vi.fn(async () => true),
   };
 
-  const taskCorrection = {
-    correct: vi.fn(async (): Promise<TaskCorrectionResult> => ({
+  const taskRepair = {
+    repair: vi.fn(async (): Promise<TaskRepairResult> => ({
       valid: false,
       attempts: 0,
     })),
   };
 
-  const validationSidecar: ValidationSidecar = {
+  const verificationSidecar: VerificationSidecar = {
     filePath: vi.fn(() => ""),
     read: vi.fn(() => null),
     remove: vi.fn(),
@@ -599,13 +599,20 @@ function createDependencies(options: {
 
   const dependencies: ReverifyTaskDependencies = {
     artifactStore,
-    taskValidation,
-    taskCorrection,
-    validationSidecar,
+    taskVerification,
+    taskRepair,
+    verificationSidecar,
     workingDirectory: {
       cwd: vi.fn(() => options.cwd),
     },
     fileSystem: options.fileSystem,
+    pathOperations: {
+      join: (...parts) => path.join(...parts),
+      resolve: (...parts) => path.resolve(...parts),
+      dirname: (filePath) => path.dirname(filePath),
+      relative: (from, to) => path.relative(from, to),
+      isAbsolute: (filePath) => path.isAbsolute(filePath),
+    },
     templateLoader: {
       load: vi.fn(() => null),
     },
@@ -620,9 +627,9 @@ function createDependencies(options: {
     dependencies,
     events,
     artifactStore,
-    taskValidation,
-    taskCorrection,
-    validationSidecar,
+    taskVerification,
+    taskRepair,
+    verificationSidecar,
   };
 }
 

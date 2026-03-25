@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import type { Task } from "../../domain/parser.js";
-import type { ValidationSidecar } from "../../domain/ports/validation-sidecar.js";
+import type { VerificationSidecar } from "../../domain/ports/verification-sidecar.js";
 
-export function createFsValidationSidecar(): ValidationSidecar {
+export function createFsVerificationSidecar(): VerificationSidecar {
   return {
     filePath(task) {
       return validationFilePath(task);

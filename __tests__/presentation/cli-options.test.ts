@@ -26,6 +26,7 @@ describe("CLI run option normalization", () => {
     expect(call.onCompleteCommand).toBeUndefined();
     expect(call.noRepair).toBe(false);
     expect(call.repairAttempts).toBe(1);
+    expect(call.forceExecute).toBe(false);
   });
 
   it("normalizes empty commit and hook values to undefined", async () => {
@@ -66,6 +67,20 @@ describe("CLI run option normalization", () => {
     expect(call.commitAfterComplete).toBe(true);
     expect(call.commitMessageTemplate).toBe("done: {{task}}");
     expect(call.onCompleteCommand).toBe("node scripts/after.js");
+  });
+
+  it("passes force-execute option to run task", async () => {
+    const runTask = vi.fn(async () => 0);
+    const call = await invokeRunAndCaptureCall([
+      "run",
+      "tasks.md",
+      "--force-execute",
+      "--worker",
+      "opencode",
+      "run",
+    ], runTask);
+
+    expect(call.forceExecute).toBe(true);
   });
 });
 

@@ -114,6 +114,7 @@ Common Git-aware forms:
 rundown run roadmap.md --commit -- opencode run
 rundown run roadmap.md --commit --commit-message "rundown: complete \"{{task}}\" in {{file}}" -- opencode run
 rundown run roadmap.md --on-complete "git push" -- opencode run
+rundown run roadmap.md --force-execute -- opencode run
 ```
 
 ---
@@ -130,7 +131,18 @@ The task context — the surrounding Markdown, the template, the file paths — 
 
 ### Verify
 
-A separate verification prompt checks the result. The task needs an explicit `OK` to pass. No silent failures.
+A separate verification prompt checks the result.
+
+Verifier contract:
+
+- return `OK` on stdout when complete
+- otherwise return a short failure reason (recommended: `NOT_OK: <reason>`)
+
+`rundown` persists that stdout result to the task sidecar file (`<file>.<taskIndex>.validation`). The task needs an explicit `OK` to pass. No silent failures.
+
+If task text is verification-only (for example `verify: ...` or `[confirm] ...`), `rundown run` automatically skips the execute phase and runs verify/repair directly.
+
+Use `--force-execute` to override that auto-skip and run execution anyway.
 
 Need a confidence check later (for example before release)? Use `rundown reverify` to re-run verify/repair for the latest completed task from artifacts, without advancing task selection.
 

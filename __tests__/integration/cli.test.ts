@@ -182,6 +182,43 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("--flag"))).toBe(true);
   });
 
+  it("run auto-skips execution for verify-only tasks", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] verify: release docs are consistent\n", "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--dry-run",
+      "--worker",
+      "opencode",
+      "run",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Task classified as verify-only"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("would run verification"))).toBe(true);
+  });
+
+  it("run --force-execute overrides verify-only auto-skip", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] verify: release docs are consistent\n", "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--force-execute",
+      "--dry-run",
+      "--worker",
+      "opencode",
+      "run",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("--force-execute is enabled; running execution"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("would run: opencode run"))).toBe(true);
+  });
+
   it("reverify dry-run exits with 3 when no completed artifacts exist", async () => {
     const workspace = makeTempWorkspace();
 

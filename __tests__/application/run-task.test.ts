@@ -458,6 +458,7 @@ function createOptions(overrides: Partial<RunTaskOptions>): RunTaskOptions {
     sortMode: "name-sort",
     verify: true,
     onlyVerify: false,
+    forceExecute: false,
     noRepair: false,
     repairAttempts: 0,
     dryRun: false,

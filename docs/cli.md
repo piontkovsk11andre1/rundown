@@ -141,6 +141,8 @@ If both are provided, `--worker` takes precedence.
 
 - `--no-verify` — skip verification
 - `--only-verify` — verify without executing first
+- verify-only task text auto-skips execute phase (for example `verify: ...`, `[confirm] ...`)
+- `--force-execute` — override verify-only auto-skip and run execute phase anyway
 - `--repair-attempts <n>` — retry repair up to `n` times
 - `--no-repair` — disable repair explicitly
 

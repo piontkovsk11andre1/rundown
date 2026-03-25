@@ -55,6 +55,7 @@ program
   .option("--verify", "Run verification after task execution (default)")
   .option("--no-verify", "Disable verification after task execution")
   .option("--only-verify", "Skip execution and run verification directly", false)
+  .option("--force-execute", "Force execute phase even for verify-only task text", false)
   .option("--repair-attempts <n>", "Max repair attempts on verification failure", "1")
   .option("--no-repair", "Disable repair even when repair attempts are set")
   .option("--dry-run", "Show what would be executed without running it", false)
@@ -73,6 +74,7 @@ program
     const sortMode = parseSortMode(opts.sort as string | undefined);
     const verify = resolveVerifyFlag(opts);
     const onlyVerify = Boolean(opts.onlyVerify as boolean);
+    const forceExecute = Boolean(opts.forceExecute as boolean);
     const noRepair = resolveNoRepairFlag(opts);
     const repairAttempts = parseRepairAttempts(opts.repairAttempts as string | undefined);
     const dryRun = opts.dryRun as boolean;
@@ -96,6 +98,7 @@ program
       sortMode,
       verify,
       onlyVerify,
+      forceExecute,
       noRepair,
       repairAttempts,
       dryRun,

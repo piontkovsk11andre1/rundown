@@ -9,6 +9,7 @@ import { markChecked } from "../domain/checkbox.js";
 import type { Task } from "../domain/parser.js";
 import type { SortMode } from "../domain/sorting.js";
 import { requiresWorkerCommand, resolveRunBehavior } from "../domain/run-options.js";
+import { classifyTaskIntent } from "../domain/task-intent.js";
 import { renderTemplate, type TemplateVars } from "../domain/template.js";
 import {
   parseCliTemplateVars,
@@ -80,6 +81,7 @@ export interface RunTaskOptions {
   sortMode: SortMode;
   verify: boolean;
   onlyVerify: boolean;
+  forceExecute: boolean;
   noRepair: boolean;
   repairAttempts: number;
   dryRun: boolean;
@@ -106,6 +108,7 @@ export function createRunTask(
       sortMode,
       verify,
       onlyVerify,
+      forceExecute,
       noRepair,
       repairAttempts,
       dryRun,
@@ -125,8 +128,8 @@ export function createRunTask(
       noCorrect: noRepair,
       repairAttempts,
     });
-    const shouldValidate = runBehavior.shouldValidate;
-    const onlyValidate = runBehavior.onlyValidate;
+    const configuredShouldValidate = runBehavior.shouldValidate;
+    const configuredOnlyValidate = runBehavior.onlyValidate;
     const allowCorrection = runBehavior.allowCorrection;
     const maxRepairAttempts = runBehavior.maxRepairAttempts;
 
@@ -173,6 +176,20 @@ export function createRunTask(
       const { task, source: fileSource, contextBefore } = result;
       emit({ kind: "info", message: "Next task: " + formatTaskLabel(task) });
       const automationCommand = getAutomationWorkerCommand(workerCommand, mode);
+
+      const taskIntent = classifyTaskIntent(task.text);
+      const shouldUseVerifyOnly = configuredOnlyValidate
+        || (taskIntent.intent === "verify-only" && !forceExecute);
+      const shouldValidate = configuredShouldValidate || shouldUseVerifyOnly;
+      const onlyValidate = shouldUseVerifyOnly;
+
+      if (!configuredOnlyValidate && taskIntent.intent === "verify-only") {
+        if (forceExecute) {
+          emit({ kind: "info", message: "Task classified as verify-only (" + taskIntent.reason + "), but --force-execute is enabled; running execution." });
+        } else {
+          emit({ kind: "info", message: "Task classified as verify-only (" + taskIntent.reason + "); skipping execution." });
+        }
+      }
 
       const templates = loadProjectTemplatesFromPorts(
         dependencies.workingDirectory.cwd(),
@@ -244,7 +261,10 @@ export function createRunTask(
       });
 
       if (onlyValidate) {
-        emit({ kind: "info", message: "Only verify mode — skipping task execution." });
+        emit({ kind: "info", message: configuredOnlyValidate
+          ? "Only verify mode — skipping task execution."
+          : "Verify-only task mode — skipping task execution."
+        });
 
         const valid = await runValidation(
           dependencies,

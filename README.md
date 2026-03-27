@@ -1,62 +1,68 @@
 # rundown
 
-**Your Markdown already describes the work. Now it does the work.**
+**Markdown is no longer where work waits. It is where work runs.**
 
-```
+`rundown` is a harness-agnostic agentic framework that treats a Markdown document as a managed workload.
+
+Write context. Write tasks. Run the file.
+
+Each unchecked checkbox becomes an exact unit of work with:
+
+- execution,
+- verification,
+- repair when verification fails,
+- planning when a task is still too large,
+- and artifacts that make the whole run traceable and observable.
+
+This is the missing lens between broad AI capability and precise delivery. A model can generate code, documents, fixes, and plans. `rundown` turns that raw capability into work that is bounded, reviewable, repeatable, and hard to fake.
+
+```md
+# Release prep
+
+Context: this branch is stabilizing the release candidate.
+
 - [x] Confirm the release branch
-- [ ] Add Windows setup guidance to the README        ← agent writes it
-- [ ] cli: npm test                                   ← runs, verifies, moves on
+- [ ] Rewrite the README opening around the new product position
+- [ ] cli: npm test
+- [ ] Verify the installation flow on Windows PowerShell
 ```
 
 ```bash
-rundown run docs/ -- opencode run
+rundown run . -- opencode run
 ```
 
-One command. Every unchecked box becomes a real execution: prompted, run, verified, and only then marked complete.
+That is not a TODO list anymore.
+It is a program.
 
----
+## Why `rundown` exists
 
-## The problem
+Most AI workflows still break at the handoff.
 
-You plan in Markdown.
-Agents work in terminals.
-Verification lives in your head.
+You describe work in Markdown.
+The agent works somewhere else.
+Verification happens in your head.
+History is partial.
+Recovery is fuzzy.
 
-The gap between *writing down what needs to happen* and *making it happen* is still a copy-paste, tab-switch, manual-check mess — even with great AI tools. The handoff is where work stalls.
+The result is familiar: things look done before they are done.
 
-## The fix
+`rundown` fixes that by making the checkbox a contract instead of a hope. A task is not complete because the agent said so. A task is complete because the work was executed, verified, and only then marked done.
 
-`rundown` closes the gap. It treats a Markdown checkbox as a **durable contract between intent and execution**:
+## The Mental Model
 
-1. **Find** the next unchecked task.
-2. **Build** a prompt from the surrounding document context.
-3. **Execute** via a worker (like `opencode`) or an inline `cli:` command.
-4. **Verify** the result with a separate validation pass.
-5. **Repair** if verification fails — automatically.
-6. **Complete** the checkbox only when reality agrees.
+Think of `rundown` as a runtime for Markdown-defined work.
 
-A task is not done because a command ran.
-A task is done because it *passed*.
+1. A Markdown file holds the context and the tasks.
+2. `rundown` finds the next ready unchecked task deterministically.
+3. It builds a prompt from the surrounding context and your repository-local templates.
+4. It sends that work to any CLI-shaped worker or runs an inline `cli:` task directly.
+5. It verifies the result in a separate pass.
+6. If verification fails, it runs a repair loop.
+7. Only a verified task earns a checked box.
 
----
+That gives you a new workload primitive: not a ticket, not a chat transcript, not a fragile prompt, but a visible unit of intent that can be executed with quality gates.
 
-## What makes this different
-
-**Markdown-native.** No new file format. No YAML config sprawl. The work stays where the thought already lives.
-
-**Validation-first.** Every task gets a verification step. Execution without proof is just hope.
-
-**Template-driven.** Your repo defines its own `execute`, `verify`, `repair`, and `plan` prompts. You control what the agent sees.
-
-**Deterministic.** Task selection is predictable. No surprising reordering, no ambient "intelligence" deciding what to run next.
-
-**Agent-agnostic.** Use `opencode`, `claude`, `aider`, or any CLI-shaped worker. `rundown` doesn't care what does the work — it cares that the work got done.
-
-**Git-aware.** `--commit` auto-commits current worktree changes with a structured message tied to the checked task. Trace exactly which commit completed which task with `git log --grep`.
-
----
-
-## Quick start
+## Quick Start
 
 Install:
 
@@ -64,147 +70,231 @@ Install:
 npm install -g @p10i/rundown@rc
 ```
 
-Initialize templates in your repo:
+Initialize the repository-local workflow files:
 
 ```bash
 rundown init
 ```
 
-This creates your prompt templates:
+This creates:
 
-```
+```text
 .rundown/
-  execute.md     # what the agent sees when doing the task
-  verify.md      # how completion is checked
-  repair.md      # what to try when verification fails
-  plan.md        # how to expand a task into subtasks
+  execute.md
+  verify.md
+  repair.md
+  plan.md
+  trace.md
+  vars.json
 ```
 
-Run against any Markdown file:
+Run the next task from a file, directory, or glob:
+
+```bash
+rundown run roadmap.md -- opencode run
+rundown run docs/ -- opencode run
+rundown run "notes/**/*.md" -- opencode run
+```
+
+PowerShell-safe worker form:
+
+```powershell
+rundown run docs/ --worker opencode run
+```
+
+Useful first commands:
+
+```bash
+rundown next docs/
+rundown list docs/
+rundown plan roadmap.md -- opencode run
+rundown reverify -- opencode run
+```
+
+## Install Into Any Agent Harness
+
+If you want an agent to set up `rundown` for the current repository and wire the workflow into the right instruction entrypoint, use this prompt.
+
+Copy and paste it into any agent harness:
+
+```text
+Set up this repository to use rundown as the default Markdown task runtime.
+
+Your job:
+1. Inspect the workspace and determine whether rundown is already installed and initialized.
+2. If rundown is missing, install or update `@p10i/rundown@rc` using the most appropriate method for this repository and environment.
+3. If `.rundown/` is missing, run `rundown init`.
+4. Before changing any workflow or agent-instruction files, ask me this exact question:
+   "Do you want me to reconfigure this workspace/directory into a rundown-based flow for your agent harness?"
+5. If I say yes, inspect the repository and choose the best existing instruction entrypoint for this harness. Prefer updating an existing file rather than creating a new one. Examples may include `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, repository instruction files, or another harness-specific entrypoint.
+6. Update that entrypoint so agents are guided to use rundown efficiently. The instructions should be concise and practical, including:
+   - use Markdown task files as the source of truth for work,
+   - use `rundown next`, `rundown list`, `rundown plan`, `rundown run`, and `rundown reverify` when appropriate,
+   - do not manually check boxes before verification succeeds,
+   - prefer repository-local `.rundown/` templates as the control surface,
+   - keep artifacts when debugging or auditing a run.
+7. If no suitable instruction entrypoint exists, explain the best options and ask for confirmation before creating one.
+8. At the end, summarize what you installed, what you initialized, what file you updated, and how to run the first task.
+
+Constraints:
+- Do not assume a specific harness file exists.
+- Do not overwrite unrelated instructions.
+- Keep the guidance aligned with the current repository structure.
+- Ask before making workflow-entrypoint changes.
+```
+
+## Why This Hits
+
+`rundown` is simple where it should be simple and flexible where it matters.
+
+The interface is boring on purpose: a Markdown file, a checkbox, a command.
+
+The behavior behind it is not.
+
+- It is harness-agnostic: use OpenCode, Claude, Aider, or another CLI worker.
+- It is deterministic: task selection is sorted and predictable.
+- It is verification-first: execution alone never counts as completion.
+- It is template-driven: each repository defines how work should be executed, checked, repaired, and planned.
+- It is inspectable: prompts, logs, metadata, and traces can be preserved as run records.
+- It is operationally useful: tasks can trigger commits, post-success hooks, failure hooks, and historical re-verification.
+
+That combination matters because AI is strongest when it is focused. `rundown` narrows a large, fuzzy capability surface into exact work units that can survive interruption, review, reruns, and changing standards.
+
+## How The Loop Works
+
+### 1. Select
+
+`rundown` scans a file, directory, or glob, sorts the files, walks tasks in document order, and picks the first ready unchecked task.
+
+Nested tasks are real tasks. A parent task stays blocked while any descendant task remains unchecked.
+
+### 2. Execute
+
+The selected task is rendered through `.rundown/execute.md` together with the document context, task metadata, and any custom variables.
+
+Normal tasks go to your worker.
+Tasks that start with `cli:` run directly.
+
+### 3. Verify
+
+Verification is a separate pass with a stricter contract.
+
+The verifier returns either:
+
+- `OK`
+- `NOT_OK: <short reason>`
+
+That result is persisted by `rundown` as a task-specific validation sidecar. A task only completes when verification says `OK`.
+
+### 4. Repair
+
+If verification fails, `rundown` renders `.rundown/repair.md`, runs another attempt, and verifies again.
+
+This makes failure part of the workload model instead of an untracked side effect.
+
+### 5. Plan
+
+When a task is too large, `rundown plan` expands it into nested unchecked subtasks using `.rundown/plan.md`.
+
+The parent then becomes blocked until the new child tasks are complete.
+
+### 6. Reverify
+
+`rundown reverify` re-runs verify and optional repair against a previously completed task from saved run metadata.
+
+Use it when templates changed, when you want a pre-release confidence check, or when you need to audit whether an already-checked task still holds up.
+
+## The Control Surface Lives In The Repo
+
+`rundown` does not hide its behavior behind a hosted control plane or a vendor-specific workflow DSL.
+
+The system is shaped by files that live next to your code:
+
+- `.rundown/execute.md`
+- `.rundown/verify.md`
+- `.rundown/repair.md`
+- `.rundown/plan.md`
+- `.rundown/trace.md`
+- `.rundown/vars.json`
+
+That means the workflow is:
+
+- visible,
+- versioned,
+- reviewable,
+- and easy to adapt per repository.
+
+You can inject repository context with `--var key=value` or `--vars-file`, tune prompt behavior per phase, and preserve a shared prefix across templates so the model sees a stable structure.
+
+## Observable By Default
+
+When you keep artifacts, each execution can produce a run folder under `.rundown/runs/` with the prompt, stdout, stderr, metadata, and optional trace output.
+
+That gives you a concrete record of what happened:
+
+- what task was selected,
+- what context was sent,
+- what the worker returned,
+- how verification evaluated it,
+- whether repair was needed,
+- and what historical task `reverify` is targeting.
+
+This matters for debugging, trust, and repeatability. The workflow is not a black box chat session. It leaves evidence.
+
+## Flexible In Practice
+
+You can keep `rundown` minimal:
 
 ```bash
 rundown run roadmap.md -- opencode run
 ```
 
-Re-verify the most recently completed task (without changing checkbox state):
+Or you can turn it into a more operational loop:
 
 ```bash
-rundown reverify -- opencode run
+rundown run roadmap.md --all --commit --on-complete "git push" -- opencode run
+rundown run roadmap.md --keep-artifacts --transport file -- opencode run
+rundown reverify --no-repair -- opencode run
 ```
 
-Re-verify a specific historical run and fail fast without repair attempts:
+Useful capabilities that stay out of the way until you need them:
 
-```bash
-rundown reverify --run run-20260319T222645632Z-04e84d73 --no-repair -- opencode run
-```
+- run all remaining tasks sequentially with `--all`
+- use interactive sessions with `--mode tui`
+- keep durable prompt handoff on Windows with `--transport file`
+- auto-commit completed work with a task-derived message
+- trigger hooks on success or failure
+- inspect or clean execution records with `rundown artifacts`
 
-`rundown reverify` exits non-zero when verification fails, which makes it suitable for pre-release and pre-push confidence checks.
+## A Better Default For AI Work
 
-PowerShell-safe form:
+There is a lot of power in modern models.
+There is still not enough structure around how that power is applied.
 
-```powershell
-rundown run roadmap.md --worker opencode run
-```
+`rundown` gives you a narrow waist for the whole workflow:
 
-That's it. Write tasks. Run the command. Watch checkboxes earn their marks.
+- Markdown describes the work,
+- templates define the method,
+- workers perform the action,
+- verification decides whether it counts,
+- and artifacts preserve what happened.
 
-Common Git-aware forms:
-
-```bash
-rundown run roadmap.md --commit -- opencode run
-rundown run roadmap.md --commit --commit-message "rundown: complete \"{{task}}\" in {{file}}" -- opencode run
-rundown run roadmap.md --on-complete "git push" -- opencode run
-rundown run roadmap.md --on-fail "node scripts/alert.js" -- opencode run
-rundown run roadmap.md --force-execute -- opencode run
-```
-
-Run all tasks sequentially:
-
-```bash
-rundown run roadmap.md --all -- opencode run
-rundown run roadmap.md --all --commit --on-fail "node scripts/alert.js" -- opencode run
-```
-
----
-
-## The loop
-
-### Plan
-
-Use `rundown plan` to expand a high-level task into concrete subtasks before execution begins. Big goals become small, runnable steps.
-
-Nested checkbox contract:
-
-- A parent checkbox is a real task, not a passive container.
-- A parent task is blocked while any descendant checkbox remains unchecked.
-- A parent becomes runnable only after all descendants are checked.
-- Use a plain bullet (without a checkbox) for grouping-only headings.
-
-### Execute
-
-The task context — the surrounding Markdown, the template, the file paths — gets rendered into a prompt and sent to your worker.
-
-### Verify
-
-A separate verification prompt checks the result.
-
-Verifier contract:
-
-- return `OK` on stdout when complete
-- otherwise return a short failure reason (recommended: `NOT_OK: <reason>`)
-
-`rundown` persists that stdout result to the task sidecar file (`<file>.<taskIndex>.validation`). The task needs an explicit `OK` to pass. No silent failures.
-
-If task text is verification-only (for example `verify: ...` or `[confirm] ...`), `rundown run` automatically skips the execute phase and runs verify/repair directly.
-
-Use `--force-execute` to override that auto-skip and run execution anyway.
-
-Need a confidence check later (for example before release)? Use `rundown reverify` to re-run verify/repair for the latest completed task from artifacts, without advancing task selection.
-
-### Repair
-
-If verification fails, a repair prompt fires, the worker runs another repair attempt, and verification runs again. Completion is earned, not assumed.
-
----
-
-## Why this matters
-
-AI tools keep getting better. The bottleneck is no longer capability — it's **coordination**. Who told the agent what to do? Did it actually work? How do you pick up where it left off?
-
-`rundown` answers all three with the most boring technology possible: a text file with checkboxes.
-
-That's the point. The interface should be so simple you can reconstruct it from memory. Plain files. Visible prompts. Predictable selection. Auditable results.
-
-If agents are going to be part of everyday software work, the control surface should be something you already know how to read, write, diff, and review.
-
-You already know Markdown. Now Markdown knows how to finish.
-
----
+That is why the result feels crisper. The agent is no longer improvising across an open field. It is moving through bounded, named, testable units of work.
 
 ## Docs
 
-| | |
-|---|---|
-| [Overview](docs/overview.md) | Product model, task selection, modes, runtime behavior |
-| [CLI](docs/cli.md) | Commands, flags, shell-friendly usage |
-| [Templates](docs/templates.md) | Template files, variables, prompt rendering |
-| [Examples](docs/examples.md) | Practical flows: planning, validation, inline CLI, `opencode` |
-
----
+- [docs/overview.md](docs/overview.md) for the runtime model, task selection, execution modes, and verification behavior
+- [docs/cli.md](docs/cli.md) for commands, flags, and shell-specific usage
+- [docs/templates.md](docs/templates.md) for template roles, variables, and prompt construction
+- [docs/examples.md](docs/examples.md) for practical execution patterns
 
 ## Status
 
-`rundown` is usable today and intentionally small.
+`rundown` is intentionally small and already useful.
 
-It is not trying to become an orchestration platform. It is trying to make one workflow feel inevitable:
+It is not trying to become another orchestration platform.
+It is trying to make one workflow precise:
 
-**Write the task. Let the system work. Check the box only when reality agrees.**
-
----
-
-## Install
-
-```bash
-npm install -g @p10i/rundown@rc
-rundown --help
-```
+write the task,
+run the task,
+check the box only when reality agrees.

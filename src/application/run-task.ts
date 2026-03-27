@@ -902,6 +902,23 @@ export function createRunTask(
         return 3;
       }
 
+      if (commitAfterComplete) {
+        const cwd = dependencies.workingDirectory.cwd();
+        const inGitRepo = await isGitRepoWithGitClient(dependencies.gitClient, cwd);
+        if (!inGitRepo) {
+          emit({ kind: "warn", message: "--commit: not inside a git repository, skipping." });
+        } else {
+          const isClean = await isWorkingDirectoryClean(dependencies.gitClient, cwd);
+          if (!isClean) {
+            emit({
+              kind: "error",
+              message: "--commit: working directory is not clean. Commit or stash changes before using --commit.",
+            });
+            return 1;
+          }
+        }
+      }
+
       let tasksCompleted = 0;
 
       // eslint-disable-next-line no-constant-condition
@@ -1797,6 +1814,14 @@ async function isGitRepoWithGitClient(gitClient: GitClient, cwd: string): Promis
   } catch {
     return false;
   }
+}
+
+async function isWorkingDirectoryClean(gitClient: GitClient, cwd: string): Promise<boolean> {
+  const output = await gitClient.run(
+    ["status", "--porcelain", "--", ".", ":(exclude).rundown/runs/**"],
+    cwd,
+  );
+  return output.trim().length === 0;
 }
 
 async function commitCheckedTaskWithGitClient(

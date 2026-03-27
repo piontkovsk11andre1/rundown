@@ -1282,7 +1282,7 @@ describe.sequential("CLI integration", () => {
     expect(commitSubject).toBe("rundown: complete \"cli: echo hello\" in roadmap.md");
   });
 
-  it("run --commit includes other worktree changes in the same commit", async () => {
+  it("run --commit exits with 1 when the worktree is dirty", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");
     const otherFilePath = path.join(workspace, "src", "notes.txt");
@@ -1306,21 +1306,12 @@ describe.sequential("CLI integration", () => {
       "--commit",
     ], workspace);
 
-    expect(result.code).toBe(0);
-    expect(result.logs.some((line) => line.includes("Committed:"))).toBe(true);
+    expect(result.code).toBe(1);
+    expect(result.errors.some((line) => line.includes("--commit: working directory is not clean. Commit or stash changes before using --commit."))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Committed:"))).toBe(false);
 
-    const status = execFileSync("git", ["status", "--porcelain"], {
-      cwd: workspace,
-      encoding: "utf-8",
-    }).trim();
-    expect(status).toBe("");
-
-    const changedFiles = execFileSync("git", ["show", "--name-only", "--pretty=", "HEAD"], {
-      cwd: workspace,
-      encoding: "utf-8",
-    }).trim();
-    expect(changedFiles).toContain("roadmap.md");
-    expect(changedFiles).toContain("src/notes.txt");
+    const roadmap = fs.readFileSync(roadmapPath, "utf-8");
+    expect(roadmap).toContain("- [ ] cli: echo hello");
   });
 
   it("run parses --commit-message without requiring --commit", async () => {
@@ -1432,15 +1423,15 @@ describe.sequential("CLI integration", () => {
     execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
     execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
     execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
-
     const hookScript = path.join(workspace, "hook.mjs");
     fs.writeFileSync(
       hookScript,
       "console.log([process.env.RUNDOWN_TASK, process.env.RUNDOWN_SOURCE].join('|'));\n",
       "utf-8",
     );
+
+    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
 
     const result = await runCli([
       "run",

@@ -43,9 +43,19 @@ describe("run-task commit behavior", () => {
     expect(code).toBe(0);
     expect(fileSystem.readText(taskFile)).toBe("- [x] cli: echo hello\n");
     expect(gitClient.run).toHaveBeenNthCalledWith(1, ["rev-parse", "--is-inside-work-tree"], cwd);
-    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["add", "-A", "--", ".", ":(exclude).rundown/runs/**"], cwd);
+    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["status", "--porcelain", "--", ".", ":(exclude).rundown/runs/**"], cwd);
     expect(gitClient.run).toHaveBeenNthCalledWith(
       3,
+      ["rev-parse", "--is-inside-work-tree"],
+      cwd,
+    );
+    expect(gitClient.run).toHaveBeenNthCalledWith(
+      4,
+      ["add", "-A", "--", ".", ":(exclude).rundown/runs/**"],
+      cwd,
+    );
+    expect(gitClient.run).toHaveBeenNthCalledWith(
+      5,
       ["commit", "-m", "rundown: complete \"cli: echo hello\" in tasks.md"],
       cwd,
     );
@@ -72,9 +82,19 @@ describe("run-task commit behavior", () => {
     }));
 
     expect(code).toBe(0);
-    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["add", "-A", "--", ".", ":(exclude).rundown/runs/**"], cwd);
+    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["status", "--porcelain", "--", ".", ":(exclude).rundown/runs/**"], cwd);
     expect(gitClient.run).toHaveBeenNthCalledWith(
       3,
+      ["rev-parse", "--is-inside-work-tree"],
+      cwd,
+    );
+    expect(gitClient.run).toHaveBeenNthCalledWith(
+      4,
+      ["add", "-A", "--", ".", ":(exclude).rundown/runs/**"],
+      cwd,
+    );
+    expect(gitClient.run).toHaveBeenNthCalledWith(
+      5,
       ["commit", "-m", "done: cli: echo ship @ docs/roadmap.md"],
       cwd,
     );
@@ -139,6 +159,103 @@ describe("run-task commit behavior", () => {
     expect(code).toBe(0);
     expect(fileSystem.readText(taskFile)).toBe("- [x] cli: echo hello\n");
     expect(events.some((event) => event.kind === "warn" && event.message === "--commit: not inside a git repository, skipping.")).toBe(true);
+  });
+
+  it("continues execution when --commit is used outside a git repository", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createInlineTask(taskFile, "cli: echo hello");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] cli: echo hello\n",
+    });
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse") {
+          throw new Error("not a repo");
+        }
+        return "";
+      }),
+    };
+    const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
+
+    const runTask = createRunTask(dependencies);
+
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      commitAfterComplete: true,
+    }));
+
+    expect(code).toBe(0);
+    expect(fileSystem.readText(taskFile)).toBe("- [x] cli: echo hello\n");
+    expect(events.some((event) => event.kind === "warn" && event.message === "--commit: not inside a git repository, skipping.")).toBe(true);
+    expect(gitClient.run).toHaveBeenCalledTimes(2);
+    expect(gitClient.run).toHaveBeenNthCalledWith(1, ["rev-parse", "--is-inside-work-tree"], cwd);
+    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["rev-parse", "--is-inside-work-tree"], cwd);
+    expect(vi.mocked(gitClient.run).mock.calls.some(([args]) => args[0] === "status")).toBe(false);
+  });
+
+  it("errors and exits when --commit is used with a dirty working directory", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createInlineTask(taskFile, "cli: echo hello");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] cli: echo hello\n",
+    });
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse") {
+          return "true";
+        }
+        if (args[0] === "status") {
+          return "M file.txt\n";
+        }
+        return "";
+      }),
+    };
+    const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
+
+    const runTask = createRunTask(dependencies);
+
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      commitAfterComplete: true,
+    }));
+
+    expect(code).toBe(1);
+    expect(fileSystem.readText(taskFile)).toBe("- [ ] cli: echo hello\n");
+    expect(events.some((event) => event.kind === "error" && event.message.includes("working directory is not clean"))).toBe(true);
+    expect(gitClient.run).toHaveBeenCalledTimes(2);
+    expect(gitClient.run).toHaveBeenNthCalledWith(1, ["rev-parse", "--is-inside-work-tree"], cwd);
+    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["status", "--porcelain", "--", ".", ":(exclude).rundown/runs/**"], cwd);
+    expect(vi.mocked(gitClient.run).mock.calls.some(([args]) => args[0] === "add")).toBe(false);
+    expect(vi.mocked(gitClient.run).mock.calls.some(([args]) => args[0] === "commit")).toBe(false);
+  });
+
+  it("does not run git status --porcelain when --commit is not enabled", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createInlineTask(taskFile, "cli: echo hello");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] cli: echo hello\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient });
+
+    const runTask = createRunTask(dependencies);
+
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      commitAfterComplete: false,
+    }));
+
+    expect(code).toBe(0);
+    expect(fileSystem.readText(taskFile)).toBe("- [x] cli: echo hello\n");
+    expect(vi.mocked(gitClient.run).mock.calls.some(([args]) =>
+      JSON.stringify(args) === JSON.stringify(["status", "--porcelain", "--", ".", ":(exclude).rundown/runs/**"])
+    )).toBe(false);
   });
 });
 
@@ -1156,7 +1273,9 @@ describe("run-task exit code behavior with completion side effects", () => {
 
     expect(code).toBe(1);
     expect(fileSystem.readText(taskFile)).toBe("- [ ] cli: echo hello\n");
-    expect(gitClient.run).not.toHaveBeenCalled();
+    expect(gitClient.run).toHaveBeenCalledTimes(2);
+    expect(gitClient.run).toHaveBeenNthCalledWith(1, ["rev-parse", "--is-inside-work-tree"], cwd);
+    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["status", "--porcelain", "--", ".", ":(exclude).rundown/runs/**"], cwd);
     expect(processRunner.run).not.toHaveBeenCalled();
   });
 
@@ -1190,7 +1309,9 @@ describe("run-task exit code behavior with completion side effects", () => {
 
     expect(code).toBe(2);
     expect(fileSystem.readText(taskFile)).toBe("- [ ] cli: echo hello\n");
-    expect(gitClient.run).not.toHaveBeenCalled();
+    expect(gitClient.run).toHaveBeenCalledTimes(2);
+    expect(gitClient.run).toHaveBeenNthCalledWith(1, ["rev-parse", "--is-inside-work-tree"], cwd);
+    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["status", "--porcelain", "--", ".", ":(exclude).rundown/runs/**"], cwd);
     expect(processRunner.run).not.toHaveBeenCalled();
   });
 });

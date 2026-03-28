@@ -15,5 +15,6 @@ export { createDirectoryOpenerAdapter } from "./directory-opener-adapter.js";
 export { createNodePathOperationsAdapter } from "./node-path-operations-adapter.js";
 export { createFsTemplateVarsLoaderAdapter } from "./fs-template-vars-loader-adapter.js";
 export { createJsonlTraceWriter } from "./jsonl-trace-writer.js";
+export { createFanoutTraceWriter } from "./fanout-trace-writer.js";
 export { createNoopTraceWriter } from "./noop-trace-writer.js";
 export { createGlobalOutputLogWriter } from "./global-output-log-writer.js";

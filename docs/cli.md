@@ -151,7 +151,7 @@ Options:
 | `--dry-run` | Render plan prompt + execution intent and exit without running the worker. | off |
 | `--print-prompt` | Print the rendered planner prompt and exit `0` without running the worker. | off |
 | `--keep-artifacts` | Preserve runtime artifacts under `.rundown/runs/` even on success. | off |
-| `--trace` | Write structured trace events to `.rundown/runs/<id>/trace.jsonl`. | off |
+| `--trace` | Write structured trace events to `.rundown/runs/<id>/trace.jsonl` and mirror them to `.rundown/logs/trace.jsonl`. | off |
 | `--vars-file [path]` | Load template variables from JSON (default path: `.rundown/vars.json`). | unset |
 | `--var <key=value>` | Inject template variables (repeatable). | none |
 | `--worker <command...>` | Worker command (preferred on PowerShell). | unset |
@@ -243,6 +243,8 @@ rundown artifacts --clean --failed
 ## Global output log (JSONL)
 
 `rundown` also defines a process-wide append-only JSONL stream at `.rundown/logs/output.jsonl`.
+
+When `--trace` is enabled on `run`, `reverify`, or `plan`, each artifact trace event (including LLM/worker-derived stages such as `agent.signals`, `agent.thinking`, and `analysis.summary`) is also appended to `.rundown/logs/trace.jsonl` as a cumulative stream.
 
 Promtail note: configure this file as a scrape target to ingest a single cumulative CLI output stream across all runs.
 

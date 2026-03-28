@@ -37,6 +37,7 @@ import {
   createFsTemplateLoader,
   createFsVerificationSidecar,
   createFsTemplateVarsLoaderAdapter,
+  createFanoutTraceWriter,
   createJsonlTraceWriter,
   createNodeFileSystem,
   createNoopTraceWriter,
@@ -134,6 +135,22 @@ function createNoopOutputPort(): ApplicationOutputPort {
   };
 }
 
+function createArtifactTraceWriter(ports: AppPorts, artifactContext: { rootDir: string }): TraceWriterPort {
+  const perRunTracePath = ports.pathOperations.join(artifactContext.rootDir, "trace.jsonl");
+  const globalTracePath = ports.pathOperations.join(
+    artifactContext.rootDir,
+    "..",
+    "..",
+    "logs",
+    "trace.jsonl",
+  );
+
+  return createFanoutTraceWriter([
+    createJsonlTraceWriter(perRunTracePath, ports.fileSystem),
+    createJsonlTraceWriter(globalTracePath, ports.fileSystem),
+  ]);
+}
+
 function createDefaultUseCaseFactories(): AppUseCaseFactories {
   const planTaskUseCase = (ports: AppPorts) => createPlanTask({
     workerExecutor: ports.workerExecutor,
@@ -149,10 +166,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
         return ports.traceWriter;
       }
 
-      return createJsonlTraceWriter(
-        ports.pathOperations.join(artifactContext.rootDir, "trace.jsonl"),
-        ports.fileSystem,
-      );
+      return createArtifactTraceWriter(ports, artifactContext);
     },
     output: ports.output,
   });
@@ -179,10 +193,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
           return ports.traceWriter;
         }
 
-        return createJsonlTraceWriter(
-          ports.pathOperations.join(artifactContext.rootDir, "trace.jsonl"),
-          ports.fileSystem,
-        );
+        return createArtifactTraceWriter(ports, artifactContext);
       },
       output: ports.output,
     }),
@@ -199,10 +210,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
           return ports.traceWriter;
         }
 
-        return createJsonlTraceWriter(
-          ports.pathOperations.join(artifactContext.rootDir, "trace.jsonl"),
-          ports.fileSystem,
-        );
+        return createArtifactTraceWriter(ports, artifactContext);
       },
       templateLoader: ports.templateLoader,
       pathOperations: ports.pathOperations,

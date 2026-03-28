@@ -11,7 +11,11 @@ import { parseTasks, type Task } from "../domain/parser.js";
 import type { SortMode } from "../domain/sorting.js";
 import { requiresWorkerCommand, resolveRunBehavior } from "../domain/run-options.js";
 import { classifyTaskIntent } from "../domain/task-intent.js";
-import { renderTemplate, type TemplateVars } from "../domain/template.js";
+import {
+  buildTaskHierarchyTemplateVars,
+  renderTemplate,
+  type TemplateVars,
+} from "../domain/template.js";
 import {
   parseCliTemplateVars,
   resolveTemplateVarsFilePath,
@@ -1033,6 +1037,7 @@ export function createRunTask(
         taskIndex: task.index,
         taskLine: task.line,
         source: fileSource,
+        ...buildTaskHierarchyTemplateVars(task),
       };
 
       const prompt = renderTemplate(templates.task, vars);

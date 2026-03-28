@@ -1,5 +1,13 @@
 import type { Task } from "./parser.js";
 
+export interface DescendantSelectionOptions {
+  /**
+   * Prefer traversing `task.children` when present.
+   * Falls back to linear scan when no children are attached.
+   */
+  useChildren?: boolean;
+}
+
 /**
  * Determine whether a task has unchecked descendants.
  *
@@ -7,7 +15,18 @@ import type { Task } from "./parser.js";
  * order and have a strictly greater depth, up to the next task at the
  * same or shallower depth.
  */
-export function hasUncheckedDescendants(task: Task, allTasks: Task[]): boolean {
+export function hasUncheckedDescendants(
+  task: Task,
+  allTasks: Task[],
+  options: DescendantSelectionOptions = {},
+): boolean {
+  if (options.useChildren) {
+    const children = task.children ?? [];
+    if (children.length > 0) {
+      return hasUncheckedInTree(children);
+    }
+  }
+
   const startIdx = allTasks.indexOf(task);
   if (startIdx === -1) return false;
 
@@ -15,6 +34,20 @@ export function hasUncheckedDescendants(task: Task, allTasks: Task[]): boolean {
     const candidate = allTasks[i]!;
     if (candidate.depth <= task.depth) break;
     if (!candidate.checked) return true;
+  }
+
+  return false;
+}
+
+function hasUncheckedInTree(children: Task[]): boolean {
+  for (const child of children) {
+    if (!child.checked) {
+      return true;
+    }
+
+    if (hasUncheckedInTree(child.children ?? [])) {
+      return true;
+    }
   }
 
   return false;

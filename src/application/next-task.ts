@@ -40,7 +40,12 @@ export function createNextTask(
       return 3;
     }
 
-    emit({ kind: "task", task: result.task });
+    emit({
+      kind: "task",
+      task: result.task,
+      children: result.task.children,
+      subItems: result.task.subItems,
+    });
     return 0;
   };
 }

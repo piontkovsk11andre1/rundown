@@ -6,7 +6,11 @@
 
 import type { Task } from "../domain/parser.js";
 import type { VerificationStore } from "../domain/ports/verification-store.js";
-import { renderTemplate, type TemplateVars } from "../domain/template.js";
+import {
+  buildTaskHierarchyTemplateVars,
+  renderTemplate,
+  type TemplateVars,
+} from "../domain/template.js";
 import type { ExtraTemplateVars } from "../domain/template-vars.js";
 import { runWorker, type RunnerMode, type PromptTransport } from "./runner.js";
 import type { RuntimeArtifactsContext } from "./runtime-artifacts.js";
@@ -79,6 +83,7 @@ export async function verify(options: VerifyOptions): Promise<boolean> {
     taskIndex: options.task.index,
     taskLine: options.task.line,
     source: options.source,
+    ...buildTaskHierarchyTemplateVars(options.task),
   };
 
   const prompt = renderTemplate(options.template, vars);

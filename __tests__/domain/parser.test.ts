@@ -6,6 +6,7 @@ import {
   extractTodoItems,
   hasTodoItems,
   parseTasks,
+  type SubItem,
 } from "../../src/domain/parser.js";
 
 afterEach(() => {
@@ -15,6 +16,20 @@ afterEach(() => {
 });
 
 describe("parseTasks", () => {
+  it("exports SubItem shape for plain list item metadata", () => {
+    const subItem: SubItem = {
+      text: "Note",
+      line: 3,
+      depth: 1,
+    };
+
+    expect(subItem).toEqual({
+      text: "Note",
+      line: 3,
+      depth: 1,
+    });
+  });
+
   it("should find unchecked tasks with - [ ]", () => {
     const md = `# Hello\n\n- [ ] First task\n- [ ] Second task\n`;
     const tasks = parseTasks(md, "test.md");
@@ -53,6 +68,93 @@ describe("parseTasks", () => {
     expect(tasks[0]!.text).toBe("Parent task");
     expect(tasks[1]!.text).toBe("Nested task");
     expect(tasks[2]!.text).toBe("Deep nested task");
+    expect(tasks[0]!.children).toEqual([tasks[1]]);
+    expect(tasks[1]!.children).toEqual([tasks[2]]);
+    expect(tasks[2]!.children).toEqual([]);
+    expect(tasks.every((task) => Array.isArray(task.subItems))).toBe(true);
+  });
+
+  it("populates parent children for nested checkbox items", () => {
+    const md = [
+      "- [ ] Parent task",
+      "  - [ ] Child task one",
+      "  - [x] Child task two",
+      "- [ ] Another parent",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(4);
+    expect(tasks[0]!.text).toBe("Parent task");
+    expect(tasks[0]!.children).toEqual([tasks[1], tasks[2]]);
+    expect(tasks[1]!.text).toBe("Child task one");
+    expect(tasks[2]!.text).toBe("Child task two");
+    expect(tasks[3]!.text).toBe("Another parent");
+    expect(tasks[3]!.children).toEqual([]);
+  });
+
+  it("populates parent subItems for plain list sub-items", () => {
+    const md = [
+      "- [ ] Parent task",
+      "  - Plain note one",
+      "  - Plain note two",
+      "- [ ] Sibling task",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]!.text).toBe("Parent task");
+    expect(tasks[0]!.subItems).toEqual([
+      { text: "Plain note one", line: 2, depth: 1 },
+      { text: "Plain note two", line: 3, depth: 1 },
+    ]);
+    expect(tasks[1]!.text).toBe("Sibling task");
+    expect(tasks[1]!.subItems).toEqual([]);
+  });
+
+  it("captures nested non-checkbox list items as subItems", () => {
+    const md = [
+      "- [ ] Parent task",
+      "  - Note one",
+      "  - [ ] Nested task",
+      "    - Child note",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]!.subItems).toEqual([{ text: "Note one", line: 2, depth: 1 }]);
+    expect(tasks[1]!.subItems).toEqual([{ text: "Child note", line: 4, depth: 2 }]);
+  });
+
+  it("supports mixed checkbox and plain sub-items under one parent", () => {
+    const md = [
+      "- [ ] Parent task",
+      "  - [ ] Child task one",
+      "  - Parent note one",
+      "  - [x] Child task two",
+      "    - Child two note",
+      "  - Parent note two",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(3);
+
+    expect(tasks[0]!.text).toBe("Parent task");
+    expect(tasks[0]!.children).toEqual([tasks[1], tasks[2]]);
+    expect(tasks[0]!.subItems).toEqual([
+      { text: "Parent note one", line: 3, depth: 1 },
+      { text: "Parent note two", line: 6, depth: 1 },
+    ]);
+
+    expect(tasks[1]!.text).toBe("Child task one");
+    expect(tasks[1]!.subItems).toEqual([]);
+
+    expect(tasks[2]!.text).toBe("Child task two");
+    expect(tasks[2]!.checked).toBe(true);
+    expect(tasks[2]!.subItems).toEqual([{ text: "Child two note", line: 5, depth: 2 }]);
   });
 
   it("should ignore tasks inside fenced code blocks", () => {
@@ -203,6 +305,7 @@ describe("parseTasks", () => {
     expect(tasks[1]!.checked).toBe(false);
     expect(tasks[2]!.checked).toBe(true);
     expect(tasks[3]!.checked).toBe(false);
+    expect(tasks.every((task) => Array.isArray(task.children))).toBe(true);
   });
 });
 

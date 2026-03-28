@@ -1319,6 +1319,51 @@ describe("reverify-task", () => {
     }));
   });
 
+  it("keeps children and subItems template vars authoritative during --print-prompt", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "roadmap.md");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [x] Build release\n  - [ ] Child item\n  - Extra note\n",
+    });
+    const completedRun = createRunMetadata({
+      runId: "run-completed",
+      status: "completed",
+      task: {
+        text: "Build release",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "roadmap.md",
+      },
+    });
+
+    const { dependencies, events, taskVerification } = createDependencies({
+      cwd,
+      fileSystem,
+      runs: [completedRun],
+    });
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "verify.md"))) {
+        return "{{children}}|{{subItems}}";
+      }
+      return null;
+    });
+    vi.mocked(taskVerification.verify).mockResolvedValue(true);
+
+    const reverifyTask = createReverifyTask(dependencies);
+    const code = await reverifyTask(createOptions({
+      runId: "latest",
+      printPrompt: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(taskVerification.verify)).not.toHaveBeenCalled();
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain("\"text\":\"Child item\"");
+    expect(prompt).toContain("\"text\":\"Extra note\"");
+  });
+
   it("resolves relative task file metadata and falls back to a unique text match", async () => {
     const cwd = "/workspace";
     const absoluteTaskFile = path.resolve(cwd, "roadmap.md");

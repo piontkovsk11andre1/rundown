@@ -17,6 +17,7 @@ describe("list-tasks", () => {
     const markdown = [
       "- [ ] Parent task",
       "  - [ ] Child task",
+      "  - Parent detail",
       "- [x] Done task",
       "",
     ].join("\n");
@@ -33,8 +34,18 @@ describe("list-tasks", () => {
     expect(taskEvents).toHaveLength(2);
     expect(taskEvents[0]?.task.text).toBe("Parent task");
     expect(taskEvents[0]?.blocked).toBe(true);
+    expect(taskEvents[0]?.task.children.map((child) => child.text)).toEqual(["Child task"]);
+    expect(taskEvents[0]?.task.subItems.map((subItem) => subItem.text)).toEqual(["Parent detail"]);
+    expect(taskEvents[0]?.children?.map((child) => child.text)).toEqual(["Child task"]);
+    expect(taskEvents[0]?.subItems?.map((subItem) => subItem.text)).toEqual(["Parent detail"]);
+    expect(taskEvents[0]?.children).toBe(taskEvents[0]?.task.children);
+    expect(taskEvents[0]?.subItems).toBe(taskEvents[0]?.task.subItems);
     expect(taskEvents[1]?.task.text).toBe("Child task");
     expect(taskEvents[1]?.blocked).toBe(false);
+    expect(taskEvents[1]?.task.children).toEqual([]);
+    expect(taskEvents[1]?.task.subItems).toEqual([]);
+    expect(taskEvents[1]?.children).toEqual([]);
+    expect(taskEvents[1]?.subItems).toEqual([]);
   });
 
   it("includes checked tasks when includeAll is enabled", async () => {

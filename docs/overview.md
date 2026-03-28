@@ -72,6 +72,11 @@ Supported task forms include:
 
 Nested tasks are supported.
 
+When tasks are listed, `rundown` shows nested structure explicitly:
+
+- nested checkbox items are rendered as child tasks under their parent,
+- and nested plain list bullets (non-checkbox items) are rendered as sub-items under that parent.
+
 ## Task selection
 
 Task selection is deterministic:
@@ -91,6 +96,8 @@ Nested checkbox contract:
 - A parent task does not run until every descendant task is checked.
 - Child tasks therefore execute before the parent.
 - If you want a heading that only groups items, use a plain list bullet without a checkbox.
+
+Those plain list bullets are informational only: they are visible in list output as sub-items, but they are not treated as runnable tasks.
 
 ## Sorting
 

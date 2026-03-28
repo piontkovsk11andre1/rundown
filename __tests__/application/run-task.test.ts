@@ -1306,6 +1306,101 @@ describe("run-task prompt and mode behavior", () => {
     expect(events.some((event) => event.kind === "text" && event.text.includes("Build release"))).toBe(true);
   });
 
+  it("exposes children and subItems JSON in rendered prompts", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Build release");
+    task.children = [createTask(taskFile, "Child item")];
+    task.children[0]!.depth = 1;
+    task.children[0]!.line = 2;
+    task.children[0]!.index = 1;
+    task.subItems = [{ text: "Extra note", line: 3, depth: 1 }];
+
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Build release\n  - [ ] Child item\n  - Extra note\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "execute.md"))) {
+        return "{{children}}|{{subItems}}";
+      }
+      return null;
+    });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      printPrompt: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    const promptEvent = events.find((event) => event.kind === "text");
+    expect(promptEvent).toBeDefined();
+    expect(promptEvent).toEqual(expect.objectContaining({ kind: "text" }));
+    if (promptEvent?.kind === "text") {
+      expect(promptEvent.text).toContain("\"text\":\"Child item\"");
+      expect(promptEvent.text).toContain("\"subItems\":[]");
+      expect(promptEvent.text).toContain("\"text\":\"Extra note\"");
+      expect(promptEvent.text).toContain("\"depth\":1");
+    }
+  });
+
+  it("keeps children and subItems template vars authoritative over vars-file and --var", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Build release");
+    task.children = [createTask(taskFile, "Child item")];
+    task.children[0]!.depth = 1;
+    task.children[0]!.line = 2;
+    task.children[0]!.index = 1;
+    task.subItems = [{ text: "Extra note", line: 3, depth: 1 }];
+
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Build release\n  - [ ] Child item\n  - Extra note\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "execute.md"))) {
+        return "{{children}}|{{subItems}}";
+      }
+      return null;
+    });
+    vi.mocked(dependencies.templateVarsLoader.load).mockReturnValue({
+      children: "[{\"text\":\"Injected child\"}]",
+      subItems: "[{\"text\":\"Injected note\"}]",
+    });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      printPrompt: true,
+      varsFileOption: "custom-vars.json",
+      cliTemplateVarArgs: [
+        "children=[{\"text\":\"CLI child\"}]",
+        "subItems=[{\"text\":\"CLI note\"}]",
+      ],
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    const promptEvent = events.find((event) => event.kind === "text");
+    expect(promptEvent).toBeDefined();
+    expect(promptEvent).toEqual(expect.objectContaining({ kind: "text" }));
+    if (promptEvent?.kind === "text") {
+      expect(promptEvent.text).toContain("\"text\":\"Child item\"");
+      expect(promptEvent.text).toContain("\"text\":\"Extra note\"");
+      expect(promptEvent.text).not.toContain("Injected child");
+      expect(promptEvent.text).not.toContain("Injected note");
+      expect(promptEvent.text).not.toContain("CLI child");
+      expect(promptEvent.text).not.toContain("CLI note");
+    }
+  });
+
   it("reports dry-run details for non-inline tasks", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");
@@ -2334,6 +2429,8 @@ describe("run-task --all mode", () => {
               isInlineCli: true,
               cliCommand: t.cmd,
               depth: 0,
+              children: [],
+              subItems: [],
             },
             source: "tasks.md",
             contextBefore: "",
@@ -2476,6 +2573,8 @@ describe("run-task --all mode", () => {
               isInlineCli: true,
               cliCommand: t.cmd,
               depth: 0,
+              children: [],
+              subItems: [],
             },
             source: "tasks.md",
             contextBefore: "",
@@ -2566,6 +2665,8 @@ describe("run-task --all mode", () => {
               isInlineCli: true,
               cliCommand: t.cmd,
               depth: 0,
+              children: [],
+              subItems: [],
             },
             source: "tasks.md",
             contextBefore: "",
@@ -3054,6 +3155,8 @@ function createInlineTask(file: string, text: string): Task {
     isInlineCli: true,
     cliCommand: text.replace(/^cli:\s*/i, ""),
     depth: 0,
+    children: [],
+    subItems: [],
   };
 }
 
@@ -3069,6 +3172,8 @@ function createTask(file: string, text: string): Task {
     file,
     isInlineCli: false,
     depth: 0,
+    children: [],
+    subItems: [],
   };
 }
 

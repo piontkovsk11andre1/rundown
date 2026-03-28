@@ -26,6 +26,12 @@ function makeTempWorkspace(): string {
   return dir;
 }
 
+const ANSI_ESCAPE_PATTERN = /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-ntqry=><~]))/g;
+
+function stripAnsi(value: string): string {
+  return value.replace(ANSI_ESCAPE_PATTERN, "");
+}
+
 async function runCli(args: string[], cwd: string): Promise<{
   code: number;
   logs: string[];
@@ -3702,6 +3708,66 @@ describe.sequential("CLI integration", () => {
     expect(result.code).toBe(0);
     expect(result.logs.some((line) => line.includes("Parent") && line.includes("blocked"))).toBe(true);
     expect(result.logs.some((line) => line.includes("Child"))).toBe(true);
+  });
+
+  it("list shows nested checkbox children as an indented hierarchy", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(
+      path.join(workspace, "notes.md"),
+      [
+        "- [ ] Parent",
+        "  - [ ] Child one",
+        "    - [ ] Grandchild",
+        "  - [ ] Child two",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli(["list", "notes.md"], workspace);
+
+    expect(result.code).toBe(0);
+    const parentHierarchyLine = result.logs.find((line) => {
+      return line.includes("Parent")
+        && line.includes("Child one")
+        && line.includes("Grandchild")
+        && line.includes("Child two");
+    });
+    expect(parentHierarchyLine).toBeDefined();
+    expect(parentHierarchyLine).toContain("\n  ");
+    expect(parentHierarchyLine).toContain("\n    ");
+    expect(parentHierarchyLine).toContain("Child one");
+    expect(parentHierarchyLine).toContain("Grandchild");
+    expect(parentHierarchyLine).toContain("Child two");
+  });
+
+  it("list shows non-checkable sub-items as indented details", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(
+      path.join(workspace, "notes.md"),
+      [
+        "- [ ] Parent",
+        "  - Parent detail",
+        "    - Nested detail",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli(["list", "notes.md"], workspace);
+
+    expect(result.code).toBe(0);
+    const parentDetailsLine = result.logs.find((line) => {
+      return line.includes("Parent")
+        && line.includes("Parent detail")
+        && line.includes("Nested detail");
+    });
+    expect(parentDetailsLine).toBeDefined();
+    const hierarchyOutput = stripAnsi(parentDetailsLine ?? "");
+    expect(hierarchyOutput).toContain("\n  ");
+    expect(hierarchyOutput).toContain("\n    ");
+    expect(hierarchyOutput).toContain(":2 - Parent detail");
+    expect(hierarchyOutput).toContain(":3 - Nested detail");
   });
 
   it("init creates .rundown defaults and exits with 0", async () => {

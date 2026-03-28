@@ -26,6 +26,8 @@ function makeTask(file: string): Task {
     file,
     isInlineCli: false,
     depth: 0,
+    children: [],
+    subItems: [],
   };
 }
 
@@ -170,5 +172,81 @@ describe("verify", () => {
       task,
       "Verification worker returned empty output. Expected OK or a short failure reason.",
     );
+  });
+
+  it("renders children and subItems template vars as JSON", async () => {
+    const file = "Tasks.md";
+    const task = makeTask(file);
+    task.children = [{
+      text: "Child",
+      checked: false,
+      index: 3,
+      line: 4,
+      column: 1,
+      offsetStart: 0,
+      offsetEnd: 0,
+      file,
+      isInlineCli: false,
+      depth: 1,
+      children: [],
+      subItems: [],
+    }];
+    task.subItems = [{ text: "Note", line: 5, depth: 1 }];
+    const verificationStore = createVerificationStore();
+
+    runWorkerMock.mockResolvedValue({ exitCode: 0, stdout: "OK", stderr: "" });
+
+    await verify({
+      task,
+      source: file,
+      contextBefore: "",
+      template: "{{children}}|{{subItems}}",
+      command: ["worker"],
+      verificationStore,
+    });
+
+    expect(runWorkerMock).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: "[{\"text\":\"Child\",\"checked\":false,\"index\":3,\"line\":4,\"column\":1,\"offsetStart\":0,\"offsetEnd\":0,\"file\":\"Tasks.md\",\"isInlineCli\":false,\"depth\":1,\"children\":[],\"subItems\":[]}]|[{\"text\":\"Note\",\"line\":5,\"depth\":1}]",
+    }));
+  });
+
+  it("keeps hierarchy template vars authoritative over injected template vars", async () => {
+    const file = "Tasks.md";
+    const task = makeTask(file);
+    task.children = [{
+      text: "Child",
+      checked: false,
+      index: 3,
+      line: 4,
+      column: 1,
+      offsetStart: 0,
+      offsetEnd: 0,
+      file,
+      isInlineCli: false,
+      depth: 1,
+      children: [],
+      subItems: [],
+    }];
+    task.subItems = [{ text: "Note", line: 5, depth: 1 }];
+    const verificationStore = createVerificationStore();
+
+    runWorkerMock.mockResolvedValue({ exitCode: 0, stdout: "OK", stderr: "" });
+
+    await verify({
+      task,
+      source: file,
+      contextBefore: "",
+      template: "{{children}}|{{subItems}}",
+      command: ["worker"],
+      verificationStore,
+      templateVars: {
+        children: "[{\"text\":\"Injected child\"}]",
+        subItems: "[{\"text\":\"Injected note\"}]",
+      },
+    });
+
+    expect(runWorkerMock).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: "[{\"text\":\"Child\",\"checked\":false,\"index\":3,\"line\":4,\"column\":1,\"offsetStart\":0,\"offsetEnd\":0,\"file\":\"Tasks.md\",\"isInlineCli\":false,\"depth\":1,\"children\":[],\"subItems\":[]}]|[{\"text\":\"Note\",\"line\":5,\"depth\":1}]",
+    }));
   });
 });

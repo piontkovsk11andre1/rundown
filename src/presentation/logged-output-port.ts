@@ -111,8 +111,23 @@ function resolveLogMessage(event: ApplicationOutputEvent): string {
     case "success":
       return event.message;
     case "task": {
-      const task = `${event.task.file}:${event.task.line} [#${event.task.index}] ${event.task.text}`;
-      return event.blocked ? `${task} (blocked)` : task;
+      const task = formatTaskLine(event.task);
+      const parentLine = event.blocked ? `${task} (blocked)` : task;
+      const children = event.children ?? event.task.children;
+      const subItems = event.subItems ?? event.task.subItems;
+      const detailLines = formatTaskDetailLines({
+        file: event.task.file,
+        parentDepth: event.task.depth,
+        children,
+        subItems,
+        indentLevel: 1,
+      });
+
+      if (detailLines.length === 0) {
+        return parentLine;
+      }
+
+      return [parentLine, ...detailLines].join("\n");
     }
     case "text":
     case "stderr":
@@ -120,4 +135,65 @@ function resolveLogMessage(event: ApplicationOutputEvent): string {
     default:
       return "";
   }
+}
+
+function formatTaskLine(task: { file: string; line: number; index: number; text: string }): string {
+  return `${task.file}:${task.line} [#${task.index}] ${task.text}`;
+}
+
+interface TaskDetailLineOptions {
+  file: string;
+  parentDepth: number;
+  children?: unknown;
+  subItems?: unknown;
+  indentLevel: number;
+}
+
+interface TaskLike {
+  file: string;
+  line: number;
+  index: number;
+  text: string;
+  depth: number;
+  children?: unknown;
+  subItems?: unknown;
+}
+
+interface SubItemLike {
+  text: string;
+  line: number;
+  depth: number;
+}
+
+function formatTaskDetailLines(options: TaskDetailLineOptions): string[] {
+  const children = Array.isArray(options.children) ? (options.children as TaskLike[]) : [];
+  const subItems = Array.isArray(options.subItems) ? (options.subItems as SubItemLike[]) : [];
+
+  const detailGroups: Array<{ line: number; lines: string[] }> = [];
+
+  for (const child of children) {
+    const childLines = [
+      `${"  ".repeat(options.indentLevel)}${formatTaskLine(child)}`,
+      ...formatTaskDetailLines({
+        file: child.file,
+        parentDepth: child.depth,
+        children: child.children,
+        subItems: child.subItems,
+        indentLevel: options.indentLevel + 1,
+      }),
+    ];
+    detailGroups.push({ line: child.line, lines: childLines });
+  }
+
+  for (const subItem of subItems) {
+    const extraIndent = Math.max(0, subItem.depth - (options.parentDepth + 1));
+    const indent = options.indentLevel + extraIndent;
+    detailGroups.push({
+      line: subItem.line,
+      lines: [`${"  ".repeat(indent)}${options.file}:${subItem.line} - ${subItem.text}`],
+    });
+  }
+
+  detailGroups.sort((left, right) => left.line - right.line);
+  return detailGroups.flatMap((group) => group.lines);
 }

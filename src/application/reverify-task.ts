@@ -5,7 +5,11 @@ import {
 } from "../domain/defaults.js";
 import { type Task, parseTasks } from "../domain/parser.js";
 import { resolveRunBehavior } from "../domain/run-options.js";
-import { renderTemplate, type TemplateVars } from "../domain/template.js";
+import {
+  buildTaskHierarchyTemplateVars,
+  renderTemplate,
+  type TemplateVars,
+} from "../domain/template.js";
 import {
   createRunCompletedEvent,
   createRunStartedEvent,
@@ -538,6 +542,7 @@ function buildReverifyPromptContext(
     taskLine: taskContext.task.line,
     source: taskContext.source,
     traceInstructions: getTraceInstructions(trace),
+    ...buildTaskHierarchyTemplateVars(taskContext.task),
   };
 
   return {

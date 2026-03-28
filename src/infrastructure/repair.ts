@@ -6,7 +6,11 @@
 
 import type { Task } from "../domain/parser.js";
 import type { VerificationStore } from "../domain/ports/verification-store.js";
-import { renderTemplate, type TemplateVars } from "../domain/template.js";
+import {
+  buildTaskHierarchyTemplateVars,
+  renderTemplate,
+  type TemplateVars,
+} from "../domain/template.js";
 import type { ExtraTemplateVars } from "../domain/template-vars.js";
 import { runWorker, type RunnerMode, type PromptTransport } from "./runner.js";
 import { verify } from "./verification.js";
@@ -63,6 +67,7 @@ export async function repair(options: RepairOptions): Promise<RepairResult> {
       taskLine: options.task.line,
       source: options.source,
       verificationResult,
+      ...buildTaskHierarchyTemplateVars(options.task),
     };
 
     const prompt = renderTemplate(options.repairTemplate, vars);

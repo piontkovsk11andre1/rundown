@@ -58,8 +58,8 @@ export function createListTasks(
       const filtered = includeAll ? tasks : tasks.filter((task) => !task.checked);
 
       for (const task of filtered) {
-        const blocked = !task.checked && hasUncheckedDescendants(task, tasks);
-        emit({ kind: "task", task, blocked });
+        const blocked = !task.checked && hasUncheckedDescendants(task, tasks, { useChildren: true });
+        emit({ kind: "task", task, blocked, children: task.children, subItems: task.subItems });
         count++;
       }
     }

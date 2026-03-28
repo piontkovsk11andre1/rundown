@@ -39,6 +39,20 @@ export interface Task {
   cliCommand?: string;
   /** Nesting depth (0 = top-level list item). */
   depth: number;
+  /** Nested checkbox child tasks. */
+  children: Task[];
+  /** Nested non-checkbox list items. */
+  subItems: SubItem[];
+}
+
+/** Represents a plain (non-checkbox) list item nested under a task. */
+export interface SubItem {
+  /** The text content of the list item. */
+  text: string;
+  /** 1-based line number in the source file. */
+  line: number;
+  /** Nesting depth (0 = top-level list item). */
+  depth: number;
 }
 
 /** Document-level TODO item extracted from Markdown. */
@@ -73,7 +87,7 @@ export function parseTasks(source: string, file: string = ""): Task[] {
   });
 
   const tasks: Task[] = [];
-  walkForTasks(tree, tasks, file, 0);
+  walkForTasks(tree, tasks, file, 0, undefined);
   return tasks;
 }
 
@@ -159,7 +173,10 @@ function walkForTasks(
   tasks: Task[],
   file: string,
   depth: number,
+  parentTask: Task | undefined,
 ): void {
+  let currentParentTask = parentTask;
+
   if (isListItem(node) && node.checked !== null && node.checked !== undefined) {
     const text = extractText(node);
     const pos = node.position;
@@ -176,19 +193,35 @@ function walkForTasks(
       file,
       isInlineCli,
       depth,
+      children: [],
+      subItems: [],
     };
 
     if (isInlineCli) {
       task.cliCommand = text.replace(CLI_PREFIX, "").trim();
     }
 
+    if (parentTask) {
+      parentTask.children.push(task);
+    }
+
     tasks.push(task);
+    currentParentTask = task;
+  } else if (isListItem(node) && currentParentTask) {
+    const text = extractText(node);
+    if (text.length > 0) {
+      currentParentTask.subItems.push({
+        text,
+        line: node.position?.start.line ?? 0,
+        depth,
+      });
+    }
   }
 
   if ("children" in node) {
     const nextDepth = isListItem(node) ? depth + 1 : depth;
     for (const child of (node as Parent).children) {
-      walkForTasks(child, tasks, file, nextDepth);
+      walkForTasks(child, tasks, file, nextDepth, currentParentTask);
     }
   }
 }

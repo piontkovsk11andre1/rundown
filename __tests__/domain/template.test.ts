@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderTemplate } from "../../src/domain/template.js";
+import { buildTaskHierarchyTemplateVars, renderTemplate } from "../../src/domain/template.js";
 
 describe("renderTemplate", () => {
   it("should replace known placeholders", () => {
@@ -131,5 +131,30 @@ describe("renderTemplate", () => {
     });
 
     expect(result).toBe("Before\n## Trace output\nTracing is active.\nAfter");
+  });
+
+  it("should render children and subItems as JSON strings", () => {
+    const template = "Children={{children}}\nSubItems={{subItems}}";
+    const result = renderTemplate(template, {
+      task: "",
+      file: "",
+      context: "",
+      taskIndex: 0,
+      taskLine: 1,
+      source: "",
+      ...buildTaskHierarchyTemplateVars({
+        children: [{ text: "child", checked: false, index: 1 }],
+        subItems: [{ text: "note", line: 10, depth: 1 }],
+      }),
+    });
+
+    expect(result).toBe("Children=[{\"text\":\"child\",\"checked\":false,\"index\":1}]\nSubItems=[{\"text\":\"note\",\"line\":10,\"depth\":1}]");
+  });
+
+  it("should default children and subItems to empty arrays", () => {
+    expect(buildTaskHierarchyTemplateVars({})).toEqual({
+      children: "[]",
+      subItems: "[]",
+    });
   });
 });

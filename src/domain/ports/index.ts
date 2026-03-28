@@ -1,4 +1,6 @@
 export type { FileSystem, FileSystemDirent, FileSystemStat } from "./file-system.js";
+export type { FileLock, FileLockMetadata, FileLockHolder } from "./file-lock.js";
+export { FileLockError } from "./file-lock.js";
 export type { ProcessRunner, ProcessRunOptions, ProcessRunResult, ProcessRunMode } from "./process-runner.js";
 export type { GitClient } from "./git-client.js";
 export type { TemplateLoader } from "./template-loader.js";

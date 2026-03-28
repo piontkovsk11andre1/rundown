@@ -5,6 +5,7 @@ import { EventEmitter } from "node:events";
 import { execFileSync } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ArtifactStoreStatus } from "../../src/domain/ports/index.js";
+import { createLockfileFileLock } from "../../src/infrastructure/file-lock.js";
 
 const tempDirs: string[] = [];
 
@@ -161,6 +162,60 @@ describe.sequential("CLI integration", () => {
 
     expect(result.code).toBe(3);
     expect(result.logs.some((line) => line.includes("No Markdown files found matching: missing/**/*.md"))).toBe(true);
+  });
+
+  it("next remains read-only and ignores existing source lockfiles", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "tasks.md";
+    const sourcePath = path.join(workspace, sourceName);
+    const lockPath = path.join(workspace, ".rundown", `${sourceName}.lock`);
+    fs.writeFileSync(sourcePath, "- [ ] Ship release notes\n", "utf-8");
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+    fs.writeFileSync(lockPath, JSON.stringify({
+      pid: process.pid,
+      command: "run",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      file: sourcePath,
+    }), "utf-8");
+
+    const result = await runCli(["next", sourceName], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Ship release notes"))).toBe(true);
+    expect(fs.existsSync(lockPath)).toBe(true);
+  });
+
+  it("reverify remains read-only and is not blocked by an active run lock", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "roadmap.md";
+    const sourcePath = path.join(workspace, sourceName);
+    const lockPath = path.join(workspace, ".rundown", `${sourceName}.lock`);
+    fs.writeFileSync(sourcePath, "- [x] Write docs\n", "utf-8");
+    writeSavedRun(workspace, {
+      runId: "run-20260317T000000000Z-completed",
+      status: "completed",
+    });
+
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+    fs.writeFileSync(lockPath, JSON.stringify({
+      pid: process.pid,
+      command: "run",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      file: sourcePath,
+    }), "utf-8");
+
+    const result = await runCli([
+      "reverify",
+      "--dry-run",
+      "--worker",
+      "opencode",
+      "run",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Re-verify task:"))).toBe(true);
+    expect(result.errors.some((line) => line.includes("Source file is locked by another rundown process"))).toBe(false);
+    expect(fs.existsSync(lockPath)).toBe(true);
   });
 
   it("run dry-run preserves --worker token with spaces", async () => {
@@ -2063,6 +2118,321 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("cli: echo hello|roadmap.md"))).toBe(true);
   });
 
+  it("run holds the source lock while the --on-complete hook executes", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "roadmap.md";
+    fs.writeFileSync(path.join(workspace, sourceName), "- [ ] cli: echo hello\n", "utf-8");
+
+    const lockPath = path.join(workspace, ".rundown", `${sourceName}.lock`).replace(/\\/g, "/");
+    const hookScript = path.join(workspace, "hook-check-lock.mjs");
+    fs.writeFileSync(
+      hookScript,
+      `import fs from "node:fs";\nconsole.log("LOCK_EXISTS=" + String(fs.existsSync(${JSON.stringify(lockPath)})));\n`,
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      sourceName,
+      "--no-verify",
+      "--on-complete",
+      `node ${hookScript.replace(/\\/g, "/")}`,
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("LOCK_EXISTS=true"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, ".rundown", `${sourceName}.lock`))).toBe(false);
+  });
+
+  it("run holds the source lock while the --on-fail hook executes", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "roadmap.md";
+    fs.writeFileSync(path.join(workspace, sourceName), "- [ ] cli: fail intentionally\n", "utf-8");
+
+    const lockPath = path.join(workspace, ".rundown", `${sourceName}.lock`).replace(/\\/g, "/");
+    const hookScript = path.join(workspace, "hook-check-fail-lock.mjs");
+    fs.writeFileSync(
+      hookScript,
+      `import fs from "node:fs";\nconsole.log("LOCK_EXISTS=" + String(fs.existsSync(${JSON.stringify(lockPath)})));\n`,
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      sourceName,
+      "--no-verify",
+      "--on-fail",
+      `node ${hookScript.replace(/\\/g, "/")}`,
+      "--",
+      "node",
+      "-e",
+      "process.exit(1)",
+    ], workspace);
+
+    expect(result.code).toBe(1);
+    expect(result.logs.some((line) => line.includes("LOCK_EXISTS=true"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, ".rundown", `${sourceName}.lock`))).toBe(false);
+  });
+
+  it("run creates source .rundown lock directory when missing", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "projects/alpha/roadmap.md";
+    const sourcePath = path.join(workspace, sourceName);
+    const sourceDir = path.dirname(sourcePath);
+    const lockDir = path.join(sourceDir, ".rundown");
+    const lockPath = path.join(lockDir, "roadmap.md.lock").replace(/\\/g, "/");
+
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.writeFileSync(sourcePath, "- [ ] cli: echo hello\n", "utf-8");
+    expect(fs.existsSync(lockDir)).toBe(false);
+
+    const hookScript = path.join(workspace, "hook-check-created-lock-dir.mjs");
+    fs.writeFileSync(
+      hookScript,
+      `import fs from "node:fs";\nconsole.log("LOCK_EXISTS=" + String(fs.existsSync(${JSON.stringify(lockPath)})));\n`,
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      sourceName,
+      "--no-verify",
+      "--on-complete",
+      `node ${hookScript.replace(/\\/g, "/")}`,
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("LOCK_EXISTS=true"))).toBe(true);
+    expect(fs.existsSync(lockDir)).toBe(true);
+    expect(fs.existsSync(path.join(lockDir, "roadmap.md.lock"))).toBe(false);
+  });
+
+  it("run with glob source holds one lock per resolved markdown file", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceGlob = "projects/*/roadmap.md";
+    const alphaDir = path.join(workspace, "projects", "alpha");
+    const betaDir = path.join(workspace, "projects", "beta");
+    const alphaSourcePath = path.join(alphaDir, "roadmap.md");
+    const betaSourcePath = path.join(betaDir, "roadmap.md");
+
+    fs.mkdirSync(alphaDir, { recursive: true });
+    fs.mkdirSync(betaDir, { recursive: true });
+    fs.writeFileSync(alphaSourcePath, "- [ ] cli: echo alpha\n", "utf-8");
+    fs.writeFileSync(betaSourcePath, "- [ ] cli: echo beta\n", "utf-8");
+
+    const alphaLockPath = path.join(alphaDir, ".rundown", "roadmap.md.lock").replace(/\\/g, "/");
+    const betaLockPath = path.join(betaDir, ".rundown", "roadmap.md.lock").replace(/\\/g, "/");
+    const hookScript = path.join(workspace, "hook-check-multi-locks.mjs");
+    fs.writeFileSync(
+      hookScript,
+      `import fs from "node:fs";\nconsole.log("ALPHA_LOCK_EXISTS=" + String(fs.existsSync(${JSON.stringify(alphaLockPath)})));\nconsole.log("BETA_LOCK_EXISTS=" + String(fs.existsSync(${JSON.stringify(betaLockPath)})));\n`,
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      sourceGlob,
+      "--no-verify",
+      "--on-complete",
+      `node ${hookScript.replace(/\\/g, "/")}`,
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("ALPHA_LOCK_EXISTS=true"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("BETA_LOCK_EXISTS=true"))).toBe(true);
+    expect(fs.existsSync(path.join(alphaDir, ".rundown", "roadmap.md.lock"))).toBe(false);
+    expect(fs.existsSync(path.join(betaDir, ".rundown", "roadmap.md.lock"))).toBe(false);
+  });
+
+  it("run keeps verification sidecar mapping consistent while source lock is held", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "roadmap.md";
+    const sourcePath = path.join(workspace, sourceName);
+    fs.writeFileSync(
+      sourcePath,
+      "- [x] already done\n- [ ] verify selected task mapping\n",
+      "utf-8",
+    );
+
+    const lockPath = path.join(workspace, ".rundown", `${sourceName}.lock`).replace(/\\/g, "/");
+    const sidecarPath = `${sourcePath}.1.validation`.replace(/\\/g, "/");
+    const hookScript = path.join(workspace, "hook-check-sidecar-lock.mjs");
+    fs.writeFileSync(
+      hookScript,
+      [
+        "import fs from \"node:fs\";",
+        "const sourceFile = process.env.RUNDOWN_FILE ?? '';",
+        "const taskIndex = process.env.RUNDOWN_INDEX ?? '';",
+        "const derivedSidecar = `${sourceFile}.${taskIndex}.validation`;",
+        `const expectedSidecar = ${JSON.stringify(sidecarPath)};`,
+        `const lockPath = ${JSON.stringify(lockPath)};`,
+        "console.log('LOCK_EXISTS=' + String(fs.existsSync(lockPath)));",
+        "console.log('SIDECAR_MATCH=' + String(derivedSidecar.replace(/\\\\/g, '/') === expectedSidecar));",
+        "console.log('SIDECAR_EXISTS=' + String(fs.existsSync(derivedSidecar)));",
+        "if (fs.existsSync(derivedSidecar)) {",
+        "  console.log('SIDECAR_CONTENT=' + fs.readFileSync(derivedSidecar, 'utf-8').trim());",
+        "}",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      sourceName,
+      "--only-verify",
+      "--no-repair",
+      "--on-fail",
+      `node ${hookScript.replace(/\\/g, "/")}`,
+      "--",
+      "node",
+      "-e",
+      "console.log('NOT_OK: verification mismatch')",
+    ], workspace);
+
+    expect(result.code).toBe(2);
+    expect(result.logs.some((line) => line.includes("LOCK_EXISTS=true"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("SIDECAR_MATCH=true"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("SIDECAR_EXISTS=true"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("SIDECAR_CONTENT=verification mismatch"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, ".rundown", `${sourceName}.lock`))).toBe(false);
+    expect(fs.readFileSync(path.join(workspace, `${sourceName}.1.validation`), "utf-8")).toBe("verification mismatch");
+  });
+
+  (process.env.CI ? it.skip : it)("run releases source lock on Ctrl+C (SIGINT)", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "roadmap.md";
+    const sourcePath = path.join(workspace, sourceName);
+    const lockPath = path.join(workspace, ".rundown", `${sourceName}.lock`);
+    fs.writeFileSync(sourcePath, "- [ ] cli: echo hello\n", "utf-8");
+
+    const lock = createLockfileFileLock();
+    const runTaskMock = vi.fn(async () => {
+      lock.acquire(sourcePath, { command: "run" });
+      process.emit("SIGINT");
+      return 0;
+    });
+
+    vi.doMock("../../src/create-app.js", () => ({
+      createApp: () => ({
+        runTask: runTaskMock,
+        reverifyTask: vi.fn(async () => 0),
+        revertTask: vi.fn(async () => 0),
+        nextTask: vi.fn(async () => 0),
+        listTasks: vi.fn(async () => 0),
+        planTask: vi.fn(async () => 0),
+        unlockTask: vi.fn(async () => 0),
+        initProject: vi.fn(async () => 0),
+        manageArtifacts: vi.fn(() => 0),
+        releaseAllLocks: () => {
+          lock.releaseAll();
+        },
+      }),
+    }));
+
+    const result = await runCli([
+      "run",
+      sourceName,
+      "--no-verify",
+    ], workspace);
+
+    vi.doUnmock("../../src/create-app.js");
+
+    expect(result.code).toBe(130);
+    expect(runTaskMock).toHaveBeenCalledTimes(1);
+    expect(fs.existsSync(lockPath)).toBe(false);
+  });
+
+  it("run fails fast when another run already holds the source lock", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "roadmap.md";
+    const sourcePath = path.join(workspace, sourceName);
+    fs.writeFileSync(sourcePath, "- [ ] cli: echo hello\n", "utf-8");
+
+    const firstRunLock = createLockfileFileLock();
+    firstRunLock.acquire(sourcePath, { command: "run" });
+
+    try {
+      const startedAtMs = Date.now();
+      const result = await runCli([
+        "run",
+        sourceName,
+        "--no-verify",
+      ], workspace);
+      const durationMs = Date.now() - startedAtMs;
+
+      expect(result.code).toBe(1);
+      expect(result.errors.some((line) => line.includes("Source file is locked by another rundown process"))).toBe(true);
+      expect(result.errors.some((line) => line.includes("--force-unlock"))).toBe(true);
+      expect(result.errors.some((line) => line.includes("rundown unlock"))).toBe(true);
+      expect(durationMs).toBeLessThan(1500);
+    } finally {
+      firstRunLock.releaseAll();
+    }
+  });
+
+  it("revert is blocked when a run already holds the source lock", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "roadmap.md";
+    const sourcePath = path.join(workspace, sourceName);
+    fs.writeFileSync(sourcePath, "- [x] Write docs\n", "utf-8");
+    writeSavedRun(workspace, {
+      runId: "run-20260328T000000000Z-committed",
+      status: "completed",
+      extra: {
+        commitSha: "abc123",
+        commitMessage: "rundown: complete \"Write docs\" in roadmap.md",
+      },
+    });
+
+    const firstRunLock = createLockfileFileLock();
+    firstRunLock.acquire(sourcePath, { command: "run" });
+
+    try {
+      const startedAtMs = Date.now();
+      const result = await runCli([
+        "revert",
+        "--dry-run",
+      ], workspace);
+      const durationMs = Date.now() - startedAtMs;
+
+      expect(result.code).toBe(1);
+      expect(result.errors.some((line) => line.includes("Source file is locked by another rundown process"))).toBe(true);
+      expect(result.errors.some((line) => line.includes("command=run"))).toBe(true);
+      expect(result.errors.some((line) => line.includes("rundown unlock"))).toBe(true);
+      expect(durationMs).toBeLessThan(1500);
+    } finally {
+      firstRunLock.releaseAll();
+    }
+  });
+
+  it("run --force-unlock breaks a stale lock and proceeds", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "roadmap.md";
+    const sourcePath = path.join(workspace, sourceName);
+    const lockPath = path.join(workspace, ".rundown", `${sourceName}.lock`);
+    fs.writeFileSync(sourcePath, "- [ ] cli: echo hello\n", "utf-8");
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+    fs.writeFileSync(lockPath, JSON.stringify({
+      pid: 999999,
+      command: "run",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      file: sourcePath,
+    }), "utf-8");
+
+    const result = await runCli([
+      "run",
+      sourceName,
+      "--no-verify",
+      "--force-unlock",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Force-unlocked stale source lock"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Task checked: cli: echo hello"))).toBe(true);
+    expect(fs.readFileSync(sourcePath, "utf-8")).toContain("- [x] cli: echo hello");
+    expect(fs.existsSync(lockPath)).toBe(false);
+  });
+
   it("run keeps exit code 0 when --commit is set outside a git repository", async () => {
     const workspace = makeTempWorkspace();
     fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] cli: echo hello\n", "utf-8");
@@ -2148,6 +2518,48 @@ describe.sequential("CLI integration", () => {
       encoding: "utf-8",
     }).trim();
     expect(commitSubject).toBe("rundown: complete \"cli: echo hello\" in roadmap.md");
+  });
+
+  it("run --commit does not stage or commit source .lock files", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    fs.writeFileSync(roadmapPath, "- [ ] cli: echo hello\n", "utf-8");
+
+    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--commit",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Committed:"))).toBe(true);
+
+    const committedFiles = execFileSync("git", ["show", "--name-only", "--pretty=format:", "HEAD"], {
+      cwd: workspace,
+      encoding: "utf-8",
+    })
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    expect(committedFiles).toContain("roadmap.md");
+    expect(committedFiles.some((filePath) => filePath.endsWith(".lock"))).toBe(false);
+
+    const status = execFileSync("git", ["status", "--porcelain", "--untracked-files=all"], {
+      cwd: workspace,
+      encoding: "utf-8",
+    });
+    const statusLines = status
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    expect(statusLines.some((line) => line.endsWith(".lock"))).toBe(false);
   });
 
   it("run --commit exits with 1 when the worktree is dirty", async () => {
@@ -2462,6 +2874,70 @@ describe.sequential("CLI integration", () => {
     const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
     expect(compactHelpOutput).toContain("--all");
     expect(compactHelpOutput).toContain("--on-fail <command>");
+    expect(compactHelpOutput).toContain("--force-unlock");
+  });
+
+  it("plan --help shows --force-unlock option", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli(["plan", "roadmap.md", "--help"], workspace);
+
+    expect(result.code).toBe(0);
+    const helpOutput = result.stdoutWrites.join("\n");
+    const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("--force-unlock");
+  });
+
+  it("unlock --help shows source argument", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli(["unlock", "--help"], workspace);
+
+    expect(result.code).toBe(0);
+    const helpOutput = result.stdoutWrites.join("\n");
+    const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("unlock [options] <source>");
+    expect(compactHelpOutput).toContain("Manually release a stale source lockfile");
+  });
+
+  it("unlock removes stale lockfile and exits 0", async () => {
+    const workspace = makeTempWorkspace();
+    const sourcePath = path.join(workspace, "roadmap.md");
+    const lockPath = path.join(workspace, ".rundown", "roadmap.md.lock");
+    fs.writeFileSync(sourcePath, "- [ ] Write docs\n", "utf-8");
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+    fs.writeFileSync(lockPath, JSON.stringify({
+      pid: 424242,
+      command: "run",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      file: sourcePath,
+    }), "utf-8");
+
+    const result = await runCli(["unlock", "roadmap.md"], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Released stale source lock"))).toBe(true);
+    expect(fs.existsSync(lockPath)).toBe(false);
+  });
+
+  it("unlock refuses to remove lock held by active process", async () => {
+    const workspace = makeTempWorkspace();
+    const sourcePath = path.join(workspace, "roadmap.md");
+    const lockPath = path.join(workspace, ".rundown", "roadmap.md.lock");
+    fs.writeFileSync(sourcePath, "- [ ] Write docs\n", "utf-8");
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+    fs.writeFileSync(lockPath, JSON.stringify({
+      pid: process.pid,
+      command: "run",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      file: sourcePath,
+    }), "utf-8");
+
+    const result = await runCli(["unlock", "roadmap.md"], workspace);
+
+    expect(result.code).toBe(1);
+    expect(result.errors.some((line) => line.includes("currently held"))).toBe(true);
+    expect(fs.existsSync(lockPath)).toBe(true);
   });
 
   it("plan rejects non-wait mode", async () => {
@@ -3019,6 +3495,27 @@ describe.sequential("CLI integration", () => {
 
     expect(result.code).toBe(0);
     expect(result.logs.some((line) => line.includes("No tasks found"))).toBe(true);
+  });
+
+  it("list remains read-only and ignores existing source lockfiles", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "notes.md";
+    const sourcePath = path.join(workspace, sourceName);
+    const lockPath = path.join(workspace, ".rundown", `${sourceName}.lock`);
+    fs.writeFileSync(sourcePath, "- [ ] Parent\n", "utf-8");
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+    fs.writeFileSync(lockPath, JSON.stringify({
+      pid: process.pid,
+      command: "run",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      file: sourcePath,
+    }), "utf-8");
+
+    const result = await runCli(["list", sourceName], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Parent"))).toBe(true);
+    expect(fs.existsSync(lockPath)).toBe(true);
   });
 
   it("list keeps blocked-task label semantics", async () => {

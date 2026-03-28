@@ -170,3 +170,43 @@ rundown revert --run latest -- opencode run
 ```
 
 `revert` requires the original run to have been executed with both `--commit` and `--keep-artifacts`; otherwise no revertable run metadata is available.
+
+## 13. Concurrent run protection on one source file
+
+Terminal A:
+
+```bash
+rundown run roadmap.md -- opencode run
+```
+
+Terminal B (same source while Terminal A still runs):
+
+```bash
+rundown run roadmap.md -- opencode run
+```
+
+The second command fails fast because `roadmap.md` is already locked by the first process. Use this behavior to prevent overlapping read/write cycles against the same task file.
+
+If you target a different source file, both runs can proceed concurrently:
+
+```bash
+rundown run roadmap.md -- opencode run
+rundown run docs/setup.md -- opencode run
+```
+
+## 14. Recover from stale locks
+
+If a previous process crashed and left a stale lockfile, remove it manually:
+
+```bash
+rundown unlock roadmap.md
+```
+
+Or let `run`/`plan` clear stale locks before acquiring their own lock:
+
+```bash
+rundown run roadmap.md --force-unlock -- opencode run
+rundown plan roadmap.md --force-unlock -- opencode run
+```
+
+`--force-unlock` and `unlock` only remove stale locks. They do not break locks held by a live process.

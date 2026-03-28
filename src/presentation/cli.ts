@@ -62,6 +62,77 @@ function getApp(): ReturnType<typeof createApp> {
   return app;
 }
 
+const LOCK_RELEASE_SIGNAL_HANDLER_MARKER = "__rundownLockReleaseSignalHandler";
+const LOCK_RELEASE_EXIT_HANDLER_MARKER = "__rundownLockReleaseExitHandler";
+const LOCK_RELEASE_STATE_SYMBOL = Symbol.for("rundown.lock-release-state");
+
+interface LockReleaseState {
+  app: ReturnType<typeof createApp> | undefined;
+}
+
+function getLockReleaseState(): LockReleaseState {
+  const processWithState = process as typeof process & {
+    [LOCK_RELEASE_STATE_SYMBOL]?: LockReleaseState;
+  };
+  if (!processWithState[LOCK_RELEASE_STATE_SYMBOL]) {
+    processWithState[LOCK_RELEASE_STATE_SYMBOL] = {
+      app: undefined,
+    };
+  }
+  return processWithState[LOCK_RELEASE_STATE_SYMBOL];
+}
+
+function releaseHeldFileLocksBestEffort(): void {
+  try {
+    getLockReleaseState().app?.releaseAllLocks?.();
+  } catch {
+    // best-effort cleanup: never mask shutdown with lock release failures
+  }
+}
+
+function hasRegisteredLockReleaseHandler(signal: NodeJS.Signals): boolean {
+  return process.listeners(signal).some((listener) => {
+    const tagged = listener as ((...args: unknown[]) => unknown) & {
+      [LOCK_RELEASE_SIGNAL_HANDLER_MARKER]?: boolean;
+    };
+    return tagged[LOCK_RELEASE_SIGNAL_HANDLER_MARKER] === true;
+  });
+}
+
+function hasRegisteredLockReleaseExitHandler(): boolean {
+  return process.listeners("exit").some((listener) => {
+    const tagged = listener as ((...args: unknown[]) => unknown) & {
+      [LOCK_RELEASE_EXIT_HANDLER_MARKER]?: boolean;
+    };
+    return tagged[LOCK_RELEASE_EXIT_HANDLER_MARKER] === true;
+  });
+}
+
+function registerLockReleaseSignalHandlers(): void {
+  if (!hasRegisteredLockReleaseHandler("SIGINT")) {
+    const sigintHandler = Object.assign(() => {
+      releaseHeldFileLocksBestEffort();
+      terminate(130);
+    }, { [LOCK_RELEASE_SIGNAL_HANDLER_MARKER]: true });
+    process.on("SIGINT", sigintHandler);
+  }
+
+  if (!hasRegisteredLockReleaseHandler("SIGTERM")) {
+    const sigtermHandler = Object.assign(() => {
+      releaseHeldFileLocksBestEffort();
+      terminate(143);
+    }, { [LOCK_RELEASE_SIGNAL_HANDLER_MARKER]: true });
+    process.on("SIGTERM", sigtermHandler);
+  }
+
+  if (process.platform === "win32" && !hasRegisteredLockReleaseExitHandler()) {
+    const exitHandler = Object.assign(() => {
+      releaseHeldFileLocksBestEffort();
+    }, { [LOCK_RELEASE_EXIT_HANDLER_MARKER]: true });
+    process.on("exit", exitHandler);
+  }
+}
+
 function createAppForInvocation(argv: string[]) {
   const invocationLogState = createCliInvocationLogState(argv);
   cliInvocationLogState = invocationLogState;
@@ -110,6 +181,7 @@ program
   .option("--on-fail <command>", "Run a shell command when a task fails (execution or verification failure)")
   .option("--hide-agent-output", "Hide worker stdout/stderr during execution; show only rundown status messages.", false)
   .option("--all", "Run all tasks sequentially instead of stopping after one", false)
+  .option("--force-unlock", "Break stale source lockfiles before acquiring run locks", false)
   .option("--worker <command...>", "Worker command to run (alternative to -- <command>)")
   .allowUnknownOption(false)
   .action(withCliAction(async (source: string, opts: Record<string, string | string[] | boolean>) => {
@@ -140,6 +212,7 @@ program
     const onFailCommand = normalizeOptionalString(opts.onFail);
     const hideAgentOutput = Boolean(opts.hideAgentOutput as boolean | undefined);
     const runAll = Boolean(opts.all as boolean | undefined);
+    const forceUnlock = Boolean(opts.forceUnlock as boolean | undefined);
     return getApp().runTask({
       source,
       mode,
@@ -164,6 +237,7 @@ program
       onFailCommand,
       hideAgentOutput,
       runAll,
+      forceUnlock,
     });
   }));
 
@@ -298,6 +372,7 @@ program
   .option("--print-prompt", "Print the rendered plan prompt and exit", false)
   .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under .rundown/runs", false)
   .option("--trace", "Enable structured trace output at .rundown/runs/<id>/trace.jsonl", false)
+  .option("--force-unlock", "Break stale source lockfiles before acquiring plan lock", false)
   .option("--vars-file [path]", "Load extra template variables from a JSON file (default: .rundown/vars.json)")
   .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
   .option("--worker <command...>", "Worker command to run (alternative to -- <command>)")
@@ -312,6 +387,7 @@ program
     const printPrompt = opts.printPrompt as boolean;
     const keepArtifacts = opts.keepArtifacts as boolean;
     const trace = opts.trace as boolean;
+    const forceUnlock = Boolean(opts.forceUnlock as boolean | undefined);
     const varsFileOption = opts.varsFile as string | boolean | undefined;
     const cliTemplateVarArgs = (opts.var as string[] | undefined) ?? [];
 
@@ -329,11 +405,18 @@ program
       printPrompt,
       keepArtifacts,
       trace,
+      forceUnlock,
       varsFileOption,
       cliTemplateVarArgs,
       workerCommand,
     });
   }));
+program
+  .command("unlock")
+  .description("Manually release a stale source lockfile.")
+  .argument("<source>", "Markdown source file path used to derive .rundown/<basename>.lock")
+  .allowUnknownOption(false)
+  .action(withCliAction((source: string) => getApp().unlockTask({ source })));
 program
   .command("init")
   .description("Create a .rundown/ directory with default templates (plan, execute, verify, repair).")
@@ -498,6 +581,8 @@ function withCliAction<Args extends unknown[]>(
 export async function parseCliArgs(argv: string[]): Promise<void> {
   const { rundownArgs, workerFromSeparator: workerCommandArgs } = splitWorkerFromSeparator(argv);
   app = createAppForInvocation(argv);
+  getLockReleaseState().app = app;
+  registerLockReleaseSignalHandlers();
   workerFromSeparator = workerCommandArgs;
   await program.parseAsync(rundownArgs, { from: "user" });
 }
@@ -632,5 +717,18 @@ function terminate(code: number): never {
 }
 
 function isCliExitSignal(error: unknown): error is CliExitSignal {
-  return error instanceof CliExitSignal;
+  if (error instanceof CliExitSignal) {
+    return true;
+  }
+
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const maybeCode = (error as { code?: unknown }).code;
+  const maybeMessage = (error as { message?: unknown }).message;
+  return typeof maybeCode === "number"
+    && Number.isInteger(maybeCode)
+    && typeof maybeMessage === "string"
+    && maybeMessage.startsWith("CLI exited with code ");
 }

@@ -1,7 +1,9 @@
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
+import { FileLockError } from "../domain/ports/file-lock.js";
 import type {
   ArtifactRunMetadata,
   ArtifactStore,
+  FileLock,
   FileSystem,
   GitClient,
   PathOperationsPort,
@@ -12,6 +14,7 @@ export interface RevertTaskDependencies {
   artifactStore: ArtifactStore;
   gitClient: GitClient;
   workingDirectory: WorkingDirectoryPort;
+  fileLock: FileLock;
   fileSystem: FileSystem;
   pathOperations: PathOperationsPort;
   output: ApplicationOutputPort;
@@ -26,6 +29,13 @@ export interface RevertTaskOptions {
   keepArtifacts: boolean;
   force: boolean;
 }
+
+const GIT_ARTIFACT_AND_LOCK_EXCLUDES = [
+  ":(exclude).rundown/runs/**",
+  ":(exclude).rundown/logs/**",
+  ":(exclude).rundown/*.lock",
+  ":(glob,exclude)**/.rundown/*.lock",
+] as const;
 
 interface RevertOperation {
   run: ArtifactRunMetadata;
@@ -115,236 +125,267 @@ export function createRevertTask(
     const executionOperations = orderOperationsForMethod(revertOperations, method);
     const executionRuns = executionOperations.map((operation) => operation.run);
 
-    for (const run of executionRuns) {
-      const taskFile = run.task?.file;
-      const missingTaskFile = isTaskFileMissing(
-        run,
-        cwd,
-        dependencies.fileSystem,
-        dependencies.pathOperations,
-      );
-      if (!missingTaskFile) {
-        continue;
+    const lockTargets = collectRevertLockTargets(executionRuns, cwd, dependencies.pathOperations);
+    try {
+      for (const filePath of lockTargets) {
+        dependencies.fileLock.acquire(filePath, { command: "revert" });
       }
-
-      emit({
-        kind: "info",
-        message: "Run " + run.runId + " references task file " + taskFile
-          + " which no longer exists. Proceeding with commit-based revert; file renames/moves are handled by git history.",
-      });
-    }
-
-    const inGitRepo = await isGitRepoWithGitClient(dependencies.gitClient, cwd);
-    if (!inGitRepo) {
-      emit({ kind: "error", message: "Not inside a git repository." });
-      return 1;
-    }
-
-    if (force) {
-      emit({
-        kind: "info",
-        message: "--force enabled: skipping clean-worktree precondition check.",
-      });
-    } else {
-      const isClean = await isWorkingDirectoryClean(dependencies.gitClient, cwd);
-      if (!isClean) {
+    } catch (error) {
+      if (error instanceof FileLockError) {
         emit({
           kind: "error",
-          message: "Working directory is not clean. Commit or stash changes before running revert.",
+          message: "Source file is locked by another rundown process: "
+            + error.filePath
+            + " (pid=" + error.holder.pid
+            + ", command=" + error.holder.command
+            + ", startTime=" + error.holder.startTime
+            + "). If this lock is stale, run `rundown unlock "
+            + error.filePath
+            + "` before retrying.",
         });
         return 1;
       }
+      throw error;
     }
-
-    let resetOldestSha: string | null = null;
 
     try {
-      const commitOperations = executionOperations.filter((operation) => operation.type === "commit");
-      if (commitOperations.length > 0) {
-        await validateTargetCommitsExistInHistory(dependencies.gitClient, cwd, commitOperations);
-      }
-
-      if (method === "reset" && commitOperations.length > 0) {
-        if (force) {
-          emit({
-            kind: "info",
-            message: "--force enabled: skipping contiguous-HEAD validation for reset.",
-          });
-          resetOldestSha = resolveOldestResetTarget(commitOperations);
-        } else {
-          resetOldestSha = await validateResetTargetsAtHead(dependencies.gitClient, cwd, commitOperations);
+      for (const run of executionRuns) {
+        const taskFile = run.task?.file;
+        const missingTaskFile = isTaskFileMissing(
+          run,
+          cwd,
+          dependencies.fileSystem,
+          dependencies.pathOperations,
+        );
+        if (!missingTaskFile) {
+          continue;
         }
-      }
 
-      await validatePreResetRefTargetsExistInHistory(dependencies.gitClient, cwd, executionOperations);
-    } catch (error) {
-      emit({ kind: "error", message: String(error) });
-      return 1;
-    }
-
-    if (dryRun) {
-      emit({
-        kind: "info",
-        message: "Dry run - would revert " + executionRuns.length + " run"
-          + (executionRuns.length === 1 ? "" : "s")
-          + " using method=" + method + ".",
-      });
-      for (const operation of executionOperations) {
-        const run = operation.run;
-        const refField = operation.type === "commit" ? "commit" : "preResetRef";
         emit({
           kind: "info",
-          message: "- run=" + run.runId
-            + " method=" + method
-            + " " + refField + "=" + operation.ref
-            + " task=" + formatTaskLabel(run),
-        });
-
-        if (method === "revert" && operation.type === "commit") {
-          emit({
-            kind: "info",
-            message: "- git revert " + operation.ref + " --no-edit",
-          });
-        }
-      }
-
-      if (method === "reset" && hasPreResetRefTargets) {
-        const preResetRefTarget = executionOperations[0]?.ref;
-        if (preResetRefTarget) {
-          emit({
-            kind: "info",
-            message: "- git reset --hard " + preResetRefTarget,
-          });
-        }
-      } else if (method === "reset" && resetOldestSha) {
-        emit({
-          kind: "info",
-          message: "- git reset --hard " + resetOldestSha + "~1",
+          message: "Run " + run.runId + " references task file " + taskFile
+            + " which no longer exists. Proceeding with commit-based revert; file renames/moves are handled by git history.",
         });
       }
 
-      return 0;
-    }
+      const inGitRepo = await isGitRepoWithGitClient(dependencies.gitClient, cwd);
+      if (!inGitRepo) {
+        emit({ kind: "error", message: "Not inside a git repository." });
+        return 1;
+      }
 
-    const artifactContext = dependencies.artifactStore.createContext({
-      cwd,
-      commandName: "revert",
-      mode: "wait",
-      source: executionRuns[0]?.source,
-      task: executionRuns.length === 1 ? executionRuns[0]?.task : undefined,
-      keepArtifacts,
-    });
+      if (force) {
+        emit({
+          kind: "info",
+          message: "--force enabled: skipping clean-worktree precondition check.",
+        });
+      } else {
+        const isClean = await isWorkingDirectoryClean(dependencies.gitClient, cwd);
+        if (!isClean) {
+          emit({
+            kind: "error",
+            message: "Working directory is not clean. Commit or stash changes before running revert.",
+          });
+          return 1;
+        }
+      }
 
-    const successfulRunIds: string[] = [];
-    const attemptedRunIds: string[] = [];
-    let failedRunId: string | null = null;
-    let preResetRef: string | null = null;
+      let resetOldestSha: string | null = null;
 
-    try {
-      if (method === "revert") {
-        for (const operation of executionOperations) {
-          if (operation.type !== "commit") {
-            continue;
+      try {
+        const commitOperations = executionOperations.filter((operation) => operation.type === "commit");
+        if (commitOperations.length > 0) {
+          await validateTargetCommitsExistInHistory(dependencies.gitClient, cwd, commitOperations);
+        }
+
+        if (method === "reset" && commitOperations.length > 0) {
+          if (force) {
+            emit({
+              kind: "info",
+              message: "--force enabled: skipping contiguous-HEAD validation for reset.",
+            });
+            resetOldestSha = resolveOldestResetTarget(commitOperations);
+          } else {
+            resetOldestSha = await validateResetTargetsAtHead(dependencies.gitClient, cwd, commitOperations);
           }
+        }
 
+        await validatePreResetRefTargetsExistInHistory(dependencies.gitClient, cwd, executionOperations);
+      } catch (error) {
+        emit({ kind: "error", message: String(error) });
+        return 1;
+      }
+
+      if (dryRun) {
+        emit({
+          kind: "info",
+          message: "Dry run - would revert " + executionRuns.length + " run"
+            + (executionRuns.length === 1 ? "" : "s")
+            + " using method=" + method + ".",
+        });
+        for (const operation of executionOperations) {
           const run = operation.run;
-          const commitSha = operation.ref;
-          attemptedRunIds.push(run.runId);
-          emit({ kind: "info", message: "Reverting commit " + commitSha + " (run " + run.runId + ")." });
-          try {
-            await dependencies.gitClient.run(["revert", commitSha, "--no-edit"], cwd);
-            successfulRunIds.push(run.runId);
-          } catch (error) {
-            failedRunId = run.runId;
-            if (hasMultiRunSelection) {
-              emit({
-                kind: "error",
-                message: "Revert stopped on " + run.runId + " after " + successfulRunIds.length
-                  + " successful run(s).",
-              });
+          const refField = operation.type === "commit" ? "commit" : "preResetRef";
+          emit({
+            kind: "info",
+            message: "- run=" + run.runId
+              + " method=" + method
+              + " " + refField + "=" + operation.ref
+              + " task=" + formatTaskLabel(run),
+          });
+
+          if (method === "revert" && operation.type === "commit") {
+            emit({
+              kind: "info",
+              message: "- git revert " + operation.ref + " --no-edit",
+            });
+          }
+        }
+
+        if (method === "reset" && hasPreResetRefTargets) {
+          const preResetRefTarget = executionOperations[0]?.ref;
+          if (preResetRefTarget) {
+            emit({
+              kind: "info",
+              message: "- git reset --hard " + preResetRefTarget,
+            });
+          }
+        } else if (method === "reset" && resetOldestSha) {
+          emit({
+            kind: "info",
+            message: "- git reset --hard " + resetOldestSha + "~1",
+          });
+        }
+
+        return 0;
+      }
+
+      const artifactContext = dependencies.artifactStore.createContext({
+        cwd,
+        commandName: "revert",
+        mode: "wait",
+        source: executionRuns[0]?.source,
+        task: executionRuns.length === 1 ? executionRuns[0]?.task : undefined,
+        keepArtifacts,
+      });
+
+      const successfulRunIds: string[] = [];
+      const attemptedRunIds: string[] = [];
+      let failedRunId: string | null = null;
+      let preResetRef: string | null = null;
+
+      try {
+        if (method === "revert") {
+          for (const operation of executionOperations) {
+            if (operation.type !== "commit") {
+              continue;
             }
 
-            const failureMessage = error instanceof Error ? error.message : String(error);
-            throw new Error("Failed to revert run " + run.runId + " (" + commitSha + "): " + failureMessage);
-          }
-        }
-      } else {
-        preResetRef = (await dependencies.gitClient.run(["rev-parse", "HEAD"], cwd)).trim();
-        for (const run of executionRuns) {
-          attemptedRunIds.push(run.runId);
-        }
+            const run = operation.run;
+            const commitSha = operation.ref;
+            attemptedRunIds.push(run.runId);
+            emit({ kind: "info", message: "Reverting commit " + commitSha + " (run " + run.runId + ")." });
+            try {
+              await dependencies.gitClient.run(["revert", commitSha, "--no-edit"], cwd);
+              successfulRunIds.push(run.runId);
+            } catch (error) {
+              failedRunId = run.runId;
+              if (hasMultiRunSelection) {
+                emit({
+                  kind: "error",
+                  message: "Revert stopped on " + run.runId + " after " + successfulRunIds.length
+                    + " successful run(s).",
+                });
+              }
 
-        const preResetRefTarget = executionOperations[0]?.type === "pre-reset-ref"
-          ? executionOperations[0].ref
-          : null;
-        if (preResetRefTarget) {
-          emit({ kind: "info", message: "Resetting to saved pre-reset ref " + preResetRefTarget + "." });
-          await dependencies.gitClient.run(["reset", "--hard", preResetRefTarget], cwd);
+              const failureMessage = error instanceof Error ? error.message : String(error);
+              throw new Error("Failed to revert run " + run.runId + " (" + commitSha + "): " + failureMessage);
+            }
+          }
         } else {
-          const oldestSha = resetOldestSha;
-          if (!oldestSha) {
-            throw new Error("No commit SHAs available for reset.");
+          preResetRef = (await dependencies.gitClient.run(["rev-parse", "HEAD"], cwd)).trim();
+          for (const run of executionRuns) {
+            attemptedRunIds.push(run.runId);
           }
-          emit({ kind: "info", message: "Resetting to " + oldestSha + "~1." });
-          await dependencies.gitClient.run(["reset", "--hard", `${oldestSha}~1`], cwd);
+
+          const preResetRefTarget = executionOperations[0]?.type === "pre-reset-ref"
+            ? executionOperations[0].ref
+            : null;
+          if (preResetRefTarget) {
+            emit({ kind: "info", message: "Resetting to saved pre-reset ref " + preResetRefTarget + "." });
+            await dependencies.gitClient.run(["reset", "--hard", preResetRefTarget], cwd);
+          } else {
+            const oldestSha = resetOldestSha;
+            if (!oldestSha) {
+              throw new Error("No commit SHAs available for reset.");
+            }
+            emit({ kind: "info", message: "Resetting to " + oldestSha + "~1." });
+            await dependencies.gitClient.run(["reset", "--hard", `${oldestSha}~1`], cwd);
+          }
+          successfulRunIds.push(...executionRuns.map((run) => run.runId));
         }
-        successfulRunIds.push(...executionRuns.map((run) => run.runId));
-      }
 
-      dependencies.artifactStore.finalize(artifactContext, {
-        status: "reverted",
-        preserve: keepArtifacts,
-        extra: {
-          method,
-          runIds: executionRuns.map((run) => run.runId),
-          commitShas: executionRuns
-            .map((run) => getCommitSha(run))
-            .filter((sha): sha is string => sha !== null),
-          ...(method === "reset" && preResetRef ? { preResetRef } : {}),
-          revertedRunIds: successfulRunIds,
-          revertedCount: successfulRunIds.length,
-        },
-      });
-
-      if (keepArtifacts) {
-        emit({
-          kind: "info",
-          message: "Runtime artifacts saved at " + dependencies.artifactStore.displayPath(artifactContext) + ".",
+        dependencies.artifactStore.finalize(artifactContext, {
+          status: "reverted",
+          preserve: keepArtifacts,
+          extra: {
+            method,
+            runIds: executionRuns.map((run) => run.runId),
+            commitShas: executionRuns
+              .map((run) => getCommitSha(run))
+              .filter((sha): sha is string => sha !== null),
+            ...(method === "reset" && preResetRef ? { preResetRef } : {}),
+            revertedRunIds: successfulRunIds,
+            revertedCount: successfulRunIds.length,
+          },
         });
-      }
 
-      emit({
-        kind: "success",
-        message: "Reverted " + executionRuns.length + " run"
-          + (executionRuns.length === 1 ? "" : "s")
-          + " successfully.",
-      });
-      return 0;
-    } catch (error) {
-      dependencies.artifactStore.finalize(artifactContext, {
-        status: "revert-failed",
-        preserve: keepArtifacts,
-        extra: {
-          method,
-          runIds: executionRuns.map((run) => run.runId),
-          attemptedRunIds,
-          revertedRunIds: successfulRunIds,
-          revertedCount: successfulRunIds.length,
-          ...(method === "reset" && preResetRef ? { preResetRef } : {}),
-          failedRunId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-      });
+        if (keepArtifacts) {
+          emit({
+            kind: "info",
+            message: "Runtime artifacts saved at " + dependencies.artifactStore.displayPath(artifactContext) + ".",
+          });
+        }
 
-      if (keepArtifacts) {
         emit({
-          kind: "info",
-          message: "Runtime artifacts saved at " + dependencies.artifactStore.displayPath(artifactContext) + ".",
+          kind: "success",
+          message: "Reverted " + executionRuns.length + " run"
+            + (executionRuns.length === 1 ? "" : "s")
+            + " successfully.",
         });
-      }
+        return 0;
+      } catch (error) {
+        dependencies.artifactStore.finalize(artifactContext, {
+          status: "revert-failed",
+          preserve: keepArtifacts,
+          extra: {
+            method,
+            runIds: executionRuns.map((run) => run.runId),
+            attemptedRunIds,
+            revertedRunIds: successfulRunIds,
+            revertedCount: successfulRunIds.length,
+            ...(method === "reset" && preResetRef ? { preResetRef } : {}),
+            failedRunId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
 
-      emit({ kind: "error", message: "Revert failed: " + String(error) });
-      return 1;
+        if (keepArtifacts) {
+          emit({
+            kind: "info",
+            message: "Runtime artifacts saved at " + dependencies.artifactStore.displayPath(artifactContext) + ".",
+          });
+        }
+
+        emit({ kind: "error", message: "Revert failed: " + String(error) });
+        return 1;
+      }
+    } finally {
+      try {
+        dependencies.fileLock.releaseAll();
+      } catch (error) {
+        emit({ kind: "warn", message: "Failed to release file locks: " + String(error) });
+      }
     }
   };
 }
@@ -462,7 +503,7 @@ async function isGitRepoWithGitClient(gitClient: GitClient, cwd: string): Promis
 
 async function isWorkingDirectoryClean(gitClient: GitClient, cwd: string): Promise<boolean> {
   const output = await gitClient.run(
-    ["status", "--porcelain", "--", ".", ":(exclude).rundown/runs/**", ":(exclude).rundown/logs/**"],
+    ["status", "--porcelain", "--", ".", ...GIT_ARTIFACT_AND_LOCK_EXCLUDES],
     cwd,
   );
   return output.trim().length === 0;
@@ -613,6 +654,35 @@ function isTaskFileMissing(
     : pathOperations.resolve(cwd, run.task.file);
 
   return !fileSystem.exists(resolvedTaskFile);
+}
+
+function collectRevertLockTargets(
+  runs: ArtifactRunMetadata[],
+  cwd: string,
+  pathOperations: PathOperationsPort,
+): string[] {
+  const lockTargets = new Set<string>();
+
+  for (const run of runs) {
+    const taskFile = run.task?.file;
+    if (typeof taskFile === "string" && taskFile.length > 0) {
+      const resolvedTaskFile = pathOperations.isAbsolute(taskFile)
+        ? taskFile
+        : pathOperations.resolve(cwd, taskFile);
+      lockTargets.add(resolvedTaskFile);
+      continue;
+    }
+
+    const sourceFile = run.source;
+    if (typeof sourceFile === "string" && sourceFile.length > 0) {
+      const resolvedSourceFile = pathOperations.isAbsolute(sourceFile)
+        ? sourceFile
+        : pathOperations.resolve(cwd, sourceFile);
+      lockTargets.add(resolvedSourceFile);
+    }
+  }
+
+  return Array.from(lockTargets);
 }
 
 export const revertTask = createRevertTask;

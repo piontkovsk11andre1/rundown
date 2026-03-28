@@ -2,6 +2,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createPlanTask, type PlanTaskDependencies, type PlanTaskOptions } from "../../src/application/plan-task.js";
 import type { ApplicationOutputEvent, ArtifactStore, FileSystem } from "../../src/domain/ports/index.js";
+import { FileLockError, type FileLock } from "../../src/domain/ports/file-lock.js";
 
 describe("plan-task", () => {
   it("prints the plan prompt and exits before running worker", async () => {
@@ -152,6 +153,157 @@ describe("plan-task", () => {
 
     expect(code).toBe(3);
     expect(events.some((event) => event.kind === "error" && event.message.includes("Unable to read Markdown document"))).toBe(true);
+  });
+
+  it("returns 1 when source markdown is locked by another process", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, events, workerExecutor } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\nBuild a new release process.\n",
+    });
+
+    vi.mocked(dependencies.fileLock.acquire).mockImplementation(() => {
+      throw new FileLockError(markdownFile, {
+        pid: 4321,
+        command: "run",
+        startTime: "2026-01-01T00:00:00.000Z",
+      });
+    });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile }));
+
+    expect(code).toBe(1);
+    expect(vi.mocked(workerExecutor.runWorker)).not.toHaveBeenCalled();
+    expect(events.some((event) => event.kind === "error" && event.message.includes("Source file is locked by another rundown process"))).toBe(true);
+    expect(events.some((event) => event.kind === "error" && event.message.includes("pid=4321"))).toBe(true);
+    expect(events.some((event) => event.kind === "error" && event.message.includes("--force-unlock"))).toBe(true);
+    expect(events.some((event) => event.kind === "error" && event.message.includes("rundown unlock"))).toBe(true);
+  });
+
+  it("force-unlocks stale source lock before plan lock acquisition when enabled", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, workerExecutor, events } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\nBuild a new release process.\n",
+    });
+
+    vi.mocked(dependencies.fileLock.isLocked).mockReturnValue(false);
+    vi.mocked(workerExecutor.runWorker).mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile, forceUnlock: true }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.fileLock.isLocked)).toHaveBeenCalledWith(markdownFile);
+    expect(vi.mocked(dependencies.fileLock.forceRelease)).toHaveBeenCalledWith(markdownFile);
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Force-unlocked stale source lock"))).toBe(true);
+
+    const forceReleaseOrder = vi.mocked(dependencies.fileLock.forceRelease).mock.invocationCallOrder[0];
+    const lockAcquireOrder = vi.mocked(dependencies.fileLock.acquire).mock.invocationCallOrder[0];
+    expect(forceReleaseOrder).toBeLessThan(lockAcquireOrder);
+  });
+
+  it("does not force-unlock active source lock when enabled", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, workerExecutor } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\nBuild a new release process.\n",
+    });
+
+    vi.mocked(dependencies.fileLock.isLocked).mockReturnValue(true);
+    vi.mocked(workerExecutor.runWorker).mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile, forceUnlock: true }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.fileLock.isLocked)).toHaveBeenCalledWith(markdownFile);
+    expect(vi.mocked(dependencies.fileLock.forceRelease)).not.toHaveBeenCalled();
+  });
+
+  it("acquires plan file lock before reading source and releases after planner execution", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, workerExecutor } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\nBuild a new release process.\n",
+    });
+    vi.mocked(workerExecutor.runWorker).mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.fileLock.acquire)).toHaveBeenCalledWith(markdownFile, { command: "plan" });
+    expect(vi.mocked(dependencies.fileLock.releaseAll)).toHaveBeenCalledTimes(1);
+
+    const lockAcquireOrder = vi.mocked(dependencies.fileLock.acquire).mock.invocationCallOrder[0];
+    const firstReadOrder = vi.mocked(dependencies.fileSystem.readText).mock.invocationCallOrder[0];
+    const plannerRunOrder = vi.mocked(workerExecutor.runWorker).mock.invocationCallOrder[0];
+    const lockReleaseOrder = vi.mocked(dependencies.fileLock.releaseAll).mock.invocationCallOrder[0];
+
+    expect(lockAcquireOrder).toBeLessThan(firstReadOrder);
+    expect(lockReleaseOrder).toBeGreaterThan(plannerRunOrder);
+  });
+
+  it("releases plan file locks when planning completes", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, workerExecutor } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\nBuild a new release process.\n",
+    });
+    vi.mocked(workerExecutor.runWorker).mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.fileLock.acquire)).toHaveBeenCalledWith(markdownFile, { command: "plan" });
+    expect(vi.mocked(dependencies.fileLock.releaseAll)).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases plan file locks when planning returns early", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "missing.md");
+    const { dependencies } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "",
+      readThrows: true,
+    });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile }));
+
+    expect(code).toBe(3);
+    expect(vi.mocked(dependencies.fileLock.acquire)).toHaveBeenCalledWith(markdownFile, { command: "plan" });
+    expect(vi.mocked(dependencies.fileLock.releaseAll)).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases plan file locks when planner execution throws", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, workerExecutor } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\nBuild a new release process.\n",
+    });
+    vi.mocked(workerExecutor.runWorker).mockRejectedValue(new Error("planner crashed"));
+
+    const planTask = createPlanTask(dependencies);
+
+    await expect(planTask(createOptions({ source: markdownFile }))).rejects.toThrow("planner crashed");
+    expect(vi.mocked(dependencies.fileLock.releaseAll)).toHaveBeenCalledTimes(1);
   });
 
   it("returns 1 when worker command is missing", async () => {
@@ -731,6 +883,7 @@ function createDependencies(options: {
     workerExecutor,
     workingDirectory: { cwd: vi.fn(() => options.cwd) },
     fileSystem,
+    fileLock: createNoopFileLock(),
     pathOperations: {
       join: vi.fn((...parts: string[]) => parts.join("/")),
       resolve: vi.fn((...parts: string[]) => parts.join("/")),
@@ -763,6 +916,16 @@ function createDependencies(options: {
   };
 }
 
+function createNoopFileLock(): FileLock {
+  return {
+    acquire: vi.fn(),
+    release: vi.fn(),
+    releaseAll: vi.fn(),
+    isLocked: vi.fn(() => false),
+    forceRelease: vi.fn(),
+  };
+}
+
 function createOptions(overrides: Partial<PlanTaskOptions> = {}): PlanTaskOptions {
   return {
     source: "roadmap.md",
@@ -773,6 +936,7 @@ function createOptions(overrides: Partial<PlanTaskOptions> = {}): PlanTaskOption
     printPrompt: false,
     keepArtifacts: false,
     trace: false,
+    forceUnlock: false,
     varsFileOption: false,
     cliTemplateVarArgs: [],
     workerCommand: ["opencode", "run"],

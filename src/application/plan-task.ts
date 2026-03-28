@@ -7,6 +7,7 @@ import {
   resolveTemplateVarsFilePath,
   type ExtraTemplateVars,
 } from "../domain/template-vars.js";
+import { FileLockError } from "../domain/ports/file-lock.js";
 import {
   createOutputVolumeEvent,
   createPhaseCompletedEvent,
@@ -19,6 +20,7 @@ import type {
   ArtifactStoreStatus,
   ArtifactRunContext,
   ArtifactStore,
+  FileLock,
   FileSystem,
   PathOperationsPort,
   ProcessRunMode,
@@ -39,6 +41,7 @@ export interface PlanTaskDependencies {
   workerExecutor: WorkerExecutorPort;
   workingDirectory: WorkingDirectoryPort;
   fileSystem: FileSystem;
+  fileLock: FileLock;
   pathOperations: PathOperationsPort;
   templateVarsLoader: TemplateVarsLoaderPort;
   templateLoader: TemplateLoader;
@@ -60,6 +63,7 @@ export interface PlanTaskOptions {
   cliTemplateVarArgs: string[];
   workerCommand: string[];
   trace: boolean;
+  forceUnlock: boolean;
 }
 
 const OPENCODE_CONTINUATION_ARG_PATTERN = /^--(?:continue|resume|session|thread|conversation)(?:=|$)/i;
@@ -82,117 +86,146 @@ export function createPlanTask(
       cliTemplateVarArgs,
       workerCommand,
       trace,
+      forceUnlock,
     } = options;
 
-    const varsFilePath = resolveTemplateVarsFilePath(varsFileOption);
-    const cwd = dependencies.workingDirectory.cwd();
-    const fileTemplateVars = varsFilePath
-      ? dependencies.templateVarsLoader.load(varsFilePath, cwd)
-      : {};
-    const cliTemplateVars = parseCliTemplateVars(cliTemplateVarArgs);
-    const extraTemplateVars: ExtraTemplateVars = {
-      ...fileTemplateVars,
-      ...cliTemplateVars,
-    };
+    if (forceUnlock) {
+      if (!dependencies.fileLock.isLocked(source)) {
+        dependencies.fileLock.forceRelease(source);
+        emit({ kind: "info", message: "Force-unlocked stale source lock: " + source });
+      }
+    }
 
-    let documentSource: string;
     try {
-      documentSource = dependencies.fileSystem.readText(source);
-    } catch {
+      dependencies.fileLock.acquire(source, { command: "plan" });
+    } catch (error) {
+      if (error instanceof FileLockError) {
+        emit({
+          kind: "error",
+          message: "Source file is locked by another rundown process: "
+            + error.filePath
+            + " (pid=" + error.holder.pid
+            + ", command=" + error.holder.command
+            + ", startTime=" + error.holder.startTime
+            + "). If this lock is stale, rerun with --force-unlock or run `rundown unlock "
+            + error.filePath
+            + "`.",
+        });
+        return 1;
+      }
+      throw error;
+    }
+
+    try {
+      const varsFilePath = resolveTemplateVarsFilePath(varsFileOption);
+      const cwd = dependencies.workingDirectory.cwd();
+      const fileTemplateVars = varsFilePath
+        ? dependencies.templateVarsLoader.load(varsFilePath, cwd)
+        : {};
+      const cliTemplateVars = parseCliTemplateVars(cliTemplateVarArgs);
+      const extraTemplateVars: ExtraTemplateVars = {
+        ...fileTemplateVars,
+        ...cliTemplateVars,
+      };
+
+      let documentSource: string;
+      try {
+        documentSource = dependencies.fileSystem.readText(source);
+      } catch {
+        emit({
+          kind: "error",
+          message: "Unable to read Markdown document: " + source,
+        });
+        return 3;
+      }
+
+      const documentIntent = deriveDocumentIntent(documentSource, source);
+      const existingTodoCount = parseTasks(documentSource, source).length;
+      const hasExistingTodos = existingTodoCount > 0;
       emit({
-        kind: "error",
-        message: "Unable to read Markdown document: " + source,
+        kind: "info",
+        message: "Planning document: " + source,
       });
-      return 3;
-    }
-
-    const documentIntent = deriveDocumentIntent(documentSource, source);
-    const existingTodoCount = parseTasks(documentSource, source).length;
-    const hasExistingTodos = existingTodoCount > 0;
-    emit({
-      kind: "info",
-      message: "Planning document: " + source,
-    });
-    emit({
-      kind: "info",
-      message: hasExistingTodos
-        ? "Detected " + existingTodoCount + " existing TODO item" + (existingTodoCount === 1 ? "" : "s") + " in document."
-        : "No existing TODO items detected in document.",
-    });
-
-    if (workerCommand.length === 0) {
       emit({
-        kind: "error",
-        message: "No worker command specified. Use --worker <command...> or -- <command>.",
+        kind: "info",
+        message: hasExistingTodos
+          ? "Detected " + existingTodoCount + " existing TODO item" + (existingTodoCount === 1 ? "" : "s") + " in document."
+          : "No existing TODO items detected in document.",
       });
-      return 1;
-    }
 
-    const cleanSessionCommandError = validatePlanCleanSessionWorkerCommand(workerCommand);
-    if (cleanSessionCommandError) {
-      emit({ kind: "error", message: cleanSessionCommandError });
-      return 1;
-    }
+      if (workerCommand.length === 0) {
+        emit({
+          kind: "error",
+          message: "No worker command specified. Use --worker <command...> or -- <command>.",
+        });
+        return 1;
+      }
 
-    const planTemplate = loadPlanTemplateFromPorts(cwd, dependencies.templateLoader, dependencies.pathOperations);
+      const cleanSessionCommandError = validatePlanCleanSessionWorkerCommand(workerCommand);
+      if (cleanSessionCommandError) {
+        emit({ kind: "error", message: cleanSessionCommandError });
+        return 1;
+      }
 
-    const vars: TemplateVars = {
-      ...extraTemplateVars,
-      traceInstructions: getTraceInstructions(trace),
-      task: documentIntent,
-      file: source,
-      context: documentSource,
-      taskIndex: 0,
-      taskLine: 1,
-      source: documentSource,
-      scanCount,
-      existingTodoCount,
-      hasExistingTodos: hasExistingTodos ? "true" : "false",
-    };
+      const planTemplate = loadPlanTemplateFromPorts(cwd, dependencies.templateLoader, dependencies.pathOperations);
 
-    const prompt = renderTemplate(planTemplate, vars);
-
-    if (printPrompt) {
-      emit({ kind: "text", text: buildPlanScanPrompt(prompt, documentSource, 1, scanCount) });
-      return 0;
-    }
-
-    if (dryRun) {
-      emit({ kind: "info", message: "Dry run — would plan: " + workerCommand.join(" ") });
-      emit({ kind: "info", message: "Scan count: " + scanCount });
-      emit({ kind: "info", message: "Prompt length: " + buildPlanScanPrompt(prompt, documentSource, 1, scanCount).length + " chars" });
-      return 0;
-    }
-
-    const artifactContext = dependencies.artifactStore.createContext({
-      cwd,
-      commandName: "plan",
-      workerCommand,
-      mode,
-      transport,
-      source,
-      task: {
-        text: documentIntent,
+      const vars: TemplateVars = {
+        ...extraTemplateVars,
+        traceInstructions: getTraceInstructions(trace),
+        task: documentIntent,
         file: source,
-        line: 1,
-        index: 0,
-        source: source,
-      },
-      keepArtifacts,
-    });
-    const traceWriter = dependencies.createTraceWriter(trace, artifactContext);
-    let artifactsFinalized = false;
-    let artifactStatus: ArtifactStoreStatus = "running";
-    let tracePhaseCount = 0;
-    let traceCompleted = false;
-    const traceStartedAtMs = Date.now();
+        context: documentSource,
+        taskIndex: 0,
+        taskLine: 1,
+        source: documentSource,
+        scanCount,
+        existingTodoCount,
+        hasExistingTodos: hasExistingTodos ? "true" : "false",
+      };
 
-    const nowIso = (): string => new Date().toISOString();
-    const toTraceStatus = (status: ArtifactStoreStatus): TraceRunStatus => status;
+      const prompt = renderTemplate(planTemplate, vars);
 
-    traceWriter.write(createRunStartedEvent({
-      timestamp: nowIso(),
-      run_id: artifactContext.runId,
+      if (printPrompt) {
+        emit({ kind: "text", text: buildPlanScanPrompt(prompt, documentSource, 1, scanCount) });
+        return 0;
+      }
+
+      if (dryRun) {
+        emit({ kind: "info", message: "Dry run — would plan: " + workerCommand.join(" ") });
+        emit({ kind: "info", message: "Scan count: " + scanCount });
+        emit({ kind: "info", message: "Prompt length: " + buildPlanScanPrompt(prompt, documentSource, 1, scanCount).length + " chars" });
+        return 0;
+      }
+
+      const artifactContext = dependencies.artifactStore.createContext({
+        cwd,
+        commandName: "plan",
+        workerCommand,
+        mode,
+        transport,
+        source,
+        task: {
+          text: documentIntent,
+          file: source,
+          line: 1,
+          index: 0,
+          source: source,
+        },
+        keepArtifacts,
+      });
+      const traceWriter = dependencies.createTraceWriter(trace, artifactContext);
+      let artifactsFinalized = false;
+      let artifactStatus: ArtifactStoreStatus = "running";
+      let tracePhaseCount = 0;
+      let traceCompleted = false;
+      const traceStartedAtMs = Date.now();
+
+      const nowIso = (): string => new Date().toISOString();
+      const toTraceStatus = (status: ArtifactStoreStatus): TraceRunStatus => status;
+
+      traceWriter.write(createRunStartedEvent({
+        timestamp: nowIso(),
+        run_id: artifactContext.runId,
         payload: {
           command: "plan",
           source,
@@ -205,209 +238,216 @@ export function createPlanTask(
         },
       }));
 
-    const beginPlanPhaseTrace = (command: string[]): { sequence: number; startedAtMs: number } => {
-      const sequence = tracePhaseCount + 1;
-      tracePhaseCount = sequence;
-      traceWriter.write(createPhaseStartedEvent({
-        timestamp: nowIso(),
-        run_id: artifactContext.runId,
-        payload: {
-          phase: "plan",
-          sequence,
-          command,
-        },
-      }));
+      const beginPlanPhaseTrace = (command: string[]): { sequence: number; startedAtMs: number } => {
+        const sequence = tracePhaseCount + 1;
+        tracePhaseCount = sequence;
+        traceWriter.write(createPhaseStartedEvent({
+          timestamp: nowIso(),
+          run_id: artifactContext.runId,
+          payload: {
+            phase: "plan",
+            sequence,
+            command,
+          },
+        }));
 
-      return { sequence, startedAtMs: Date.now() };
-    };
+        return { sequence, startedAtMs: Date.now() };
+      };
 
-    const completePlanPhaseTrace = (
-      phaseTrace: { sequence: number; startedAtMs: number },
-      exitCode: number | null,
-      stdout: string,
-      stderr: string,
-      outputCaptured: boolean,
-    ): void => {
-      const timestamp = nowIso();
-      traceWriter.write(createPhaseCompletedEvent({
-        timestamp,
-        run_id: artifactContext.runId,
-        payload: {
-          phase: "plan",
-          sequence: phaseTrace.sequence,
-          exit_code: exitCode,
-          duration_ms: Math.max(0, Date.now() - phaseTrace.startedAtMs),
-          stdout_bytes: Buffer.byteLength(stdout, "utf8"),
-          stderr_bytes: Buffer.byteLength(stderr, "utf8"),
-          output_captured: outputCaptured,
-        },
-      }));
-      traceWriter.write(createOutputVolumeEvent({
-        timestamp,
-        run_id: artifactContext.runId,
-        payload: {
-          phase: "plan",
-          sequence: phaseTrace.sequence,
-          stdout_bytes: Buffer.byteLength(stdout, "utf8"),
-          stderr_bytes: Buffer.byteLength(stderr, "utf8"),
-          stdout_lines: countTraceLines(stdout),
-          stderr_lines: countTraceLines(stderr),
-        },
-      }));
-    };
+      const completePlanPhaseTrace = (
+        phaseTrace: { sequence: number; startedAtMs: number },
+        exitCode: number | null,
+        stdout: string,
+        stderr: string,
+        outputCaptured: boolean,
+      ): void => {
+        const timestamp = nowIso();
+        traceWriter.write(createPhaseCompletedEvent({
+          timestamp,
+          run_id: artifactContext.runId,
+          payload: {
+            phase: "plan",
+            sequence: phaseTrace.sequence,
+            exit_code: exitCode,
+            duration_ms: Math.max(0, Date.now() - phaseTrace.startedAtMs),
+            stdout_bytes: Buffer.byteLength(stdout, "utf8"),
+            stderr_bytes: Buffer.byteLength(stderr, "utf8"),
+            output_captured: outputCaptured,
+          },
+        }));
+        traceWriter.write(createOutputVolumeEvent({
+          timestamp,
+          run_id: artifactContext.runId,
+          payload: {
+            phase: "plan",
+            sequence: phaseTrace.sequence,
+            stdout_bytes: Buffer.byteLength(stdout, "utf8"),
+            stderr_bytes: Buffer.byteLength(stderr, "utf8"),
+            stdout_lines: countTraceLines(stdout),
+            stderr_lines: countTraceLines(stderr),
+          },
+        }));
+      };
 
-    const completeTraceRun = (status: ArtifactStoreStatus): void => {
-      if (traceCompleted) {
-        return;
-      }
+      const completeTraceRun = (status: ArtifactStoreStatus): void => {
+        if (traceCompleted) {
+          return;
+        }
 
-      traceWriter.write(createRunCompletedEvent({
-        timestamp: nowIso(),
-        run_id: artifactContext.runId,
-        payload: {
-          status: toTraceStatus(status),
-          total_duration_ms: Math.max(0, Date.now() - traceStartedAtMs),
-          total_phases: tracePhaseCount,
-        },
-      }));
-      traceCompleted = true;
-    };
+        traceWriter.write(createRunCompletedEvent({
+          timestamp: nowIso(),
+          run_id: artifactContext.runId,
+          payload: {
+            status: toTraceStatus(status),
+            total_duration_ms: Math.max(0, Date.now() - traceStartedAtMs),
+            total_phases: tracePhaseCount,
+          },
+        }));
+        traceCompleted = true;
+      };
 
-    const finishPlan = (
-      code: number,
-      status: ArtifactStoreStatus,
-      extra?: Record<string, unknown>,
-    ): number => {
-      artifactStatus = status;
-      completeTraceRun(status);
-      traceWriter.flush();
-      finalizePlanArtifacts(dependencies.artifactStore, artifactContext, keepArtifacts, artifactStatus, emit, extra);
-      artifactsFinalized = true;
-      return code;
-    };
+      const finishPlan = (
+        code: number,
+        status: ArtifactStoreStatus,
+        extra?: Record<string, unknown>,
+      ): number => {
+        artifactStatus = status;
+        completeTraceRun(status);
+        traceWriter.flush();
+        finalizePlanArtifacts(dependencies.artifactStore, artifactContext, keepArtifacts, artifactStatus, emit, extra);
+        artifactsFinalized = true;
+        return code;
+      };
 
-    try {
-      emit({
-        kind: "info",
-        message: "Running planner: " + workerCommand.join(" ") + " [mode=" + mode + ", transport=" + transport + "]",
-      });
+      try {
+        emit({
+          kind: "info",
+          message: "Running planner: " + workerCommand.join(" ") + " [mode=" + mode + ", transport=" + transport + "]",
+        });
 
-      let latestDocumentSource = documentSource;
-      let insertedTotal = 0;
-      let scansExecuted = 0;
-      let convergenceOutcome: PlanConvergenceOutcome | null = null;
+        let latestDocumentSource = documentSource;
+        let insertedTotal = 0;
+        let scansExecuted = 0;
+        let convergenceOutcome: PlanConvergenceOutcome | null = null;
 
-      for (let scanIndex = 1; scanIndex <= scanCount; scanIndex += 1) {
-        const scanLabel = buildPlanScanLabel(scanIndex, scanCount);
-        try {
-          latestDocumentSource = dependencies.fileSystem.readText(source);
-        } catch {
+        for (let scanIndex = 1; scanIndex <= scanCount; scanIndex += 1) {
+          const scanLabel = buildPlanScanLabel(scanIndex, scanCount);
+          try {
+            latestDocumentSource = dependencies.fileSystem.readText(source);
+          } catch {
+            emit({
+              kind: "error",
+              message: "Unable to reload Markdown document before scan " + scanIndex + ": " + source,
+            });
+            return finishPlan(3, "failed");
+          }
+
           emit({
-            kind: "error",
-            message: "Unable to reload Markdown document before scan " + scanIndex + ": " + source,
+            kind: "info",
+            message: "Planning " + scanLabel + ".",
           });
-          return finishPlan(3, "failed");
+          scansExecuted += 1;
+
+          const scanPrompt = buildPlanScanPrompt(prompt, latestDocumentSource, scanIndex, scanCount);
+          const planPhaseTrace = beginPlanPhaseTrace(workerCommand);
+          const runResult = await dependencies.workerExecutor.runWorker({
+            command: [...workerCommand],
+            prompt: scanPrompt,
+            mode,
+            transport,
+            trace,
+            cwd,
+            artifactContext,
+            artifactPhase: "plan",
+            artifactPhaseLabel: buildPlanScanPhaseLabel(scanIndex, scanCount),
+            artifactExtra: {
+              scanIndex,
+              scanCount,
+              scanLabel,
+            },
+          });
+          completePlanPhaseTrace(
+            planPhaseTrace,
+            runResult.exitCode,
+            runResult.stdout,
+            runResult.stderr,
+            mode === "wait",
+          );
+
+          if (mode === "wait" && runResult.stderr) {
+            emit({ kind: "stderr", text: runResult.stderr });
+          }
+
+          if (runResult.exitCode !== 0 && runResult.exitCode !== null) {
+            emit({ kind: "error", message: "Planner worker exited with code " + runResult.exitCode + " during scan " + scanIndex + "." });
+            return finishPlan(1, "execution-failed");
+          }
+
+          if (!runResult.stdout || runResult.stdout.trim().length === 0) {
+            convergenceOutcome = "converged";
+            if (scanIndex === 1) {
+              emit({ kind: "warn", message: "Planner produced no output. No TODO items added." });
+            } else {
+              emit({ kind: "info", message: "Planner converged at scan " + scanIndex + ": no additional TODO items proposed." });
+            }
+            break;
+          }
+
+          const applyResult = applyPlannerOutput(latestDocumentSource, runResult.stdout);
+          if (applyResult.rejected) {
+            emit({
+              kind: "error",
+              message: applyResult.rejectionReason ?? "Planner output was rejected because only additive TODO operations are allowed.",
+            });
+            return finishPlan(1, "failed");
+          }
+
+          if (applyResult.insertedCount === 0) {
+            convergenceOutcome = "converged";
+            if (scanIndex === 1) {
+              emit({ kind: "warn", message: "Planner output contained no valid TODO items to add." });
+            } else {
+              emit({ kind: "info", message: "Planner converged at scan " + scanIndex + ": no new TODO additions required." });
+            }
+            break;
+          }
+
+          latestDocumentSource = applyResult.updatedSource;
+          dependencies.fileSystem.writeText(source, latestDocumentSource);
+          insertedTotal += applyResult.insertedCount;
+        }
+
+        if (scansExecuted > 0 && convergenceOutcome === null) {
+          convergenceOutcome = "scan-cap-reached";
+        }
+
+        const convergenceMetadata = convergenceOutcome
+          ? buildPlanConvergenceMetadata(scanCount, scansExecuted, convergenceOutcome)
+          : undefined;
+
+        if (insertedTotal === 0) {
+          return finishPlan(0, "completed", convergenceMetadata);
         }
 
         emit({
-          kind: "info",
-          message: "Planning " + scanLabel + ".",
+          kind: "success",
+          message: "Inserted " + insertedTotal + " TODO item" + (insertedTotal === 1 ? "" : "s") + " into: " + source,
         });
-        scansExecuted += 1;
-
-        const scanPrompt = buildPlanScanPrompt(prompt, latestDocumentSource, scanIndex, scanCount);
-        const planPhaseTrace = beginPlanPhaseTrace(workerCommand);
-        const runResult = await dependencies.workerExecutor.runWorker({
-          command: [...workerCommand],
-          prompt: scanPrompt,
-          mode,
-          transport,
-          trace,
-          cwd,
-          artifactContext,
-          artifactPhase: "plan",
-          artifactPhaseLabel: buildPlanScanPhaseLabel(scanIndex, scanCount),
-          artifactExtra: {
-            scanIndex,
-            scanCount,
-            scanLabel,
-          },
-        });
-        completePlanPhaseTrace(
-          planPhaseTrace,
-          runResult.exitCode,
-          runResult.stdout,
-          runResult.stderr,
-          mode === "wait",
-        );
-
-        if (mode === "wait" && runResult.stderr) {
-          emit({ kind: "stderr", text: runResult.stderr });
-        }
-
-        if (runResult.exitCode !== 0 && runResult.exitCode !== null) {
-          emit({ kind: "error", message: "Planner worker exited with code " + runResult.exitCode + " during scan " + scanIndex + "." });
-          return finishPlan(1, "execution-failed");
-        }
-
-        if (!runResult.stdout || runResult.stdout.trim().length === 0) {
-          convergenceOutcome = "converged";
-          if (scanIndex === 1) {
-            emit({ kind: "warn", message: "Planner produced no output. No TODO items added." });
-          } else {
-            emit({ kind: "info", message: "Planner converged at scan " + scanIndex + ": no additional TODO items proposed." });
-          }
-          break;
-        }
-
-        const applyResult = applyPlannerOutput(latestDocumentSource, runResult.stdout);
-        if (applyResult.rejected) {
-          emit({
-            kind: "error",
-            message: applyResult.rejectionReason ?? "Planner output was rejected because only additive TODO operations are allowed.",
-          });
-          return finishPlan(1, "failed");
-        }
-
-        if (applyResult.insertedCount === 0) {
-          convergenceOutcome = "converged";
-          if (scanIndex === 1) {
-            emit({ kind: "warn", message: "Planner output contained no valid TODO items to add." });
-          } else {
-            emit({ kind: "info", message: "Planner converged at scan " + scanIndex + ": no new TODO additions required." });
-          }
-          break;
-        }
-
-        latestDocumentSource = applyResult.updatedSource;
-        dependencies.fileSystem.writeText(source, latestDocumentSource);
-        insertedTotal += applyResult.insertedCount;
-      }
-
-      if (scansExecuted > 0 && convergenceOutcome === null) {
-        convergenceOutcome = "scan-cap-reached";
-      }
-
-      const convergenceMetadata = convergenceOutcome
-        ? buildPlanConvergenceMetadata(scanCount, scansExecuted, convergenceOutcome)
-        : undefined;
-
-      if (insertedTotal === 0) {
         return finishPlan(0, "completed", convergenceMetadata);
+      } finally {
+        if (!artifactsFinalized) {
+          const finalStatus = artifactStatus === "running" ? "failed" : artifactStatus;
+          completeTraceRun(finalStatus);
+          traceWriter.flush();
+          finalizePlanArtifacts(dependencies.artifactStore, artifactContext, keepArtifacts, finalStatus, emit);
+          artifactsFinalized = true;
+        }
       }
-
-      emit({
-        kind: "success",
-        message: "Inserted " + insertedTotal + " TODO item" + (insertedTotal === 1 ? "" : "s") + " into: " + source,
-      });
-      return finishPlan(0, "completed", convergenceMetadata);
     } finally {
-      if (!artifactsFinalized) {
-        const finalStatus = artifactStatus === "running" ? "failed" : artifactStatus;
-        completeTraceRun(finalStatus);
-        traceWriter.flush();
-        finalizePlanArtifacts(dependencies.artifactStore, artifactContext, keepArtifacts, finalStatus, emit);
-        artifactsFinalized = true;
+      try {
+        dependencies.fileLock.releaseAll();
+      } catch (error) {
+        emit({ kind: "warn", message: "Failed to release file locks: " + String(error) });
       }
     }
   };

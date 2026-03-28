@@ -39,6 +39,8 @@ Quiet execution notes (`run --hide-agent-output`):
 
 Re-run verification for a previously completed task from saved run artifacts, without selecting a new unchecked task and without mutating Markdown checkboxes.
 
+`reverify` intentionally does not acquire the per-source Markdown lock because it never writes task source files; it only reads source content to resolve historical task context.
+
 By default, `reverify` targets the latest completed task in the current repository (`--run latest`).
 
 Use this when you want a deterministic confidence check against an exact historical task context (for example, before a release or push) without advancing task selection.
@@ -113,6 +115,8 @@ Git method behavior:
 Operational notes:
 
 - Requires a clean working tree before running git undo operations.
+- Acquires the same per-source Markdown lock used by `run`/`plan`; if another rundown process holds the lock, `revert` fails fast with holder details.
+- This lock prevents concurrent `run` + `revert` on the same source file, avoiding task-line drift and unintended checkbox/source mutations from overlapping operations.
 - Markdown checkboxes are restored by git history changes; no direct checkbox mutation is performed.
 - Multi-run `revert` processes runs newest-first to reduce conflicts.
 - Reverting a reset-generated revert run is supported one at a time and requires `--method reset`.
@@ -148,6 +152,7 @@ Options:
 | `--scan-count <n>` | Maximum clean-session scan iterations. Must be a safe positive integer. | `1` |
 | `--mode <mode>` | Planner execution mode. Currently only `wait` is supported. | `wait` |
 | `--transport <file|arg>` | Prompt transport for planner invocations. | `file` |
+| `--force-unlock` | Remove stale source lockfile before acquiring the planner lock. Active locks held by live processes are not removed. | off |
 | `--dry-run` | Render plan prompt + execution intent and exit without running the worker. | off |
 | `--print-prompt` | Print the rendered planner prompt and exit `0` without running the worker. | off |
 | `--keep-artifacts` | Preserve runtime artifacts under `.rundown/runs/` even on success. | off |
@@ -191,6 +196,25 @@ rundown plan docs/migration.md --scan-count 2 -- opencode run
 
 # PowerShell-safe worker form
 rundown plan docs/spec.md --scan-count 2 --worker opencode run
+```
+
+### `rundown unlock <source>`
+
+Manually remove a stale per-source lockfile (`.rundown/<basename>.lock`) for a Markdown source.
+
+`unlock` is a safety command for lock recovery. It only removes locks that are not owned by a currently running process.
+
+Behavior:
+
+- If no lockfile exists for the source, exits `3`.
+- If a lockfile exists and the recorded PID is still running, exits `1` and does not remove the lock.
+- If a lockfile exists but the recorded PID is not running (stale lock), removes it and exits `0`.
+
+Examples:
+
+```bash
+rundown unlock roadmap.md
+rundown unlock docs/todos.md
 ```
 
 ### `rundown next <source>`
@@ -239,6 +263,36 @@ rundown artifacts --failed
 rundown artifacts --open latest
 rundown artifacts --clean --failed
 ```
+
+## Source file locking
+
+`rundown` uses per-source lockfiles to prevent concurrent writes to the same Markdown file.
+
+- Lock path: `<source-dir>/.rundown/<basename>.lock`
+- Lock payload: JSON metadata with holder `pid`, command name, start time, and source path
+
+Lock scope by command:
+
+- `run`: acquires before task-selection reads and holds through the full task lifecycle, including `--all` loops, verification/repair, checkbox updates, and `--on-complete`/`--on-fail` hooks.
+- `plan`: acquires before planning starts and holds for the full scan loop until planning finalization completes.
+- `revert`: acquires before git undo operations for the target source set and releases after undo processing finishes.
+- `list`, `next`, and `reverify`: no exclusive source lock (read-only behavior).
+
+Stale lock detection:
+
+- If lockfile exists and holder PID is still running, lock acquisition fails fast with holder details.
+- If lockfile exists but holder PID is no longer running, the lock is treated as stale and can be removed.
+
+Stale lock recovery:
+
+- `run` and `plan` support `--force-unlock` to remove stale lockfiles before normal lock acquisition. Live-process locks are never removed by this flag.
+- `unlock` provides manual stale-lock cleanup for one source file.
+
+`unlock` exit behavior:
+
+- `0`: stale lock removed
+- `1`: lock held by live process (no change)
+- `3`: no lockfile found for source
 
 ## Global output log (JSONL)
 
@@ -352,6 +406,7 @@ These options are available on `rundown run`.
 | `--on-fail <command>` | Run a shell command when a task fails (execution or verification failure). | unset |
 | `--hide-agent-output` | Hide worker stdout/stderr during execution; show only rundown status messages. | off |
 | `--all` | Run all tasks sequentially instead of stopping after one. Stops on failure. | off |
+| `--force-unlock` | Remove stale source lockfiles before acquiring run locks. Active locks held by live processes are not removed. | off |
 
 `--commit-message` is only applied when `--commit` is enabled.
 
@@ -389,6 +444,8 @@ Both `--commit` and `--on-complete` are non-fatal: if they fail, the task is sti
 When both are used, `--commit` runs first so that `--on-complete` can safely push or tag.
 
 `--on-fail` runs the same way but fires only when a task fails (exit code `1` or `2`). It receives the same environment variables as `--on-complete`. The hook is non-fatal: its exit code does not change the run's exit code.
+
+For `run`, source-file locks remain held for the full task lifecycle, including `--on-complete` and `--on-fail` hook execution. Locks are released only after hook processing and finalization complete.
 
 ### Run all mode
 
@@ -483,6 +540,12 @@ rundown run roadmap.md --mode tui -- opencode
 - `1` — execution error
 - `2` — validation failed
 - `3` — no actionable target
+
+`rundown unlock` follows the same contract:
+
+- `0` when a stale lock was released
+- `1` when the lock is currently held by a live process
+- `3` when no lockfile exists for the target source
 
 `rundown reverify` uses the same exit-code contract:
 

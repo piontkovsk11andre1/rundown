@@ -88,12 +88,28 @@ This creates:
   vars.json
 ```
 
+Add lockfiles to your repo ignore rules so runtime file locks are never committed:
+
+```gitignore
+**/.rundown/*.lock
+```
+
 Run the next task from a file, directory, or glob:
 
 ```bash
 rundown run roadmap.md -- opencode run
 rundown run docs/ -- opencode run
 rundown run "notes/**/*.md" -- opencode run
+```
+
+`rundown run` and `rundown plan` use file-level lockfiles while they operate on a source Markdown file. The lock is held for the full command duration so concurrent edits or concurrent rundown runs against the same file fail fast instead of corrupting task selection/checking.
+
+If a process crashes and leaves a stale lock, recover with:
+
+```bash
+rundown unlock roadmap.md
+# or bypass stale lock detection for this invocation
+rundown run roadmap.md --force-unlock -- opencode run
 ```
 
 PowerShell-safe worker form:

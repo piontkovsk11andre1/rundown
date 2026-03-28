@@ -217,6 +217,8 @@ If verification fails and repair attempts are enabled, `rundown` renders the rep
 
 `rundown reverify` re-runs verify/repair for a previously completed task from saved artifacts.
 
+Reverify is read-only with respect to task source Markdown: it does not check tasks, uncheck tasks, or rewrite source files. For that reason it does not acquire the exclusive lock used by mutating commands such as `run` and `plan`.
+
 Unlike `run --only-verify`, it does not select a new unchecked task and does not mutate Markdown checkbox state. This makes it suitable for deterministic confidence checks before release or push.
 
 Task resolution from saved metadata is explicit and ordered:

@@ -38,12 +38,14 @@ import {
 } from "../domain/trace.js";
 import { parseWorkerOutput } from "../domain/worker-output-parser.js";
 import { runVerifyRepairLoop } from "./verify-repair-loop.js";
+import { FileLockError } from "../domain/ports/file-lock.js";
 import type {
   ArtifactRunContext,
   ArtifactRunMetadata,
   ArtifactStoreStatus,
   ArtifactStore,
   FileSystem,
+  FileLock,
   GitClient,
   PathOperationsPort,
   ProcessRunMode,
@@ -114,6 +116,7 @@ export interface RunTaskDependencies {
   taskRepair: TaskRepairPort;
   workingDirectory: WorkingDirectoryPort;
   fileSystem: FileSystem;
+  fileLock: FileLock;
   templateLoader: TemplateLoader;
   verificationSidecar: VerificationSidecar;
   artifactStore: ArtifactStore;
@@ -150,6 +153,7 @@ export interface RunTaskOptions {
   hideAgentOutput: boolean;
   trace: boolean;
   traceOnly: boolean;
+  forceUnlock: boolean;
 }
 
 export function createRunTask(
@@ -181,7 +185,8 @@ export function createRunTask(
       onFailCommand,
       hideAgentOutput,
       trace,
-        traceOnly,
+      traceOnly,
+      forceUnlock,
       } = options;
 
       // Suppress only worker-produced execution transcript in terminal output.
@@ -928,6 +933,40 @@ export function createRunTask(
         return 3;
       }
 
+      const lockTargets = Array.from(new Set(files));
+      if (forceUnlock) {
+        for (const filePath of lockTargets) {
+          if (dependencies.fileLock.isLocked(filePath)) {
+            continue;
+          }
+
+          dependencies.fileLock.forceRelease(filePath);
+          emit({ kind: "info", message: "Force-unlocked stale source lock: " + filePath });
+        }
+      }
+
+      try {
+        for (const filePath of lockTargets) {
+          dependencies.fileLock.acquire(filePath, { command: "run" });
+        }
+      } catch (error) {
+        if (error instanceof FileLockError) {
+          emit({
+            kind: "error",
+            message: "Source file is locked by another rundown process: "
+              + error.filePath
+              + " (pid=" + error.holder.pid
+              + ", command=" + error.holder.command
+              + ", startTime=" + error.holder.startTime
+              + "). If this lock is stale, rerun with --force-unlock or run `rundown unlock "
+              + error.filePath
+              + "`.",
+          });
+          return 1;
+        }
+        throw error;
+      }
+
       if (commitAfterComplete) {
         const cwd = dependencies.workingDirectory.cwd();
         const inGitRepo = await isGitRepoWithGitClient(dependencies.gitClient, cwd);
@@ -1281,6 +1320,12 @@ export function createRunTask(
       unexpectedError = error;
       throw error;
     } finally {
+      try {
+        dependencies.fileLock.releaseAll();
+      } catch (error) {
+        emit({ kind: "warn", message: "Failed to release file locks: " + String(error) });
+      }
+
       if (unexpectedError) {
         emitTraceTaskOutcome("failed", {
           reason: unexpectedError instanceof Error ? unexpectedError.message : String(unexpectedError),
@@ -1461,6 +1506,13 @@ export function finalizeRunArtifacts(
 }
 
 const DEFAULT_COMMIT_MESSAGE_TEMPLATE = "rundown: complete \"{{task}}\" in {{file}}";
+
+const GIT_ARTIFACT_AND_LOCK_EXCLUDES = [
+  ":(exclude).rundown/runs/**",
+  ":(exclude).rundown/logs/**",
+  ":(exclude).rundown/*.lock",
+  ":(glob,exclude)**/.rundown/*.lock",
+] as const;
 
 function loadProjectTemplatesFromPorts(
   cwd: string,
@@ -1860,7 +1912,7 @@ async function isGitRepoWithGitClient(gitClient: GitClient, cwd: string): Promis
 
 async function isWorkingDirectoryClean(gitClient: GitClient, cwd: string): Promise<boolean> {
   const output = await gitClient.run(
-    ["status", "--porcelain", "--", ".", ":(exclude).rundown/runs/**", ":(exclude).rundown/logs/**"],
+    ["status", "--porcelain", "--", ".", ...GIT_ARTIFACT_AND_LOCK_EXCLUDES],
     cwd,
   );
   return output.trim().length === 0;
@@ -1873,7 +1925,7 @@ async function commitCheckedTaskWithGitClient(
   message: string,
 ): Promise<void> {
   // Stage full worktree output for the task, but skip transient runtime artifacts.
-  await gitClient.run(["add", "-A", "--", ".", ":(exclude).rundown/runs/**", ":(exclude).rundown/logs/**"], cwd);
+  await gitClient.run(["add", "-A", "--", ".", ...GIT_ARTIFACT_AND_LOCK_EXCLUDES], cwd);
   await gitClient.run(["commit", "-m", message], cwd);
 }
 

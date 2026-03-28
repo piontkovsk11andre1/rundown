@@ -3,3 +3,5 @@ dist/
 *.validation
 .rundown-tmp/
 **/.rundown/runs/
+**/.rundown/logs/
+**/.rundown/*.lock

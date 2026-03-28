@@ -58,6 +58,8 @@ export interface ReverifyTaskDependencies {
   verificationSidecar: VerificationSidecar;
   workingDirectory: WorkingDirectoryPort;
   fileSystem: FileSystem;
+  // Intentionally no FileLock dependency: reverify reads markdown to resolve context,
+  // but does not mutate source files.
   traceWriter: TraceWriterPort;
   createTraceWriter: (trace: boolean, artifactContext: { rootDir: string }) => TraceWriterPort;
   pathOperations: PathOperationsPort;

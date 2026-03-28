@@ -1,4 +1,5 @@
 export { createNodeFileSystem } from "./fs-file-system.js";
+export { createFsFileLock } from "./fs-file-lock.js";
 export { createCrossSpawnProcessRunner } from "./crossspawn-process-runner.js";
 export { createExecFileGitClient } from "./execfile-git-client.js";
 export { createFsTemplateLoader } from "./fs-template-loader.js";

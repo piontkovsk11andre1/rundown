@@ -134,6 +134,20 @@ describe("CLI run option normalization", () => {
     expect(call.forceExecute).toBe(true);
   });
 
+  it("passes force-unlock option to run task", async () => {
+    const runTask = vi.fn(async () => 0);
+    const call = await invokeRunAndCaptureCall([
+      "run",
+      "tasks.md",
+      "--force-unlock",
+      "--worker",
+      "opencode",
+      "run",
+    ], runTask);
+
+    expect(call.forceUnlock).toBe(true);
+  });
+
   it("preserves an explicit verify flag", async () => {
     const runTask = vi.fn(async () => 0);
     const call = await invokeRunAndCaptureCall([
@@ -596,6 +610,94 @@ describe("CLI invocation logging context", () => {
   });
 });
 
+describe("CLI lock release signal handling", () => {
+  it("registers SIGINT and SIGTERM handlers that release held locks before exit", async () => {
+    const previousEnv = captureEnv();
+    process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+    process.env.RUNDOWN_TEST_MODE = "1";
+
+    const releaseAllLocks = vi.fn();
+
+    vi.doMock("../../src/create-app.js", () => ({
+      createApp: () => ({
+        runTask: vi.fn(async () => 0),
+        reverifyTask: vi.fn(async () => 0),
+        revertTask: vi.fn(async () => 0),
+        nextTask: vi.fn(async () => 0),
+        listTasks: vi.fn(async () => 0),
+        planTask: vi.fn(async () => 0),
+        initProject: vi.fn(async () => 0),
+        manageArtifacts: vi.fn(() => 0),
+        releaseAllLocks,
+      }),
+    }));
+
+    try {
+      const { parseCliArgs } = await import("../../src/presentation/cli.js");
+      await expect(parseCliArgs(["init"]))
+        .rejects.toThrow("CLI exited with code 0");
+    } finally {
+      restoreEnv(previousEnv);
+    }
+
+    const sigintHandler = process
+      .listeners("SIGINT")
+      .find((listener) => (listener as { __rundownLockReleaseSignalHandler?: boolean }).__rundownLockReleaseSignalHandler === true);
+    const sigtermHandler = process
+      .listeners("SIGTERM")
+      .find((listener) => (listener as { __rundownLockReleaseSignalHandler?: boolean }).__rundownLockReleaseSignalHandler === true);
+
+    expect(sigintHandler).toBeDefined();
+    expect(sigtermHandler).toBeDefined();
+
+    expect(() => (sigintHandler as () => void)()).toThrow(/130/);
+    expect(releaseAllLocks).toHaveBeenCalledTimes(1);
+
+    expect(() => (sigtermHandler as () => void)()).toThrow(/143/);
+    expect(releaseAllLocks).toHaveBeenCalledTimes(2);
+  });
+
+  it("registers an exit fallback handler on Windows", async () => {
+    const previousEnv = captureEnv();
+    process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+    process.env.RUNDOWN_TEST_MODE = "1";
+
+    const releaseAllLocks = vi.fn();
+    const platformSpy = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+
+    vi.doMock("../../src/create-app.js", () => ({
+      createApp: () => ({
+        runTask: vi.fn(async () => 0),
+        reverifyTask: vi.fn(async () => 0),
+        revertTask: vi.fn(async () => 0),
+        nextTask: vi.fn(async () => 0),
+        listTasks: vi.fn(async () => 0),
+        planTask: vi.fn(async () => 0),
+        initProject: vi.fn(async () => 0),
+        manageArtifacts: vi.fn(() => 0),
+        releaseAllLocks,
+      }),
+    }));
+
+    try {
+      const { parseCliArgs } = await import("../../src/presentation/cli.js");
+      await expect(parseCliArgs(["init"]))
+        .rejects.toThrow("CLI exited with code 0");
+    } finally {
+      platformSpy.mockRestore();
+      restoreEnv(previousEnv);
+    }
+
+    const exitHandler = process
+      .listeners("exit")
+      .find((listener) => (listener as { __rundownLockReleaseExitHandler?: boolean }).__rundownLockReleaseExitHandler === true);
+
+    expect(exitHandler).toBeDefined();
+    (exitHandler as () => void)();
+    expect(releaseAllLocks).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("CLI revert option normalization", () => {
   it("passes revert options to application layer", async () => {
     const revertTask = vi.fn(async () => 0);
@@ -794,6 +896,20 @@ describe("CLI plan and utility command normalization", () => {
     ], planTask);
 
     expect(call.trace).toBe(true);
+  });
+
+  it("passes force-unlock option to plan task", async () => {
+    const planTask = vi.fn(async () => 0);
+    const call = await invokePlanAndCaptureCall([
+      "plan",
+      "tasks.md",
+      "--force-unlock",
+      "--worker",
+      "opencode",
+      "run",
+    ], planTask);
+
+    expect(call.forceUnlock).toBe(true);
   });
 
   it("defaults plan scan count to 1", async () => {
@@ -1036,6 +1152,13 @@ describe("CLI plan and utility command normalization", () => {
     await invokeInitAndCaptureCall(["init"], initProject);
 
     expect(initProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes unlock source argument to the application layer", async () => {
+    const unlockTask = vi.fn(async () => 0);
+    const call = await invokeUnlockAndCaptureCall(["unlock", "tasks.md"], unlockTask);
+
+    expect(call).toEqual({ source: "tasks.md" });
   });
 });
 
@@ -1508,6 +1631,42 @@ function restoreEnv(previousEnv: Record<(typeof envKeys)[number], string | undef
       process.env[key] = value;
     }
   }
+}
+
+async function invokeUnlockAndCaptureCall(args: string[], unlockTask: ReturnType<typeof vi.fn>): Promise<RunTaskCall> {
+  const previousEnv = captureEnv();
+
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
+
+  vi.doMock("../../src/create-app.js", () => ({
+    createApp: () => ({
+      runTask: vi.fn(async () => 0),
+      reverifyTask: vi.fn(async () => 0),
+      revertTask: vi.fn(async () => 0),
+      nextTask: vi.fn(async () => 0),
+      listTasks: vi.fn(async () => 0),
+      planTask: vi.fn(async () => 0),
+      unlockTask,
+      initProject: vi.fn(async () => 0),
+      manageArtifacts: vi.fn(() => 0),
+    }),
+  }));
+
+  try {
+    const { parseCliArgs } = await import("../../src/presentation/cli.js");
+    await parseCliArgs(args);
+  } catch (error) {
+    const message = String(error);
+    if (!/CLI exited with code \d+/.test(message)) {
+      throw error;
+    }
+  } finally {
+    restoreEnv(previousEnv);
+  }
+
+  expect(unlockTask).toHaveBeenCalledTimes(1);
+  return unlockTask.mock.calls[0][0] as RunTaskCall;
 }
 
 function stripAnsi(value: string): string {

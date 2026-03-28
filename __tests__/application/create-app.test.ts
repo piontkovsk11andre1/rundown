@@ -3,6 +3,8 @@ import {
   createApp,
   type AppPorts,
 } from "../../src/create-app.js";
+import { parseTasks } from "../../src/domain/parser.js";
+import type { FileLock } from "../../src/domain/ports/file-lock.js";
 import type { FileSystem } from "../../src/domain/ports/file-system.js";
 import type { ProcessRunner } from "../../src/domain/ports/process-runner.js";
 
@@ -97,6 +99,116 @@ describe("createApp", () => {
     expect(code).toBe(0);
     expect(emit).toHaveBeenCalledTimes(1);
     expect(emit).toHaveBeenCalledWith({ kind: "info", message: "next-task output" });
+  });
+
+  it("provides a default no-op fileLock port", async () => {
+    let capturedPorts: AppPorts | undefined;
+    const app = createApp({
+      useCaseFactories: {
+        listTasks: (ports) => async () => {
+          capturedPorts = ports;
+          return 0;
+        },
+      },
+    });
+
+    await app.listTasks({ source: "tasks.md", sortMode: "none", includeAll: false });
+
+    expect(capturedPorts).toBeDefined();
+    expect(capturedPorts?.fileLock.isLocked("tasks.md")).toBe(false);
+    expect(() => capturedPorts?.fileLock.acquire("tasks.md", { command: "run" })).not.toThrow();
+    expect(() => capturedPorts?.fileLock.release("tasks.md")).not.toThrow();
+    expect(() => capturedPorts?.fileLock.forceRelease("tasks.md")).not.toThrow();
+    expect(() => capturedPorts?.fileLock.releaseAll()).not.toThrow();
+  });
+
+  it("exposes releaseAllLocks helper that delegates to the file lock port", () => {
+    const fileLock: FileLock = {
+      acquire: vi.fn(),
+      isLocked: vi.fn(() => false),
+      release: vi.fn(),
+      forceRelease: vi.fn(),
+      releaseAll: vi.fn(),
+    };
+
+    const app = createApp({
+      ports: {
+        fileLock,
+      },
+    });
+
+    app.releaseAllLocks?.();
+    expect(fileLock.releaseAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not acquire file locks for next (read-only)", async () => {
+    const task = parseTasks("- [ ] Read-only task\n", "tasks.md")[0];
+    if (!task) {
+      throw new Error("Expected task fixture to parse");
+    }
+
+    const fileLock: FileLock = {
+      acquire: vi.fn(),
+      isLocked: vi.fn(() => false),
+      release: vi.fn(),
+      forceRelease: vi.fn(),
+      releaseAll: vi.fn(),
+    };
+
+    const app = createApp({
+      ports: {
+        fileLock,
+        sourceResolver: {
+          resolveSources: vi.fn(async () => ["tasks.md"]),
+        },
+        taskSelector: {
+          selectNextTask: vi.fn(() => ({
+            source: "tasks.md",
+            contextBefore: "",
+            task,
+          })),
+          selectTaskByLocation: vi.fn(() => null),
+        },
+      },
+    });
+
+    const code = await app.nextTask({ source: "tasks.md", sortMode: "name-sort" });
+
+    expect(code).toBe(0);
+    expect(fileLock.acquire).not.toHaveBeenCalled();
+    expect(fileLock.release).not.toHaveBeenCalled();
+    expect(fileLock.forceRelease).not.toHaveBeenCalled();
+  });
+
+  it("does not acquire file locks for list (read-only)", async () => {
+    const fileLock: FileLock = {
+      acquire: vi.fn(),
+      isLocked: vi.fn(() => false),
+      release: vi.fn(),
+      forceRelease: vi.fn(),
+      releaseAll: vi.fn(),
+    };
+
+    const fileSystem = createInMemoryFileSystem({
+      "tasks.md": "- [ ] Read-only task\n",
+    });
+
+    const app = createApp({
+      ports: {
+        fileLock,
+        fileSystem,
+        sourceResolver: {
+          resolveSources: vi.fn(async () => ["tasks.md"]),
+        },
+      },
+    });
+
+    const code = await app.listTasks({ source: "tasks.md", sortMode: "name-sort", includeAll: false });
+
+    expect(code).toBe(0);
+    expect(fileLock.acquire).not.toHaveBeenCalled();
+    expect(fileLock.release).not.toHaveBeenCalled();
+    expect(fileLock.forceRelease).not.toHaveBeenCalled();
   });
 });
 

@@ -9,11 +9,13 @@ import {
   type RunTaskDependencies,
   type RunTaskOptions,
 } from "../../src/application/run-task.js";
+import { FileLockError } from "../../src/domain/ports/file-lock.js";
 import type { Task } from "../../src/domain/parser.js";
 import type {
   ApplicationOutputEvent,
   ApplicationOutputPort,
   ArtifactStore,
+  FileLock,
   FileSystem,
   GitClient,
   ProcessRunner,
@@ -53,7 +55,16 @@ describe("run-task commit behavior", () => {
     expect(code).toBe(0);
     expect(fileSystem.readText(taskFile)).toBe("- [x] cli: echo hello\n");
     expect(gitClient.run).toHaveBeenNthCalledWith(1, ["rev-parse", "--is-inside-work-tree"], cwd);
-    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["status", "--porcelain", "--", ".", ":(exclude).rundown/runs/**", ":(exclude).rundown/logs/**"], cwd);
+    expect(gitClient.run).toHaveBeenNthCalledWith(2, [
+      "status",
+      "--porcelain",
+      "--",
+      ".",
+      ":(exclude).rundown/runs/**",
+      ":(exclude).rundown/logs/**",
+      ":(exclude).rundown/*.lock",
+      ":(glob,exclude)**/.rundown/*.lock",
+    ], cwd);
     expect(gitClient.run).toHaveBeenNthCalledWith(
       3,
       ["rev-parse", "--is-inside-work-tree"],
@@ -61,7 +72,16 @@ describe("run-task commit behavior", () => {
     );
     expect(gitClient.run).toHaveBeenNthCalledWith(
       4,
-      ["add", "-A", "--", ".", ":(exclude).rundown/runs/**", ":(exclude).rundown/logs/**"],
+      [
+        "add",
+        "-A",
+        "--",
+        ".",
+        ":(exclude).rundown/runs/**",
+        ":(exclude).rundown/logs/**",
+        ":(exclude).rundown/*.lock",
+        ":(glob,exclude)**/.rundown/*.lock",
+      ],
       cwd,
     );
     expect(gitClient.run).toHaveBeenNthCalledWith(
@@ -118,7 +138,16 @@ describe("run-task commit behavior", () => {
     }));
 
     expect(code).toBe(0);
-    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["status", "--porcelain", "--", ".", ":(exclude).rundown/runs/**", ":(exclude).rundown/logs/**"], cwd);
+    expect(gitClient.run).toHaveBeenNthCalledWith(2, [
+      "status",
+      "--porcelain",
+      "--",
+      ".",
+      ":(exclude).rundown/runs/**",
+      ":(exclude).rundown/logs/**",
+      ":(exclude).rundown/*.lock",
+      ":(glob,exclude)**/.rundown/*.lock",
+    ], cwd);
     expect(gitClient.run).toHaveBeenNthCalledWith(
       3,
       ["rev-parse", "--is-inside-work-tree"],
@@ -126,7 +155,16 @@ describe("run-task commit behavior", () => {
     );
     expect(gitClient.run).toHaveBeenNthCalledWith(
       4,
-      ["add", "-A", "--", ".", ":(exclude).rundown/runs/**", ":(exclude).rundown/logs/**"],
+      [
+        "add",
+        "-A",
+        "--",
+        ".",
+        ":(exclude).rundown/runs/**",
+        ":(exclude).rundown/logs/**",
+        ":(exclude).rundown/*.lock",
+        ":(glob,exclude)**/.rundown/*.lock",
+      ],
       cwd,
     );
     expect(gitClient.run).toHaveBeenNthCalledWith(
@@ -326,7 +364,16 @@ describe("run-task commit behavior", () => {
     expect(events.some((event) => event.kind === "error" && event.message.includes("working directory is not clean"))).toBe(true);
     expect(gitClient.run).toHaveBeenCalledTimes(2);
     expect(gitClient.run).toHaveBeenNthCalledWith(1, ["rev-parse", "--is-inside-work-tree"], cwd);
-    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["status", "--porcelain", "--", ".", ":(exclude).rundown/runs/**", ":(exclude).rundown/logs/**"], cwd);
+    expect(gitClient.run).toHaveBeenNthCalledWith(2, [
+      "status",
+      "--porcelain",
+      "--",
+      ".",
+      ":(exclude).rundown/runs/**",
+      ":(exclude).rundown/logs/**",
+      ":(exclude).rundown/*.lock",
+      ":(glob,exclude)**/.rundown/*.lock",
+    ], cwd);
     expect(vi.mocked(gitClient.run).mock.calls.some(([args]) => args[0] === "add")).toBe(false);
     expect(vi.mocked(gitClient.run).mock.calls.some(([args]) => args[0] === "commit")).toBe(false);
   });
@@ -362,7 +409,16 @@ describe("run-task commit behavior", () => {
     expect(code).toBe(0);
     expect(fileSystem.readText(taskFile)).toBe("- [x] cli: echo hello\n");
     expect(vi.mocked(gitClient.run).mock.calls.some(([args]) =>
-      JSON.stringify(args) === JSON.stringify(["status", "--porcelain", "--", ".", ":(exclude).rundown/runs/**", ":(exclude).rundown/logs/**"])
+      JSON.stringify(args) === JSON.stringify([
+        "status",
+        "--porcelain",
+        "--",
+        ".",
+        ":(exclude).rundown/runs/**",
+        ":(exclude).rundown/logs/**",
+        ":(exclude).rundown/*.lock",
+        ":(glob,exclude)**/.rundown/*.lock",
+      ])
     )).toBe(false);
   });
 });
@@ -1050,6 +1106,136 @@ describe("run-task trace enrichment", () => {
 });
 
 describe("run-task prompt and mode behavior", () => {
+  it("force-unlocks stale source locks before run lock acquisition when --force-unlock is enabled", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Build release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Build release\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
+
+    vi.mocked(dependencies.fileLock.isLocked).mockReturnValue(false);
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      forceUnlock: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.fileLock.isLocked).toHaveBeenCalledWith(taskFile);
+    expect(dependencies.fileLock.forceRelease).toHaveBeenCalledWith(taskFile);
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Force-unlocked stale source lock"))).toBe(true);
+
+    const forceReleaseOrder = vi.mocked(dependencies.fileLock.forceRelease).mock.invocationCallOrder[0];
+    const lockAcquireOrder = vi.mocked(dependencies.fileLock.acquire).mock.invocationCallOrder[0];
+    expect(forceReleaseOrder).toBeLessThan(lockAcquireOrder);
+  });
+
+  it("does not force-unlock active source locks when --force-unlock is enabled", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Build release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Build release\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient });
+
+    vi.mocked(dependencies.fileLock.isLocked).mockReturnValue(true);
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      forceUnlock: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.fileLock.isLocked).toHaveBeenCalledWith(taskFile);
+    expect(dependencies.fileLock.forceRelease).not.toHaveBeenCalled();
+  });
+
+  it("acquires a lock for each resolved source file before selecting tasks and releases all locks after completion", async () => {
+    const cwd = "/workspace";
+    const primaryFile = path.join(cwd, "tasks.md");
+    const secondaryFile = path.join(cwd, "more.md");
+    const task = createTask(primaryFile, "Build release");
+    const fileSystem = createInMemoryFileSystem({
+      [primaryFile]: "- [ ] Build release\n",
+      [secondaryFile]: "- [ ] Secondary\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient });
+
+    vi.mocked(dependencies.sourceResolver.resolveSources).mockResolvedValue([
+      primaryFile,
+      secondaryFile,
+      primaryFile,
+    ]);
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "**/*.md",
+      verify: false,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.fileLock.acquire).toHaveBeenCalledTimes(2);
+    expect(dependencies.fileLock.acquire).toHaveBeenNthCalledWith(1, primaryFile, { command: "run" });
+    expect(dependencies.fileLock.acquire).toHaveBeenNthCalledWith(2, secondaryFile, { command: "run" });
+    expect(dependencies.fileLock.releaseAll).toHaveBeenCalledTimes(1);
+
+    const lockAcquireOrder = vi.mocked(dependencies.fileLock.acquire).mock.invocationCallOrder[0];
+    const taskSelectOrder = vi.mocked(dependencies.taskSelector.selectNextTask).mock.invocationCallOrder[0];
+    expect(lockAcquireOrder).toBeLessThan(taskSelectOrder);
+  });
+
+  it("returns 1 with a clear message when a source file lock is already held", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Build release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Build release\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
+
+    dependencies.fileLock.acquire = vi.fn(() => {
+      throw new FileLockError(taskFile, {
+        pid: 99999,
+        command: "run",
+        startTime: "2026-03-28T11:00:00.000Z",
+      });
+    });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(1);
+    expect(dependencies.taskSelector.selectNextTask).not.toHaveBeenCalled();
+    expect(dependencies.fileLock.releaseAll).toHaveBeenCalledTimes(1);
+    expect(events.some((event) =>
+      event.kind === "error"
+      && event.message.includes("Source file is locked by another rundown process")
+      && event.message.includes("pid=99999")
+      && event.message.includes("command=run")
+      && event.message.includes("startTime=2026-03-28T11:00:00.000Z")
+      && event.message.includes("--force-unlock")
+      && event.message.includes("rundown unlock")
+    )).toBe(true);
+  });
+
   it("returns 3 when no markdown files match the source", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");
@@ -1719,10 +1905,45 @@ describe("run-task prompt and mode behavior", () => {
       expect.anything(),
       expect.objectContaining({ status: "failed", preserve: false }),
     );
+    expect(dependencies.fileLock.releaseAll).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("run-task on-complete hook behavior", () => {
+  it("runs on-complete hook before lock release", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createInlineTask(taskFile, "cli: echo hello");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] cli: echo hello\n",
+    });
+    const gitClient = createGitClientMock();
+    const processRunner: ProcessRunner = {
+      run: vi.fn(async () => ({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      })),
+    };
+    const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient, processRunner });
+
+    const runTask = createRunTask(dependencies);
+
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      onCompleteCommand: "node scripts/after.js",
+    }));
+
+    expect(code).toBe(0);
+    expect(processRunner.run).toHaveBeenCalledTimes(1);
+    expect(dependencies.fileLock.releaseAll).toHaveBeenCalledTimes(1);
+
+    const hookCallOrder = vi.mocked(processRunner.run).mock.invocationCallOrder[0];
+    const releaseCallOrder = vi.mocked(dependencies.fileLock.releaseAll).mock.invocationCallOrder[0];
+    expect(hookCallOrder).toBeLessThan(releaseCallOrder);
+  });
+
   it("runs on-complete hook with task metadata after successful completion", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");
@@ -1943,7 +2164,16 @@ describe("run-task exit code behavior with completion side effects", () => {
     expect(fileSystem.readText(taskFile)).toBe("- [ ] cli: echo hello\n");
     expect(gitClient.run).toHaveBeenCalledTimes(2);
     expect(gitClient.run).toHaveBeenNthCalledWith(1, ["rev-parse", "--is-inside-work-tree"], cwd);
-    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["status", "--porcelain", "--", ".", ":(exclude).rundown/runs/**", ":(exclude).rundown/logs/**"], cwd);
+    expect(gitClient.run).toHaveBeenNthCalledWith(2, [
+      "status",
+      "--porcelain",
+      "--",
+      ".",
+      ":(exclude).rundown/runs/**",
+      ":(exclude).rundown/logs/**",
+      ":(exclude).rundown/*.lock",
+      ":(glob,exclude)**/.rundown/*.lock",
+    ], cwd);
     expect(processRunner.run).not.toHaveBeenCalled();
   });
 
@@ -1979,12 +2209,207 @@ describe("run-task exit code behavior with completion side effects", () => {
     expect(fileSystem.readText(taskFile)).toBe("- [ ] cli: echo hello\n");
     expect(gitClient.run).toHaveBeenCalledTimes(2);
     expect(gitClient.run).toHaveBeenNthCalledWith(1, ["rev-parse", "--is-inside-work-tree"], cwd);
-    expect(gitClient.run).toHaveBeenNthCalledWith(2, ["status", "--porcelain", "--", ".", ":(exclude).rundown/runs/**", ":(exclude).rundown/logs/**"], cwd);
+    expect(gitClient.run).toHaveBeenNthCalledWith(2, [
+      "status",
+      "--porcelain",
+      "--",
+      ".",
+      ":(exclude).rundown/runs/**",
+      ":(exclude).rundown/logs/**",
+      ":(exclude).rundown/*.lock",
+      ":(glob,exclude)**/.rundown/*.lock",
+    ], cwd);
     expect(processRunner.run).not.toHaveBeenCalled();
   });
 });
 
+describe("run-task lock release on error", () => {
+  it("releases locks when execution fails with a non-zero worker exit", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Build release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Build release\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient });
+    vi.mocked(dependencies.workerExecutor.runWorker).mockResolvedValue({
+      exitCode: 7,
+      stdout: "",
+      stderr: "worker err",
+    });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(1);
+    expect(dependencies.fileLock.releaseAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases locks when verification fails", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Build release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Build release\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient });
+    dependencies.taskVerification.verify = vi.fn(async () => false);
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(2);
+    expect(dependencies.fileLock.releaseAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases locks when worker execution throws unexpectedly", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Build release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Build release\n",
+    });
+    const gitClient = createGitClientMock();
+    const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient });
+    vi.mocked(dependencies.workerExecutor.runWorker).mockRejectedValue(new Error("worker exploded"));
+
+    const runTask = createRunTask(dependencies);
+
+    await expect(runTask(createOptions({
+      verify: false,
+      workerCommand: ["opencode", "run"],
+    }))).rejects.toThrow("worker exploded");
+    expect(dependencies.fileLock.releaseAll).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("run-task --all mode", () => {
+  it("holds the source file lock across all --all iterations", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] cli: echo one\n- [ ] cli: echo two\n- [ ] cli: echo three\n",
+    });
+    const gitClient = createGitClientMock();
+    let selectCallCount = 0;
+
+    const tasks = [
+      { text: "cli: echo one", cmd: "echo one" },
+      { text: "cli: echo two", cmd: "echo two" },
+      { text: "cli: echo three", cmd: "echo three" },
+    ];
+
+    const fileLock = createNoopFileLock();
+
+    const dependencies: RunTaskDependencies = {
+      sourceResolver: { resolveSources: vi.fn(async () => [taskFile]) },
+      taskSelector: {
+        selectNextTask: vi.fn(() => {
+          if (selectCallCount >= tasks.length) return null;
+          const t = tasks[selectCallCount];
+          selectCallCount++;
+          return {
+            task: {
+              text: t.text,
+              checked: false,
+              index: selectCallCount - 1,
+              line: selectCallCount,
+              column: 1,
+              offsetStart: 0,
+              offsetEnd: t.text.length,
+              file: taskFile,
+              isInlineCli: true,
+              cliCommand: t.cmd,
+              depth: 0,
+            },
+            source: "tasks.md",
+            contextBefore: "",
+          };
+        }),
+        selectTaskByLocation: vi.fn(() => null),
+      },
+      workerExecutor: {
+        runWorker: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
+        executeInlineCli: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
+      },
+      taskVerification: { verify: vi.fn(async () => true) },
+      taskRepair: { repair: vi.fn(async () => ({ valid: true, attempts: 0 })) },
+      workingDirectory: { cwd: vi.fn(() => cwd) },
+      fileSystem,
+      fileLock,
+      templateLoader: { load: vi.fn(() => null) },
+      verificationSidecar: { filePath: vi.fn(() => ""), read: vi.fn(() => null), remove: vi.fn() },
+      artifactStore: {
+        createContext: vi.fn(() => ({
+          runId: "run-test",
+          rootDir: path.join(cwd, ".rundown", "runs", "run-test"),
+          cwd,
+          keepArtifacts: false,
+          commandName: "run",
+        })),
+        beginPhase: vi.fn(),
+        completePhase: vi.fn(),
+        finalize: vi.fn(),
+        displayPath: vi.fn(() => ".rundown/runs/run-test"),
+        rootDir: vi.fn(() => path.join(cwd, ".rundown", "runs")),
+        listSaved: vi.fn(() => []),
+        listFailed: vi.fn(() => []),
+        latest: vi.fn(() => null),
+        find: vi.fn(() => null),
+        removeSaved: vi.fn(() => 0),
+        removeFailed: vi.fn(() => 0),
+        isFailedStatus: vi.fn(() => false),
+      },
+      gitClient,
+      processRunner: { run: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })) },
+      pathOperations: {
+        join: (...parts) => path.join(...parts),
+        resolve: (...parts) => path.resolve(...parts),
+        dirname: (p) => path.dirname(p),
+        relative: (from, to) => path.relative(from, to),
+        isAbsolute: (p) => path.isAbsolute(p),
+      },
+      templateVarsLoader: { load: vi.fn(() => ({})) },
+      traceWriter: {
+        write: vi.fn(),
+        flush: vi.fn(),
+      },
+      createTraceWriter: vi.fn((_trace: boolean, _artifactContext) => ({
+        write: vi.fn(),
+        flush: vi.fn(),
+      })),
+      output: { emit: vi.fn() },
+    };
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      runAll: true,
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.fileLock.acquire).toHaveBeenCalledTimes(1);
+    expect(dependencies.fileLock.acquire).toHaveBeenCalledWith(taskFile, { command: "run" });
+    expect(dependencies.taskSelector.selectNextTask).toHaveBeenCalledTimes(4);
+    expect(dependencies.workerExecutor.executeInlineCli).toHaveBeenCalledTimes(3);
+    expect(dependencies.fileLock.releaseAll).toHaveBeenCalledTimes(1);
+
+    const lastSelectOrder = vi.mocked(dependencies.taskSelector.selectNextTask).mock.invocationCallOrder.at(-1) ?? 0;
+    const releaseOrder = vi.mocked(dependencies.fileLock.releaseAll).mock.invocationCallOrder[0];
+    expect(releaseOrder).toBeGreaterThan(lastSelectOrder);
+  });
+
   it("runs multiple inline CLI tasks sequentially and returns 0 when all complete", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");
@@ -2063,6 +2488,7 @@ describe("run-task --all mode", () => {
       taskRepair: { repair: vi.fn(async () => ({ valid: true, attempts: 0 })) },
       workingDirectory: { cwd: vi.fn(() => cwd) },
       fileSystem,
+      fileLock: createNoopFileLock(),
       templateLoader,
       verificationSidecar,
       artifactStore,
@@ -2155,6 +2581,7 @@ describe("run-task --all mode", () => {
       taskRepair: { repair: vi.fn(async () => ({ valid: true, attempts: 0 })) },
       workingDirectory: { cwd: vi.fn(() => cwd) },
       fileSystem,
+      fileLock: createNoopFileLock(),
       templateLoader: { load: vi.fn(() => null) },
       verificationSidecar: { filePath: vi.fn(() => ""), read: vi.fn(() => null), remove: vi.fn() },
       artifactStore: {
@@ -2227,6 +2654,44 @@ describe("run-task --all mode", () => {
 });
 
 describe("run-task --on-fail hook", () => {
+  it("runs on-fail hook before lock release", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createInlineTask(taskFile, "cli: echo hello");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] cli: echo hello\n",
+    });
+    const gitClient = createGitClientMock();
+    const processRunner: ProcessRunner = {
+      run: vi.fn(async () => ({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      })),
+    };
+    const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient, processRunner });
+    dependencies.workerExecutor.executeInlineCli = vi.fn(async () => ({
+      exitCode: 1,
+      stdout: "",
+      stderr: "",
+    }));
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      onFailCommand: "node scripts/handle-fail.js",
+    }));
+
+    expect(code).toBe(1);
+    expect(processRunner.run).toHaveBeenCalledTimes(1);
+    expect(dependencies.fileLock.releaseAll).toHaveBeenCalledTimes(1);
+
+    const hookCallOrder = vi.mocked(processRunner.run).mock.invocationCallOrder[0];
+    const releaseCallOrder = vi.mocked(dependencies.fileLock.releaseAll).mock.invocationCallOrder[0];
+    expect(hookCallOrder).toBeLessThan(releaseCallOrder);
+  });
+
   it("runs on-fail hook on execution failure", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");
@@ -2502,6 +2967,7 @@ function createDependencies(options: {
       cwd: vi.fn(() => options.cwd),
     },
     fileSystem: options.fileSystem,
+    fileLock: createNoopFileLock(),
     templateLoader,
     verificationSidecar,
     artifactStore,
@@ -2628,6 +3094,17 @@ function createOptions(overrides: Partial<RunTaskOptions>): RunTaskOptions {
     hideAgentOutput: false,
     trace: false,
     traceOnly: false,
+    forceUnlock: false,
     ...overrides,
+  };
+}
+
+function createNoopFileLock(): FileLock {
+  return {
+    acquire: vi.fn(),
+    release: vi.fn(),
+    releaseAll: vi.fn(),
+    isLocked: vi.fn(() => false),
+    forceRelease: vi.fn(),
   };
 }

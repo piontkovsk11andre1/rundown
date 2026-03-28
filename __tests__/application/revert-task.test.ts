@@ -1,5 +1,6 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { FileLockError } from "../../src/domain/ports/file-lock.js";
 import {
   createRevertTask,
   type RevertTaskDependencies,
@@ -10,6 +11,7 @@ import type {
   ArtifactRunMetadata,
   ArtifactStore,
   ArtifactStoreStatus,
+  FileLock,
   FileSystem,
   GitClient,
 } from "../../src/domain/ports/index.js";
@@ -169,6 +171,45 @@ describe("revert-task", () => {
     expect(code).toBe(1);
     expect(events.some((event) => event.kind === "error" && event.message.includes("Not inside a git repository."))).toBe(true);
     expect(vi.mocked(gitClient.run)).toHaveBeenCalledWith(["rev-parse", "--is-inside-work-tree"], "/workspace");
+  });
+
+  it("acquires and releases source file locks during revert", async () => {
+    const runs: ArtifactRunMetadata[] = [
+      createRunMetadata({ runId: "run-1", status: "completed", commitSha: "abc123" }),
+    ];
+    const fileLock = createNoopFileLock();
+
+    const { revertTask } = createDependencies(runs, { fileLock });
+
+    const code = await revertTask(createOptions({ dryRun: true }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(fileLock.acquire)).toHaveBeenCalledWith("/workspace/roadmap.md", { command: "revert" });
+    expect(vi.mocked(fileLock.releaseAll)).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 1 when source file lock is held by another rundown process", async () => {
+    const runs: ArtifactRunMetadata[] = [
+      createRunMetadata({ runId: "run-1", status: "completed", commitSha: "abc123" }),
+    ];
+    const fileLock = createNoopFileLock();
+    vi.mocked(fileLock.acquire).mockImplementation(() => {
+      throw new FileLockError(
+        "/workspace/roadmap.md",
+        { pid: 4242, command: "run", startTime: "2026-03-28T07:00:00.000Z" },
+      );
+    });
+
+    const { revertTask, events, gitClient } = createDependencies(runs, { fileLock });
+
+    const code = await revertTask(createOptions({ dryRun: true }));
+
+    expect(code).toBe(1);
+    expect(events.some((event) => event.kind === "error" && event.message.includes("Source file is locked by another rundown process"))).toBe(true);
+    expect(events.some((event) => event.kind === "error" && event.message.includes("pid=4242"))).toBe(true);
+    expect(events.some((event) => event.kind === "error" && event.message.includes("rundown unlock"))).toBe(true);
+    expect(vi.mocked(gitClient.run)).not.toHaveBeenCalled();
+    expect(vi.mocked(fileLock.releaseAll)).not.toHaveBeenCalled();
   });
 
   it("returns 1 when working directory is not clean", async () => {
@@ -960,6 +1001,7 @@ function createDependencies(
   options: {
     gitRun?: (args: string[]) => string | undefined | Promise<string | undefined>;
     fileExists?: (filePath: string) => boolean;
+    fileLock?: FileLock;
   } = {},
 ): {
   revertTask: (options: RevertTaskOptions) => Promise<number>;
@@ -1023,6 +1065,7 @@ function createDependencies(
     workingDirectory: {
       cwd: vi.fn(() => "/workspace"),
     },
+    fileLock: options.fileLock ?? createNoopFileLock(),
     fileSystem: createInMemoryFileSystem({ fileExists: options.fileExists }),
     pathOperations: {
       join: (...parts) => path.join(...parts),
@@ -1041,6 +1084,16 @@ function createDependencies(
     events,
     gitClient,
     artifactStore,
+  };
+}
+
+function createNoopFileLock(): FileLock {
+  return {
+    acquire: vi.fn(),
+    isLocked: vi.fn(() => false),
+    release: vi.fn(),
+    forceRelease: vi.fn(),
+    releaseAll: vi.fn(),
   };
 }
 

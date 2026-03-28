@@ -10,6 +10,7 @@ const RUNNER_MODES: readonly ProcessRunMode[] = ["wait", "tui", "detached"];
 const PLANNER_MODES: readonly ProcessRunMode[] = ["wait"];
 const PROMPT_TRANSPORTS: readonly PromptTransport[] = ["file", "arg"];
 const SORT_MODES: readonly SortMode[] = ["name-sort", "none", "old-first", "new-first"];
+const REVERT_METHODS = ["revert", "reset"] as const;
 const EXIT_TEST_MODE_ENV = "RUNDOWN_TEST_MODE";
 const DEFAULT_PLAN_SCAN_COUNT = 1;
 
@@ -146,7 +147,7 @@ program
   .allowUnknownOption(false)
   .action(withCliAction((opts: Record<string, string | string[] | boolean>) => {
     const transport = parsePromptTransport(opts.transport as string | undefined);
-    const last = parseLastReverifyCount(opts.last as string | undefined);
+    const last = parseLastCount(opts.last as string | undefined);
     const all = Boolean(opts.all as boolean | undefined);
     const repairAttempts = parseRepairAttempts(opts.repairAttempts as string | undefined);
     const noRepair = resolveNoRepairFlag(opts);
@@ -174,6 +175,37 @@ program
       keepArtifacts,
       workerCommand,
       trace,
+    });
+  }));
+
+program
+  .command("revert")
+  .description("Undo completed task runs by reverting their git commits.")
+  .option("--run <id|latest>", "Target artifact run id or 'latest'", "latest")
+  .option("--last <n>", "Revert the last N completed+committed runs")
+  .option("--all", "Revert all completed+committed runs", false)
+  .option("--method <revert|reset>", "Git undo strategy", "revert")
+  .option("--dry-run", "Show what would be reverted without changing git state", false)
+  .option("--force", "Bypass clean-worktree and reset contiguous-HEAD checks", false)
+  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under .rundown/runs", false)
+  .allowUnknownOption(false)
+  .action(withCliAction((opts: Record<string, string | string[] | boolean>) => {
+    const targetRun = normalizeOptionalString(opts.run) ?? "latest";
+    const last = parseLastCount(opts.last as string | undefined);
+    const all = Boolean(opts.all as boolean | undefined);
+    const method = parseRevertMethod(opts.method as string | undefined);
+    const dryRun = Boolean(opts.dryRun as boolean | undefined);
+    const force = Boolean(opts.force as boolean | undefined);
+    const keepArtifacts = Boolean(opts.keepArtifacts as boolean | undefined);
+
+    return app.revertTask({
+      runId: targetRun,
+      last,
+      all,
+      method,
+      dryRun,
+      force,
+      keepArtifacts,
     });
   }));
 
@@ -354,7 +386,7 @@ function resolvePlanMarkdownFile(markdownFiles: string[]): string {
   return markdownFile;
 }
 
-function parseLastReverifyCount(value: string | undefined): number | undefined {
+function parseLastCount(value: string | undefined): number | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -369,6 +401,15 @@ function parseLastReverifyCount(value: string | undefined): number | undefined {
   }
 
   return parsed;
+}
+
+function parseRevertMethod(value: string | undefined): "revert" | "reset" {
+  const method = (value ?? "revert") as (typeof REVERT_METHODS)[number];
+  if (!REVERT_METHODS.includes(method)) {
+    throw new Error(`Invalid --method value: ${value}. Allowed: ${REVERT_METHODS.join(", ")}.`);
+  }
+
+  return method;
 }
 
 function normalizeOptionalString(value: string | string[] | boolean | undefined): string | undefined {

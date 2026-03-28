@@ -7,6 +7,8 @@ export type ArtifactStoreStatus =
   | "verification-failed"
   | "reverify-completed"
   | "reverify-failed"
+  | "reverted"
+  | "revert-failed"
   | "metadata-missing";
 
 export type ArtifactStorePhase = "execute" | "verify" | "repair" | "plan" | "inline-cli" | "worker";

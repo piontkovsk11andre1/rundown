@@ -683,13 +683,17 @@ export function createRunTask(
       preserve: boolean = keepArtifacts,
     ): Promise<number> => finishRun(code, status, preserve, { reason, exitCode });
 
-    const finalizeArtifacts = (status: ArtifactStoreStatus, preserve: boolean = keepArtifacts): void => {
+    const finalizeArtifacts = (
+      status: ArtifactStoreStatus,
+      preserve: boolean = keepArtifacts,
+      extra?: Record<string, unknown>,
+    ): void => {
       if (!artifactContext || artifactsFinalized) {
         return;
       }
 
       traceWriter.flush();
-      finalizeRunArtifacts(dependencies.artifactStore, artifactContext, preserve, status, emit);
+      finalizeRunArtifacts(dependencies.artifactStore, artifactContext, preserve, status, emit, extra);
       artifactsFinalized = true;
     };
 
@@ -698,12 +702,13 @@ export function createRunTask(
       status: ArtifactStoreStatus,
       preserve: boolean = keepArtifacts,
       failure?: { reason: string; exitCode: number | null },
+      extra?: Record<string, unknown>,
     ): Promise<number> => {
       emitTraceTaskOutcome(status, failure);
       await runTraceEnrichment(status);
       emitDeferredTraceEvents();
       emitTraceRunCompleted(status);
-      finalizeArtifacts(status, preserve);
+      finalizeArtifacts(status, preserve, extra);
       return code;
     };
 
@@ -1102,7 +1107,7 @@ export function createRunTask(
 
         checkTaskUsingFileSystem(task, dependencies.fileSystem);
         emit({ kind: "success", message: "Task checked: " + task.text });
-        await afterTaskComplete(
+        const taskCompletionExtra = await afterTaskComplete(
           dependencies,
           task,
           source,
@@ -1111,7 +1116,7 @@ export function createRunTask(
           onCompleteCommand,
           hideHookOutput,
         );
-        await finishRun(0, "completed");
+        await finishRun(0, "completed", keepArtifacts, undefined, taskCompletionExtra);
         tasksCompleted++;
         if (!runAll) return 0;
         resetArtifacts();
@@ -1178,7 +1183,7 @@ export function createRunTask(
 
         checkTaskUsingFileSystem(task, dependencies.fileSystem);
         emit({ kind: "success", message: "Task checked: " + task.text });
-        await afterTaskComplete(
+        const taskCompletionExtra = await afterTaskComplete(
           dependencies,
           task,
           source,
@@ -1187,7 +1192,7 @@ export function createRunTask(
           onCompleteCommand,
           hideHookOutput,
         );
-        await finishRun(0, "completed");
+        await finishRun(0, "completed", keepArtifacts, undefined, taskCompletionExtra);
         tasksCompleted++;
         if (!runAll) return 0;
         resetArtifacts();
@@ -1258,7 +1263,7 @@ export function createRunTask(
 
       checkTaskUsingFileSystem(task, dependencies.fileSystem);
       emit({ kind: "success", message: "Task checked: " + task.text });
-      await afterTaskComplete(
+      const taskCompletionExtra = await afterTaskComplete(
         dependencies,
         task,
         source,
@@ -1267,7 +1272,7 @@ export function createRunTask(
         onCompleteCommand,
         hideHookOutput,
       );
-      await finishRun(0, "completed");
+      await finishRun(0, "completed", keepArtifacts, undefined, taskCompletionExtra);
       tasksCompleted++;
       if (!runAll) return 0;
       resetArtifacts();
@@ -1369,9 +1374,10 @@ async function afterTaskComplete(
   commitMessageTemplate: string | undefined,
   onCompleteCommand: string | undefined,
   hideHookOutput: boolean,
-): Promise<void> {
+): Promise<Record<string, unknown> | undefined> {
   const cwd = dependencies.workingDirectory.cwd();
   const emit = dependencies.output.emit.bind(dependencies.output);
+  let artifactExtra: Record<string, unknown> | undefined;
 
   if (commit) {
     try {
@@ -1381,6 +1387,11 @@ async function afterTaskComplete(
       } else {
         const message = buildCommitMessage(task, cwd, commitMessageTemplate, dependencies.pathOperations);
         await commitCheckedTaskWithGitClient(dependencies.gitClient, task, cwd, message);
+        const commitSha = (await dependencies.gitClient.run(["rev-parse", "HEAD"], cwd)).trim();
+        artifactExtra = {
+          commitSha,
+          commitMessage: message,
+        };
         emit({ kind: "success", message: "Committed: " + message });
       }
     } catch (error) {
@@ -1409,6 +1420,8 @@ async function afterTaskComplete(
       emit({ kind: "warn", message: "--on-complete hook failed: " + String(error) });
     }
   }
+
+  return artifactExtra;
 }
 
 export function getAutomationWorkerCommand(
@@ -1434,8 +1447,13 @@ export function finalizeRunArtifacts(
   preserve: boolean,
   status: ArtifactStoreStatus,
   emit: ApplicationOutputPort["emit"],
+  extra?: Record<string, unknown>,
 ): void {
-  artifactStore.finalize(artifactContext, { status, preserve });
+  artifactStore.finalize(artifactContext, {
+    status,
+    preserve,
+    ...(extra ? { extra } : {}),
+  });
 
   if (preserve) {
     emit({ kind: "info", message: "Runtime artifacts saved at " + artifactStore.displayPath(artifactContext) + "." });

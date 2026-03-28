@@ -13,6 +13,8 @@ export type RuntimeArtifactStatus =
   | "verification-failed"
   | "reverify-completed"
   | "reverify-failed"
+  | "reverted"
+  | "revert-failed"
   | "metadata-missing";
 
 export interface RuntimeTaskMetadata {

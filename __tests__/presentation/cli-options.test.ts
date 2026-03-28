@@ -487,6 +487,97 @@ describe("CLI reverify option normalization", () => {
 
 });
 
+describe("CLI revert option normalization", () => {
+  it("passes revert options to application layer", async () => {
+    const revertTask = vi.fn(async () => 0);
+    const call = await invokeRevertAndCaptureCall([
+      "revert",
+      "--run",
+      "run-123",
+      "--method",
+      "reset",
+      "--dry-run",
+      "--force",
+      "--keep-artifacts",
+    ], revertTask);
+
+    expect(call.runId).toBe("run-123");
+    expect(call.last).toBeUndefined();
+    expect(call.all).toBe(false);
+    expect(call.method).toBe("reset");
+    expect(call.dryRun).toBe(true);
+    expect(call.force).toBe(true);
+    expect(call.keepArtifacts).toBe(true);
+  });
+
+  it("uses defaults for omitted revert options", async () => {
+    const revertTask = vi.fn(async () => 0);
+    const call = await invokeRevertAndCaptureCall(["revert"], revertTask);
+
+    expect(call.runId).toBe("latest");
+    expect(call.last).toBeUndefined();
+    expect(call.all).toBe(false);
+    expect(call.method).toBe("revert");
+    expect(call.dryRun).toBe(false);
+    expect(call.force).toBe(false);
+    expect(call.keepArtifacts).toBe(false);
+  });
+
+  it("parses --last and --all for revert", async () => {
+    const revertTask = vi.fn(async () => 0);
+    const call = await invokeRevertAndCaptureCall([
+      "revert",
+      "--last",
+      "3",
+      "--all",
+    ], revertTask);
+
+    expect(call.last).toBe(3);
+    expect(call.all).toBe(true);
+  });
+
+  it("parses --all for revert", async () => {
+    const revertTask = vi.fn(async () => 0);
+    const call = await invokeRevertAndCaptureCall([
+      "revert",
+      "--all",
+    ], revertTask);
+
+    expect(call.runId).toBe("latest");
+    expect(call.last).toBeUndefined();
+    expect(call.all).toBe(true);
+    expect(call.method).toBe("revert");
+  });
+
+  it("logs a CLI error and exits with code 1 on invalid revert method", async () => {
+    const revertTask = vi.fn(async () => 0);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await invokeRevertAndExpectExit([
+      "revert",
+      "--method",
+      "checkout",
+    ], revertTask);
+
+    expect(revertTask).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid --method value: checkout"));
+  });
+
+  it("logs a CLI error and exits with code 1 on non-integer --last", async () => {
+    const revertTask = vi.fn(async () => 0);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await invokeRevertAndExpectExit([
+      "revert",
+      "--last",
+      "three",
+    ], revertTask);
+
+    expect(revertTask).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid --last value: three"));
+  });
+});
+
 describe("CLI plan and utility command normalization", () => {
   it("passes document-mode plan options through with separator worker command", async () => {
     const planTask = vi.fn(async () => 0);
@@ -1007,6 +1098,76 @@ async function invokePlanAndCaptureCall(args: string[], planTask: ReturnType<typ
 
   expect(planTask).toHaveBeenCalledTimes(1);
   return planTask.mock.calls[0][0] as RunTaskCall;
+}
+
+async function invokeRevertAndCaptureCall(args: string[], revertTask: ReturnType<typeof vi.fn>): Promise<RunTaskCall> {
+  const previousEnv = captureEnv();
+
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
+
+  vi.doMock("../../src/create-app.js", () => ({
+    createApp: () => ({
+      runTask: vi.fn(async () => 0),
+      reverifyTask: vi.fn(async () => 0),
+      revertTask,
+      nextTask: vi.fn(async () => 0),
+      listTasks: vi.fn(async () => 0),
+      planTask: vi.fn(async () => 0),
+      initProject: vi.fn(async () => 0),
+      manageArtifacts: vi.fn(() => 0),
+    }),
+  }));
+
+  try {
+    const { parseCliArgs } = await import("../../src/presentation/cli.js");
+    await parseCliArgs(args);
+  } catch (error) {
+    const message = String(error);
+    if (!/CLI exited with code \d+/.test(message)) {
+      throw error;
+    }
+  } finally {
+    restoreEnv(previousEnv);
+  }
+
+  expect(revertTask).toHaveBeenCalledTimes(1);
+  return revertTask.mock.calls[0][0] as RunTaskCall;
+}
+
+async function invokeRevertAndExpectExit(args: string[], revertTask: ReturnType<typeof vi.fn>): Promise<void> {
+  const previousEnv = captureEnv();
+
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
+
+  vi.doMock("../../src/create-app.js", () => ({
+    createApp: () => ({
+      runTask: vi.fn(async () => 0),
+      reverifyTask: vi.fn(async () => 0),
+      revertTask,
+      nextTask: vi.fn(async () => 0),
+      listTasks: vi.fn(async () => 0),
+      planTask: vi.fn(async () => 0),
+      initProject: vi.fn(async () => 0),
+      manageArtifacts: vi.fn(() => 0),
+    }),
+  }));
+
+  try {
+    const { parseCliArgs } = await import("../../src/presentation/cli.js");
+    await parseCliArgs(args);
+  } catch (error) {
+    const message = String(error);
+    if (/CLI exited with code \d+/.test(message)) {
+      return;
+    }
+    throw error;
+  } finally {
+    restoreEnv(previousEnv);
+  }
+
+  throw new Error("Expected CLI exit");
 }
 
 async function invokePlanAndExpectExit(args: string[], planTask: ReturnType<typeof vi.fn>): Promise<void> {

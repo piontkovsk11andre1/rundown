@@ -109,7 +109,11 @@ rundown next docs/
 rundown list docs/
 rundown plan roadmap.md --scan-count 3 -- opencode run
 rundown reverify -- opencode run
+rundown revert --dry-run --worker opencode run
+rundown revert --method reset --force --run latest
 ```
+
+Note: `rundown revert` only works for tasks originally executed with both `--commit` and `--keep-artifacts`.
 
 Plan migration note: `rundown plan` now operates on the entire markdown file and no longer supports `--at file:line` task targeting.
 
@@ -131,7 +135,7 @@ Your job:
 5. If I say yes, inspect the repository and choose the best existing instruction entrypoint for this harness. Prefer updating an existing file rather than creating a new one. Examples may include `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, repository instruction files, or another harness-specific entrypoint.
 6. Update that entrypoint so agents are guided to use rundown efficiently. The instructions should be concise and practical, including:
    - use Markdown task files as the source of truth for work,
-   - use `rundown next`, `rundown list`, `rundown plan`, `rundown run`, and `rundown reverify` when appropriate,
+   - use `rundown next`, `rundown list`, `rundown plan`, `rundown run`, `rundown reverify`, and `rundown revert` when appropriate,
    - do not manually check boxes before verification succeeds,
    - prefer repository-local `.rundown/` templates as the control surface,
    - keep artifacts when debugging or auditing a run.

@@ -74,6 +74,61 @@ rundown reverify --print-prompt --worker opencode run
 rundown reverify --dry-run --worker opencode run
 ```
 
+### `rundown revert`
+
+Undo previously completed tasks by reverting the git commit recorded in saved run artifacts.
+
+By default, `revert` targets the latest completed+committed run in the current repository (`--run latest`) and uses `--method revert`.
+
+Revertable run requirements:
+
+- The original run status is `completed`.
+- The original run used `--commit`.
+- The original run used `--keep-artifacts` so `run.json` still exists.
+- The original run metadata includes `extra.commitSha`.
+
+Options:
+
+| Option | Description | Default |
+|---|---|---|
+| `--run <id|latest>` | Target a specific run ID or `latest`. | `latest` |
+| `--last <n>` | Revert the last `n` completed+committed runs (newest first for `revert`). | unset |
+| `--all` | Revert all completed+committed runs. | off |
+| `--method <revert|reset>` | Git undo strategy. `revert` creates inverse commits; `reset` rewinds history. | `revert` |
+| `--dry-run` | Print what would be reverted and exit `0` without changing git state. | off |
+| `--force` | Bypass clean-worktree and reset contiguous-HEAD checks. | off |
+| `--keep-artifacts` | Keep artifacts from the `revert` command run. | off |
+
+Target selection validation:
+
+- `--all` and `--last <n>` cannot be combined.
+- `--all` or `--last <n>` cannot be combined with `--run <specific-id>`.
+
+Git method behavior:
+
+- `--method revert` (safe default): reverts each target commit with `git revert <sha> --no-edit`.
+- `--method reset`: only allowed when target commits are contiguous at `HEAD`; runs `git reset --hard <oldest-sha>~1`.
+- Reset-generated revert runs can be restored later with `rundown revert --run <revert-run-id> --method reset`; this uses the saved `extra.preResetRef`.
+
+Operational notes:
+
+- Requires a clean working tree before running git undo operations.
+- Markdown checkboxes are restored by git history changes; no direct checkbox mutation is performed.
+- Multi-run `revert` processes runs newest-first to reduce conflicts.
+- Reverting a reset-generated revert run is supported one at a time and requires `--method reset`.
+- `--force` skips clean-worktree validation and contiguous-HEAD validation for `--method reset`; use only when you understand the history impact.
+
+Examples:
+
+```bash
+rundown revert -- opencode run
+rundown revert --run latest -- opencode run
+rundown revert --run run-20260319T222645632Z-04e84d73 -- opencode run
+rundown revert --last 3 --method revert -- opencode run
+rundown revert --all --dry-run --worker opencode run
+rundown revert --last 2 --method reset -- opencode run
+```
+
 ### `rundown plan <markdown-file>`
 
 Run document-level TODO synthesis on a single Markdown document using the planner template.
@@ -407,3 +462,8 @@ rundown run roadmap.md --mode tui -- opencode
 
 - `2` when verification still fails after configured repair attempts (or immediately with `--no-repair`)
 - `3` when no completed task can be resolved from the selected run artifacts
+
+`rundown revert` uses:
+
+- `1` when git undo operations fail (for example dirty worktree, revert conflict, invalid reset preconditions)
+- `3` when input is invalid or no revertable runs can be resolved (missing `--commit`/`--keep-artifacts` lineage)

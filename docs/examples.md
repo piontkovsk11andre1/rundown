@@ -162,3 +162,11 @@ rundown reverify --no-repair -- opencode run
 Use this to re-check the latest completed task with the current verify template before a push or release cut. The command exits non-zero on verification failure and does not modify Markdown checkbox states.
 
 If historical metadata no longer maps to a unique task after major edits, `reverify` exits with code `3` instead of guessing.
+
+## 12. Revert a previously completed task
+
+```bash
+rundown revert --run latest -- opencode run
+```
+
+`revert` requires the original run to have been executed with both `--commit` and `--keep-artifacts`; otherwise no revertable run metadata is available.

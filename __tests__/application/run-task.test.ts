@@ -29,7 +29,17 @@ describe("run-task commit behavior", () => {
     const fileSystem = createInMemoryFileSystem({
       [taskFile]: "- [ ] cli: echo hello\n",
     });
-    const gitClient = createGitClientMock();
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+          return "true";
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD") {
+          return "abc123def";
+        }
+        return "";
+      }),
+    };
     const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
 
     const runTask = createRunTask(dependencies);
@@ -59,6 +69,22 @@ describe("run-task commit behavior", () => {
       ["commit", "-m", "rundown: complete \"cli: echo hello\" in tasks.md"],
       cwd,
     );
+    expect(gitClient.run).toHaveBeenNthCalledWith(
+      6,
+      ["rev-parse", "HEAD"],
+      cwd,
+    );
+    expect(vi.mocked(dependencies.artifactStore.finalize)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: "completed",
+        preserve: false,
+        extra: {
+          commitSha: "abc123def",
+          commitMessage: "rundown: complete \"cli: echo hello\" in tasks.md",
+        },
+      }),
+    );
     expect(events.some((event) => event.kind === "success" && event.message === "Committed: rundown: complete \"cli: echo hello\" in tasks.md")).toBe(true);
   });
 
@@ -69,7 +95,17 @@ describe("run-task commit behavior", () => {
     const fileSystem = createInMemoryFileSystem({
       [taskFile]: "- [ ] cli: echo ship\n",
     });
-    const gitClient = createGitClientMock();
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+          return "true";
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD") {
+          return "def456abc";
+        }
+        return "";
+      }),
+    };
     const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
 
     const runTask = createRunTask(dependencies);
@@ -98,7 +134,69 @@ describe("run-task commit behavior", () => {
       ["commit", "-m", "done: cli: echo ship @ docs/roadmap.md"],
       cwd,
     );
+    expect(gitClient.run).toHaveBeenNthCalledWith(
+      6,
+      ["rev-parse", "HEAD"],
+      cwd,
+    );
+    expect(vi.mocked(dependencies.artifactStore.finalize)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: "completed",
+        preserve: false,
+        extra: {
+          commitSha: "def456abc",
+          commitMessage: "done: cli: echo ship @ docs/roadmap.md",
+        },
+      }),
+    );
     expect(events.some((event) => event.kind === "success" && event.message === "Committed: done: cli: echo ship @ docs/roadmap.md")).toBe(true);
+  });
+
+  it("does not persist commit metadata when --commit is not enabled", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createInlineTask(taskFile, "cli: echo hello");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] cli: echo hello\n",
+    });
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+          return "true";
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD") {
+          return "abc123def";
+        }
+        return "";
+      }),
+    };
+    const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient });
+
+    const runTask = createRunTask(dependencies);
+
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      commitAfterComplete: false,
+    }));
+
+    expect(code).toBe(0);
+    expect(fileSystem.readText(taskFile)).toBe("- [x] cli: echo hello\n");
+
+    const finalizeMetadata = vi.mocked(dependencies.artifactStore.finalize).mock.calls[0]?.[1];
+    expect(finalizeMetadata).toEqual(expect.objectContaining({
+      status: "completed",
+      preserve: false,
+    }));
+    expect(finalizeMetadata).not.toHaveProperty("extra");
+
+    expect(vi.mocked(gitClient.run).mock.calls.some(([args]) =>
+      JSON.stringify(args) === JSON.stringify(["commit", "-m", "rundown: complete \"cli: echo hello\" in tasks.md"])
+    )).toBe(false);
+    expect(vi.mocked(gitClient.run).mock.calls.some(([args]) =>
+      JSON.stringify(args) === JSON.stringify(["rev-parse", "HEAD"])
+    )).toBe(false);
   });
 
   it("warns on commit failure but still returns success", async () => {
@@ -240,7 +338,17 @@ describe("run-task commit behavior", () => {
     const fileSystem = createInMemoryFileSystem({
       [taskFile]: "- [ ] cli: echo hello\n",
     });
-    const gitClient = createGitClientMock();
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+          return "true";
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD") {
+          return "abc123def";
+        }
+        return "";
+      }),
+    };
     const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient });
 
     const runTask = createRunTask(dependencies);
@@ -338,7 +446,17 @@ describe("run-task trace enrichment", () => {
     const fileSystem = createInMemoryFileSystem({
       [taskFile]: "- [ ] Build release\n",
     });
-    const gitClient = createGitClientMock();
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+          return "true";
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD") {
+          return "def456abc";
+        }
+        return "";
+      }),
+    };
     const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient });
     const traceWriter = {
       write: vi.fn(),
@@ -422,7 +540,17 @@ describe("run-task trace enrichment", () => {
     const fileSystem = createInMemoryFileSystem({
       [taskFile]: "- [ ] Build release\n- [ ] Follow-up\n",
     });
-    const gitClient = createGitClientMock();
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+          return "true";
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD") {
+          return "abc123def";
+        }
+        return "";
+      }),
+    };
     const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient });
     const traceWriter = {
       write: vi.fn(),
@@ -493,7 +621,17 @@ describe("run-task trace enrichment", () => {
     const fileSystem = createInMemoryFileSystem({
       [taskFile]: "- [ ] Build release\n",
     });
-    const gitClient = createGitClientMock();
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+          return "true";
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD") {
+          return "def456abc";
+        }
+        return "";
+      }),
+    };
     const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient });
     const traceWriter = {
       write: vi.fn(),
@@ -564,7 +702,17 @@ describe("run-task trace enrichment", () => {
     const fileSystem = createInMemoryFileSystem({
       [taskFile]: "- [ ] Build release\n",
     });
-    const gitClient = createGitClientMock();
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+          return "true";
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD") {
+          return "abc123def";
+        }
+        return "";
+      }),
+    };
     const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient });
     const traceWriter = {
       write: vi.fn(),
@@ -634,7 +782,17 @@ describe("run-task trace enrichment", () => {
     const fileSystem = createInMemoryFileSystem({
       [taskFile]: "- [ ] Build release\n",
     });
-    const gitClient = createGitClientMock();
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+          return "true";
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD") {
+          return "def456abc";
+        }
+        return "";
+      }),
+    };
     const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient });
     const traceWriter = {
       write: vi.fn(),
@@ -707,7 +865,17 @@ describe("run-task trace enrichment", () => {
     const fileSystem = createInMemoryFileSystem({
       [taskFile]: "- [ ] Build release\n",
     });
-    const gitClient = createGitClientMock();
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+          return "true";
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD") {
+          return "abc123def";
+        }
+        return "";
+      }),
+    };
     const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient });
     const traceWriter = {
       write: vi.fn(),
@@ -756,7 +924,17 @@ describe("run-task trace enrichment", () => {
     const fileSystem = createInMemoryFileSystem({
       [taskFile]: "- [ ] Build release\n",
     });
-    const gitClient = createGitClientMock();
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+          return "true";
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD") {
+          return "def456abc";
+        }
+        return "";
+      }),
+    };
     const { dependencies } = createDependencies({ cwd, task, fileSystem, gitClient });
     const traceWriter = {
       write: vi.fn(),
@@ -827,7 +1005,17 @@ describe("run-task trace enrichment", () => {
     const fileSystem = createInMemoryFileSystem({
       [taskFile]: "- [ ] Build release\n",
     });
-    const gitClient = createGitClientMock();
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+          return "true";
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD") {
+          return "abc123def";
+        }
+        return "";
+      }),
+    };
     const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
     const traceWriter = {
       write: vi.fn(),
@@ -1202,7 +1390,17 @@ describe("run-task prompt and mode behavior", () => {
     const fileSystem = createInMemoryFileSystem({
       [taskFile]: "- [ ] cli: echo hello\n",
     });
-    const gitClient = createGitClientMock();
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+          return "true";
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD") {
+          return "abc123def";
+        }
+        return "";
+      }),
+    };
     const { dependencies, events } = createDependencies({ cwd, task, fileSystem, gitClient });
     dependencies.workerExecutor.executeInlineCli = vi.fn(async () => ({
       exitCode: 0,

@@ -239,6 +239,41 @@ If no unique match is found, `reverify` exits with code `3` and leaves Markdown 
 - Add optional "strict" vs "relaxed" resolution modes so CI can enforce exact matching while local flows can opt into broader recovery.
 - Explore a "task moved" helper that prints likely candidate matches when deterministic resolution fails.
 
+## Revert completed tasks
+
+`rundown revert` undoes previously completed tasks by applying git history changes from commit metadata stored in saved run artifacts.
+
+This command only works for runs that were completed with both:
+
+- `--commit` (so a task-specific commit exists), and
+- `--keep-artifacts` (so `run.json` and `extra.commitSha` are still available).
+
+Target selection mirrors the historical-run pattern used by `reverify`:
+
+- revert one run (`--run <id|latest>`),
+- revert the last `N` runs (`--last <n>`), or
+- revert all revertable runs (`--all`).
+
+Two git strategies are supported:
+
+- `revert` (default): creates inverse commits (`git revert <sha> --no-edit`) and is safe for shared branches.
+- `reset`: rewinds history with `git reset --hard <oldest-sha>~1`, but only when targets form a contiguous block at `HEAD`.
+
+When `reset` executes, the revert artifact stores the pre-reset `HEAD` as `extra.preResetRef`. That makes reset-based undos reversible: you can later run `rundown revert --run <revert-run-id> --method reset` to jump back to the saved ref.
+
+For multi-run revert, processing order is deliberate:
+
+- `revert` runs newest-first to reduce patch conflicts.
+- `reset` validates a contiguous `HEAD` block, then resets once before the oldest target commit.
+
+Reset-based revert runs are restored one at a time (single `--run`) because each one captures its own pre-reset reference.
+
+Markdown checkboxes are restored by git history itself. `rundown` does not directly mutate checkbox state during `revert`.
+
+Use `--dry-run` to preview selected runs, SHAs, and undo method without changing repository state.
+
+Use `--force` to bypass clean-worktree and reset contiguous-HEAD checks. This is intentionally unsafe and should be reserved for advanced recovery workflows.
+
 ## Planning
 
 `rundown plan` expands a selected task into nested subtasks.

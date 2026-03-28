@@ -33,6 +33,8 @@ export type TraceRunStatus =
   | "verification-failed"
   | "reverify-completed"
   | "reverify-failed"
+  | "reverted"
+  | "revert-failed"
   | "metadata-missing";
 
 export interface TraceEventBase<TEventType extends TraceEventType, TPayload> {

@@ -4,6 +4,7 @@ import { createListTasks, type ListTasksOptions } from "./application/list-tasks
 import { createNextTask, type NextTaskOptions } from "./application/next-task.js";
 import { createInitProject } from "./application/init-project.js";
 import { createReverifyTask, type ReverifyTaskOptions } from "./application/reverify-task.js";
+import { createRevertTask, type RevertTaskOptions } from "./application/revert-task.js";
 import {
   createManageArtifacts,
   type ManageArtifactsOptions,
@@ -52,6 +53,7 @@ import {
 export type App = {
   runTask: (options: RunTaskOptions) => Promise<number>;
   reverifyTask: (options: ReverifyTaskOptions) => Promise<number>;
+  revertTask: (options: RevertTaskOptions) => Promise<number>;
   planTask: (options: PlanTaskCommandOptions) => Promise<number>;
   listTasks: (options: ListTasksOptions) => Promise<number>;
   nextTask: (options: NextTaskOptions) => Promise<number>;
@@ -206,6 +208,14 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       pathOperations: ports.pathOperations,
       output: ports.output,
     }),
+    revertTask: (ports) => createRevertTask({
+      artifactStore: ports.artifactStore,
+      gitClient: ports.gitClient,
+      workingDirectory: ports.workingDirectory,
+      fileSystem: ports.fileSystem,
+      pathOperations: ports.pathOperations,
+      output: ports.output,
+    }),
     planTask: (ports) => planTaskUseCase(ports),
     listTasks: (ports) => createListTasks({
       fileSystem: ports.fileSystem,
@@ -242,6 +252,7 @@ function createAppFromFactories(
   return {
     runTask: factories.runTask(ports),
     reverifyTask: factories.reverifyTask(ports),
+    revertTask: factories.revertTask(ports),
     planTask: factories.planTask(ports),
     listTasks: factories.listTasks(ports),
     nextTask: factories.nextTask(ports),

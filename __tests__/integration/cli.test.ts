@@ -438,6 +438,462 @@ describe.sequential("CLI integration", () => {
     expect(compactHelpOutput).toContain("--no-repair Disable repair even when repair attempts are set");
   });
 
+  it("revert --help lists run targeting options", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli(["revert", "--help"], workspace);
+
+    expect(result.code).toBe(0);
+    const helpOutput = result.stdoutWrites.join("\n");
+    const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("--run <id|latest> Target artifact run id or 'latest'");
+    expect(compactHelpOutput).toContain("--last <n> Revert the last N completed+committed runs");
+    expect(compactHelpOutput).toContain("--method <revert|reset> Git undo strategy");
+    expect(compactHelpOutput).toContain("--force Bypass clean-worktree and reset contiguous-HEAD checks");
+    expect(compactHelpOutput).toContain("--keep-artifacts Preserve runtime prompts, logs, and metadata under .rundown/runs");
+  });
+
+  it("revert returns 3 when no completed artifacts exist", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli([
+      "revert",
+    ], workspace);
+
+    expect(result.code).toBe(3);
+    expect(result.errors.some((line) => line.includes("No saved runtime artifact run found for: latest completed"))).toBe(true);
+  });
+
+  it("revert succeeds for a single committed run created via CLI", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+
+    fs.writeFileSync(roadmapPath, "- [ ] cli: echo hello\n", "utf-8");
+    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
+
+    const runResult = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--commit",
+      "--keep-artifacts",
+    ], workspace);
+
+    expect(runResult.code).toBe(0);
+    expect(runResult.logs.some((line) => line.includes("Task checked: cli: echo hello"))).toBe(true);
+    expect(runResult.logs.some((line) => line.includes("Committed:"))).toBe(true);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] cli: echo hello");
+
+    const revertResult = await runCli(["revert"], workspace);
+
+    expect(revertResult.code).toBe(0);
+    expect(revertResult.logs.some((line) => line.includes("Reverted 1 run successfully."))).toBe(true);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: echo hello");
+  });
+
+  it("revert succeeds when the markdown file was moved after the original run", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const docsPath = path.join(workspace, "docs", "roadmap.md");
+
+    fs.mkdirSync(path.dirname(docsPath), { recursive: true });
+    fs.writeFileSync(roadmapPath, "- [ ] cli: echo hello\n", "utf-8");
+    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
+
+    const runResult = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--commit",
+      "--keep-artifacts",
+    ], workspace);
+
+    expect(runResult.code).toBe(0);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] cli: echo hello");
+
+    execFileSync("git", ["mv", "roadmap.md", "docs/roadmap.md"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "move roadmap"], { cwd: workspace, stdio: "ignore" });
+    expect(fs.existsSync(roadmapPath)).toBe(false);
+    expect(fs.readFileSync(docsPath, "utf-8")).toContain("- [x] cli: echo hello");
+
+    const revertResult = await runCli(["revert"], workspace);
+
+    expect(revertResult.code).toBe(0);
+    expect(revertResult.logs.some((line) => line.includes("which no longer exists"))).toBe(true);
+    expect(revertResult.logs.some((line) => line.includes("commit-based revert"))).toBe(true);
+    expect(revertResult.logs.some((line) => line.includes("Reverted 1 run successfully."))).toBe(true);
+    expect(fs.existsSync(roadmapPath)).toBe(false);
+    expect(fs.readFileSync(docsPath, "utf-8")).toContain("- [ ] cli: echo hello");
+  });
+
+  it("revert --last 3 succeeds with multiple committed runs", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+
+    fs.writeFileSync(
+      roadmapPath,
+      "- [ ] cli: echo first\n- [ ] cli: echo second\n- [ ] cli: echo third\n",
+      "utf-8",
+    );
+    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
+
+    for (let i = 0; i < 3; i += 1) {
+      const runResult = await runCli([
+        "run",
+        "roadmap.md",
+        "--no-verify",
+        "--commit",
+        "--keep-artifacts",
+      ], workspace);
+      expect(runResult.code).toBe(0);
+      expect(runResult.logs.some((line) => line.includes("Committed:"))).toBe(true);
+    }
+
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] cli: echo first");
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] cli: echo second");
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] cli: echo third");
+
+    const revertResult = await runCli(["revert", "--last", "3"], workspace);
+
+    expect(revertResult.code).toBe(0);
+    expect(revertResult.logs.some((line) => line.includes("Reverted 3 runs successfully."))).toBe(true);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: echo first");
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: echo second");
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: echo third");
+  });
+
+  it("revert --method reset succeeds when target commit is at HEAD", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+
+    fs.writeFileSync(roadmapPath, "- [ ] cli: echo hello\n", "utf-8");
+    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
+
+    const runResult = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--commit",
+      "--keep-artifacts",
+    ], workspace);
+
+    expect(runResult.code).toBe(0);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] cli: echo hello");
+    expect(
+      Number(execFileSync("git", ["rev-list", "--count", "HEAD"], { cwd: workspace, encoding: "utf-8" }).trim()),
+    ).toBe(2);
+
+    const revertResult = await runCli(["revert", "--method", "reset"], workspace);
+
+    expect(revertResult.code).toBe(0);
+    expect(revertResult.logs.some((line) => line.includes("Reverted 1 run successfully."))).toBe(true);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: echo hello");
+    expect(
+      Number(execFileSync("git", ["rev-list", "--count", "HEAD"], { cwd: workspace, encoding: "utf-8" }).trim()),
+    ).toBe(1);
+  });
+
+  it("revert --method reset returns 1 when target commit is not at HEAD", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+
+    fs.writeFileSync(roadmapPath, "- [ ] cli: echo hello\n", "utf-8");
+    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
+
+    fs.writeFileSync(roadmapPath, "- [x] cli: echo hello\n", "utf-8");
+    execFileSync("git", ["add", "roadmap.md"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "rundown: complete \"cli: echo hello\" in roadmap.md"], {
+      cwd: workspace,
+      stdio: "ignore",
+    });
+    const committedSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: workspace,
+      encoding: "utf-8",
+    }).trim();
+
+    fs.writeFileSync(path.join(workspace, "notes.txt"), "follow-up change\n", "utf-8");
+    execFileSync("git", ["add", "notes.txt"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "follow-up"], { cwd: workspace, stdio: "ignore" });
+
+    writeSavedRun(workspace, {
+      runId: "run-20260317T000000000Z-not-head",
+      status: "completed",
+      extra: {
+        commitSha: committedSha,
+        commitMessage: "rundown: complete \"cli: echo hello\" in roadmap.md",
+      },
+    });
+
+    const result = await runCli([
+      "revert",
+      "--method",
+      "reset",
+      "--run",
+      "run-20260317T000000000Z-not-head",
+    ], workspace);
+
+    expect(result.code).toBe(1);
+    expect(result.errors.some((line) => line.includes("contiguous block at HEAD"))).toBe(true);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] cli: echo hello");
+  });
+
+  it("revert --method reset --force bypasses dirty-worktree and contiguous-HEAD checks", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+
+    fs.writeFileSync(roadmapPath, "- [ ] cli: echo hello\n", "utf-8");
+    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
+
+    fs.writeFileSync(roadmapPath, "- [x] cli: echo hello\n", "utf-8");
+    execFileSync("git", ["add", "roadmap.md"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "rundown: complete \"cli: echo hello\" in roadmap.md"], {
+      cwd: workspace,
+      stdio: "ignore",
+    });
+    const committedSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: workspace,
+      encoding: "utf-8",
+    }).trim();
+
+    fs.writeFileSync(path.join(workspace, "notes.txt"), "follow-up change\n", "utf-8");
+    execFileSync("git", ["add", "notes.txt"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "follow-up"], { cwd: workspace, stdio: "ignore" });
+
+    writeSavedRun(workspace, {
+      runId: "run-20260317T000000000Z-force-reset",
+      status: "completed",
+      extra: {
+        commitSha: committedSha,
+        commitMessage: "rundown: complete \"cli: echo hello\" in roadmap.md",
+      },
+    });
+
+    fs.writeFileSync(path.join(workspace, "dirty.txt"), "uncommitted\n", "utf-8");
+
+    const result = await runCli([
+      "revert",
+      "--method",
+      "reset",
+      "--force",
+      "--run",
+      "run-20260317T000000000Z-force-reset",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("--force enabled: skipping clean-worktree precondition check."))).toBe(true);
+    expect(result.logs.some((line) => line.includes("--force enabled: skipping contiguous-HEAD validation for reset."))).toBe(true);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: echo hello");
+    expect(fs.existsSync(path.join(workspace, "notes.txt"))).toBe(false);
+    expect(fs.existsSync(path.join(workspace, "dirty.txt"))).toBe(true);
+  });
+
+  it("revert --dry-run prints planned runs and git commands", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+
+    fs.writeFileSync(roadmapPath, "- [ ] Write docs\n", "utf-8");
+    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
+
+    fs.writeFileSync(roadmapPath, "- [x] Write docs\n", "utf-8");
+    execFileSync("git", ["add", "roadmap.md"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "rundown: complete docs"], { cwd: workspace, stdio: "ignore" });
+    const oldestSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: workspace,
+      encoding: "utf-8",
+    }).trim();
+
+    fs.writeFileSync(roadmapPath, "- [x] Write docs v2\n", "utf-8");
+    execFileSync("git", ["add", "roadmap.md"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "rundown: complete docs again"], { cwd: workspace, stdio: "ignore" });
+    const newestSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: workspace,
+      encoding: "utf-8",
+    }).trim();
+
+    writeSavedRun(workspace, {
+      runId: "run-20260317T000000000Z-older",
+      status: "completed",
+      startedAt: "2026-03-17T00:00:00.000Z",
+      taskText: "Write docs",
+      extra: {
+        commitSha: oldestSha,
+        commitMessage: "rundown: complete docs",
+      },
+    });
+    writeSavedRun(workspace, {
+      runId: "run-20260317T000100000Z-newer",
+      status: "completed",
+      startedAt: "2026-03-17T00:01:00.000Z",
+      taskText: "Write docs v2",
+      extra: {
+        commitSha: newestSha,
+        commitMessage: "rundown: complete docs again",
+      },
+    });
+
+    const result = await runCli(["revert", "--all", "--dry-run", "--method", "revert"], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Dry run - would revert 2 runs using method=revert."))).toBe(true);
+    expect(result.logs.some((line) => line.includes(`run=run-20260317T000100000Z-newer method=revert commit=${newestSha}`))).toBe(true);
+    expect(result.logs.some((line) => line.includes(`run=run-20260317T000000000Z-older method=revert commit=${oldestSha}`))).toBe(true);
+    expect(result.logs.some((line) => line.includes(`task=roadmap.md:1 [#0] Write docs v2`))).toBe(true);
+    expect(result.logs.some((line) => line.includes(`task=roadmap.md:1 [#0] Write docs`))).toBe(true);
+    expect(result.logs.some((line) => line.includes(`- git revert ${newestSha} --no-edit`))).toBe(true);
+    expect(result.logs.some((line) => line.includes(`- git revert ${oldestSha} --no-edit`))).toBe(true);
+
+    const plannedRunLines = result.logs.filter((line) => line.includes("run=run-20260317"));
+    expect(plannedRunLines[0]).toContain("run=run-20260317T000100000Z-newer");
+    expect(plannedRunLines[1]).toContain("run=run-20260317T000000000Z-older");
+  });
+
+  it("revert --keep-artifacts creates a reverted artifact run", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+
+    fs.writeFileSync(roadmapPath, "- [ ] Write docs\n", "utf-8");
+    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
+
+    fs.writeFileSync(roadmapPath, "- [x] Write docs\n", "utf-8");
+    execFileSync("git", ["add", "roadmap.md"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "rundown: complete \"Write docs\" in roadmap.md"], { cwd: workspace, stdio: "ignore" });
+    const committedSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: workspace,
+      encoding: "utf-8",
+    }).trim();
+
+    writeSavedRun(workspace, {
+      runId: "run-20260317T000000000Z-committed",
+      status: "completed",
+      startedAt: "2026-03-17T00:01:00.000Z",
+      extra: {
+        commitSha: committedSha,
+        commitMessage: "rundown: complete \"Write docs\" in roadmap.md",
+      },
+    });
+
+    const result = await runCli([
+      "revert",
+      "--run",
+      "run-20260317T000000000Z-committed",
+      "--keep-artifacts",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Reverted 1 run successfully."))).toBe(true);
+
+    const savedRuns = readSavedRunMetadata(workspace);
+    expect(savedRuns.some((run) => run.commandName === "revert" && run.status === "reverted")).toBe(true);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] Write docs");
+  });
+
+  it("revert can restore a prior reset-based revert using saved preResetRef", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+
+    fs.writeFileSync(roadmapPath, "- [ ] Write docs\n", "utf-8");
+    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
+
+    const initialSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: workspace,
+      encoding: "utf-8",
+    }).trim();
+
+    fs.writeFileSync(roadmapPath, "- [x] Write docs\n", "utf-8");
+    execFileSync("git", ["add", "roadmap.md"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "rundown: complete \"Write docs\" in roadmap.md"], {
+      cwd: workspace,
+      stdio: "ignore",
+    });
+    const committedSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: workspace,
+      encoding: "utf-8",
+    }).trim();
+
+    writeSavedRun(workspace, {
+      runId: "run-20260317T000000000Z-committed",
+      status: "completed",
+      startedAt: "2026-03-17T00:01:00.000Z",
+      extra: {
+        commitSha: committedSha,
+        commitMessage: "rundown: complete \"Write docs\" in roadmap.md",
+      },
+    });
+
+    const resetRevertResult = await runCli([
+      "revert",
+      "--run",
+      "run-20260317T000000000Z-committed",
+      "--method",
+      "reset",
+      "--keep-artifacts",
+    ], workspace);
+
+    expect(resetRevertResult.code).toBe(0);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] Write docs");
+
+    const resetRun = findSavedRunByCommand(workspace, "revert");
+    expect(resetRun?.status).toBe("reverted");
+    expect(resetRun?.extra?.method).toBe("reset");
+    expect(typeof resetRun?.extra?.preResetRef).toBe("string");
+    expect(resetRun).not.toBeNull();
+    if (!resetRun) {
+      throw new Error("expected reset artifact run to exist");
+    }
+
+    fs.writeFileSync(path.join(workspace, "followup.txt"), "post reset\n", "utf-8");
+    execFileSync("git", ["add", "followup.txt"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "follow-up after reset"], { cwd: workspace, stdio: "ignore" });
+
+    const restoreResult = await runCli([
+      "revert",
+      "--run",
+      resetRun.runId,
+      "--method",
+      "reset",
+    ], workspace);
+
+    expect(restoreResult.code).toBe(0);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] Write docs");
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: workspace, encoding: "utf-8" }).trim()).toBe(committedSha);
+  });
+
   it("reverify returns 3 when selected run is not completed", async () => {
     const workspace = makeTempWorkspace();
     writeSavedRun(workspace, {
@@ -2407,6 +2863,7 @@ function writeSavedRun(
     startedAt?: string;
     taskText?: string;
     workerCommand?: string[];
+    extra?: Record<string, unknown>;
   },
 ): void {
   const runDir = path.join(workspace, ".rundown", "runs", options.runId);
@@ -2429,10 +2886,16 @@ function writeSavedRun(
     startedAt: options.startedAt ?? "2026-03-17T00:00:00.000Z",
     completedAt: "2026-03-17T00:01:00.000Z",
     status: options.status,
+    extra: options.extra,
   }, null, 2), "utf-8");
 }
 
-function readSavedRunMetadata(workspace: string): Array<{ commandName?: string; status?: string }> {
+function readSavedRunMetadata(workspace: string): Array<{
+  runId: string;
+  commandName?: string;
+  status?: string;
+  extra?: Record<string, unknown>;
+}> {
   const runsDir = path.join(workspace, ".rundown", "runs");
   if (!fs.existsSync(runsDir)) {
     return [];
@@ -2444,9 +2907,26 @@ function readSavedRunMetadata(workspace: string): Array<{ commandName?: string; 
     .filter((filePath) => fs.existsSync(filePath));
 
   return runDirs.map((filePath) => JSON.parse(fs.readFileSync(filePath, "utf-8")) as {
+    runId: string;
     commandName?: string;
     status?: string;
+    extra?: Record<string, unknown>;
   });
+}
+
+function findSavedRunByCommand(
+  workspace: string,
+  commandName: string,
+): {
+  runId: string;
+  commandName?: string;
+  status?: string;
+  extra?: Record<string, unknown>;
+} | null {
+  const runs = readSavedRunMetadata(workspace)
+    .filter((run) => run.commandName === commandName)
+    .sort((a, b) => b.runId.localeCompare(a.runId));
+  return runs[0] ?? null;
 }
 
 function listTraceFiles(workspace: string): string[] {

@@ -2113,6 +2113,207 @@ describe.sequential("CLI integration", () => {
     expect(compactHelpOutput).toContain("--on-complete <command> Run a shell command after successful task completion");
   });
 
+  it("discuss --help lists mode, prompt, and lock options", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli(["discuss", "roadmap.md", "--help"], workspace);
+
+    expect(result.code).toBe(0);
+    const helpOutput = result.stdoutWrites.join("\n");
+    const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("--mode <mode> Discuss execution mode: wait, tui");
+    expect(compactHelpOutput).toContain("--print-prompt Print the rendered discuss prompt and exit");
+    expect(compactHelpOutput).toContain("--trace Enable structured trace output at .rundown/runs/<id>/trace.jsonl");
+    expect(compactHelpOutput).toContain("--force-unlock Break stale source lockfiles before acquiring discuss locks");
+  });
+
+  it("discuss rejects unknown options", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli([
+      "discuss",
+      "roadmap.md",
+      "--hide-agent-outputs",
+      "--worker",
+      "opencode",
+      "run",
+    ], workspace);
+
+    expect(result.code).toBe(1);
+    const combinedOutput = [
+      ...result.errors,
+      ...result.logs,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n").toLowerCase();
+    expect(combinedOutput.includes("--hide-agent-outputs")).toBe(true);
+    expect(combinedOutput.includes("unknown option")).toBe(true);
+  });
+
+  it("discuss passes parsed options to the application layer", async () => {
+    const workspace = makeTempWorkspace();
+    const discussTaskMock = vi.fn(async () => 0);
+
+    vi.doMock("../../src/create-app.js", () => ({
+      createApp: () => ({
+        runTask: vi.fn(async () => 0),
+        discussTask: discussTaskMock,
+        reverifyTask: vi.fn(async () => 0),
+        revertTask: vi.fn(async () => 0),
+        nextTask: vi.fn(async () => 0),
+        listTasks: vi.fn(async () => 0),
+        planTask: vi.fn(async () => 0),
+        unlockTask: vi.fn(async () => 0),
+        initProject: vi.fn(async () => 0),
+        manageArtifacts: vi.fn(() => 0),
+      }),
+    }));
+
+    const result = await runCli([
+      "discuss",
+      "roadmap.md",
+      "--mode",
+      "wait",
+      "--transport",
+      "arg",
+      "--sort",
+      "old-first",
+      "--dry-run",
+      "--print-prompt",
+      "--keep-artifacts",
+      "--trace",
+      "--vars-file",
+      ".rundown/custom-vars.json",
+      "--var",
+      "audience=engineering",
+      "--hide-agent-output",
+      "--force-unlock",
+      "--worker",
+      "opencode",
+      "run",
+    ], workspace);
+
+    vi.doUnmock("../../src/create-app.js");
+
+    expect(result.code).toBe(0);
+    expect(discussTaskMock).toHaveBeenCalledTimes(1);
+    expect(discussTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      source: "roadmap.md",
+      mode: "wait",
+      transport: "arg",
+      sortMode: "old-first",
+      dryRun: true,
+      printPrompt: true,
+      keepArtifacts: true,
+      trace: true,
+      varsFileOption: ".rundown/custom-vars.json",
+      cliTemplateVarArgs: ["audience=engineering"],
+      hideAgentOutput: true,
+      forceUnlock: true,
+      workerCommand: ["opencode", "run"],
+    }));
+  });
+
+  it("discuss <file> -- <worker> selects next unchecked task and invokes worker in tui mode", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "roadmap.md";
+    const sourcePath = path.join(workspace, sourceName);
+    fs.writeFileSync(
+      sourcePath,
+      [
+        "- [x] Already done",
+        "- [ ] First pending task",
+        "- [ ] Second pending task",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const spawnMock = vi.fn().mockImplementation(() => {
+      const child = new EventEmitter() as EventEmitter & { unref: () => void };
+      child.unref = vi.fn();
+      process.nextTick(() => {
+        child.emit("close", 0);
+      });
+      return child;
+    });
+
+    vi.doMock("cross-spawn", () => ({
+      default: spawnMock,
+    }));
+
+    const result = await runCli([
+      "discuss",
+      sourceName,
+      "--keep-artifacts",
+      "--",
+      "node",
+      "-e",
+      "process.exit(0)",
+    ], workspace);
+
+    vi.doUnmock("cross-spawn");
+
+    expect(result.code).toBe(0);
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+
+    const [cmd, args, options] = spawnMock.mock.calls[0] as [string, string[], { stdio?: string }];
+    expect(["cmd", "node"]).toContain(cmd);
+    const stdio = options.stdio;
+    const isSupportedStdio = stdio === "ignore"
+      || stdio === "inherit"
+      || (Array.isArray(stdio) && stdio.join(",") === "inherit,pipe,pipe");
+    expect(isSupportedStdio).toBe(true);
+
+    const promptFilePath = args.find((arg) => arg.endsWith(".md"));
+
+    expect(typeof promptFilePath).toBe("string");
+    expect(fs.existsSync(promptFilePath!)).toBe(true);
+
+    const renderedPrompt = fs.readFileSync(promptFilePath!, "utf-8");
+    expect(renderedPrompt).toContain("## Selected task\n\nFirst pending task");
+    expect(renderedPrompt).toContain("- [ ] Second pending task");
+    expect(result.logs.some((line) => line.includes("Next task:") && line.includes("First pending task"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Discussion completed."))).toBe(true);
+    expect(fs.readFileSync(sourcePath, "utf-8")).toContain("- [ ] First pending task");
+  });
+
+  it("discuss propagates worker exit code to CLI", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "roadmap.md";
+    const sourcePath = path.join(workspace, sourceName);
+    fs.writeFileSync(sourcePath, "- [ ] First pending task\n", "utf-8");
+
+    const spawnMock = vi.fn().mockImplementation(() => {
+      const child = new EventEmitter() as EventEmitter & { unref: () => void };
+      child.unref = vi.fn();
+      process.nextTick(() => {
+        child.emit("close", 7);
+      });
+      return child;
+    });
+
+    vi.doMock("cross-spawn", () => ({
+      default: spawnMock,
+    }));
+
+    const result = await runCli([
+      "discuss",
+      sourceName,
+      "--",
+      "node",
+      "-e",
+      "process.exit(0)",
+    ], workspace);
+
+    vi.doUnmock("cross-spawn");
+
+    expect(result.code).toBe(7);
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(result.errors.some((line) => line.includes("Discussion exited with code 7"))).toBe(true);
+    expect(fs.readFileSync(sourcePath, "utf-8")).toContain("- [ ] First pending task");
+  });
+
   it("run passes parsed Git and hook options to the application layer", async () => {
     const workspace = makeTempWorkspace();
     const runTaskMock = vi.fn(async () => 0);

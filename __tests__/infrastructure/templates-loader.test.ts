@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_DISCUSS_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
   DEFAULT_TASK_TEMPLATE,
@@ -38,6 +39,7 @@ describe("loadProjectTemplates", () => {
   it("loads new execute/verify/repair filenames", () => {
     const cwd = makeTempDir();
     writeTemplate(cwd, "execute.md", "EXECUTE");
+    writeTemplate(cwd, "discuss.md", "DISCUSS");
     writeTemplate(cwd, "verify.md", "VERIFY");
     writeTemplate(cwd, "repair.md", "REPAIR");
     writeTemplate(cwd, "plan.md", "PLAN");
@@ -45,6 +47,7 @@ describe("loadProjectTemplates", () => {
     const templates = loadProjectTemplates(cwd);
 
     expect(templates.task).toBe("EXECUTE");
+    expect(templates.discuss).toBe("DISCUSS");
     expect(templates.verify).toBe("VERIFY");
     expect(templates.repair).toBe("REPAIR");
     expect(templates.plan).toBe("PLAN");
@@ -57,6 +60,7 @@ describe("loadProjectTemplates", () => {
     const templates = loadProjectTemplates(cwd);
 
     expect(templates.task).toBe(DEFAULT_TASK_TEMPLATE);
+    expect(templates.discuss).toBe(DEFAULT_DISCUSS_TEMPLATE);
     expect(templates.verify).toBe(DEFAULT_VERIFY_TEMPLATE);
     expect(templates.repair).toBe(DEFAULT_REPAIR_TEMPLATE);
     expect(templates.plan).toBe(DEFAULT_PLAN_TEMPLATE);
@@ -72,6 +76,7 @@ describe("loadProjectTemplates", () => {
     const templates = loadProjectTemplates(cwd);
 
     expect(templates.task).toBe("NEW EXECUTE");
+    expect(templates.discuss).toBe(DEFAULT_DISCUSS_TEMPLATE);
     expect(templates.verify).toBe("NEW VERIFY");
     expect(templates.repair).toBe("NEW REPAIR");
     expect(templates.plan).toBe(DEFAULT_PLAN_TEMPLATE);
@@ -85,5 +90,14 @@ describe("loadProjectTemplates", () => {
     const templates = loadProjectTemplates(cwd);
 
     expect(templates.trace).toBe("TRACE");
+  });
+
+  it("loads discuss.md when present", () => {
+    const cwd = makeTempDir();
+    writeTemplate(cwd, "discuss.md", "DISCUSS");
+
+    const templates = loadProjectTemplates(cwd);
+
+    expect(templates.discuss).toBe("DISCUSS");
   });
 });

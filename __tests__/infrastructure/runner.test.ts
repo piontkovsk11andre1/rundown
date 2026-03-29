@@ -363,6 +363,70 @@ describe("runWorker", () => {
     expect(fs.existsSync(path.join(phaseDir, "metadata.json"))).toBe(true);
   });
 
+  it("captures and mirrors tui output when captureOutput is enabled", async () => {
+    vi.spyOn(os, "platform").mockReturnValue("linux");
+    const stdoutWriteSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const stderrWriteSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    spawnMock.mockImplementation((_cmd: string, _args: string[], _options: Record<string, unknown>) => {
+      const child = new EventEmitter() as EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+      };
+
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+
+      queueMicrotask(() => {
+        child.stdout.emit("data", Buffer.from("hello tui\n"));
+        child.stderr.emit("data", Buffer.from("warn tui\n"));
+        child.emit("close", 0);
+      });
+
+      return child;
+    });
+
+    const { runWorker } = await import("../../src/infrastructure/runner.js");
+
+    const result = await runWorker({
+      command: ["opencode"],
+      prompt: "interactive prompt",
+      mode: "tui",
+      transport: "arg",
+      captureOutput: true,
+      keepArtifacts: true,
+      cwd: workspace,
+    });
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: "hello tui\n",
+      stderr: "warn tui\n",
+    });
+    expect(spawnMock).toHaveBeenCalledWith(
+      "opencode",
+      ["--prompt=interactive prompt"],
+      { stdio: ["inherit", "pipe", "pipe"], cwd: workspace, shell: false },
+    );
+    expect(stdoutWriteSpy).toHaveBeenCalled();
+    expect(stderrWriteSpy).toHaveBeenCalled();
+
+    const runsDir = path.join(workspace, ".rundown", "runs");
+    const [runDirName] = fs.readdirSync(runsDir);
+    const phaseDir = path.join(runsDir, runDirName!, "01-worker");
+    const metadata = JSON.parse(fs.readFileSync(path.join(phaseDir, "metadata.json"), "utf-8")) as {
+      outputCaptured: boolean;
+      notes?: string;
+    };
+    expect(metadata.outputCaptured).toBe(true);
+    expect(metadata.notes).toBe("Interactive TUI mode captures and mirrors worker stdout/stderr transcripts.");
+    expect(fs.readFileSync(path.join(phaseDir, "stdout.log"), "utf-8")).toBe("hello tui\n");
+    expect(fs.readFileSync(path.join(phaseDir, "stderr.log"), "utf-8")).toBe("warn tui\n");
+
+    stdoutWriteSpy.mockRestore();
+    stderrWriteSpy.mockRestore();
+  });
+
   it("uses custom artifact phase labels for directory naming", async () => {
     spawnMock.mockImplementation((_cmd: string, _args: string[]) => {
       const child = new EventEmitter() as EventEmitter & {

@@ -9,9 +9,11 @@ export type ArtifactStoreStatus =
   | "reverify-failed"
   | "reverted"
   | "revert-failed"
-  | "metadata-missing";
+  | "metadata-missing"
+  | "discuss-completed"
+  | "discuss-cancelled";
 
-export type ArtifactStorePhase = "execute" | "verify" | "repair" | "plan" | "inline-cli" | "worker";
+export type ArtifactStorePhase = "execute" | "verify" | "repair" | "plan" | "discuss" | "inline-cli" | "worker";
 
 export interface ArtifactTaskMetadata {
   text: string;

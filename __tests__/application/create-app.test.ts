@@ -141,6 +141,36 @@ describe("createApp", () => {
     expect(fileLock.releaseAll).toHaveBeenCalledTimes(1);
   });
 
+  it("exposes discussTask and wires fileLock into discuss factory", async () => {
+    const fileLock: FileLock = {
+      acquire: vi.fn(),
+      isLocked: vi.fn(() => false),
+      release: vi.fn(),
+      forceRelease: vi.fn(),
+      releaseAll: vi.fn(),
+    };
+
+    let capturedPorts: AppPorts | undefined;
+    const app = createApp({
+      ports: {
+        fileLock,
+      },
+      useCaseFactories: {
+        discussTask: (ports) => async () => {
+          capturedPorts = ports;
+          return 0;
+        },
+      },
+    });
+
+    expect(typeof app.discussTask).toBe("function");
+    const code = await app.discussTask({} as never);
+
+    expect(code).toBe(0);
+    expect(capturedPorts).toBeDefined();
+    expect(capturedPorts?.fileLock).toBe(fileLock);
+  });
+
   it("does not acquire file locks for next (read-only)", async () => {
     const task = parseTasks("- [ ] Read-only task\n", "tasks.md")[0];
     if (!task) {

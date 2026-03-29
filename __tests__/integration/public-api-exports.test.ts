@@ -3,6 +3,7 @@ import * as api from "../../src/index.js";
 import * as createAppApi from "../../src/create-app.js";
 import type { TraceEvent, TraceWriterPort } from "../../src/index.js";
 import type { TraceEvent as DomainTraceEvent } from "../../src/domain/trace.js";
+import type { DiscussTaskOptions } from "../../src/create-app.js";
 
 describe("public API exports", () => {
   it("keeps root index exports intentionally narrow", () => {
@@ -29,11 +30,14 @@ describe("public API exports", () => {
 
     expect(app).toMatchObject({
       runTask: expect.any(Function),
+      discussTask: expect.any(Function),
       planTask: expect.any(Function),
       listTasks: expect.any(Function),
       nextTask: expect.any(Function),
       initProject: expect.any(Function),
       manageArtifacts: expect.any(Function),
     });
+
+    expectTypeOf<Parameters<typeof app.discussTask>[0]>().toEqualTypeOf<DiscussTaskOptions>();
   });
 });

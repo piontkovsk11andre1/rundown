@@ -14,6 +14,7 @@ import pc from "picocolors";
 
 const RUNNER_MODES: readonly ProcessRunMode[] = ["wait", "tui", "detached"];
 const PLANNER_MODES: readonly ProcessRunMode[] = ["wait"];
+const DISCUSS_MODES: readonly ProcessRunMode[] = ["wait", "tui"];
 const PROMPT_TRANSPORTS: readonly PromptTransport[] = ["file", "arg"];
 const SORT_MODES: readonly SortMode[] = ["name-sort", "none", "old-first", "new-first"];
 const REVERT_METHODS = ["revert", "reset"] as const;
@@ -247,6 +248,59 @@ program
       onFailCommand,
       hideAgentOutput,
       runAll,
+      forceUnlock,
+    });
+  }));
+
+program
+  .command("discuss")
+  .description("Start an interactive discussion session for the next unchecked task.")
+  .argument("<source>", "File, directory, or glob to scan for Markdown tasks")
+  .option("--mode <mode>", "Discuss execution mode: wait, tui", "tui")
+  .option("--transport <transport>", "Prompt transport: file, arg", "file")
+  .option("--sort <sort>", "File sort mode: name-sort, none, old-first, new-first", "name-sort")
+  .option("--dry-run", "Show what would be executed without running it", false)
+  .option("--print-prompt", "Print the rendered discuss prompt and exit", false)
+  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under .rundown/runs", false)
+  .option("--vars-file [path]", "Load extra template variables from a JSON file (default: .rundown/vars.json)")
+  .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
+  .option("--hide-agent-output", "Hide worker stdout/stderr during execution; show only rundown status messages.", false)
+  .option("--trace", "Enable structured trace output at .rundown/runs/<id>/trace.jsonl", false)
+  .option("--force-unlock", "Break stale source lockfiles before acquiring discuss locks", false)
+  .option("--worker <command...>", "Worker command to run (alternative to -- <command>)")
+  .allowUnknownOption(false)
+  .action(withCliAction(async (source: string, opts: Record<string, string | string[] | boolean>) => {
+    const mode = parseRunnerMode(opts.mode as string | undefined, DISCUSS_MODES);
+    const transport = parsePromptTransport(opts.transport as string | undefined);
+    const sortMode = parseSortMode(opts.sort as string | undefined);
+    const dryRun = opts.dryRun as boolean;
+    const printPrompt = opts.printPrompt as boolean;
+    const keepArtifacts = opts.keepArtifacts as boolean;
+    const varsFileOption = opts.varsFile as string | boolean | undefined;
+    const cliTemplateVarArgs = (opts.var as string[] | undefined) ?? [];
+    const hideAgentOutput = Boolean(opts.hideAgentOutput as boolean | undefined);
+    const trace = Boolean(opts.trace as boolean | undefined);
+    const forceUnlock = Boolean(opts.forceUnlock as boolean | undefined);
+
+    const workerCommand = Array.isArray(opts.worker)
+      ? opts.worker
+      : typeof opts.worker === "string"
+        ? [opts.worker]
+        : workerFromSeparator;
+
+    return getApp().discussTask({
+      source,
+      mode,
+      transport,
+      sortMode,
+      dryRun,
+      printPrompt,
+      keepArtifacts,
+      varsFileOption,
+      cliTemplateVarArgs,
+      workerCommand,
+      hideAgentOutput,
+      trace,
       forceUnlock,
     });
   }));

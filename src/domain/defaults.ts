@@ -66,6 +66,45 @@ Complete the task described above. Make the necessary changes to the project, bu
 {{traceInstructions}}
 `;
 
+export const DEFAULT_DISCUSS_TEMPLATE = `\
+${DEFAULT_TEMPLATE_SHARED_PREFIX}
+
+## Phase
+
+Discuss and refine the selected task before execution.
+
+Use this session to help the user shape the task into a clear, executable outcome.
+
+You may modify the source Markdown task text as part of discussion when it helps:
+
+- rewrite unclear task wording
+- split a broad task into smaller actionable items
+- add sub-items to capture concrete steps
+- clarify scope, assumptions, constraints, or acceptance criteria
+
+## Task context
+
+Use the full task context below when refining scope.
+
+### Task hierarchy
+
+Children:
+{{children}}
+
+Sub-items:
+{{subItems}}
+
+### Source snapshot
+
+{{source}}
+
+Rules:
+- collaborate with the user; confirm intent when needed
+- keep edits focused on improving task clarity and executability
+- do not mark tasks complete or change checkbox state
+- do not perform implementation work in this phase
+`;
+
 export const DEFAULT_VERIFY_TEMPLATE = `\
 ${DEFAULT_TEMPLATE_SHARED_PREFIX}
 

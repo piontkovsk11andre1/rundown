@@ -37,6 +37,48 @@ Quiet execution notes (`run --hide-agent-output`):
 - Still visible: hook output from `--on-complete` and `--on-fail` (intentionally out of scope for this flag).
 - Artifacts/traces still capture output for audit/debug; terminal suppression does not disable persistence.
 
+### `rundown discuss <source>`
+
+Select the next unchecked task and start a discussion session for task refinement before execution.
+
+Synopsis:
+
+```bash
+rundown discuss <source> [options] -- <command>
+rundown discuss <source> [options] --worker <command...>
+```
+
+`discuss` uses the same source resolution and task-selection logic as `run`, but opens a discussion-oriented worker session (default `--mode tui`) instead of executing the task implementation flow.
+
+During this session, the agent may edit the Markdown source task text to improve scope and clarity (for example rewriting task wording, splitting tasks, or adding sub-items). `discuss` does not mutate checkbox completion state.
+
+Options:
+
+| Option | Description | Default |
+|---|---|---|
+| `--mode <tui|wait>` | Discussion worker mode. `tui` opens an interactive terminal UI; `wait` runs non-interactively. | `tui` |
+| `--transport <file|arg>` | Prompt transport for discuss worker invocation. | `file` |
+| `--sort <name-sort|none|old-first|new-first>` | Source ordering strategy before task selection. | `name-sort` |
+| `--dry-run` | Resolve task + render discuss prompt, print planned execution, and exit `0` without running worker. | off |
+| `--print-prompt` | Print rendered discuss prompt and exit `0` without running worker. | off |
+| `--keep-artifacts` | Keep discuss run artifacts under `.rundown/runs/` even on success. | off |
+| `--trace` | Write structured trace events to `.rundown/runs/<id>/trace.jsonl` and mirror to `.rundown/logs/trace.jsonl`. | off |
+| `--vars-file [path]` | Load template variables from JSON (default path: `.rundown/vars.json`). | unset |
+| `--var <key=value>` | Inject template variables (repeatable). | none |
+| `--hide-agent-output` | Hide worker stdout/stderr while keeping rundown status/lifecycle output visible. | off |
+| `--force-unlock` | Remove stale source lockfile before acquiring discuss lock. Active locks held by live processes are not removed. | off |
+| `--worker <command...>` | Worker command (preferred on PowerShell). | unset |
+
+Examples:
+
+```bash
+rundown discuss roadmap.md -- opencode
+rundown discuss docs/ --worker opencode
+rundown discuss tasks.md --mode wait --worker opencode run
+rundown discuss roadmap.md --print-prompt --worker opencode run
+rundown discuss roadmap.md --dry-run --worker opencode run
+```
+
 ### `rundown reverify`
 
 Re-run verification for a previously completed task from saved run artifacts, without selecting a new unchecked task and without mutating Markdown checkboxes.
@@ -324,6 +366,7 @@ Lock scope by command:
 - `run`: acquires before task-selection reads and holds through the full task lifecycle, including `--all` loops, verification/repair, checkbox updates, and `--on-complete`/`--on-fail` hooks.
 - `plan`: acquires before planning starts and holds for the full scan loop until planning finalization completes.
 - `revert`: acquires before git undo operations for the target source set and releases after undo processing finishes.
+- `discuss`: acquires before task-selection reads and holds for the full discussion lifecycle, including worker invocation and finalization.
 - `list`, `next`, and `reverify`: no exclusive source lock (read-only behavior).
 
 Stale lock detection:
@@ -346,7 +389,7 @@ Stale lock recovery:
 
 `rundown` also defines a process-wide append-only JSONL stream at `.rundown/logs/output.jsonl`.
 
-When `--trace` is enabled on `run`, `reverify`, or `plan`, each artifact trace event (including LLM/worker-derived stages such as `agent.signals`, `agent.thinking`, and `analysis.summary`) is also appended to `.rundown/logs/trace.jsonl` as a cumulative stream.
+When `--trace` is enabled on `run`, `discuss`, `reverify`, or `plan`, each artifact trace event (including LLM/worker-derived stages such as `agent.signals`, `agent.thinking`, and `analysis.summary`) is also appended to `.rundown/logs/trace.jsonl` as a cumulative stream.
 
 Promtail note: configure this file as a scrape target to ingest a single cumulative CLI output stream across all runs.
 
@@ -606,3 +649,8 @@ rundown run roadmap.md --mode tui -- opencode
 
 - `1` when git undo operations fail (for example dirty worktree, revert conflict, invalid reset preconditions)
 - `3` when input is invalid or no revertable runs can be resolved (missing `--commit`/`--keep-artifacts` lineage)
+
+`rundown discuss` uses:
+
+- `1` when discuss execution fails (for example worker invocation failure)
+- `3` when no unchecked task can be resolved from the source

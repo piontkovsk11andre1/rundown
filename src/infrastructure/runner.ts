@@ -40,6 +40,8 @@ export interface RunnerOptions {
   transport?: PromptTransport;
   /** Enable trace-aware runner behavior. */
   trace?: boolean;
+  /** Capture stdout/stderr even for interactive runs. */
+  captureOutput?: boolean;
   /** Working directory for the command. */
   cwd?: string;
   /** Optional shared runtime artifact context. */
@@ -57,9 +59,9 @@ export interface RunnerOptions {
 export interface RunnerResult {
   /** Exit code of the process (null if detached or killed). */
   exitCode: number | null;
-  /** Captured stdout (wait mode only). */
+  /** Captured stdout (wait mode and optional tui capture). */
   stdout: string;
-  /** Captured stderr (wait mode only). */
+  /** Captured stderr (wait mode and optional tui capture). */
   stderr: string;
 }
 
@@ -94,7 +96,7 @@ export async function runWorker(options: RunnerOptions): Promise<RunnerResult> {
     command: options.command,
     mode,
     transport,
-    notes: buildCaptureNotes(mode),
+    notes: buildCaptureNotes(mode, options.captureOutput ?? false),
     extra: options.artifactExtra,
   });
 
@@ -115,18 +117,20 @@ export async function runWorker(options: RunnerOptions): Promise<RunnerResult> {
   }
 
   try {
-    const result = await executeCommand(cmd, cmdArgs, mode, cwd);
+    const result = await executeCommand(cmd, cmdArgs, mode, cwd, options.captureOutput ?? false);
+    const outputCaptured = options.captureOutput ?? mode === "wait";
     completeRuntimePhase(phase, {
       exitCode: result.exitCode,
       stdout: result.stdout,
       stderr: result.stderr,
-      outputCaptured: mode === "wait",
+      outputCaptured,
     });
     return result;
   } catch (error) {
+    const outputCaptured = options.captureOutput ?? mode === "wait";
     completeRuntimePhase(phase, {
       exitCode: null,
-      outputCaptured: mode === "wait",
+      outputCaptured,
       notes: error instanceof Error ? error.message : String(error),
       extra: { error: true },
     });
@@ -232,9 +236,40 @@ function executeCommand(
   args: string[],
   mode: RunnerMode,
   cwd: string,
+  captureOutput: boolean,
 ): Promise<RunnerResult> {
   return new Promise((resolve, reject) => {
     if (mode === "tui") {
+      if (captureOutput) {
+        const child = spawn(cmd, args, {
+          stdio: ["inherit", "pipe", "pipe"],
+          cwd,
+          shell: false,
+        });
+
+        const stdout: Buffer[] = [];
+        const stderr: Buffer[] = [];
+
+        child.stdout?.on("data", (chunk: Buffer) => {
+          stdout.push(chunk);
+          process.stdout.write(chunk);
+        });
+        child.stderr?.on("data", (chunk: Buffer) => {
+          stderr.push(chunk);
+          process.stderr.write(chunk);
+        });
+
+        child.on("close", (code: number | null) => {
+          resolve({
+            exitCode: code,
+            stdout: Buffer.concat(stdout).toString("utf-8"),
+            stderr: Buffer.concat(stderr).toString("utf-8"),
+          });
+        });
+        child.on("error", reject);
+        return;
+      }
+
       // On Windows, launch TUI in a new terminal window to avoid
       // input-buffer issues with the parent console.
       if (os.platform() === "win32") {
@@ -301,12 +336,16 @@ function executeCommand(
   });
 }
 
-function buildCaptureNotes(mode: RunnerMode): string | undefined {
+function buildCaptureNotes(mode: RunnerMode, captureOutput: boolean): string | undefined {
   if (mode === "wait") {
     return undefined;
   }
 
   if (mode === "tui") {
+    if (captureOutput) {
+      return "Interactive TUI mode captures and mirrors worker stdout/stderr transcripts.";
+    }
+
     return "Interactive TUI mode does not capture worker stdout/stderr transcripts.";
   }
 

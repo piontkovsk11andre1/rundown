@@ -7,6 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  DEFAULT_DISCUSS_TEMPLATE,
   DEFAULT_TRACE_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
   DEFAULT_TASK_TEMPLATE,
@@ -16,6 +17,7 @@ import {
 
 export interface ProjectTemplates {
   task: string;
+  discuss: string;
   verify: string;
   repair: string;
   plan: string;
@@ -29,6 +31,7 @@ const CONFIG_DIR = ".rundown";
  *
  * Template names:
  *   .rundown/execute.md
+ *   .rundown/discuss.md
  *   .rundown/verify.md
  *   .rundown/repair.md
  *   .rundown/plan.md
@@ -39,6 +42,7 @@ export function loadProjectTemplates(cwd: string = process.cwd()): ProjectTempla
 
   return {
     task: loadFile(path.join(dir, "execute.md")) ?? DEFAULT_TASK_TEMPLATE,
+    discuss: loadFile(path.join(dir, "discuss.md")) ?? DEFAULT_DISCUSS_TEMPLATE,
     verify: loadFile(path.join(dir, "verify.md")) ?? DEFAULT_VERIFY_TEMPLATE,
     repair: loadFile(path.join(dir, "repair.md")) ?? DEFAULT_REPAIR_TEMPLATE,
     plan: loadFile(path.join(dir, "plan.md")) ?? DEFAULT_PLAN_TEMPLATE,

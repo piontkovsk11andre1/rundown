@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 const APPLICATION_DIR = path.resolve("src/application");
 const USE_CASE_FILES = [
   "run-task.ts",
+  "discuss-task.ts",
   "plan-task.ts",
   "next-task.ts",
   "list-tasks.ts",

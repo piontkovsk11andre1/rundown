@@ -10,6 +10,13 @@ const DOMAIN_TRACE_FILES = [
   "ports/trace-writer-port.ts",
 ];
 
+const DOMAIN_DISCUSS_FILES = [
+  "defaults.ts",
+  "trace.ts",
+  "ports/artifact-store.ts",
+  "ports/worker-executor-port.ts",
+];
+
 function collectTypeScriptFiles(dirPath: string): string[] {
   const entries = fs.readdirSync(dirPath, { withFileTypes: true });
   const files: string[] = [];
@@ -47,6 +54,18 @@ describe("domain import boundary", () => {
     const files = collectTypeScriptFiles(DOMAIN_DIR);
 
     for (const relativePath of DOMAIN_TRACE_FILES) {
+      const absolutePath = path.join(DOMAIN_DIR, relativePath);
+
+      if (fs.existsSync(absolutePath)) {
+        expect(files).toContain(absolutePath);
+      }
+    }
+  });
+
+  it("includes discuss domain files in boundary scan", () => {
+    const files = collectTypeScriptFiles(DOMAIN_DIR);
+
+    for (const relativePath of DOMAIN_DISCUSS_FILES) {
       const absolutePath = path.join(DOMAIN_DIR, relativePath);
 
       if (fs.existsSync(absolutePath)) {

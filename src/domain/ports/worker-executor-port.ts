@@ -14,9 +14,10 @@ export interface WorkerExecutionOptions {
   mode: ProcessRunMode;
   transport: PromptTransport;
   trace?: boolean;
+  captureOutput?: boolean;
   cwd: string;
   artifactContext?: unknown;
-  artifactPhase?: "execute" | "verify" | "repair" | "worker" | "plan";
+  artifactPhase?: "execute" | "verify" | "repair" | "worker" | "plan" | "discuss";
   artifactPhaseLabel?: string;
   artifactExtra?: Record<string, unknown>;
 }

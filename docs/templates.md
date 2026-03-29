@@ -14,15 +14,19 @@ Store templates in `.rundown/`:
   verify.md
   repair.md
   plan.md
+  discuss.md
   vars.json
 ```
 
-### Template roles
+### Template files table
 
-- `execute.md` — instructions for doing the task
-- `verify.md` — instructions for deciding whether the task is truly complete
-- `repair.md` — instructions for fixing a failed attempt
-- `plan.md` — instructions for breaking a task into nested subtasks
+| File | Role |
+| --- | --- |
+| `.rundown/execute.md` | Instructions for doing the task |
+| `.rundown/verify.md` | Instructions for deciding whether the task is truly complete |
+| `.rundown/repair.md` | Instructions for fixing a failed attempt |
+| `.rundown/plan.md` | Instructions for breaking a task into nested subtasks |
+| `.rundown/discuss.md` | Instructions for interactive task refinement before execution |
 
 ## Why templates matter
 
@@ -41,9 +45,9 @@ For the built-in templates, the prompt layout is intentionally cache-friendly:
 
 1. Markdown context from the source document comes first,
 2. then the selected task metadata,
-3. then the phase-specific instructions for execute, verify, repair, or plan.
+3. then the phase-specific instructions for execute, verify, repair, plan, or discuss.
 
-The same model applies to verification, repair, and planning with their respective templates.
+The same model applies to verification, repair, planning, and discussion with their respective templates.
 
 ## Template variables
 
@@ -65,7 +69,49 @@ These values are available in templates as placeholders such as `{{branch}}` or 
 
 ## Example template content
 
-The examples below show realistic `execute.md` and `verify.md` templates you can copy into `.rundown/` and customize.
+The examples below show realistic templates you can copy into `.rundown/` and customize.
+
+### `discuss.md`
+
+```md
+{{context}}
+
+---
+
+The Markdown above is the source document up to but not including the selected unchecked task.
+
+## Source file
+
+`{{file}}` (line {{taskLine}})
+
+## Selected task
+
+{{task}}
+
+## Discussion mode
+
+You are in interactive discussion mode.
+
+Goal:
+- Help the user refine this task before execution.
+- Identify ambiguity, missing constraints, and hidden assumptions.
+
+You may modify the source Markdown file to improve task quality by:
+- rewriting the selected task for clarity,
+- splitting it into smaller unchecked sub-items,
+- adding scoped acceptance criteria,
+- tightening vague wording and out-of-date details.
+
+Rules:
+- Keep edits focused on this task and its immediate sub-items.
+- Preserve Markdown structure and checklist formatting.
+- Do not mark any checkbox completed.
+- Do not claim implementation is finished in this mode.
+
+Project context:
+- Branch: `{{branch}}`
+- Ticket: `{{ticket}}`
+```
 
 ### `execute.md`
 

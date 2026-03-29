@@ -4,6 +4,8 @@ export type TraceSchemaVersion = typeof TRACE_SCHEMA_VERSION;
 
 export type TraceEventType =
   | "run.started"
+  | "discussion.started"
+  | "discussion.completed"
   | "task.context"
   | "phase.started"
   | "phase.completed"
@@ -22,11 +24,13 @@ export type TraceEventType =
   | "task.failed"
   | "run.completed";
 
-export type TracePhase = "execute" | "verify" | "repair" | "plan";
+export type TracePhase = "execute" | "verify" | "repair" | "plan" | "discuss";
 
 export type TraceRunStatus =
   | "running"
   | "completed"
+  | "discuss-completed"
+  | "discuss-cancelled"
   | "failed"
   | "detached"
   | "execution-failed"
@@ -54,6 +58,20 @@ export interface RunStartedPayload {
   task_text: string;
   task_file: string;
   task_line: number;
+}
+
+export interface DiscussionStartedPayload {
+  task_text: string;
+  task_file: string;
+  task_line: number;
+}
+
+export interface DiscussionCompletedPayload {
+  task_text: string;
+  task_file: string;
+  task_line: number;
+  duration_ms: number;
+  exit_code: number | null;
 }
 
 export interface PhaseStartedPayload {
@@ -204,6 +222,14 @@ export interface RunCompletedPayload {
 }
 
 export type RunStartedEvent = TraceEventBase<"run.started", RunStartedPayload>;
+export type DiscussionStartedEvent = TraceEventBase<
+  "discussion.started",
+  DiscussionStartedPayload
+>;
+export type DiscussionCompletedEvent = TraceEventBase<
+  "discussion.completed",
+  DiscussionCompletedPayload
+>;
 export type TaskContextEvent = TraceEventBase<"task.context", TaskContextPayload>;
 export type PhaseStartedEvent = TraceEventBase<"phase.started", PhaseStartedPayload>;
 export type PhaseCompletedEvent = TraceEventBase<"phase.completed", PhaseCompletedPayload>;
@@ -224,6 +250,8 @@ export type RunCompletedEvent = TraceEventBase<"run.completed", RunCompletedPayl
 
 export type TraceEvent =
   | RunStartedEvent
+  | DiscussionStartedEvent
+  | DiscussionCompletedEvent
   | TaskContextEvent
   | PhaseStartedEvent
   | PhaseCompletedEvent
@@ -270,6 +298,32 @@ export function createRunStartedEvent(input: {
     timestamp: input.timestamp,
     run_id: input.run_id,
     event_type: "run.started",
+    payload: input.payload,
+  });
+}
+
+export function createDiscussionStartedEvent(input: {
+  timestamp: string;
+  run_id: string;
+  payload: DiscussionStartedPayload;
+}): DiscussionStartedEvent {
+  return createTraceEvent({
+    timestamp: input.timestamp,
+    run_id: input.run_id,
+    event_type: "discussion.started",
+    payload: input.payload,
+  });
+}
+
+export function createDiscussionCompletedEvent(input: {
+  timestamp: string;
+  run_id: string;
+  payload: DiscussionCompletedPayload;
+}): DiscussionCompletedEvent {
+  return createTraceEvent({
+    timestamp: input.timestamp,
+    run_id: input.run_id,
+    event_type: "discussion.completed",
     payload: input.payload,
   });
 }

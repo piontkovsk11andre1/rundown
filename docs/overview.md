@@ -289,6 +289,21 @@ The planner worker should return only unchecked Markdown task items. Those items
 
 After planning, the parent task becomes blocked until its new children are complete.
 
+## Discuss before execution
+
+Use `rundown discuss` when the next unchecked task is unclear, too broad, or needs to be reshaped before implementation.
+
+The discuss command uses the same task-selection flow as `run`, but opens an interactive session where the agent can edit the source Markdown task text (for example: rewrite, split into subtasks, or tighten scope).
+
+Typical workflow:
+
+1. `rundown discuss <source> -- opencode`
+2. refine the selected task until it is actionable,
+3. `rundown run <source> -- opencode run` to execute,
+4. let verification confirm the result before the checkbox is marked complete.
+
+Discussion does not mark tasks complete by itself. Completion remains gated by `run` + verification.
+
 ## Why this model matters
 
 Many AI workflows still depend on copy-paste handoffs and human memory.

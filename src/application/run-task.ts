@@ -1,4 +1,5 @@
 import {
+  DEFAULT_DISCUSS_TEMPLATE,
   DEFAULT_TRACE_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
@@ -75,6 +76,7 @@ type ArtifactContext = ArtifactRunContext;
 
 interface ProjectTemplates {
   task: string;
+  discuss: string;
   verify: string;
   repair: string;
   plan: string;
@@ -1527,6 +1529,7 @@ function loadProjectTemplatesFromPorts(
   const dir = pathOperations.join(cwd, ".rundown");
   return {
     task: templateLoader.load(pathOperations.join(dir, "execute.md")) ?? DEFAULT_TASK_TEMPLATE,
+    discuss: templateLoader.load(pathOperations.join(dir, "discuss.md")) ?? DEFAULT_DISCUSS_TEMPLATE,
     verify: templateLoader.load(pathOperations.join(dir, "verify.md")) ?? DEFAULT_VERIFY_TEMPLATE,
     repair: templateLoader.load(pathOperations.join(dir, "repair.md")) ?? DEFAULT_REPAIR_TEMPLATE,
     plan: templateLoader.load(pathOperations.join(dir, "plan.md")) ?? DEFAULT_PLAN_TEMPLATE,

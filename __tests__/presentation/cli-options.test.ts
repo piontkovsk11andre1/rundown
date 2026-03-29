@@ -266,6 +266,85 @@ describe("CLI run option normalization", () => {
     expect(call.cliTemplateVarArgs).toEqual(["env=prod", "owner=ops"]);
   });
 
+  it("normalizes discuss defaults", async () => {
+    const discussTask = vi.fn(async () => 0);
+    const call = await invokeDiscussAndCaptureCall([
+      "discuss",
+      "tasks.md",
+      "--worker",
+      "opencode",
+      "run",
+    ], discussTask);
+
+    expect(call.source).toBe("tasks.md");
+    expect(call.mode).toBe("tui");
+    expect(call.transport).toBe("file");
+    expect(call.sortMode).toBe("name-sort");
+    expect(call.dryRun).toBe(false);
+    expect(call.printPrompt).toBe(false);
+    expect(call.keepArtifacts).toBe(false);
+    expect(call.varsFileOption).toBeUndefined();
+    expect(call.cliTemplateVarArgs).toEqual([]);
+    expect(call.workerCommand).toEqual(["opencode", "run"]);
+    expect(call.hideAgentOutput).toBe(false);
+    expect(call.trace).toBe(false);
+    expect(call.forceUnlock).toBe(false);
+  });
+
+  it("collects discuss template vars and flags", async () => {
+    const discussTask = vi.fn(async () => 0);
+    const call = await invokeDiscussAndCaptureCall([
+      "discuss",
+      "tasks.md",
+      "--vars-file",
+      "custom-vars.json",
+      "--var",
+      "env=prod",
+      "--var",
+      "owner=ops",
+      "--dry-run",
+      "--hide-agent-output",
+      "--trace",
+      "--force-unlock",
+      "--worker",
+      "opencode",
+      "run",
+    ], discussTask);
+
+    expect(call.varsFileOption).toBe("custom-vars.json");
+    expect(call.cliTemplateVarArgs).toEqual(["env=prod", "owner=ops"]);
+    expect(call.dryRun).toBe(true);
+    expect(call.hideAgentOutput).toBe(true);
+    expect(call.trace).toBe(true);
+    expect(call.forceUnlock).toBe(true);
+  });
+
+  it("passes explicit discuss execution options", async () => {
+    const discussTask = vi.fn(async () => 0);
+    const call = await invokeDiscussAndCaptureCall([
+      "discuss",
+      "tasks.md",
+      "--mode",
+      "wait",
+      "--transport",
+      "arg",
+      "--sort",
+      "old-first",
+      "--print-prompt",
+      "--keep-artifacts",
+      "--",
+      "opencode",
+      "run",
+    ], discussTask);
+
+    expect(call.mode).toBe("wait");
+    expect(call.transport).toBe("arg");
+    expect(call.sortMode).toBe("old-first");
+    expect(call.printPrompt).toBe(true);
+    expect(call.keepArtifacts).toBe(true);
+    expect(call.workerCommand).toEqual(["opencode", "run"]);
+  });
+
   it("logs a CLI error and exits with code 1 on invalid mode", async () => {
     const runTask = vi.fn(async () => 0);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -1213,6 +1292,44 @@ async function invokeRunAndCaptureCall(args: string[], runTask: ReturnType<typeo
 
   expect(runTask).toHaveBeenCalledTimes(1);
   return runTask.mock.calls[0][0] as RunTaskCall;
+}
+
+async function invokeDiscussAndCaptureCall(
+  args: string[],
+  discussTask: ReturnType<typeof vi.fn>,
+): Promise<RunTaskCall> {
+  const previousEnv = captureEnv();
+
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
+
+  vi.doMock("../../src/create-app.js", () => ({
+    createApp: () => ({
+      runTask: vi.fn(async () => 0),
+      discussTask,
+      reverifyTask: vi.fn(async () => 0),
+      nextTask: vi.fn(async () => 0),
+      listTasks: vi.fn(async () => 0),
+      planTask: vi.fn(async () => 0),
+      initProject: vi.fn(async () => 0),
+      manageArtifacts: vi.fn(() => 0),
+    }),
+  }));
+
+  try {
+    const { parseCliArgs } = await import("../../src/presentation/cli.js");
+    await parseCliArgs(args);
+  } catch (error) {
+    const message = String(error);
+    if (!/CLI exited with code \d+/.test(message)) {
+      throw error;
+    }
+  } finally {
+    restoreEnv(previousEnv);
+  }
+
+  expect(discussTask).toHaveBeenCalledTimes(1);
+  return discussTask.mock.calls[0][0] as RunTaskCall;
 }
 
 async function invokeRunAndExpectExit(args: string[], runTask: ReturnType<typeof vi.fn>): Promise<void> {

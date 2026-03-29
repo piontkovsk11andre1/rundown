@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   TRACE_SCHEMA_VERSION,
   createAnalysisSummaryEvent,
+  createDiscussionCompletedEvent,
+  createDiscussionStartedEvent,
   createAgentSignalsEvent,
   createAgentThinkingEvent,
   createAgentToolUsageEvent,
@@ -65,6 +67,50 @@ describe("trace event factory functions", () => {
       task_text: "Create trace tests",
       task_file: "TODO.md",
       task_line: 247,
+    });
+  });
+
+  it("creates discussion.started event with schema version and required payload fields", () => {
+    const event = createDiscussionStartedEvent({
+      timestamp,
+      run_id: "run-123",
+      payload: {
+        task_text: "Refine rollout scope",
+        task_file: "TODO.md",
+        task_line: 80,
+      },
+    });
+
+    expectCommonTraceFields(event);
+    expect(event.event_type).toBe("discussion.started");
+    expect(event.payload).toEqual({
+      task_text: "Refine rollout scope",
+      task_file: "TODO.md",
+      task_line: 80,
+    });
+  });
+
+  it("creates discussion.completed event with schema version and required payload fields", () => {
+    const event = createDiscussionCompletedEvent({
+      timestamp,
+      run_id: "run-123",
+      payload: {
+        task_text: "Refine rollout scope",
+        task_file: "TODO.md",
+        task_line: 80,
+        duration_ms: 1250,
+        exit_code: 0,
+      },
+    });
+
+    expectCommonTraceFields(event);
+    expect(event.event_type).toBe("discussion.completed");
+    expect(event.payload).toEqual({
+      task_text: "Refine rollout scope",
+      task_file: "TODO.md",
+      task_line: 80,
+      duration_ms: 1250,
+      exit_code: 0,
     });
   });
 

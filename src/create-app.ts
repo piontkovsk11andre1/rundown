@@ -1,4 +1,5 @@
 import { createRunTask, type RunTaskOptions } from "./application/run-task.js";
+import { createDiscussTask, type DiscussTaskOptions } from "./application/discuss-task.js";
 import { createPlanTask, type PlanTaskOptions as PlanTaskUseCaseOptions } from "./application/plan-task.js";
 import { createListTasks, type ListTasksOptions } from "./application/list-tasks.js";
 import { createNextTask, type NextTaskOptions } from "./application/next-task.js";
@@ -55,8 +56,11 @@ import {
   createWorkingDirectoryAdapter,
 } from "./infrastructure/adapters/index.js";
 
+export type { DiscussTaskOptions };
+
 export type App = {
   runTask: (options: RunTaskOptions) => Promise<number>;
+  discussTask: (options: DiscussTaskOptions) => Promise<number>;
   reverifyTask: (options: ReverifyTaskOptions) => Promise<number>;
   revertTask: (options: RevertTaskOptions) => Promise<number>;
   planTask: (options: PlanTaskCommandOptions) => Promise<number>;
@@ -262,6 +266,27 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       taskSelector: ports.taskSelector,
       output: ports.output,
     }),
+    discussTask: (ports) => createDiscussTask({
+      sourceResolver: ports.sourceResolver,
+      taskSelector: ports.taskSelector,
+      workerExecutor: ports.workerExecutor,
+      workingDirectory: ports.workingDirectory,
+      fileSystem: ports.fileSystem,
+      fileLock: ports.fileLock,
+      templateLoader: ports.templateLoader,
+      artifactStore: ports.artifactStore,
+      pathOperations: ports.pathOperations,
+      templateVarsLoader: ports.templateVarsLoader,
+      traceWriter: ports.traceWriter,
+      createTraceWriter: (trace, artifactContext) => {
+        if (!trace) {
+          return ports.traceWriter;
+        }
+
+        return createArtifactTraceWriter(ports, artifactContext);
+      },
+      output: ports.output,
+    }),
     logRuns: (ports) => createLogRuns({
       artifactStore: ports.artifactStore,
       workingDirectory: ports.workingDirectory,
@@ -292,6 +317,7 @@ function createAppFromFactories(
 
   return {
     runTask: factories.runTask(ports),
+    discussTask: factories.discussTask(ports),
     reverifyTask: factories.reverifyTask(ports),
     revertTask: factories.revertTask(ports),
     planTask: factories.planTask(ports),

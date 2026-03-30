@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   countTodoItems,
+  extractFrontmatter,
   extractHeadingLines,
   extractHeadingSections,
   extractTodoItems,
@@ -155,6 +156,164 @@ describe("parseTasks", () => {
     expect(tasks[2]!.text).toBe("Child task two");
     expect(tasks[2]!.checked).toBe(true);
     expect(tasks[2]!.subItems).toEqual([{ text: "Child two note", line: 5, depth: 2 }]);
+  });
+
+  it("propagates verify directive parent intent to child checkboxes", () => {
+    const md = [
+      "- verify:",
+      "  - [ ] All tests pass",
+      "  - [ ] Linting clean",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]!.text).toBe("All tests pass");
+    expect(tasks[0]!.intent).toBe("verify-only");
+    expect(tasks[1]!.text).toBe("Linting clean");
+    expect(tasks[1]!.intent).toBe("verify-only");
+  });
+
+  it("propagates confirm/check directive parent intent to child checkboxes", () => {
+    const md = [
+      "- confirm:",
+      "  - [ ] Smoke test green",
+      "- check:",
+      "  - [ ] Coverage report generated",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]!.text).toBe("Smoke test green");
+    expect(tasks[0]!.intent).toBe("verify-only");
+    expect(tasks[1]!.text).toBe("Coverage report generated");
+    expect(tasks[1]!.intent).toBe("verify-only");
+  });
+
+  it("propagates profile directive parent to child checkboxes", () => {
+    const md = [
+      "- profile: fast",
+      "  - [ ] Quick task A",
+      "  - [ ] Quick task B",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]!.directiveProfile).toBe("fast");
+    expect(tasks[1]!.directiveProfile).toBe("fast");
+  });
+
+  it("sets directiveProfile on children for profile: complex parent", () => {
+    const md = [
+      "- profile: complex",
+      "  - [ ] Build release notes",
+      "  - [x] Verify migration guide",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]!.text).toBe("Build release notes");
+    expect(tasks[0]!.directiveProfile).toBe("complex");
+    expect(tasks[1]!.text).toBe("Verify migration guide");
+    expect(tasks[1]!.directiveProfile).toBe("complex");
+  });
+
+  it("marks child checkboxes as verify-only for check: directive parent", () => {
+    const md = [
+      "- check:",
+      "  - [ ] Unit tests pass",
+      "  - [ ] Lint is clean",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]!.intent).toBe("verify-only");
+    expect(tasks[1]!.intent).toBe("verify-only");
+  });
+
+  it("supports nested directives by combining inherited context", () => {
+    const md = [
+      "- profile: complex",
+      "  - check:",
+      "    - [ ] Run acceptance suite",
+      "    - [ ] Confirm deployment checklist",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]!.directiveProfile).toBe("complex");
+    expect(tasks[0]!.intent).toBe("verify-only");
+    expect(tasks[1]!.directiveProfile).toBe("complex");
+    expect(tasks[1]!.intent).toBe("verify-only");
+  });
+
+  it("handles directive parents with no children without crashing", () => {
+    const md = [
+      "- profile: complex",
+      "- check:",
+      "- [ ] Independent task",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.text).toBe("Independent task");
+    expect(tasks[0]!.directiveProfile).toBeUndefined();
+    expect(tasks[0]!.intent).toBeUndefined();
+  });
+
+  it("keeps mixed children behavior under directive parent", () => {
+    const md = [
+      "- check:",
+      "  - [ ] Verify docs",
+      "  - Notes for reviewers",
+      "  - [ ] Confirm screenshots",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]!.text).toBe("Verify docs");
+    expect(tasks[0]!.intent).toBe("verify-only");
+    expect(tasks[0]!.subItems).toEqual([]);
+    expect(tasks[1]!.text).toBe("Confirm screenshots");
+    expect(tasks[1]!.intent).toBe("verify-only");
+    expect(tasks[1]!.subItems).toEqual([]);
+  });
+
+  it("supports combined directive parents for profile and verify intent", () => {
+    const md = [
+      "- profile: complex",
+      "  - check:",
+      "    - [ ] Docs are current",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.text).toBe("Docs are current");
+    expect(tasks[0]!.directiveProfile).toBe("complex");
+    expect(tasks[0]!.intent).toBe("verify-only");
+  });
+
+  it("ignores profile directive when used directly under a checkbox task", () => {
+    const md = [
+      "- [ ] Parent task",
+      "  - profile: fast",
+      "  - [ ] Child task",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]!.text).toBe("Parent task");
+    expect(tasks[1]!.text).toBe("Child task");
+    expect(tasks[1]!.directiveProfile).toBeUndefined();
   });
 
   it("should ignore tasks inside fenced code blocks", () => {
@@ -518,5 +677,103 @@ describe("document-level TODO helpers", () => {
       endLineIndexExclusive: 3,
       heading: { level: 1, text: "Only section", lineIndex: 0 },
     });
+  });
+
+  it("extractFrontmatter returns profile when present in opening frontmatter block", () => {
+    const md = [
+      "---",
+      "profile: complex",
+      "owner: team-a",
+      "---",
+      "",
+      "- [ ] Task",
+    ].join("\n");
+
+    expect(extractFrontmatter(md)).toEqual({ profile: "complex" });
+  });
+
+  it("extractFrontmatter supports CRLF and trims key/value whitespace", () => {
+    const md = [
+      "---",
+      "  profile  :   fast  ",
+      "---",
+      "",
+      "# Title",
+    ].join("\r\n");
+
+    expect(extractFrontmatter(md)).toEqual({ profile: "fast" });
+  });
+
+  it("extractFrontmatter returns empty object when profile key is missing", () => {
+    const md = [
+      "---",
+      "owner: docs",
+      "---",
+      "",
+      "- [ ] Task",
+    ].join("\n");
+
+    expect(extractFrontmatter(md)).toEqual({});
+  });
+
+  it("extractFrontmatter returns empty object when no frontmatter block exists", () => {
+    const md = ["# Title", "", "profile: complex", "", "- [ ] Task"].join("\n");
+
+    expect(extractFrontmatter(md)).toEqual({});
+    expect(extractFrontmatter(md).profile).toBeUndefined();
+  });
+
+  it("extractFrontmatter only reads the first frontmatter block at file start", () => {
+    const md = [
+      "# Title",
+      "",
+      "---",
+      "profile: complex",
+      "---",
+      "",
+      "- [ ] Task",
+    ].join("\n");
+
+    expect(extractFrontmatter(md)).toEqual({});
+  });
+
+  it("extractFrontmatter ignores blank profile values", () => {
+    const md = [
+      "---",
+      "profile:",
+      "---",
+      "",
+      "- [ ] Task",
+    ].join("\n");
+
+    expect(extractFrontmatter(md)).toEqual({});
+  });
+
+  it("extractFrontmatter ignores malformed frontmatter without closing marker", () => {
+    const md = [
+      "---",
+      "profile: complex",
+      "owner: team-a",
+      "",
+      "- [ ] Task",
+    ].join("\n");
+
+    expect(extractFrontmatter(md)).toEqual({});
+    expect(extractFrontmatter(md).profile).toBeUndefined();
+  });
+
+  it("extractFrontmatter ignores non-profile keys while preserving profile", () => {
+    const md = [
+      "---",
+      "owner: docs",
+      "priority: high",
+      "profile: fast",
+      "reviewer: team-b",
+      "---",
+      "",
+      "- [ ] Task",
+    ].join("\n");
+
+    expect(extractFrontmatter(md)).toEqual({ profile: "fast" });
   });
 });

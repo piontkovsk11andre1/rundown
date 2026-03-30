@@ -911,6 +911,7 @@ function createDependencies(options: {
     templateVarsLoader: {
       load: vi.fn(() => ({})),
     },
+    workerConfigPort: { load: vi.fn(() => undefined) },
     traceWriter,
     configDir: {
       configDir: path.join(options.cwd, ".rundown"),

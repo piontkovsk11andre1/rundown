@@ -72,6 +72,8 @@ rundown discuss <source> [options] --worker <command...>
 
 `discuss` uses the same source resolution and task-selection logic as `run`, but opens a discussion-oriented worker session (default `--mode tui`) instead of executing the task implementation flow.
 
+`--worker` is optional when rundown can resolve a worker for `discuss` from `.rundown/config.json`.
+
 During this session, the agent may edit the Markdown source task text to improve scope and clarity (for example rewriting task wording, splitting tasks, or adding sub-items). `discuss` does not mutate checkbox completion state.
 
 Options:
@@ -110,6 +112,8 @@ Re-run verification for a previously completed task from saved run artifacts, wi
 By default, `reverify` targets the latest completed task in the current repository (`--run latest`).
 
 Use this when you want a deterministic confidence check against an exact historical task context (for example, before a release or push) without advancing task selection.
+
+`--worker` is optional when rundown can resolve a worker for `reverify` from `.rundown/config.json`.
 
 Options:
 
@@ -229,9 +233,10 @@ Options:
 | `--var <key=value>` | Inject template variables (repeatable). | none |
 | `--worker <command...>` | Worker command (preferred on PowerShell). | unset |
 
-Worker command requirement:
+Worker resolution:
 
-- Provide a worker with `--worker <command...>` or separator form `-- <command>`.
+- `--worker <command...>` and separator form `-- <command>` are both supported.
+- If neither is provided, `plan` resolves the worker from `.rundown/config.json` using the standard resolution cascade.
 - For OpenCode workers, continuation/resume session arguments are rejected so each scan runs in a clean session.
 
 Scan loop and convergence semantics:
@@ -461,13 +466,29 @@ rundown run <source> --worker <command...>
 
 If both are provided, `--worker` takes precedence.
 
+`--worker` is optional when rundown can resolve a worker from `.rundown/config.json`.
+
+Worker resolution cascade (lowest to highest priority):
+
+- `defaults` in `.rundown/config.json`
+- `commands.<command>` in `.rundown/config.json` (`run`, `plan`, `discuss`, `reverify`)
+- Markdown frontmatter `profile: <name>`
+- Parent directive item `- profile: <name>` for child checkbox tasks
+- CLI `--worker` or separator form `-- <command>`
+
+Profile behavior:
+
+- Named profiles are defined under `profiles` in `.rundown/config.json`.
+- A resolved profile contributes `workerArgs`, appended to the resolved base worker command.
+- Verify-only prefixes support colon-only syntax: `verify:`, `confirm:`, `check:`.
+
 ## Common options
 
 ### Verification and repair
 
 - `--no-verify` — skip verification
 - `--only-verify` — verify without executing first
-- verify-only task text auto-skips execute phase (for example `verify: ...`, `[confirm] ...`)
+- verify-only task text auto-skips execute phase (for example `verify: ...`, `confirm: ...`, `check: ...`)
 - `--force-execute` — override verify-only auto-skip and run execute phase anyway
 - `--repair-attempts <n>` — retry repair up to `n` times
 - `--no-repair` — disable repair explicitly
@@ -631,6 +652,7 @@ Behavior notes:
 - For `plan`, both flags apply to the planner prompt.
 - For inline `cli:` tasks on `run`, `--print-prompt` prints the inline command and exits without executing it.
 - Worker command validation still applies before execution for flows that require a worker command. Invalid or missing worker command input can still return exit code `1`.
+- If no CLI worker is provided and no worker is resolvable from config, the command exits `1` with guidance to configure `.rundown/config.json`.
 
 Examples:
 

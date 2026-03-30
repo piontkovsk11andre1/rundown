@@ -15,6 +15,7 @@ import {
   resolveTemplateVarsFilePath,
   type ExtraTemplateVars,
 } from "../domain/template-vars.js";
+import { resolveWorkerForInvocation } from "./resolve-worker.js";
 import { FileLockError } from "../domain/ports/file-lock.js";
 import type { FileLock } from "../domain/ports/file-lock.js";
 import type {
@@ -28,12 +29,13 @@ import type {
   SourceResolverPort,
   TaskSelectionResult as PortTaskSelectionResult,
   TaskSelectorPort,
-  TemplateLoader,
-  TemplateVarsLoaderPort,
-  TraceWriterPort,
-  WorkerExecutorPort,
-  WorkingDirectoryPort,
-} from "../domain/ports/index.js";
+   TemplateLoader,
+   TemplateVarsLoaderPort,
+   TraceWriterPort,
+   WorkerConfigPort,
+   WorkerExecutorPort,
+   WorkingDirectoryPort,
+ } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
 export type RunnerMode = ProcessRunMode;
@@ -67,6 +69,7 @@ export interface DiscussTaskDependencies {
   artifactStore: ArtifactStore;
   pathOperations: PathOperationsPort;
   templateVarsLoader: TemplateVarsLoaderPort;
+  workerConfigPort: WorkerConfigPort;
   traceWriter: TraceWriterPort;
   configDir: ConfigDirResult | undefined;
   createTraceWriter: (trace: boolean, artifactContext: ArtifactContext) => TraceWriterPort;
@@ -174,6 +177,17 @@ export function createDiscussTask(
       }
 
       const taskContext = resolveTaskContext(selectedTask);
+      const loadedWorkerConfig = dependencies.configDir?.configDir
+        ? dependencies.workerConfigPort.load(dependencies.configDir.configDir)
+        : undefined;
+      const resolvedWorkerCommand = resolveWorkerForInvocation({
+        commandName: "discuss",
+        workerConfig: loadedWorkerConfig,
+        source: taskContext.source,
+        task: taskContext.task,
+        cliWorkerCommand: workerCommand,
+        emit,
+      });
       const templates = loadProjectTemplatesFromPorts(
         dependencies.configDir,
         dependencies.templateLoader,
@@ -189,15 +203,15 @@ export function createDiscussTask(
       }
 
       if (dryRun) {
-        emit({ kind: "info", message: "Dry run — would discuss with: " + workerCommand.join(" ") });
+        emit({ kind: "info", message: "Dry run — would discuss with: " + resolvedWorkerCommand.join(" ") });
         emit({ kind: "info", message: "Prompt length: " + prompt.length + " chars" });
         return 0;
       }
 
-      if (workerCommand.length === 0) {
+      if (resolvedWorkerCommand.length === 0) {
         emit({
           kind: "error",
-          message: "No worker command specified. Use --worker <command...> or -- <command>.",
+          message: "No worker command specified. Use --worker <command...> or -- <command>, or set a default worker in .rundown/config.json.",
         });
         return 1;
       }
@@ -214,7 +228,7 @@ export function createDiscussTask(
         cwd,
         configDir: dependencies.configDir?.configDir,
         commandName: "discuss",
-        workerCommand,
+        workerCommand: resolvedWorkerCommand,
         mode: "tui",
         transport: options.transport,
         source,
@@ -243,7 +257,7 @@ export function createDiscussTask(
       }));
 
       const result = await dependencies.workerExecutor.runWorker({
-        command: workerCommand,
+        command: resolvedWorkerCommand,
         prompt,
         mode: "tui",
         transport: options.transport,

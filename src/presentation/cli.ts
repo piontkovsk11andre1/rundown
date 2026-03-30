@@ -247,7 +247,7 @@ program
   .option("--reset-after", "Reset all checkboxes in the source file after the run completes", false)
   .option("--clean", "Shorthand for --redo --reset-after", false)
   .option("--force-unlock", "Break stale source lockfiles before acquiring run locks", false)
-  .option("--worker <command...>", "Worker command to run (alternative to -- <command>)")
+  .option("--worker [command...]", "Optional worker command override (alternative to -- <command>)")
   .allowUnknownOption(false)
   .action(withCliAction(async (source: string, opts: Record<string, string | string[] | boolean>) => {
     const mode = parseRunnerMode(opts.mode as string | undefined, RUNNER_MODES);
@@ -327,7 +327,7 @@ program
   .option("--hide-agent-output", "Hide worker stdout/stderr during execution; show only rundown status messages.", false)
   .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
   .option("--force-unlock", "Break stale source lockfiles before acquiring discuss locks", false)
-  .option("--worker <command...>", "Worker command to run (alternative to -- <command>)")
+  .option("--worker [command...]", "Optional worker command override (alternative to -- <command>)")
   .allowUnknownOption(false)
   .action(withCliAction(async (source: string, opts: Record<string, string | string[] | boolean>) => {
     const mode = parseRunnerMode(opts.mode as string | undefined, DISCUSS_MODES);
@@ -379,7 +379,7 @@ program
   .option("--print-prompt", "Print the rendered verify prompt and exit", false)
   .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
   .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
-  .option("--worker <command...>", "Worker command to run (alternative to -- <command>)")
+  .option("--worker [command...]", "Optional worker command override (alternative to -- <command>)")
   .allowUnknownOption(false)
   .action(withCliAction((opts: Record<string, string | string[] | boolean>) => {
     const transport = parsePromptTransport(opts.transport as string | undefined);
@@ -504,7 +504,7 @@ program
   }));
 program
   .command("plan")
-  .description("Synthesize actionable TODOs for a Markdown document using a worker command.")
+  .description("Synthesize actionable TODOs for a Markdown document.")
   .argument("[markdown-file...]", "Markdown document to plan")
   .option("--scan-count <n>", "Max clean-session TODO coverage scans", String(DEFAULT_PLAN_SCAN_COUNT))
   .option("--mode <mode>", "Planner mode: wait", "wait")
@@ -516,7 +516,7 @@ program
   .option("--force-unlock", "Break stale source lockfiles before acquiring plan lock", false)
   .option("--vars-file [path]", DEFAULT_VARS_FILE_HELP)
   .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
-  .option("--worker <command...>", "Worker command to run (alternative to -- <command>)")
+  .option("--worker [command...]", "Optional worker command override (alternative to -- <command>)")
   .allowUnknownOption(false)
   .action(withCliAction((markdownFiles: string[], opts: Record<string, string | string[] | boolean>) => {
     const markdownFile = resolvePlanMarkdownFile(markdownFiles);
@@ -559,7 +559,7 @@ program
   .action(withCliAction((source: string) => getApp().unlockTask({ source })));
 program
   .command("init")
-  .description("Create a .rundown/ directory with default templates (plan, execute, verify, repair). Use --config-dir to control where it is created.")
+  .description("Create a .rundown/ directory with default templates (plan, execute, verify, repair, trace) plus vars.json and config.json. Use --config-dir to control where it is created.")
   .action(withCliAction(() => getApp().initProject()));
 function collectOption(value: string, previous: string[]): string[] {
   return [...previous, value];

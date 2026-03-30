@@ -36,5 +36,6 @@ export type { WorkingDirectoryPort } from "./working-directory-port.js";
 export type { DirectoryOpenerPort } from "./directory-opener-port.js";
 export type { PathOperationsPort } from "./path-operations-port.js";
 export type { ConfigDirPort, ConfigDirResult } from "./config-dir-port.js";
+export type { WorkerConfigPort } from "./worker-config-port.js";
 export type { TemplateVarsLoaderPort } from "./template-vars-loader-port.js";
 export type { TraceWriterPort } from "./trace-writer-port.js";

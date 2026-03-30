@@ -15,6 +15,7 @@ import type {
   VerificationStore,
 } from "../../src/domain/ports/index.js";
 import type { Task } from "../../src/domain/parser.js";
+import type { WorkerConfigPort } from "../../src/domain/ports/worker-config-port.js";
 
 describe("reverify-task", () => {
   it("prints verify prompt and exits without running verification", async () => {
@@ -152,6 +153,256 @@ describe("reverify-task", () => {
       .map(([input]) => (input as { task: Task }).task.text);
     expect(verifiedTaskTexts).toEqual(["Task newest", "Task middle", "Task oldest"]);
     expect(events.some((event) => event.kind === "success" && event.message === "Re-verified 3 tasks successfully.")).toBe(true);
+  });
+
+  it("loads worker config once across multi-run reverify", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "roadmap.md");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [x] Task newest\n- [x] Task middle\n- [x] Task oldest\n",
+    });
+
+    const runNewest = createRunMetadata({
+      runId: "run-newest",
+      status: "completed",
+      task: {
+        text: "Task newest",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "roadmap.md",
+      },
+    });
+    const runMiddle = createRunMetadata({
+      runId: "run-middle",
+      status: "completed",
+      task: {
+        text: "Task middle",
+        file: taskFile,
+        line: 2,
+        index: 1,
+        source: "roadmap.md",
+      },
+      startedAt: "2026-03-19T17:59:00.000Z",
+    });
+    const runOldest = createRunMetadata({
+      runId: "run-oldest",
+      status: "reverify-completed",
+      task: {
+        text: "Task oldest",
+        file: taskFile,
+        line: 3,
+        index: 2,
+        source: "roadmap.md",
+      },
+      startedAt: "2026-03-19T17:58:00.000Z",
+    });
+
+    const { dependencies, workerConfigPort } = createDependencies({
+      cwd,
+      fileSystem,
+      runs: [runNewest, runMiddle, runOldest],
+    });
+
+    const reverifyTask = createReverifyTask(dependencies);
+    const code = await reverifyTask(createOptions({ all: true, workerCommand: ["opencode", "run"] }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(workerConfigPort.load)).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses config defaults worker when no CLI worker is provided", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "roadmap.md");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [x] Build release\n",
+    });
+
+    const completedRun = {
+      ...createRunMetadata({
+        runId: "run-defaults-worker",
+        status: "completed",
+        task: {
+          text: "Build release",
+          file: taskFile,
+          line: 1,
+          index: 0,
+          source: "roadmap.md",
+        },
+      }),
+      workerCommand: undefined,
+    } as ArtifactRunMetadata;
+
+    const { dependencies, taskVerification, workerConfigPort } = createDependencies({
+      cwd,
+      fileSystem,
+      runs: [completedRun],
+    });
+    vi.mocked(workerConfigPort.load).mockReturnValue({
+      defaults: {
+        worker: ["default", "worker"],
+        workerArgs: ["--model", "gpt-5.3-codex"],
+      },
+    });
+
+    const reverifyTask = createReverifyTask(dependencies);
+    const code = await reverifyTask(createOptions({ runId: "run-defaults-worker" }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(taskVerification.verify)).toHaveBeenCalledWith(expect.objectContaining({
+      command: ["default", "worker", "--model", "gpt-5.3-codex"],
+    }));
+  });
+
+  it("uses commands.reverify config over defaults when no CLI worker is provided", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "roadmap.md");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [x] Build release\n",
+    });
+
+    const completedRun = {
+      ...createRunMetadata({
+        runId: "run-reverify-command-worker",
+        status: "completed",
+        task: {
+          text: "Build release",
+          file: taskFile,
+          line: 1,
+          index: 0,
+          source: "roadmap.md",
+        },
+      }),
+      workerCommand: undefined,
+    } as ArtifactRunMetadata;
+
+    const { dependencies, taskVerification, workerConfigPort } = createDependencies({
+      cwd,
+      fileSystem,
+      runs: [completedRun],
+    });
+    vi.mocked(workerConfigPort.load).mockReturnValue({
+      defaults: {
+        worker: ["default", "worker"],
+        workerArgs: ["--speed", "slow"],
+      },
+      commands: {
+        reverify: {
+          worker: ["reverify", "worker"],
+          workerArgs: ["--speed", "fast"],
+        },
+      },
+    });
+
+    const reverifyTask = createReverifyTask(dependencies);
+    const code = await reverifyTask(createOptions({ runId: "run-reverify-command-worker" }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(taskVerification.verify)).toHaveBeenCalledWith(expect.objectContaining({
+      command: ["reverify", "worker", "--speed", "slow", "--speed", "fast"],
+    }));
+  });
+
+  it("prefers CLI worker over config defaults and commands.reverify", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "roadmap.md");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [x] Build release\n",
+    });
+
+    const completedRun = {
+      ...createRunMetadata({
+        runId: "run-cli-worker-wins",
+        status: "completed",
+        task: {
+          text: "Build release",
+          file: taskFile,
+          line: 1,
+          index: 0,
+          source: "roadmap.md",
+        },
+      }),
+      workerCommand: undefined,
+    } as ArtifactRunMetadata;
+
+    const { dependencies, taskVerification, workerConfigPort } = createDependencies({
+      cwd,
+      fileSystem,
+      runs: [completedRun],
+    });
+    vi.mocked(workerConfigPort.load).mockReturnValue({
+      defaults: {
+        worker: ["default", "worker"],
+      },
+      commands: {
+        reverify: {
+          worker: ["reverify", "worker"],
+        },
+      },
+    });
+
+    const reverifyTask = createReverifyTask(dependencies);
+    const code = await reverifyTask(createOptions({
+      runId: "run-cli-worker-wins",
+      workerCommand: ["cli", "worker", "--model", "gpt-5.3-codex"],
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(taskVerification.verify)).toHaveBeenCalledWith(expect.objectContaining({
+      command: ["cli", "worker", "--model", "gpt-5.3-codex"],
+    }));
+  });
+
+  it("uses resolved worker command from config during reverify", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "roadmap.md");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "---\nprofile: complex\n---\n\n- [x] Build release\n",
+    });
+
+    const completedRun = {
+      ...createRunMetadata({
+        runId: "run-config-worker",
+        status: "completed",
+        task: {
+          text: "Build release",
+          file: taskFile,
+          line: 5,
+          index: 0,
+          source: "roadmap.md",
+        },
+      }),
+      workerCommand: undefined,
+    } as ArtifactRunMetadata;
+
+    const { dependencies, taskVerification, workerConfigPort } = createDependencies({
+      cwd,
+      fileSystem,
+      runs: [completedRun],
+    });
+    vi.mocked(workerConfigPort.load).mockReturnValue({
+      defaults: {
+        worker: ["opencode", "run"],
+      },
+      commands: {
+        reverify: {
+          workerArgs: ["--base", "1"],
+        },
+      },
+      profiles: {
+        complex: {
+          workerArgs: ["--model", "opus-4.6"],
+        },
+      },
+    });
+
+    const reverifyTask = createReverifyTask(dependencies);
+    const code = await reverifyTask(createOptions({ runId: "run-config-worker" }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(taskVerification.verify)).toHaveBeenCalledWith(expect.objectContaining({
+      command: ["opencode", "run", "--base", "1", "--model", "opus-4.6"],
+    }));
   });
 
   it("re-verifies only the 2 most recent completed runs with --last 2", async () => {
@@ -1542,6 +1793,7 @@ function createDependencies(options: {
   taskVerification: { verify: ReturnType<typeof vi.fn> };
   taskRepair: { repair: ReturnType<typeof vi.fn> };
   verificationStore: VerificationStore;
+  workerConfigPort: WorkerConfigPort;
 } {
   const events: ApplicationOutputEvent[] = [];
 
@@ -1589,6 +1841,8 @@ function createDependencies(options: {
     isFailedStatus: vi.fn(() => false),
   };
 
+  const workerConfigPort: WorkerConfigPort = { load: vi.fn(() => undefined) };
+
   const dependencies: ReverifyTaskDependencies = {
     artifactStore,
     taskVerification,
@@ -1620,6 +1874,7 @@ function createDependencies(options: {
     templateLoader: {
       load: vi.fn(() => null),
     },
+    workerConfigPort,
     output: {
       emit: (event) => {
         events.push(event);
@@ -1634,6 +1889,7 @@ function createDependencies(options: {
     taskVerification,
     taskRepair,
     verificationStore,
+    workerConfigPort,
   };
 }
 

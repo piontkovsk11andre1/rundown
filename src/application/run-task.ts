@@ -44,6 +44,7 @@ import {
 } from "../domain/trace.js";
 import { parseWorkerOutput } from "../domain/worker-output-parser.js";
 import { runVerifyRepairLoop, type VerifyRepairLoopResult } from "./verify-repair-loop.js";
+import { resolveWorkerForInvocation } from "./resolve-worker.js";
 import { FileLockError } from "../domain/ports/file-lock.js";
 import type {
   ArtifactRunContext,
@@ -64,12 +65,13 @@ import type {
   TaskVerificationPort,
   ConfigDirResult,
   TemplateLoader,
-  TemplateVarsLoaderPort,
-  TraceWriterPort,
-  VerificationStore,
-  WorkerExecutorPort,
-  WorkingDirectoryPort,
-} from "../domain/ports/index.js";
+   TemplateVarsLoaderPort,
+   TraceWriterPort,
+   VerificationStore,
+   WorkerConfigPort,
+   WorkerExecutorPort,
+   WorkingDirectoryPort,
+ } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
 export type RunnerMode = ProcessRunMode;
@@ -132,6 +134,7 @@ export interface RunTaskDependencies {
   processRunner: ProcessRunner;
   pathOperations: PathOperationsPort;
   templateVarsLoader: TemplateVarsLoaderPort;
+  workerConfigPort: WorkerConfigPort;
   traceWriter: TraceWriterPort;
   configDir: ConfigDirResult | undefined;
   createTraceWriter: (trace: boolean, artifactContext: ArtifactContext) => TraceWriterPort;
@@ -271,6 +274,9 @@ export function createRunTask(
       ...fileTemplateVars,
       ...cliTemplateVars,
     };
+    const loadedWorkerConfig = dependencies.configDir?.configDir
+      ? dependencies.workerConfigPort.load(dependencies.configDir.configDir)
+      : undefined;
 
     let artifactContext: ArtifactContext | null = null;
     let traceWriter: TraceWriterPort = dependencies.traceWriter;
@@ -838,7 +844,7 @@ export function createRunTask(
         ? enrichmentOptions.workerCommand
         : selectedRun.workerCommand ?? [];
       if (effectiveWorkerCommand.length === 0) {
-        emit({ kind: "error", message: "No worker command specified. Use --worker <command...> or -- <command>." });
+        emit({ kind: "error", message: "No worker command specified. Use --worker <command...> or -- <command>, or set a default worker in .rundown/config.json." });
         return 1;
       }
 
@@ -1102,7 +1108,15 @@ export function createRunTask(
 
       const { task, source: fileSource, contextBefore } = result;
       emit({ kind: "info", message: "Next task: " + formatTaskLabel(task) });
-      const automationCommand = getAutomationWorkerCommand(workerCommand, mode);
+      const resolvedWorkerCommand = resolveWorkerForInvocation({
+        commandName: "run",
+        workerConfig: loadedWorkerConfig,
+        source: fileSource,
+        task,
+        cliWorkerCommand: workerCommand,
+        emit,
+      });
+      const automationCommand = getAutomationWorkerCommand(resolvedWorkerCommand, mode);
 
       const taskIntent = classifyTaskIntent(task.text);
       const shouldUseVerifyOnly = configuredOnlyVerify
@@ -1155,13 +1169,14 @@ export function createRunTask(
       }
 
       if (requiresWorkerCommand({
-        workerCommand,
+        workerCommand: resolvedWorkerCommand,
+        hasConfigWorker: resolvedWorkerCommand.length > 0,
         isInlineCli: task.isInlineCli,
         isRundownTask: task.isRundownTask,
         shouldVerify,
         onlyVerify,
       })) {
-        emit({ kind: "error", message: "No worker command specified. Use --worker <command...> or -- <command>." });
+        emit({ kind: "error", message: "No worker command specified. Use --worker <command...> or -- <command>, or set a default worker in .rundown/config.json." });
         return 1;
       }
 
@@ -1172,7 +1187,7 @@ export function createRunTask(
         }
 
         if (dryRun) {
-          emit({ kind: "info", message: "Dry run — would run: " + workerCommand.join(" ") });
+          emit({ kind: "info", message: "Dry run — would run: " + resolvedWorkerCommand.join(" ") });
           emit({ kind: "info", message: "Prompt length: " + prompt.length + " chars" });
           return 0;
         }
@@ -1209,7 +1224,7 @@ export function createRunTask(
       if (!onlyVerify && task.isRundownTask && dryRun) {
         const args = parseRundownTaskArgs(task.rundownArgs);
         const delegatedArgs = buildDelegatedRundownArgs(args, {
-          parentWorkerCommand: workerCommand,
+          parentWorkerCommand: resolvedWorkerCommand,
           parentTransport: transport,
           parentKeepArtifacts: keepArtifacts,
           parentHideAgentOutput: hideAgentOutput,
@@ -1225,7 +1240,7 @@ export function createRunTask(
           cwd: dependencies.workingDirectory.cwd(),
           configDir: dependencies.configDir?.configDir,
           commandName: "run",
-          workerCommand: onlyVerify ? automationCommand : workerCommand,
+          workerCommand: onlyVerify ? automationCommand : resolvedWorkerCommand,
         mode,
         transport,
         source,
@@ -1233,7 +1248,7 @@ export function createRunTask(
         keepArtifacts,
       });
       traceWriter = dependencies.createTraceWriter(trace, artifactContext);
-      const selectedWorkerCommand = onlyVerify ? automationCommand : workerCommand;
+      const selectedWorkerCommand = onlyVerify ? automationCommand : resolvedWorkerCommand;
       traceEnrichmentContext = {
         task,
         source: fileSource,
@@ -1449,7 +1464,7 @@ export function createRunTask(
           artifactContext,
           keepArtifacts,
           artifactExtra: { taskType: "rundown-task" },
-          parentWorkerCommand: workerCommand,
+          parentWorkerCommand: resolvedWorkerCommand,
           parentTransport: transport,
           parentKeepArtifacts: keepArtifacts,
           parentHideAgentOutput: hideAgentOutput,
@@ -1531,11 +1546,11 @@ export function createRunTask(
         continue;
       }
 
-      emit({ kind: "info", message: "Running: " + workerCommand.join(" ") + " [mode=" + mode + ", transport=" + transport + "]" });
-      const executePhaseTrace = beginPhaseTrace("execute", workerCommand);
+      emit({ kind: "info", message: "Running: " + resolvedWorkerCommand.join(" ") + " [mode=" + mode + ", transport=" + transport + "]" });
+      const executePhaseTrace = beginPhaseTrace("execute", resolvedWorkerCommand);
       emitPromptMetrics(prompt, contextBefore, "execute.md");
       const runResult = await dependencies.workerExecutor.runWorker({
-        command: workerCommand,
+        command: resolvedWorkerCommand,
         prompt,
         mode,
         transport,

@@ -235,3 +235,60 @@ What happens:
 2. For the `rundown:` task, it delegates to `rundown run docs/release-notes.md --verify --retries 1`.
 3. The inline `rundown:` flags override forwarded parent flags when they differ.
 4. After the delegated run succeeds, the parent run verifies/checks that task and continues.
+
+## 16. Layered worker profiles from config
+
+Example `.rundown/config.json`:
+
+```json
+{
+  "defaults": {
+    "worker": ["opencode", "run"]
+  },
+  "commands": {
+    "plan": {
+      "workerArgs": ["--model", "opus-4.6"]
+    }
+  },
+  "profiles": {
+    "fast": {
+      "workerArgs": ["--model", "gpt-5.3-codex"]
+    },
+    "complex": {
+      "workerArgs": ["--model", "opus-4.6"]
+    }
+  }
+}
+```
+
+With this config, commands can run without passing `--worker` every time:
+
+```bash
+rundown run TODO.md
+rundown plan TODO.md
+```
+
+Markdown with file-level and directive-parent profiles:
+
+```md
+---
+profile: complex
+---
+
+- [ ] Draft migration plan
+
+- profile: fast
+  - [ ] Fix typo in release notes
+  - [ ] Update one CLI flag example
+
+- check:
+  - [ ] All tests pass
+  - [ ] Linting clean
+```
+
+How model selection resolves:
+
+1. `Draft migration plan` inherits frontmatter `complex` and runs with `--model opus-4.6`.
+2. Tasks under `- profile: fast` override frontmatter and run with `--model gpt-5.3-codex`.
+3. Tasks under `- check:` are verify-only tasks.
+4. A CLI worker still overrides all config/profile layers when provided.

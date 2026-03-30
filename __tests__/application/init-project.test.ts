@@ -19,6 +19,10 @@ describe("init-project", () => {
       expect.stringMatching(/^\/workspace\/\.rundown\//),
       expect.any(String),
     );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/.rundown/config.json",
+      expect.any(String),
+    );
   });
 
   it("creates templates inside explicit --config-dir target", async () => {
@@ -38,6 +42,10 @@ describe("init-project", () => {
     expect(vi.mocked(fileSystem.mkdir)).toHaveBeenCalledWith(explicitConfigDir, { recursive: true });
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
       expect.stringMatching(/^\/workspace\/config\/\.rundown-custom\//),
+      expect.any(String),
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/config/.rundown-custom/config.json",
       expect.any(String),
     );
   });

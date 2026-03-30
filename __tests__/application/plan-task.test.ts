@@ -899,6 +899,7 @@ function createDependencies(options: {
       isAbsolute: vi.fn((filePath: string) => filePath.startsWith("/")),
     },
     templateVarsLoader: { load: vi.fn(() => ({})) },
+    workerConfigPort: { load: vi.fn(() => undefined) },
     templateLoader: { load: vi.fn(() => null) },
     artifactStore,
     traceWriter: {

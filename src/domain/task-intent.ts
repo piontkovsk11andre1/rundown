@@ -5,7 +5,7 @@ export interface TaskIntentDecision {
   reason: string;
 }
 
-const EXPLICIT_VERIFY_PREFIX = /^(?:\[(verify|confirm|check)\]\s*|(verify|confirm|check)\s*:)/i;
+const EXPLICIT_VERIFY_PREFIX = /^(verify|confirm|check)\s*:/i;
 
 export function classifyTaskIntent(taskText: string): TaskIntentDecision {
   const normalized = taskText.trim();

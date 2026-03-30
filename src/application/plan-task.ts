@@ -2,6 +2,7 @@ import { DEFAULT_PLAN_TEMPLATE, getTraceInstructions } from "../domain/defaults.
 import { parseTasks } from "../domain/parser.js";
 import { insertPlannerTodos } from "../domain/planner.js";
 import { renderTemplate, type TemplateVars } from "../domain/template.js";
+import { resolveWorkerForInvocation } from "./resolve-worker.js";
 import {
   parseCliTemplateVars,
   resolveTemplateVarsFilePath,
@@ -25,12 +26,13 @@ import type {
   FileSystem,
   PathOperationsPort,
   ProcessRunMode,
-  TemplateLoader,
-  TemplateVarsLoaderPort,
-  TraceWriterPort,
-  WorkerExecutorPort,
-  WorkingDirectoryPort,
-} from "../domain/ports/index.js";
+   TemplateLoader,
+   TemplateVarsLoaderPort,
+   TraceWriterPort,
+   WorkerConfigPort,
+   WorkerExecutorPort,
+   WorkingDirectoryPort,
+ } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
 export type RunnerMode = ProcessRunMode;
@@ -45,6 +47,7 @@ export interface PlanTaskDependencies {
   fileLock: FileLock;
   pathOperations: PathOperationsPort;
   templateVarsLoader: TemplateVarsLoaderPort;
+  workerConfigPort: WorkerConfigPort;
   templateLoader: TemplateLoader;
   artifactStore: ArtifactStore;
   traceWriter: TraceWriterPort;
@@ -151,6 +154,16 @@ export function createPlanTask(
       const documentIntent = deriveDocumentIntent(documentSource, source);
       const existingTodoCount = parseTasks(documentSource, source).length;
       const hasExistingTodos = existingTodoCount > 0;
+      const loadedWorkerConfig = dependencies.configDir?.configDir
+        ? dependencies.workerConfigPort.load(dependencies.configDir.configDir)
+        : undefined;
+      const resolvedWorkerCommand = resolveWorkerForInvocation({
+        commandName: "plan",
+        workerConfig: loadedWorkerConfig,
+        source: documentSource,
+        cliWorkerCommand: workerCommand,
+        emit,
+      });
       emit({
         kind: "info",
         message: "Planning document: " + source,
@@ -162,15 +175,15 @@ export function createPlanTask(
           : "No existing TODO items detected in document.",
       });
 
-      if (workerCommand.length === 0) {
+      if (resolvedWorkerCommand.length === 0) {
         emit({
           kind: "error",
-          message: "No worker command specified. Use --worker <command...> or -- <command>.",
+          message: "No worker command specified. Use --worker <command...> or -- <command>, or set a default worker in .rundown/config.json.",
         });
         return 1;
       }
 
-      const cleanSessionCommandError = validatePlanCleanSessionWorkerCommand(workerCommand);
+      const cleanSessionCommandError = validatePlanCleanSessionWorkerCommand(resolvedWorkerCommand);
       if (cleanSessionCommandError) {
         emit({ kind: "error", message: cleanSessionCommandError });
         return 1;
@@ -204,7 +217,7 @@ export function createPlanTask(
       }
 
       if (dryRun) {
-        emit({ kind: "info", message: "Dry run — would plan: " + workerCommand.join(" ") });
+        emit({ kind: "info", message: "Dry run — would plan: " + resolvedWorkerCommand.join(" ") });
         emit({ kind: "info", message: "Scan count: " + scanCount });
         emit({ kind: "info", message: "Prompt length: " + buildPlanScanPrompt(prompt, documentSource, 1, scanCount).length + " chars" });
         return 0;
@@ -214,7 +227,7 @@ export function createPlanTask(
         cwd,
         configDir: dependencies.configDir?.configDir,
         commandName: "plan",
-        workerCommand,
+        workerCommand: resolvedWorkerCommand,
         mode,
         transport,
         source,
@@ -243,7 +256,7 @@ export function createPlanTask(
         payload: {
           command: "plan",
           source,
-          worker: workerCommand,
+          worker: resolvedWorkerCommand,
           mode,
           transport,
           task_text: documentIntent,
@@ -336,7 +349,7 @@ export function createPlanTask(
       try {
         emit({
           kind: "info",
-          message: "Running planner: " + workerCommand.join(" ") + " [mode=" + mode + ", transport=" + transport + "]",
+          message: "Running planner: " + resolvedWorkerCommand.join(" ") + " [mode=" + mode + ", transport=" + transport + "]",
         });
 
         let latestDocumentSource = documentSource;
@@ -363,9 +376,9 @@ export function createPlanTask(
           scansExecuted += 1;
 
           const scanPrompt = buildPlanScanPrompt(prompt, latestDocumentSource, scanIndex, scanCount);
-          const planPhaseTrace = beginPlanPhaseTrace(workerCommand);
+          const planPhaseTrace = beginPlanPhaseTrace(resolvedWorkerCommand);
           const runResult = await dependencies.workerExecutor.runWorker({
-            command: [...workerCommand],
+            command: [...resolvedWorkerCommand],
             prompt: scanPrompt,
             mode,
             transport,

@@ -8,16 +8,22 @@ describe("classifyTaskIntent", () => {
     expect(decision.reason).toContain("explicit");
   });
 
-  it("classifies bracket [confirm] marker as verify-only", () => {
-    const decision = classifyTaskIntent("[confirm] changelog includes migration note");
+  it("classifies confirm: prefix as verify-only", () => {
+    const decision = classifyTaskIntent("confirm: changelog includes migration note");
     expect(decision.intent).toBe("verify-only");
     expect(decision.reason).toContain("explicit");
   });
 
-  it("classifies bracket [check] marker as verify-only", () => {
-    const decision = classifyTaskIntent("[check] all tests pass");
+  it("classifies check: prefix as verify-only", () => {
+    const decision = classifyTaskIntent("check: all tests pass");
     expect(decision.intent).toBe("verify-only");
     expect(decision.reason).toContain("explicit");
+  });
+
+  it("treats [verify] bracket prefix as execute-and-verify", () => {
+    const decision = classifyTaskIntent("[verify] docs are up to date");
+    expect(decision.intent).toBe("execute-and-verify");
+    expect(decision.reason).toBe("default");
   });
 
   it("does not guess intent from verification verbs alone", () => {

@@ -14,6 +14,7 @@ export interface RunBehavior {
 
 export interface WorkerRequirementInput {
   workerCommand: string[];
+  hasConfigWorker: boolean;
   isInlineCli: boolean;
   isRundownTask: boolean;
   shouldVerify: boolean;
@@ -38,6 +39,10 @@ export function resolveRunBehavior(input: RunBehaviorInput): RunBehavior {
 
 export function requiresWorkerCommand(input: WorkerRequirementInput): boolean {
   if (input.workerCommand.length > 0) {
+    return false;
+  }
+
+  if (input.hasConfigWorker) {
     return false;
   }
 

@@ -32,6 +32,7 @@ import type {
   TemplateVarsLoaderPort,
   TraceWriterPort,
   VerificationStore,
+  WorkerConfigPort,
   WorkerExecutorPort,
   WorkingDirectoryPort,
 } from "./domain/ports/index.js";
@@ -55,6 +56,7 @@ import {
   createTaskRepairAdapter,
   createTaskSelectorAdapter,
   createTaskVerificationAdapter,
+  createWorkerConfigAdapter,
   createWorkerExecutorAdapter,
   createWorkingDirectoryAdapter,
 } from "./infrastructure/adapters/index.js";
@@ -115,6 +117,7 @@ export interface AppPorts {
   taskRepair: TaskRepairPort;
   workingDirectory: WorkingDirectoryPort;
   pathOperations: PathOperationsPort;
+  workerConfigPort: WorkerConfigPort;
   templateVarsLoader: TemplateVarsLoaderPort;
   traceWriter: TraceWriterPort;
   output: ApplicationOutputPort;
@@ -160,6 +163,7 @@ function createAppPorts(overrides: Partial<AppPorts> = {}): AppPorts {
     taskRepair,
     workingDirectory,
     pathOperations,
+    workerConfigPort: overrides.workerConfigPort ?? createWorkerConfigAdapter(),
     templateVarsLoader: overrides.templateVarsLoader ?? createFsTemplateVarsLoaderAdapter(),
     traceWriter: overrides.traceWriter ?? createNoopTraceWriter(),
     output: overrides.output ?? createNoopOutputPort(),
@@ -197,6 +201,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
     templateLoader: ports.templateLoader,
     pathOperations: ports.pathOperations,
     templateVarsLoader: ports.templateVarsLoader,
+    workerConfigPort: ports.workerConfigPort,
     artifactStore: ports.artifactStore,
     traceWriter: ports.traceWriter,
     configDir: ports.configDir,
@@ -227,6 +232,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       processRunner: ports.processRunner,
       pathOperations: ports.pathOperations,
       templateVarsLoader: ports.templateVarsLoader,
+      workerConfigPort: ports.workerConfigPort,
       traceWriter: ports.traceWriter,
       configDir: ports.configDir,
       createTraceWriter: (trace, artifactContext) => {
@@ -255,6 +261,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
         return createArtifactTraceWriter(ports, artifactContext);
       },
       templateLoader: ports.templateLoader,
+      workerConfigPort: ports.workerConfigPort,
       pathOperations: ports.pathOperations,
       output: ports.output,
     }),
@@ -296,6 +303,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       artifactStore: ports.artifactStore,
       pathOperations: ports.pathOperations,
       templateVarsLoader: ports.templateVarsLoader,
+      workerConfigPort: ports.workerConfigPort,
       traceWriter: ports.traceWriter,
       configDir: ports.configDir,
       createTraceWriter: (trace, artifactContext) => {

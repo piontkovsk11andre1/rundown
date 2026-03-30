@@ -9,6 +9,7 @@ import {
   type RunTaskDependencies,
   type RunTaskOptions,
 } from "../../src/application/run-task.js";
+import type { WorkerConfig } from "../../src/domain/worker-config.js";
 import { FileLockError } from "../../src/domain/ports/file-lock.js";
 import type { Task } from "../../src/domain/parser.js";
 import type {
@@ -3889,6 +3890,281 @@ describe("run-task exit code behavior with completion side effects", () => {
   });
 });
 
+describe("run-task worker config resolution", () => {
+  it("uses config defaults when --worker is omitted", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "implement feature");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] implement feature\n",
+    });
+    const workerConfig: WorkerConfig = {
+      defaults: {
+        worker: ["opencode", "run"],
+        workerArgs: ["--sandbox", "workspace-write"],
+      },
+    };
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+      workerConfig,
+    });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      workerCommand: [],
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerConfigPort.load).toHaveBeenCalledWith(path.join(cwd, ".rundown"));
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledWith(expect.objectContaining({
+      command: ["opencode", "run", "--sandbox", "workspace-write"],
+    }));
+    expect(events.some((event) => event.kind === "info"
+      && event.message === "Worker: opencode run --sandbox workspace-write (from config defaults)")).toBe(true);
+  });
+
+  it("applies per-command overrides over defaults", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "run command override");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] run command override\n",
+    });
+    const workerConfig: WorkerConfig = {
+      defaults: {
+        worker: ["opencode", "run"],
+        workerArgs: ["--sandbox", "workspace-write"],
+      },
+      commands: {
+        run: {
+          worker: ["agent", "run"],
+          workerArgs: ["--model", "gpt-5.3-codex"],
+        },
+      },
+    };
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+      workerConfig,
+    });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      workerCommand: [],
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledWith(expect.objectContaining({
+      command: ["agent", "run", "--sandbox", "workspace-write", "--model", "gpt-5.3-codex"],
+    }));
+    expect(events.some((event) => event.kind === "info"
+      && event.message === "Worker: agent run --sandbox workspace-write --model gpt-5.3-codex (from config commands.run)")).toBe(true);
+  });
+
+  it("applies frontmatter profile over command-level config", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "execute task");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] execute task\n",
+    });
+    const workerConfig: WorkerConfig = {
+      defaults: {
+        worker: ["opencode", "run"],
+      },
+      commands: {
+        run: {
+          worker: ["agent", "run"],
+          workerArgs: ["--base", "1"],
+        },
+      },
+      profiles: {
+        complex: {
+          worker: ["opencode", "run"],
+          workerArgs: ["--model", "opus-4.6"],
+        },
+      },
+    };
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+      workerConfig,
+    });
+    vi.mocked(dependencies.taskSelector.selectNextTask).mockReturnValue({
+      task,
+      source: "---\nprofile: complex\n---\n\n- [ ] execute task\n",
+      contextBefore: "",
+    });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      workerCommand: [],
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledWith(expect.objectContaining({
+      command: ["opencode", "run", "--base", "1", "--model", "opus-4.6"],
+    }));
+    expect(events.some((event) => event.kind === "info"
+      && event.message === "Worker: opencode run --base 1 --model opus-4.6 (profile \"complex\" via frontmatter)")).toBe(true);
+  });
+
+  it("applies directive profile over frontmatter profile", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "execute task");
+    task.directiveProfile = "fast";
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] execute task\n",
+    });
+    const workerConfig: WorkerConfig = {
+      defaults: {
+        worker: ["opencode", "run"],
+      },
+      commands: {
+        run: {
+          workerArgs: ["--base", "1"],
+        },
+      },
+      profiles: {
+        complex: {
+          workerArgs: ["--model", "opus-4.6"],
+        },
+        fast: {
+          worker: ["agent", "run"],
+          workerArgs: ["--model", "gpt-5.3-codex"],
+        },
+      },
+    };
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+      workerConfig,
+    });
+    vi.mocked(dependencies.taskSelector.selectNextTask).mockReturnValue({
+      task,
+      source: "---\nprofile: complex\n---\n\n- [ ] execute task\n",
+      contextBefore: "",
+    });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      workerCommand: [],
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledWith(expect.objectContaining({
+      command: ["agent", "run", "--base", "1", "--model", "opus-4.6", "--model", "gpt-5.3-codex"],
+    }));
+    expect(events.some((event) => event.kind === "info"
+      && event.message === "Worker: agent run --base 1 --model opus-4.6 --model gpt-5.3-codex (profile \"fast\" via directive)")).toBe(true);
+  });
+
+  it("prioritizes CLI worker command over all config and profile layers", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "execute task");
+    task.directiveProfile = "fast";
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] execute task\n",
+    });
+    const workerConfig: WorkerConfig = {
+      defaults: {
+        worker: ["opencode", "run"],
+        workerArgs: ["--default", "1"],
+      },
+      commands: {
+        run: {
+          workerArgs: ["--run", "1"],
+        },
+      },
+      profiles: {
+        complex: {
+          workerArgs: ["--model", "opus-4.6"],
+        },
+        fast: {
+          workerArgs: ["--model", "gpt-5.3-codex"],
+        },
+      },
+    };
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+      workerConfig,
+    });
+    vi.mocked(dependencies.taskSelector.selectNextTask).mockReturnValue({
+      task,
+      source: "---\nprofile: complex\n---\n\n- [ ] execute task\n",
+      contextBefore: "",
+    });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      workerCommand: ["custom-worker", "start"],
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledWith(expect.objectContaining({
+      command: ["custom-worker", "start"],
+    }));
+    expect(events.some((event) => event.kind === "info" && event.message.startsWith("Worker:"))).toBe(false);
+  });
+
+  it("warns when profile directive appears as a task sub-item", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "execute task");
+    task.subItems.push({ text: "profile: ignored", line: 2, depth: 1 });
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] execute task\n",
+    });
+    const workerConfig: WorkerConfig = {
+      defaults: {
+        worker: ["opencode", "run"],
+      },
+    };
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+      workerConfig,
+    });
+
+    const runTask = createRunTask(dependencies);
+    const code = await runTask(createOptions({
+      source: "tasks.md",
+      verify: false,
+      workerCommand: [],
+    }));
+
+    expect(code).toBe(0);
+    expect(events.some((event) => event.kind === "warn"
+      && event.message === "\"profile: ignored\" as a task sub-item is not supported — use it as a parent list item or in file frontmatter.")).toBe(true);
+  });
+});
+
 describe("run-task lock release on error", () => {
   it("releases locks when execution fails with a non-zero worker exit", async () => {
     const cwd = "/workspace";
@@ -4055,6 +4331,7 @@ describe("run-task --all mode", () => {
         isAbsolute: (p) => path.isAbsolute(p),
       },
       templateVarsLoader: { load: vi.fn(() => ({})) },
+      workerConfigPort: { load: vi.fn(() => undefined) },
       traceWriter: {
         write: vi.fn(),
         flush: vi.fn(),
@@ -4185,6 +4462,7 @@ describe("run-task --all mode", () => {
         isAbsolute: (p) => path.isAbsolute(p),
       },
       templateVarsLoader: { load: vi.fn(() => ({})) },
+      workerConfigPort: { load: vi.fn(() => undefined) },
       traceWriter: {
         write: vi.fn(),
         flush: vi.fn(),
@@ -4344,6 +4622,7 @@ describe("run-task --all mode", () => {
         isAbsolute: (p) => path.isAbsolute(p),
       },
       templateVarsLoader: { load: vi.fn(() => ({})) },
+      workerConfigPort: { load: vi.fn(() => undefined) },
       traceWriter: {
         write: vi.fn(),
         flush: vi.fn(),
@@ -4462,6 +4741,7 @@ describe("run-task --all mode", () => {
         isAbsolute: (p) => path.isAbsolute(p),
       },
       templateVarsLoader: { load: vi.fn(() => ({})) },
+      workerConfigPort: { load: vi.fn(() => undefined) },
       traceWriter: {
         write: vi.fn(),
         flush: vi.fn(),
@@ -4634,6 +4914,7 @@ describe("run-task --all mode", () => {
         isAbsolute: (p) => path.isAbsolute(p),
       },
       templateVarsLoader: { load: vi.fn(() => ({})) },
+      workerConfigPort: { load: vi.fn(() => undefined) },
       traceWriter: {
         write: vi.fn(),
         flush: vi.fn(),
@@ -4748,6 +5029,7 @@ describe("run-task --all mode", () => {
         isAbsolute: (p) => path.isAbsolute(p),
       },
       templateVarsLoader: { load: vi.fn(() => ({})) },
+      workerConfigPort: { load: vi.fn(() => undefined) },
       traceWriter: {
         write: vi.fn(),
         flush: vi.fn(),
@@ -4885,6 +5167,7 @@ describe("run-task --all mode", () => {
         isAbsolute: (p) => path.isAbsolute(p),
       },
       templateVarsLoader: { load: vi.fn(() => ({})) },
+      workerConfigPort: { load: vi.fn(() => undefined) },
       traceWriter: {
         write: vi.fn(),
         flush: vi.fn(),
@@ -5233,6 +5516,7 @@ function createDependencies(options: {
   fileSystem: FileSystem;
   gitClient: GitClient;
   processRunner?: ProcessRunner;
+  workerConfig?: WorkerConfig;
 }): { dependencies: RunTaskDependencies; events: ApplicationOutputEvent[] } {
   const events: ApplicationOutputEvent[] = [];
   const templateLoader: TemplateLoader = { load: vi.fn(() => null) };
@@ -5310,6 +5594,9 @@ function createDependencies(options: {
     },
     templateVarsLoader: {
       load: vi.fn(() => ({})),
+    },
+    workerConfigPort: {
+      load: vi.fn(() => options.workerConfig),
     },
     traceWriter: {
       write: vi.fn(),

@@ -15,6 +15,7 @@ import {
   createRunStartedEvent,
 } from "../domain/trace.js";
 import { runVerifyRepairLoop } from "./verify-repair-loop.js";
+import { resolveWorkerForInvocation } from "./resolve-worker.js";
 import type {
   ArtifactStoreStatus,
   ArtifactRunMetadata,
@@ -28,6 +29,7 @@ import type {
   TemplateLoader,
   TraceWriterPort,
   VerificationStore,
+  WorkerConfigPort,
   WorkingDirectoryPort,
 } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
@@ -70,6 +72,7 @@ export interface ReverifyTaskDependencies {
   createTraceWriter: (trace: boolean, artifactContext: { rootDir: string }) => TraceWriterPort;
   pathOperations: PathOperationsPort;
   templateLoader: TemplateLoader;
+  workerConfigPort: WorkerConfigPort;
   output: ApplicationOutputPort;
 }
 
@@ -133,6 +136,9 @@ export function createReverifyTask(
 
     const cwd = dependencies.workingDirectory.cwd();
     const artifactBaseDir = dependencies.configDir?.configDir;
+    const loadedWorkerConfig = dependencies.configDir?.configDir
+      ? dependencies.workerConfigPort.load(dependencies.configDir.configDir)
+      : undefined;
     const reverifyOneRun = async (
       selectedRun: ArtifactRunMetadata,
     ): Promise<{ exitCode: number; status: ArtifactStoreStatus | null }> => {
@@ -192,15 +198,20 @@ export function createReverifyTask(
         dependencies.pathOperations,
       );
       const promptContext = buildReverifyPromptContext(taskContext, templates.verify, trace);
+      const effectiveWorkerCommand = resolveWorkerForInvocation({
+        commandName: "reverify",
+        workerConfig: loadedWorkerConfig,
+        source: taskContext.source,
+        task: taskContext.task,
+        cliWorkerCommand: workerCommand,
+        fallbackWorkerCommand: selectedRun.workerCommand,
+        emit,
+      });
 
       if (printPrompt) {
         emit({ kind: "text", text: promptContext.verificationPrompt });
         return { exitCode: 0, status: null };
       }
-
-      const effectiveWorkerCommand = workerCommand.length > 0
-        ? workerCommand
-        : selectedRun.workerCommand ?? [];
 
       if (dryRun) {
         emit({ kind: "info", message: "Dry run - would run verification with: " + effectiveWorkerCommand.join(" ") });
@@ -209,7 +220,7 @@ export function createReverifyTask(
       }
 
       if (effectiveWorkerCommand.length === 0) {
-        emit({ kind: "error", message: "No worker command specified. Use --worker <command...> or -- <command>." });
+        emit({ kind: "error", message: "No worker command specified. Use --worker <command...> or -- <command>, or set a default worker in .rundown/config.json." });
         return { exitCode: 1, status: null };
       }
 

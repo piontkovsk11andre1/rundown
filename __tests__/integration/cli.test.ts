@@ -3900,7 +3900,7 @@ describe.sequential("CLI integration", () => {
     expect(result.code).toBe(0);
     const helpOutput = result.stdoutWrites.join("\n");
     const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
-    expect(compactHelpOutput).toContain("Create a .rundown/ directory with default templates (plan, execute, verify, repair). Use --config-dir to control where it is created.");
+    expect(compactHelpOutput).toContain("Create a .rundown/ directory with default templates (plan, execute, verify, repair, trace) plus vars.json and config.json. Use --config-dir to control where it is created.");
   });
 
   it("unlock --help shows source argument", async () => {
@@ -4615,6 +4615,7 @@ describe.sequential("CLI integration", () => {
     expect(fs.existsSync(path.join(workspace, ".rundown", "plan.md"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, ".rundown", "trace.md"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, ".rundown", "vars.json"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, ".rundown", "config.json"))).toBe(true);
     expect(result.logs.some((line) => line.includes("Initialized .rundown/ with default templates."))).toBe(true);
   });
 
@@ -4631,6 +4632,7 @@ describe.sequential("CLI integration", () => {
     expect(fs.existsSync(path.join(customConfigDir, "plan.md"))).toBe(true);
     expect(fs.existsSync(path.join(customConfigDir, "trace.md"))).toBe(true);
     expect(fs.existsSync(path.join(customConfigDir, "vars.json"))).toBe(true);
+    expect(fs.existsSync(path.join(customConfigDir, "config.json"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, ".rundown"))).toBe(false);
   });
 

@@ -73,6 +73,87 @@ describe("runWorker", () => {
     expect(fs.existsSync(capturedPromptFile)).toBe(false);
   });
 
+  it("keeps pre-merged worker args before the prompt file for non-opencode file transport", async () => {
+    let capturedPromptFile = "";
+
+    spawnMock.mockImplementation((_cmd: string, args: string[]) => {
+      const child = new EventEmitter() as EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+      };
+
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      capturedPromptFile = args.at(-1) ?? "";
+
+      queueMicrotask(() => {
+        child.emit("close", 0);
+      });
+
+      return child;
+    });
+
+    const { runWorker } = await import("../../src/infrastructure/runner.js");
+
+    await runWorker({
+      command: ["node", "worker.js", "--model", "gpt-5.3-codex"],
+      prompt: "prompt body",
+      mode: "wait",
+      transport: "file",
+      cwd: workspace,
+    });
+
+    const [cmd, args] = spawnMock.mock.calls[0] as [string, string[]];
+    expect(cmd).toBe("node");
+    expect(args).toEqual(["worker.js", "--model", "gpt-5.3-codex", capturedPromptFile]);
+    expect(capturedPromptFile).toMatch(/\.rundown[\\/]runs[\\/]run-.*[\\/]01-worker[\\/]prompt\.md$/);
+  });
+
+  it("keeps pre-merged worker args before --file prompt path for opencode run", async () => {
+    let capturedPromptFile = "";
+
+    spawnMock.mockImplementation((_cmd: string, args: string[]) => {
+      const child = new EventEmitter() as EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+      };
+
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+
+      const fileFlagIndex = args.indexOf("--file");
+      capturedPromptFile = args[fileFlagIndex + 1] ?? "";
+
+      queueMicrotask(() => {
+        child.emit("close", 0);
+      });
+
+      return child;
+    });
+
+    const { runWorker } = await import("../../src/infrastructure/runner.js");
+
+    await runWorker({
+      command: ["opencode", "run", "--model", "opus-4.6"],
+      prompt: "prompt body",
+      mode: "wait",
+      transport: "file",
+      cwd: workspace,
+    });
+
+    const [cmd, args] = spawnMock.mock.calls[0] as [string, string[]];
+    expect(cmd).toBe("opencode");
+    expect(args).toEqual([
+      "run",
+      "--model",
+      "opus-4.6",
+      "Read the attached Markdown file first. It contains the full task instructions and context for this run.",
+      "--file",
+      capturedPromptFile,
+    ]);
+    expect(capturedPromptFile).toMatch(/\.rundown[\\/]runs[\\/]run-.*[\\/]01-worker[\\/]prompt\.md$/);
+  });
+
   it("keeps arg transport inline for opencode run", async () => {
     spawnMock.mockImplementation((_cmd: string, _args: string[]) => {
       const child = new EventEmitter() as EventEmitter & {

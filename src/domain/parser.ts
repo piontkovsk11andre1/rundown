@@ -14,6 +14,7 @@ import {
   gfmTaskListItemFromMarkdown,
 } from "mdast-util-gfm-task-list-item";
 import type { ListItem, Parent, RootContent } from "mdast";
+import type { TaskIntent } from "./task-intent.js";
 
 /** Represents a single task extracted from a Markdown document. */
 export interface Task {
@@ -47,6 +48,10 @@ export interface Task {
   children: Task[];
   /** Nested non-checkbox list items. */
   subItems: SubItem[];
+  /** Intent override inherited from directive parents. */
+  intent?: TaskIntent;
+  /** Profile inherited from directive parent list items. */
+  directiveProfile?: string;
 }
 
 /** Represents a plain (non-checkbox) list item nested under a task. */
@@ -75,9 +80,22 @@ export interface MarkdownSection {
   endLineIndexExclusive: number;
 }
 
+export interface FrontmatterData {
+  profile?: string;
+}
+
 const CLI_PREFIX = /^cli:\s*/i;
 const RUNDOWN_PREFIX = /^rundown:\s*/i;
 const ATX_HEADING_PATTERN = /^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/;
+const FRONTMATTER_BLOCK_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---/;
+const FRONTMATTER_KEY_VALUE_PATTERN = /^\s*([^:#\s][^:]*)\s*:\s*(.*)$/;
+const PROFILE_DIRECTIVE_PATTERN = /^profile\s*:\s*(.+)$/i;
+const VERIFY_DIRECTIVE_PATTERN = /^(?:verify|confirm|check)\s*:\s*$/i;
+
+interface DirectiveContext {
+  directiveProfile?: string;
+  intent?: TaskIntent;
+}
 
 /**
  * Parse a Markdown source string and return all task list items found.
@@ -92,7 +110,7 @@ export function parseTasks(source: string, file: string = ""): Task[] {
   });
 
   const tasks: Task[] = [];
-  walkForTasks(tree, tasks, file, 0, undefined);
+  walkForTasks(tree, tasks, file, 0, undefined, {});
   return tasks;
 }
 
@@ -114,6 +132,31 @@ export function hasTodoItems(source: string): boolean {
 /** Count TODO items globally across a Markdown document. */
 export function countTodoItems(source: string): number {
   return extractTodoItems(source).length;
+}
+
+export function extractFrontmatter(source: string): FrontmatterData {
+  const match = source.match(FRONTMATTER_BLOCK_PATTERN);
+  if (!match) {
+    return {};
+  }
+
+  const block = match[1] ?? "";
+  const result: FrontmatterData = {};
+
+  for (const rawLine of block.split(/\r?\n/)) {
+    const keyValueMatch = rawLine.match(FRONTMATTER_KEY_VALUE_PATTERN);
+    if (!keyValueMatch) {
+      continue;
+    }
+
+    const key = keyValueMatch[1]?.trim().toLowerCase();
+    const value = keyValueMatch[2]?.trim();
+    if (key === "profile" && value) {
+      result.profile = value;
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -179,8 +222,10 @@ function walkForTasks(
   file: string,
   depth: number,
   parentTask: Task | undefined,
+  directiveContext: DirectiveContext,
 ): void {
   let currentParentTask = parentTask;
+  let nextDirectiveContext = directiveContext;
 
   if (isListItem(node) && node.checked !== null && node.checked !== undefined) {
     const text = extractText(node);
@@ -204,6 +249,13 @@ function walkForTasks(
       subItems: [],
     };
 
+    if (directiveContext.intent) {
+      task.intent = directiveContext.intent;
+    }
+    if (directiveContext.directiveProfile) {
+      task.directiveProfile = directiveContext.directiveProfile;
+    }
+
     if (isInlineCli) {
       task.cliCommand = text.replace(CLI_PREFIX, "").trim();
     }
@@ -218,23 +270,55 @@ function walkForTasks(
 
     tasks.push(task);
     currentParentTask = task;
-  } else if (isListItem(node) && currentParentTask) {
+  } else if (isListItem(node)) {
     const text = extractText(node);
-    if (text.length > 0) {
+    if (currentParentTask && text.length > 0) {
       currentParentTask.subItems.push({
         text,
         line: node.position?.start.line ?? 0,
         depth,
       });
     }
+
+    const directive = parseDirectiveParent(text);
+    const isDirectProfileSubItemOfTask = Boolean(
+      currentParentTask
+      && directive.directiveProfile
+      && depth === currentParentTask.depth + 1,
+    );
+
+    if (directive.intent || (directive.directiveProfile && !isDirectProfileSubItemOfTask)) {
+      nextDirectiveContext = {
+        intent: directive.intent ?? directiveContext.intent,
+        directiveProfile: isDirectProfileSubItemOfTask
+          ? directiveContext.directiveProfile
+          : (directive.directiveProfile ?? directiveContext.directiveProfile),
+      };
+    }
   }
 
   if ("children" in node) {
     const nextDepth = isListItem(node) ? depth + 1 : depth;
     for (const child of (node as Parent).children) {
-      walkForTasks(child, tasks, file, nextDepth, currentParentTask);
+      walkForTasks(child, tasks, file, nextDepth, currentParentTask, nextDirectiveContext);
     }
   }
+}
+
+function parseDirectiveParent(text: string): DirectiveContext {
+  const profileMatch = text.match(PROFILE_DIRECTIVE_PATTERN);
+  if (profileMatch) {
+    const profileName = profileMatch[1]?.trim();
+    if (profileName) {
+      return { directiveProfile: profileName };
+    }
+  }
+
+  if (VERIFY_DIRECTIVE_PATTERN.test(text)) {
+    return { intent: "verify-only" };
+  }
+
+  return {};
 }
 
 function isListItem(node: unknown): node is ListItem {

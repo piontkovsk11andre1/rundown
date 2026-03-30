@@ -49,6 +49,7 @@ describe("requiresWorkerCommand", () => {
   it("requires a worker for normal agent tasks", () => {
     expect(requiresWorkerCommand({
       workerCommand: [],
+      hasConfigWorker: false,
       isInlineCli: false,
       isRundownTask: false,
       shouldVerify: false,
@@ -59,6 +60,7 @@ describe("requiresWorkerCommand", () => {
   it("does not require a worker for inline cli without validation", () => {
     expect(requiresWorkerCommand({
       workerCommand: [],
+      hasConfigWorker: false,
       isInlineCli: true,
       isRundownTask: false,
       shouldVerify: false,
@@ -69,6 +71,7 @@ describe("requiresWorkerCommand", () => {
   it("requires a worker for verify-only mode", () => {
     expect(requiresWorkerCommand({
       workerCommand: [],
+      hasConfigWorker: false,
       isInlineCli: true,
       isRundownTask: false,
       shouldVerify: true,
@@ -79,6 +82,7 @@ describe("requiresWorkerCommand", () => {
   it("does not require a worker when one is provided", () => {
     expect(requiresWorkerCommand({
       workerCommand: ["opencode", "run"],
+      hasConfigWorker: false,
       isInlineCli: false,
       isRundownTask: false,
       shouldVerify: true,
@@ -89,6 +93,7 @@ describe("requiresWorkerCommand", () => {
   it("does not require a worker for rundown tasks", () => {
     expect(requiresWorkerCommand({
       workerCommand: [],
+      hasConfigWorker: false,
       isInlineCli: false,
       isRundownTask: true,
       shouldVerify: true,
@@ -99,10 +104,22 @@ describe("requiresWorkerCommand", () => {
   it("does not require a worker for rundown tasks during execution", () => {
     expect(requiresWorkerCommand({
       workerCommand: [],
+      hasConfigWorker: false,
       isInlineCli: false,
       isRundownTask: true,
       shouldVerify: false,
       onlyVerify: false,
+    })).toBe(false);
+  });
+
+  it("does not require a worker when one is available from config", () => {
+    expect(requiresWorkerCommand({
+      workerCommand: [],
+      hasConfigWorker: true,
+      isInlineCli: false,
+      isRundownTask: false,
+      shouldVerify: true,
+      onlyVerify: true,
     })).toBe(false);
   });
 });

@@ -1,4 +1,5 @@
 import {
+  DEFAULT_CONFIG_CONTENT,
   DEFAULT_TRACE_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
@@ -66,6 +67,7 @@ export function createInitProject(
     write("plan.md", DEFAULT_PLAN_TEMPLATE);
     write("trace.md", DEFAULT_TRACE_TEMPLATE);
     write("vars.json", DEFAULT_VARS_FILE_CONTENT);
+    write("config.json", DEFAULT_CONFIG_CONTENT);
 
     emit({ kind: "success", message: `Initialized ${displayConfigDir}/ with default templates.` });
     return 0;

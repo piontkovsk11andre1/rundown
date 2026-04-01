@@ -600,7 +600,7 @@ program
   .action(withCliAction((source: string) => getApp().unlockTask({ source })));
 program
   .command("init")
-  .description("Create a .rundown/ directory with default templates (plan, execute, verify, repair, trace) plus vars.json and config.json. Use --config-dir to control where it is created.")
+  .description("Create a .rundown/ directory with default templates (plan, execute, verify, repair, trace) plus vars.json/config.json initialized as empty JSON objects. Use --config-dir to control where it is created.")
   .action(withCliAction(() => getApp().initProject()));
 function collectOption(value: string, previous: string[]): string[] {
   return [...previous, value];

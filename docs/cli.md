@@ -451,7 +451,7 @@ Each line is one JSON object with these stable fields:
 
 ### `rundown init`
 
-Create `.rundown/` with default templates and `vars.json`.
+Create `.rundown/` with default templates, plus `vars.json` and `config.json` initialized as empty JSON objects (`{}`).
 
 Example:
 
@@ -473,6 +473,8 @@ rundown run <source> --worker <command...>
 If both are provided, `--worker` takes precedence.
 
 `--worker` is optional when rundown can resolve a worker from `.rundown/config.json`.
+
+With a freshly initialized empty config (`{}`), no worker is resolved by default. In that case, provide one explicitly using either `--worker <command...>` or `-- <command>`.
 
 Worker resolution cascade (lowest to highest priority):
 
@@ -667,7 +669,7 @@ Behavior notes:
 - Fenced `cli` blocks do not run during `--dry-run`; prompts remain unexpanded.
 - For inline `cli:` tasks on `run`, `--print-prompt` prints the inline command and exits without executing it.
 - Worker command validation still applies before execution for flows that require a worker command. Invalid or missing worker command input can still return exit code `1`.
-- If no CLI worker is provided and no worker is resolvable from config, the command exits `1` with guidance to configure `.rundown/config.json`.
+- If no CLI worker is provided and no worker is resolvable from config, the command exits `1` with: `No worker command available: .rundown/config.json has no configured worker, and no CLI worker was provided. Use --worker <command...> or -- <command>.`
 
 Examples:
 

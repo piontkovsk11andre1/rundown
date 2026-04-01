@@ -14,6 +14,10 @@ This lets you:
 
 Path: `<config-dir>/config.json` (typically `.rundown/config.json`).
 
+When created by `rundown init`, this file starts as an empty JSON object (`{}`).
+
+That means no default worker is configured until you add one. Worker-required commands (`run`, `plan`, `discuss`, `reverify`) must receive a worker explicitly via `--worker <command...>` or `-- <command>` when config is empty.
+
 Example:
 
 ```json

@@ -238,6 +238,8 @@ What happens:
 
 ## 16. Layered worker profiles from config
 
+Fresh `rundown init` writes `.rundown/config.json` as `{}`. With that empty default, pass a worker explicitly (`--worker ...` or `-- ...`) until you configure one.
+
 Example `.rundown/config.json`:
 
 ```json

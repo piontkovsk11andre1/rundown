@@ -123,6 +123,29 @@ describe("createWorkerConfigAdapter", () => {
     });
   });
 
+  it("accepts config with defaults but no worker field", () => {
+    const configDir = makeTempConfigDir();
+    writeConfig(
+      configDir,
+      JSON.stringify({
+        defaults: {
+          workerArgs: ["--model", "gpt-5.3-codex"],
+        },
+      }),
+    );
+
+    const adapter = createWorkerConfigAdapter();
+
+    expect(adapter.load(configDir)).toEqual({
+      defaults: {
+        worker: undefined,
+        workerArgs: ["--model", "gpt-5.3-codex"],
+      },
+      commands: undefined,
+      profiles: undefined,
+    });
+  });
+
   it("loads full config with defaults, commands, and profiles", () => {
     const configDir = makeTempConfigDir();
     writeConfig(

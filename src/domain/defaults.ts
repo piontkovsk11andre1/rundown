@@ -148,31 +148,10 @@ After making corrections, the task will be validated again.
 {{traceInstructions}}
 `;
 
-export const DEFAULT_VARS_FILE_CONTENT = `{
-	"branch": "main",
-	"ticket": "ENG-42"
-}
+export const DEFAULT_VARS_FILE_CONTENT = `{}
 `;
 
-export const DEFAULT_CONFIG_CONTENT = `{
-  "defaults": {
-    "worker": ["opencode", "run"]
-  },
-  "commands": {
-    "plan": {
-      "worker": ["opencode", "run"],
-      "workerArgs": ["--model", "opus-4.6"]
-    }
-  },
-  "profiles": {
-    "complex": {
-      "workerArgs": ["--model", "opus-4.6"]
-    },
-    "fast": {
-      "workerArgs": ["--model", "gpt-5.3-codex"]
-    }
-  }
-}
+export const DEFAULT_CONFIG_CONTENT = `{}
 `;
 
 export const DEFAULT_PLAN_TEMPLATE = `\

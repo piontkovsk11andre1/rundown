@@ -244,7 +244,7 @@ export function createPlanTask(
       if (resolvedWorkerCommand.length === 0) {
         emit({
           kind: "error",
-          message: "No worker command specified. Use --worker <command...> or -- <command>, or set a default worker in .rundown/config.json.",
+          message: "No worker command available: .rundown/config.json has no configured worker, and no CLI worker was provided. Use --worker <command...> or -- <command>.",
         });
         return 1;
       }

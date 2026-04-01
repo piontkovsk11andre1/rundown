@@ -334,7 +334,10 @@ export function createReverifyTask(
       }
 
       if (effectiveWorkerCommand.length === 0) {
-        emit({ kind: "error", message: "No worker command specified. Use --worker <command...> or -- <command>, or set a default worker in .rundown/config.json." });
+        emit({
+          kind: "error",
+          message: "No worker command available: .rundown/config.json has no configured worker, and no CLI worker was provided. Use --worker <command...> or -- <command>.",
+        });
         return { exitCode: 1, status: null };
       }
 

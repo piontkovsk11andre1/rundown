@@ -243,6 +243,64 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("--flag"))).toBe(true);
   });
 
+  it("run accepts --worker when .rundown/config.json is empty", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] Write docs\n", "utf-8");
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, ".rundown", "config.json"), "{}\n", "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--dry-run",
+      "--worker",
+      "opencode",
+      "run",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Dry run — would run: opencode run"))).toBe(true);
+  });
+
+  it("run accepts -- worker args when .rundown/config.json is empty", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] Write docs\n", "utf-8");
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, ".rundown", "config.json"), "{}\n", "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--dry-run",
+      "--",
+      "opencode",
+      "run",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Dry run — would run: opencode run"))).toBe(true);
+  });
+
+  it("run uses worker from .rundown/config.json when no CLI worker override is provided", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] Write docs\n", "utf-8");
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, ".rundown", "config.json"), JSON.stringify({
+      defaults: {
+        worker: ["opencode", "run"],
+      },
+    }, null, 2), "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--dry-run",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Dry run — would run: opencode run"))).toBe(true);
+  });
+
   it("run rejects unknown hide-agent-output variants", async () => {
     const workspace = makeTempWorkspace();
     fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] Write docs\n", "utf-8");
@@ -1109,7 +1167,7 @@ describe.sequential("CLI integration", () => {
     ], workspace);
 
     expect(result.code).toBe(1);
-    expect(result.errors.some((line) => line.includes("No worker command specified"))).toBe(true);
+    expect(result.errors.some((line) => line.includes("No worker command available"))).toBe(true);
   });
 
   it("reverify returns 1 for invalid repair-attempts value", async () => {
@@ -2083,7 +2141,7 @@ describe.sequential("CLI integration", () => {
     ], workspace);
 
     expect(result.code).toBe(1);
-    expect(result.errors.some((line) => line.includes("No worker command specified"))).toBe(true);
+    expect(result.errors.some((line) => line.includes("No worker command available"))).toBe(true);
   });
 
   it("run allows disabling default verification with --no-verify", async () => {
@@ -4270,7 +4328,7 @@ describe.sequential("CLI integration", () => {
     expect(result.code).toBe(0);
     const helpOutput = result.stdoutWrites.join("\n");
     const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
-    expect(compactHelpOutput).toContain("Create a .rundown/ directory with default templates (plan, execute, verify, repair, trace) plus vars.json and config.json. Use --config-dir to control where it is created.");
+    expect(compactHelpOutput).toContain("Create a .rundown/ directory with default templates (plan, execute, verify, repair, trace) plus vars.json/config.json initialized as empty JSON objects. Use --config-dir to control where it is created.");
   });
 
   it("unlock --help shows source argument", async () => {
@@ -5024,6 +5082,8 @@ describe.sequential("CLI integration", () => {
     expect(fs.existsSync(path.join(workspace, ".rundown", "trace.md"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, ".rundown", "vars.json"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, ".rundown", "config.json"))).toBe(true);
+    expect(fs.readFileSync(path.join(workspace, ".rundown", "config.json"), "utf-8")).toBe("{}\n");
+    expect(fs.readFileSync(path.join(workspace, ".rundown", "vars.json"), "utf-8")).toBe("{}\n");
     expect(result.logs.some((line) => line.includes("Initialized .rundown/ with default templates."))).toBe(true);
   });
 
@@ -5041,6 +5101,8 @@ describe.sequential("CLI integration", () => {
     expect(fs.existsSync(path.join(customConfigDir, "trace.md"))).toBe(true);
     expect(fs.existsSync(path.join(customConfigDir, "vars.json"))).toBe(true);
     expect(fs.existsSync(path.join(customConfigDir, "config.json"))).toBe(true);
+    expect(fs.readFileSync(path.join(customConfigDir, "config.json"), "utf-8")).toBe("{}\n");
+    expect(fs.readFileSync(path.join(customConfigDir, "vars.json"), "utf-8")).toBe("{}\n");
     expect(fs.existsSync(path.join(workspace, ".rundown"))).toBe(false);
   });
 

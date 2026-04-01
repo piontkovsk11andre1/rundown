@@ -88,6 +88,17 @@ This creates:
   plan.md
   trace.md
   vars.json
+  config.json
+```
+
+`rundown init` now writes both `.rundown/vars.json` and `.rundown/config.json` as empty JSON objects (`{}`).
+
+Because the default config is empty, worker-required commands (`run`, `plan`, `discuss`, `reverify`) need an explicit worker command until you configure one in `.rundown/config.json`:
+
+```bash
+rundown run roadmap.md -- opencode run
+# or
+rundown run roadmap.md --worker opencode run
 ```
 
 Add lockfiles to your repo ignore rules so runtime file locks are never committed:

@@ -1502,7 +1502,7 @@ describe("reverify-task", () => {
     expect(code).toBe(1);
     expect(vi.mocked(artifactStore.createContext)).not.toHaveBeenCalled();
     expect(vi.mocked(taskVerification.verify)).not.toHaveBeenCalled();
-    expect(events.some((event) => event.kind === "error" && event.message.includes("No worker command specified"))).toBe(true);
+    expect(events.some((event) => event.kind === "error" && event.message.includes("No worker command available"))).toBe(true);
   });
 
   it("returns 3 when historical task metadata cannot be resolved in markdown", async () => {

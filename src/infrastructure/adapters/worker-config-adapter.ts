@@ -29,8 +29,8 @@ function validateWorkerProfile(value: unknown, keyPath: string): WorkerProfile {
   }
 
   return {
-    worker: worker ? [...worker] : undefined,
-    workerArgs: workerArgs ? [...workerArgs] : undefined,
+    worker: worker === undefined ? undefined : [...worker],
+    workerArgs: workerArgs === undefined ? undefined : [...workerArgs],
   };
 }
 

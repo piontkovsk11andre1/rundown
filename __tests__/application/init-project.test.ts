@@ -21,7 +21,11 @@ describe("init-project", () => {
     );
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
       "/workspace/.rundown/config.json",
-      expect.any(String),
+      "{}\n",
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/.rundown/vars.json",
+      "{}\n",
     );
   });
 
@@ -46,7 +50,11 @@ describe("init-project", () => {
     );
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
       "/workspace/config/.rundown-custom/config.json",
-      expect.any(String),
+      "{}\n",
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/config/.rundown-custom/vars.json",
+      "{}\n",
     );
   });
 });

@@ -4097,13 +4097,13 @@ describe.sequential("CLI integration", () => {
     expect(savedRuns.every((run) => run.status === "completed")).toBe(true);
   });
 
-  it("runall completes multiple inline CLI tasks sequentially", async () => {
+  it("all completes multiple inline CLI tasks sequentially", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");
     fs.writeFileSync(roadmapPath, "- [ ] cli: echo one\n- [ ] cli: echo two\n- [ ] cli: echo three\n", "utf-8");
 
     const result = await runCli([
-      "runall",
+      "all",
       "roadmap.md",
       "--no-verify",
     ], workspace);
@@ -4282,10 +4282,10 @@ describe.sequential("CLI integration", () => {
     expect(compactHelpOutput).toContain("--force-unlock");
   });
 
-  it("runall --help works and includes --all option", async () => {
+  it("all --help works and includes --all option", async () => {
     const workspace = makeTempWorkspace();
 
-    const result = await runCli(["runall", "--help"], workspace);
+    const result = await runCli(["all", "--help"], workspace);
 
     expect(result.code).toBe(0);
     const helpOutput = result.stdoutWrites.join("\n");

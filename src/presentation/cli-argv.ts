@@ -57,11 +57,11 @@ export function splitWorkerFromSeparator(argv: string[]): { rundownArgs: string[
 }
 
 /**
- * Rewrites the legacy `runall` command alias to `run --all`.
+ * Rewrites the `all` command alias to `run --all`.
  *
  * Rewriting applies only to the first positional command token before `--`.
  */
-export function rewriteRunallAlias(argv: string[]): string[] {
+export function rewriteAllAlias(argv: string[]): string[] {
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
 
@@ -76,7 +76,7 @@ export function rewriteRunallAlias(argv: string[]): string[] {
     }
 
     // Replace only the command token and preserve all surrounding arguments.
-    if (token === "runall") {
+    if (token === "all") {
       return [...argv.slice(0, i), "run", "--all", ...argv.slice(i + 1)];
     }
 

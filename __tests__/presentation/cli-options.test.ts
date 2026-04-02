@@ -234,10 +234,10 @@ describe("CLI run option normalization", () => {
     expect(compactHelpOutput).toContain("--clean Shorthand for --redo --reset-after");
   });
 
-  it("expands runall alias to run --all", async () => {
+  it("expands all alias to run --all", async () => {
     const runTask = vi.fn(async () => 0);
     const call = await invokeRunAndCaptureCall([
-      "runall",
+      "all",
       "tasks.md",
       "--worker",
       "opencode",
@@ -248,10 +248,10 @@ describe("CLI run option normalization", () => {
     expect(call.runAll).toBe(true);
   });
 
-  it("parses runall with --worker echo and enables runAll", async () => {
+  it("parses all with --worker echo and enables runAll", async () => {
     const runTask = vi.fn(async () => 0);
     const call = await invokeRunAndCaptureCall([
-      "runall",
+      "all",
       "tasks.md",
       "--worker",
       "echo",
@@ -262,10 +262,10 @@ describe("CLI run option normalization", () => {
     expect(call.runAll).toBe(true);
   });
 
-  it("accepts run options when using runall alias", async () => {
+  it("accepts run options when using all alias", async () => {
     const runTask = vi.fn(async () => 0);
     const call = await invokeRunAndCaptureCall([
-      "runall",
+      "all",
       "tasks.md",
       "--verify",
       "--keep-artifacts",
@@ -1102,8 +1102,8 @@ describe("CLI invocation logging context", () => {
     expect(context.command).toBe("rundown");
   });
 
-  it("records run command in invocation context for runall alias", async () => {
-    const context = await invokeCliAndCaptureLoggedContext(["runall", "tasks.md", "--worker", "opencode", "run"]);
+  it("records run command in invocation context for all alias", async () => {
+    const context = await invokeCliAndCaptureLoggedContext(["all", "tasks.md", "--worker", "opencode", "run"]);
 
     expect(context.command).toBe("run");
     expect(context.argv).toEqual(["run", "--all", "tasks.md", "--worker", "opencode", "run"]);

@@ -20,7 +20,7 @@ import {
   isCliExitSignal,
   readCliVersion,
   resolveInvocationCommand,
-  rewriteRunallAlias,
+  rewriteAllAlias,
   splitWorkerFromSeparator,
   terminate,
 } from "./cli-argv.js";
@@ -113,7 +113,7 @@ program
   .option("--on-complete <command>", "Run a shell command after successful task completion")
   .option("--on-fail <command>", "Run a shell command when a task fails (execution or verification failure)")
   .option("--hide-agent-output", "Hide worker stdout/stderr during execution; show only rundown status messages.", false)
-  .option("--all", "Run all tasks sequentially instead of stopping after one (alias: runall)", false)
+  .option("--all", "Run all tasks sequentially instead of stopping after one (alias: all)", false)
   .option("--redo", "Reset all checkboxes in the source file before running", false)
   .option("--reset-after", "Reset all checkboxes in the source file after the run completes", false)
   .option("--clean", "Shorthand for --redo --reset-after", false)
@@ -330,7 +330,7 @@ function withCliAction<Args extends unknown[]>(
  */
 export async function parseCliArgs(argv: string[]): Promise<void> {
   // Normalize legacy aliases before any option parsing occurs.
-  const rewrittenArgv = rewriteRunallAlias(argv);
+  const rewrittenArgv = rewriteAllAlias(argv);
   // Split rundown-owned arguments from downstream worker arguments after `--`.
   const { rundownArgs, workerFromSeparator: workerCommandArgs } = splitWorkerFromSeparator(rewrittenArgv);
 

@@ -3,6 +3,22 @@ import type { SortMode } from "../domain/sorting.js";
 import { DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS } from "../domain/ports/command-executor.js";
 import fs from "node:fs";
 
+type CliOptionMap = Record<string, string | string[] | boolean>;
+
+export interface SharedWorkerRuntimeOptions {
+  transport: PromptTransport;
+  keepArtifacts: boolean;
+  showAgentOutput: boolean;
+  trace: boolean;
+  varsFileOption: string | boolean | undefined;
+  cliTemplateVarArgs: string[];
+  workerCommand: string[];
+  forceUnlock: boolean;
+  ignoreCliBlock: boolean;
+  cliBlockTimeoutMs: number;
+  configDirOption?: string;
+}
+
 // Supported prompt transport backends accepted by the CLI.
 const PROMPT_TRANSPORTS: readonly PromptTransport[] = ["file", "arg"];
 // Supported sort modes for command output ordering.
@@ -78,6 +94,46 @@ function parseIntOption<AllowUndefined extends boolean>(
  */
 export function collectOption(value: string, previous: string[]): string[] {
   return [...previous, value];
+}
+
+/**
+ * Resolves worker command arguments from either parsed CLI options or the `--` separator payload.
+ */
+export function resolveWorkerCommand(
+  worker: string | string[] | boolean | undefined,
+  getWorkerFromSeparator: () => string[],
+): string[] {
+  if (Array.isArray(worker)) {
+    return worker;
+  }
+
+  if (typeof worker === "string") {
+    return [worker];
+  }
+
+  return getWorkerFromSeparator();
+}
+
+/**
+ * Normalizes runtime and worker options shared by `research`, `plan`, and `make` workflows.
+ */
+export function resolveSharedWorkerRuntimeOptions(
+  opts: CliOptionMap,
+  getWorkerFromSeparator: () => string[],
+): SharedWorkerRuntimeOptions {
+  return {
+    transport: parsePromptTransport(opts.transport as string | undefined),
+    keepArtifacts: Boolean(opts.keepArtifacts as boolean | undefined),
+    showAgentOutput: resolveShowAgentOutputOption(opts),
+    trace: Boolean(opts.trace as boolean | undefined),
+    varsFileOption: opts.varsFile as string | boolean | undefined,
+    cliTemplateVarArgs: (opts.var as string[] | undefined) ?? [],
+    workerCommand: resolveWorkerCommand(opts.worker, getWorkerFromSeparator),
+    forceUnlock: Boolean(opts.forceUnlock as boolean | undefined),
+    ignoreCliBlock: resolveIgnoreCliBlockFlag(opts),
+    cliBlockTimeoutMs: parseCliBlockTimeout(opts.cliBlockTimeout as string | undefined),
+    configDirOption: normalizeOptionalString(opts.configDir),
+  };
 }
 
 /**
@@ -201,6 +257,51 @@ export function resolveResearchMarkdownFile(markdownFiles: string[]): string {
   }
 
   return markdownFile;
+}
+
+/**
+ * Validates and resolves the target Markdown file expected by the `make` command.
+ */
+export function resolveMakeMarkdownFile(markdownFile: string): string {
+  const resolvedMarkdownFile = resolveSingleMarkdownFile({
+    commandName: "make",
+    usage: "rundown make <seed-text> <markdown-file> [options]",
+    invalidPathLabel: "make",
+    markdownFiles: [markdownFile],
+  });
+
+  if (containsGlobPattern(resolvedMarkdownFile)) {
+    throw new Error(
+      "Invalid make document path: "
+        + resolvedMarkdownFile
+        + ". The `make` command requires exactly one non-directory Markdown file and does not accept directory or glob inputs.",
+    );
+  }
+
+  if (!fs.existsSync(resolvedMarkdownFile)) {
+    return resolvedMarkdownFile;
+  }
+
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(resolvedMarkdownFile);
+  } catch {
+    throw new Error(
+      "Invalid make document path: "
+        + resolvedMarkdownFile
+        + ". The `make` command requires exactly one non-directory Markdown file and cannot read this path.",
+    );
+  }
+
+  if (stats.isDirectory()) {
+    throw new Error(
+      "Invalid make document path: "
+        + resolvedMarkdownFile
+        + ". The `make` command requires exactly one non-directory Markdown file and does not accept directory or glob inputs.",
+    );
+  }
+
+  return resolvedMarkdownFile;
 }
 
 interface ResolveSingleMarkdownFileOptions {
@@ -332,4 +433,12 @@ export function resolveNoRepairFlag(opts: Record<string, string | string[] | boo
 export function resolveIgnoreCliBlockFlag(opts: Record<string, string | string[] | boolean>): boolean {
   const ignoreCliBlockOpt = opts.ignoreCliBlock as boolean | undefined;
   return ignoreCliBlockOpt === true;
+}
+
+/**
+ * Resolves the agent-output visibility option.
+ */
+export function resolveShowAgentOutputOption(opts: Record<string, string | string[] | boolean>): boolean {
+  const showAgentOutputOpt = opts.showAgentOutput as boolean | undefined;
+  return showAgentOutputOpt === true;
 }

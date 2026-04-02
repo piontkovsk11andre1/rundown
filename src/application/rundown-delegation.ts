@@ -51,7 +51,7 @@ export function buildDelegatedRundownArgs(
     delegated.push("--keep-artifacts");
   }
 
-  if (!hasLongOption(delegated, "--show-agent-output") && options.parentShowAgentOutput) {
+  if (!hasLongOptionVariant(delegated, ["--show-agent-output", "--no-show-agent-output"]) && options.parentShowAgentOutput) {
     delegated.push("--show-agent-output");
   }
 

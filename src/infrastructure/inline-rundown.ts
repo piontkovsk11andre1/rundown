@@ -150,7 +150,7 @@ function buildForwardedRunArgs(args: string[], options: RundownTaskOptions | und
   const hasWorkerOverride = hasLongOption(forwarded, "--worker");
   const hasTransportOverride = hasLongOption(forwarded, "--transport");
   const hasKeepArtifactsOverride = hasLongOption(forwarded, "--keep-artifacts");
-  const hasShowAgentOutputOverride = hasLongOption(forwarded, "--show-agent-output");
+  const hasShowAgentOutputOverride = hasLongOptionVariant(forwarded, ["--show-agent-output", "--no-show-agent-output"]);
   const hasIgnoreCliBlockOverride = hasLongOption(forwarded, "--ignore-cli-block");
   const hasVerifyOverride = hasLongOptionVariant(forwarded, ["--verify", "--no-verify"]);
   const hasNoRepairOverride = hasLongOption(forwarded, "--no-repair");

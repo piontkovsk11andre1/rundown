@@ -43,6 +43,32 @@ describe("rundown-delegation", () => {
     ]);
   });
 
+  it("keeps explicit delegated --no-show-agent-output over parent default", () => {
+    const delegated = buildDelegatedRundownArgs(["docs/tasks.md", "--no-show-agent-output"], {
+      parentWorkerCommand: ["opencode", "run"],
+      parentTransport: "file",
+      parentKeepArtifacts: false,
+      parentShowAgentOutput: true,
+      parentIgnoreCliBlock: false,
+      parentVerify: true,
+      parentNoRepair: false,
+      parentRepairAttempts: 1,
+    });
+
+    expect(delegated).toEqual([
+      "docs/tasks.md",
+      "--no-show-agent-output",
+      "--worker",
+      "opencode",
+      "run",
+      "--transport",
+      "file",
+      "--verify",
+      "--repair-attempts",
+      "1",
+    ]);
+  });
+
   it("resolves delegated target and checks path candidates", () => {
     expect(resolveDelegatedRundownTargetArg(["docs/tasks.md", "--verify"])).toBe("docs/tasks.md");
     expect(resolveDelegatedRundownTargetArg(["--verify"])).toBeNull();

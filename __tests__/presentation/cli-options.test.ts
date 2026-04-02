@@ -1508,6 +1508,619 @@ describe("CLI log option normalization", () => {
 });
 
 describe("CLI plan and utility command normalization", () => {
+  it("make creates file then runs research and plan with forwarded options", async () => {
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-success-"));
+    const markdownFile = path.join(tempRoot, "8. Do something.md");
+    const callOrder: string[] = [];
+
+    researchTask.mockImplementationOnce(async (...args: unknown[]) => {
+      const call = args[0] as { source: string };
+      callOrder.push("research");
+      expect(call.source).toBe(markdownFile);
+      expect(fs.readFileSync(markdownFile, "utf8")).toBe("please do something");
+      return 0;
+    });
+    planTask.mockImplementationOnce(async (...args: unknown[]) => {
+      const call = args[0] as { source: string };
+      callOrder.push("plan");
+      expect(call.source).toBe(markdownFile);
+      return 0;
+    });
+
+    try {
+      const result = await invokeMakeAndCaptureCalls([
+        "make",
+        "please do something",
+        markdownFile,
+        "--scan-count",
+        "5",
+        "--transport",
+        "arg",
+        "--dry-run",
+        "--print-prompt",
+        "--keep-artifacts",
+        "--show-agent-output",
+        "--trace",
+        "--force-unlock",
+        "--ignore-cli-block",
+        "--cli-block-timeout",
+        "1234",
+        "--vars-file",
+        "custom-vars.json",
+        "--var",
+        "env=prod",
+        "--worker",
+        "opencode",
+        "run",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(0);
+      expect(callOrder).toEqual(["research", "plan"]);
+      expect(fs.readFileSync(markdownFile, "utf8")).toBe("please do something");
+
+      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).toHaveBeenCalledWith(expect.objectContaining({
+        source: markdownFile,
+        mode: "wait",
+        transport: "arg",
+        dryRun: true,
+        printPrompt: true,
+        keepArtifacts: true,
+        showAgentOutput: true,
+        trace: true,
+        forceUnlock: true,
+        ignoreCliBlock: true,
+        cliBlockTimeoutMs: 1234,
+        varsFileOption: "custom-vars.json",
+        cliTemplateVarArgs: ["env=prod"],
+        workerCommand: ["opencode", "run"],
+      }));
+
+      expect(planTask).toHaveBeenCalledTimes(1);
+      expect(planTask).toHaveBeenCalledWith(expect.objectContaining({
+        source: markdownFile,
+        scanCount: 5,
+        mode: "wait",
+        transport: "arg",
+        dryRun: true,
+        printPrompt: true,
+        keepArtifacts: true,
+        showAgentOutput: true,
+        trace: true,
+        forceUnlock: true,
+        ignoreCliBlock: true,
+        cliBlockTimeoutMs: 1234,
+        varsFileOption: "custom-vars.json",
+        cliTemplateVarArgs: ["env=prod"],
+        workerCommand: ["opencode", "run"],
+      }));
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("make executes successfully with a relative markdown target path", async () => {
+    const researchTask = vi.fn(async (...args: unknown[]) => {
+      const call = args[0] as { source: string };
+      expect(path.isAbsolute(call.source)).toBe(false);
+      return 0;
+    });
+    const planTask = vi.fn(async (...args: unknown[]) => {
+      const call = args[0] as { source: string };
+      expect(path.isAbsolute(call.source)).toBe(false);
+      return 0;
+    });
+    const tempRoot = fs.mkdtempSync(path.join(process.cwd(), "rundown-make-relative-success-"));
+    const absoluteMarkdownFile = path.join(tempRoot, "8. Do something.md");
+    const relativeMarkdownFile = path.relative(process.cwd(), absoluteMarkdownFile);
+
+    try {
+      const result = await invokeMakeAndCaptureCalls([
+        "make",
+        "relative path seed text",
+        relativeMarkdownFile,
+        "--worker",
+        "opencode",
+        "run",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(0);
+      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(planTask).toHaveBeenCalledTimes(1);
+      expect(fs.readFileSync(absoluteMarkdownFile, "utf8")).toBe("relative path seed text");
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("make executes successfully with an absolute markdown target path", async () => {
+    const researchTask = vi.fn(async (...args: unknown[]) => {
+      const call = args[0] as { source: string };
+      expect(path.isAbsolute(call.source)).toBe(true);
+      return 0;
+    });
+    const planTask = vi.fn(async (...args: unknown[]) => {
+      const call = args[0] as { source: string };
+      expect(path.isAbsolute(call.source)).toBe(true);
+      return 0;
+    });
+    const tempRoot = fs.mkdtempSync(path.join(process.cwd(), "rundown-make-absolute-success-"));
+    const absoluteMarkdownFile = path.join(tempRoot, "8. Do something.md");
+
+    try {
+      const result = await invokeMakeAndCaptureCalls([
+        "make",
+        "absolute path seed text",
+        absoluteMarkdownFile,
+        "--worker",
+        "opencode",
+        "run",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(0);
+      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(planTask).toHaveBeenCalledTimes(1);
+      expect(fs.readFileSync(absoluteMarkdownFile, "utf8")).toBe("absolute path seed text");
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("make accepts .markdown extension and runs research then plan", async () => {
+    const callOrder: string[] = [];
+    const researchTask = vi.fn(async (...args: unknown[]) => {
+      const call = args[0] as { source: string };
+      callOrder.push("research");
+      expect(call.source.endsWith(".markdown")).toBe(true);
+      return 0;
+    });
+    const planTask = vi.fn(async (...args: unknown[]) => {
+      const call = args[0] as { source: string };
+      callOrder.push("plan");
+      expect(call.source.endsWith(".markdown")).toBe(true);
+      return 0;
+    });
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-markdown-extension-"));
+    const markdownFile = path.join(tempRoot, "8. Do something.markdown");
+
+    try {
+      const result = await invokeMakeAndCaptureCalls([
+        "make",
+        "please do something",
+        markdownFile,
+        "--worker",
+        "opencode",
+        "run",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(0);
+      expect(fs.readFileSync(markdownFile, "utf8")).toBe("please do something");
+      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(planTask).toHaveBeenCalledTimes(1);
+      expect(callOrder).toEqual(["research", "plan"]);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("make defaults mode to wait for both research and plan", async () => {
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-mode-default-"));
+    const markdownFile = path.join(tempRoot, "8. Do something.md");
+
+    try {
+      const result = await invokeMakeAndCaptureCalls([
+        "make",
+        "please do something",
+        markdownFile,
+        "--worker",
+        "opencode",
+        "run",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(0);
+      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(planTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).toHaveBeenCalledWith(expect.objectContaining({ mode: "wait" }));
+      expect(planTask).toHaveBeenCalledWith(expect.objectContaining({ mode: "wait" }));
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("make forwards shared runtime and worker options to both research and plan", async () => {
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-shared-forwarding-"));
+    const markdownFile = path.join(tempRoot, "8. Do something.md");
+
+    try {
+      const result = await invokeMakeAndCaptureCalls([
+        "make",
+        "please do something",
+        markdownFile,
+        "--transport",
+        "arg",
+        "--keep-artifacts",
+        "--show-agent-output",
+        "--trace",
+        "--force-unlock",
+        "--ignore-cli-block",
+        "--cli-block-timeout",
+        "5678",
+        "--vars-file",
+        "vars.local.json",
+        "--var",
+        "env=prod",
+        "--var",
+        "region=eu",
+        "--",
+        "opencode",
+        "run",
+        "--model",
+        "gpt-5",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(0);
+      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(planTask).toHaveBeenCalledTimes(1);
+
+      expect(researchTask).toHaveBeenCalledWith(expect.objectContaining({
+        source: markdownFile,
+        mode: "wait",
+        transport: "arg",
+        keepArtifacts: true,
+        showAgentOutput: true,
+        trace: true,
+        forceUnlock: true,
+        ignoreCliBlock: true,
+        cliBlockTimeoutMs: 5678,
+        varsFileOption: "vars.local.json",
+        cliTemplateVarArgs: ["env=prod", "region=eu"],
+        workerCommand: ["opencode", "run", "--model", "gpt-5"],
+      }));
+
+      expect(planTask).toHaveBeenCalledWith(expect.objectContaining({
+        source: markdownFile,
+        mode: "wait",
+        transport: "arg",
+        keepArtifacts: true,
+        showAgentOutput: true,
+        trace: true,
+        forceUnlock: true,
+        ignoreCliBlock: true,
+        cliBlockTimeoutMs: 5678,
+        varsFileOption: "vars.local.json",
+        cliTemplateVarArgs: ["env=prod", "region=eu"],
+        workerCommand: ["opencode", "run", "--model", "gpt-5"],
+      }));
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("make rejects interactive --mode values such as tui before research/plan", async () => {
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-mode-reject-"));
+    const markdownFile = path.join(tempRoot, "8. Do something.md");
+
+    try {
+      const result = await invokeMakeAndCaptureCalls([
+        "make",
+        "please do something",
+        markdownFile,
+        "--mode",
+        "tui",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid --mode value: tui"));
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Allowed: wait"));
+      expect(researchTask).not.toHaveBeenCalled();
+      expect(planTask).not.toHaveBeenCalled();
+      expect(fs.existsSync(markdownFile)).toBe(false);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("make writes seed text verbatim, including quotes, newlines, and shell characters", async () => {
+    const seedText = [
+      "He said, \"keep 'all' symbols\".",
+      "line two: $PATH && rm -rf / ; | `pwd`",
+      "line three: !@#$%^&*()[]{}<>?",
+    ].join("\n");
+    const researchTask = vi.fn(async (...args: unknown[]) => {
+      const call = args[0] as { source: string };
+      expect(fs.readFileSync(call.source, "utf8")).toBe(seedText);
+      return 0;
+    });
+    const planTask = vi.fn(async () => 0);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-verbatim-seed-"));
+    const markdownFile = path.join(tempRoot, "8. Do something.md");
+
+    try {
+      const result = await invokeMakeAndCaptureCalls([
+        "make",
+        seedText,
+        markdownFile,
+        "--worker",
+        "opencode",
+        "run",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(0);
+      expect(fs.readFileSync(markdownFile, "utf8")).toBe(seedText);
+      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(planTask).toHaveBeenCalledTimes(1);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("make fails fast when research fails and does not run plan", async () => {
+    const callOrder: string[] = [];
+    const researchTask = vi.fn(async () => {
+      callOrder.push("research");
+      return 2;
+    });
+    const planTask = vi.fn(async () => 0);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-research-fail-"));
+    const markdownFile = path.join(tempRoot, "8. Do something.md");
+
+    try {
+      const result = await invokeMakeAndCaptureCalls([
+        "make",
+        "please do something",
+        markdownFile,
+        "--worker",
+        "opencode",
+        "run",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(2);
+      expect(fs.readFileSync(markdownFile, "utf8")).toBe("please do something");
+      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(planTask).not.toHaveBeenCalled();
+      expect(callOrder).toEqual(["research"]);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("make propagates plan failure exit codes and preserves research outputs", async () => {
+    const researchOutputContent = [
+      "please do something",
+      "",
+      "## Research Notes",
+      "- collected constraints",
+    ].join("\n");
+    const planTask = vi.fn(async () => 3);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-plan-fail-"));
+    const markdownFile = path.join(tempRoot, "8. Do something.md");
+    const researchOutputArtifact = path.join(tempRoot, "research-output.txt");
+    const callOrder: string[] = [];
+    const researchTask = vi.fn(async () => {
+      callOrder.push("research");
+      fs.writeFileSync(markdownFile, researchOutputContent, "utf8");
+      fs.writeFileSync(researchOutputArtifact, "research artifact", "utf8");
+      return 0;
+    });
+
+    planTask.mockImplementationOnce(async () => {
+      callOrder.push("plan");
+      return 3;
+    });
+
+    try {
+      const result = await invokeMakeAndCaptureCalls([
+        "make",
+        "please do something",
+        markdownFile,
+        "--worker",
+        "opencode",
+        "run",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(3);
+      expect(callOrder).toEqual(["research", "plan"]);
+      expect(fs.readFileSync(markdownFile, "utf8")).toBe(researchOutputContent);
+      expect(fs.readFileSync(researchOutputArtifact, "utf8")).toBe("research artifact");
+      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(planTask).toHaveBeenCalledTimes(1);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("make falls back to exit code 1 for non-integer subcommand exit values", async () => {
+    const researchTask = vi.fn(async () => Number.NaN as unknown as number);
+    const planTask = vi.fn(async () => 0);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-non-integer-code-"));
+    const markdownFile = path.join(tempRoot, "8. Do something.md");
+
+    try {
+      const result = await invokeMakeAndCaptureCalls([
+        "make",
+        "please do something",
+        markdownFile,
+        "--worker",
+        "opencode",
+        "run",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(1);
+      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(planTask).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("make rejects non-markdown target path before research/plan", async () => {
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-bad-ext-"));
+    const badPath = path.join(tempRoot, "notes.txt");
+
+    try {
+      const result = await invokeMakeAndCaptureCalls([
+        "make",
+        "please do something",
+        badPath,
+        "--worker",
+        "opencode",
+        "run",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid make document path"));
+      expect(researchTask).not.toHaveBeenCalled();
+      expect(planTask).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("make validates relative and absolute non-markdown target paths consistently", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(process.cwd(), "rundown-make-relative-absolute-invalid-"));
+    const absoluteBadPath = path.join(tempRoot, "notes.txt");
+    const relativeBadPath = path.relative(process.cwd(), absoluteBadPath);
+
+    try {
+      for (const badPath of [relativeBadPath, absoluteBadPath]) {
+        const researchTask = vi.fn(async () => 0);
+        const planTask = vi.fn(async () => 0);
+        const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+        const result = await invokeMakeAndCaptureCalls([
+          "make",
+          "please do something",
+          badPath,
+          "--worker",
+          "opencode",
+          "run",
+        ], researchTask, planTask);
+
+        expect(result.exitCode).toBe(1);
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid make document path"));
+        expect(researchTask).not.toHaveBeenCalled();
+        expect(planTask).not.toHaveBeenCalled();
+      }
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("make refuses to overwrite an existing markdown file", async () => {
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-collision-"));
+    const markdownFile = path.join(tempRoot, "8. Do something.md");
+    fs.writeFileSync(markdownFile, "existing content", "utf8");
+
+    try {
+      const result = await invokeMakeAndCaptureCalls([
+        "make",
+        "please do something",
+        markdownFile,
+        "--worker",
+        "opencode",
+        "run",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("File already exists"));
+      expect(fs.readFileSync(markdownFile, "utf8")).toBe("existing content");
+      expect(researchTask).not.toHaveBeenCalled();
+      expect(planTask).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("make fails clearly when target parent directory is missing", async () => {
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-missing-parent-"));
+    const markdownFile = path.join(tempRoot, "missing-parent", "8. Do something.md");
+
+    try {
+      const result = await invokeMakeAndCaptureCalls([
+        "make",
+        "please do something",
+        markdownFile,
+        "--worker",
+        "opencode",
+        "run",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Parent directory does not exist"));
+      expect(researchTask).not.toHaveBeenCalled();
+      expect(planTask).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("make rejects directory targets before research/plan", async () => {
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-dir-target-"));
+    const markdownDirectory = path.join(tempRoot, "target.md");
+    fs.mkdirSync(markdownDirectory);
+
+    try {
+      const result = await invokeMakeAndCaptureCalls([
+        "make",
+        "please do something",
+        markdownDirectory,
+        "--worker",
+        "opencode",
+        "run",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid make document path"));
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("does not accept directory or glob inputs"));
+      expect(researchTask).not.toHaveBeenCalled();
+      expect(planTask).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("make rejects glob-style markdown targets before research/plan", async () => {
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const result = await invokeMakeAndCaptureCalls([
+      "make",
+      "please do something",
+      "*.md",
+      "--worker",
+      "opencode",
+      "run",
+    ], researchTask, planTask);
+
+    expect(result.exitCode).toBe(1);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid make document path"));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("does not accept directory or glob inputs"));
+    expect(researchTask).not.toHaveBeenCalled();
+    expect(planTask).not.toHaveBeenCalled();
+  });
+
   it("passes document-mode plan options through with separator worker command", async () => {
     const planTask = vi.fn(async () => 0);
     const call = await invokePlanAndCaptureCall([
@@ -1555,6 +2168,49 @@ describe("CLI plan and utility command normalization", () => {
     ], planTask);
 
     expect(call.cliBlockTimeoutMs).toBe(1234);
+  });
+
+  it("passes --show-agent-output option to plan task", async () => {
+    const planTask = vi.fn(async () => 0);
+    const call = await invokePlanAndCaptureCall([
+      "plan",
+      "tasks.md",
+      "--show-agent-output",
+      "--worker",
+      "opencode",
+      "run",
+    ], planTask);
+
+    expect(call.showAgentOutput).toBe(true);
+  });
+
+  it("passes --no-show-agent-output option to plan task", async () => {
+    const planTask = vi.fn(async () => 0);
+    const call = await invokePlanAndCaptureCall([
+      "plan",
+      "tasks.md",
+      "--no-show-agent-output",
+      "--worker",
+      "opencode",
+      "run",
+    ], planTask);
+
+    expect(call.showAgentOutput).toBe(false);
+  });
+
+  it("honors last show-agent-output toggle for plan", async () => {
+    const planTask = vi.fn(async () => 0);
+    const call = await invokePlanAndCaptureCall([
+      "plan",
+      "tasks.md",
+      "--show-agent-output",
+      "--no-show-agent-output",
+      "--worker",
+      "opencode",
+      "run",
+    ], planTask);
+
+    expect(call.showAgentOutput).toBe(false);
   });
 
   it("passes --ignore-cli-block flag to plan task", async () => {
@@ -2582,6 +3238,53 @@ async function invokeResearchAndExpectExit(args: string[], researchTask: ReturnT
   }
 
   throw new Error("Expected CLI exit");
+}
+
+async function invokeMakeAndCaptureCalls(
+  args: string[],
+  researchTask: ReturnType<typeof vi.fn>,
+  planTask: ReturnType<typeof vi.fn>,
+): Promise<{ exitCode: number }> {
+  const previousEnv = captureEnv();
+
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
+
+  vi.doMock("../../src/create-app.js", () => ({
+    createApp: () => ({
+      runTask: vi.fn(async () => 0),
+      discussTask: vi.fn(async () => 0),
+      reverifyTask: vi.fn(async () => 0),
+      revertTask: vi.fn(async () => 0),
+      nextTask: vi.fn(async () => 0),
+      listTasks: vi.fn(async () => 0),
+      planTask,
+      researchTask,
+      unlockTask: vi.fn(async () => 0),
+      initProject: vi.fn(async () => 0),
+      manageArtifacts: vi.fn(() => 0),
+    }),
+  }));
+
+  let exitCode = 0;
+  try {
+    const { parseCliArgs } = await import("../../src/presentation/cli.js");
+    await parseCliArgs(args);
+  } catch (error) {
+    const message = String(error);
+    const match = /CLI exited with code (\d+)/.exec(message);
+    if (match) {
+      exitCode = Number(match[1]);
+    } else if (/process\.exit unexpectedly called/.test(message)) {
+      exitCode = 1;
+    } else {
+      throw error;
+    }
+  } finally {
+    restoreEnv(previousEnv);
+  }
+
+  return { exitCode };
 }
 
 async function invokeLogAndCaptureCall(args: string[], logTask: ReturnType<typeof vi.fn>): Promise<RunTaskCall> {

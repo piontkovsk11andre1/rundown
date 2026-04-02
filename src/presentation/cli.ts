@@ -30,6 +30,7 @@ import {
   createInitCommandAction,
   createListCommandAction,
   createLogCommandAction,
+  createMakeCommandAction,
   createNextCommandAction,
   createPlanCommandAction,
   createResearchCommandAction,
@@ -43,6 +44,7 @@ const RUNNER_MODES: readonly ProcessRunMode[] = ["wait", "tui", "detached"];
 const PLANNER_MODES: readonly ProcessRunMode[] = ["wait"];
 const DISCUSS_MODES: readonly ProcessRunMode[] = ["wait", "tui"];
 const RESEARCH_MODES: readonly ProcessRunMode[] = ["wait", "tui"];
+const MAKE_MODES: readonly ProcessRunMode[] = ["wait"];
 const DEFAULT_PLAN_SCAN_COUNT = 3;
 const DEFAULT_VARS_FILE_HELP = "Load extra template variables from a JSON file (default: <config-dir>/vars.json)";
 
@@ -253,6 +255,7 @@ program
   .option("--print-prompt", "Print the rendered plan prompt and exit", false)
   .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
   .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
+  .option("--no-show-agent-output", "Hide worker stdout/stderr during execution.")
   .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
   .option("--force-unlock", "Break stale source lockfiles before acquiring plan lock", false)
   .option("--vars-file [path]", DEFAULT_VARS_FILE_HELP)
@@ -269,6 +272,40 @@ program
     getApp,
     getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
     plannerModes: PLANNER_MODES,
+  })));
+
+program
+  .command("make")
+  .description("Create a Markdown task doc from seed text, then run research and plan.")
+  .argument("<seed-text>", "Initial text content to write into the Markdown file")
+  .argument("<markdown-file>", "Markdown file path to create")
+  .option("--mode <mode>", "Make mode: wait", "wait")
+  .option(
+    "--scan-count <n>",
+    "Max clean-session TODO coverage scans for the plan phase (default: 3)",
+    String(DEFAULT_PLAN_SCAN_COUNT),
+  )
+  .option("--transport <transport>", "Prompt transport: file, arg", "file")
+  .option("--dry-run", "Show what would run for research and plan without executing workers", false)
+  .option("--print-prompt", "Print rendered research/plan prompts and exit", false)
+  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
+  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
+  .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
+  .option("--force-unlock", "Break stale source lockfiles before acquiring phase locks", false)
+  .option("--vars-file [path]", DEFAULT_VARS_FILE_HELP)
+  .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
+  .option("--worker [command...]", "Optional worker command override (alternative to -- <command>)")
+  .option("--ignore-cli-block", "Disable execution of `cli` fenced blocks during prompt expansion")
+  .option(
+    "--cli-block-timeout <ms>",
+    "Timeout in milliseconds for executing `cli` fenced blocks (0 disables timeout)",
+    String(DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS),
+  )
+  .allowUnknownOption(false)
+  .action(withCliAction(createMakeCommandAction({
+    getApp,
+    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
+    makeModes: MAKE_MODES,
   })));
 
 program
@@ -398,6 +435,7 @@ export async function parseCliArgs(argv: string[]): Promise<void> {
   try {
     // Keep research as a strict single-pass workflow for this iteration.
     validateUnsupportedResearchScanCount(rundownArgs);
+    validateUnsupportedMakeMode(rundownArgs);
   } catch (error) {
     emitCliFatalError(error, runtimeState.invocationLogState);
     terminate(1);
@@ -422,6 +460,52 @@ function validateUnsupportedResearchScanCount(argv: string[]): void {
   }
 
   throw new Error("Unsupported option for `research`: --scan-count. Research currently runs as a single-pass flow and does not support scan/convergence loops.");
+}
+
+/**
+ * Rejects interactive or detached execution modes for `make`.
+ */
+function validateUnsupportedMakeMode(argv: string[]): void {
+  if (resolveInvocationCommand(argv) !== "make") {
+    return;
+  }
+
+  const mode = resolveModeOptionValue(argv);
+  if (mode === undefined || mode === "wait") {
+    return;
+  }
+
+  throw new Error(`Invalid --mode value: ${mode}. Allowed: wait.`);
+}
+
+/**
+ * Resolves the effective --mode option value from argv tokens.
+ */
+function resolveModeOptionValue(argv: string[]): string | undefined {
+  let mode: string | undefined;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+
+    if (token === "--") {
+      break;
+    }
+
+    if (token === "--mode") {
+      const nextToken = argv[index + 1];
+      if (nextToken !== undefined && nextToken !== "--") {
+        mode = nextToken;
+      }
+      index += 1;
+      continue;
+    }
+
+    if (token.startsWith("--mode=")) {
+      mode = token.slice("--mode=".length);
+    }
+  }
+
+  return mode;
 }
 
 /**

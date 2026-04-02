@@ -211,6 +211,56 @@ describe("executeRundownTask", () => {
     );
   });
 
+  it("does not forward --show-agent-output when inline args disable it explicitly", async () => {
+    process.argv = ["/usr/local/bin/node", "/repo/dist/cli.js"];
+    const child = createChildProcess();
+    spawnMock.mockReturnValue(child);
+
+    const promise = executeRundownTask(
+      ["Child.md", "--no-show-agent-output"],
+      "/repo",
+      {
+        parentWorkerCommand: ["parent", "run"],
+        parentTransport: "file",
+        parentKeepArtifacts: false,
+        parentShowAgentOutput: true,
+        parentIgnoreCliBlock: false,
+        parentVerify: true,
+        parentNoRepair: false,
+        parentRepairAttempts: 1,
+      },
+    );
+    child.emit("close", 0);
+
+    await expect(promise).resolves.toEqual({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "/usr/local/bin/node",
+      [
+        "/repo/dist/cli.js",
+        "run",
+        "Child.md",
+        "--no-show-agent-output",
+        "--worker",
+        "parent",
+        "run",
+        "--transport",
+        "file",
+        "--verify",
+        "--repair-attempts",
+        "1",
+      ],
+      expect.objectContaining({
+        cwd: "/repo",
+        shell: false,
+      }),
+    );
+  });
+
   it("does not forward parent verify or no-repair when inline args override repair attempts", async () => {
     process.argv = ["/usr/local/bin/node", "/repo/dist/cli.js"];
     const child = createChildProcess();

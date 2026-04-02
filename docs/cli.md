@@ -54,11 +54,11 @@ rundown run docs/ --show-agent-output --worker opencode run
 
 Agent output notes (`run --show-agent-output`):
 
-- Default behavior (no flag): suppress worker-derived `text` and `stderr` transcript output across stages.
+- Default behavior (option omitted): suppress worker-derived `text` and `stderr` transcript output across stages.
 - With `--show-agent-output`: show worker-derived `text` and `stderr` transcript output for `execute`, `verify`, and `plan` stages (including inline `cli:` task stdout/stderr).
 - `discuss` remains silent for worker transcript output even when `--show-agent-output` is set.
 - Still visible: rundown lifecycle/status messages (`info`, `warn`, `error`, `success`, `task`).
-- Still visible: hook output from `--on-complete` and `--on-fail` (intentionally out of scope for this flag).
+- Still visible: hook output from `--on-complete` and `--on-fail` (intentionally out of scope for this option).
 - Artifacts/traces still capture output for audit/debug; terminal suppression does not disable persistence.
 
 ### `rundown discuss <source>`
@@ -241,6 +241,8 @@ Options:
 | `--dry-run` | Render plan prompt + execution intent and exit without running the worker. | off |
 | `--print-prompt` | Print the rendered planner prompt and exit `0` without running the worker. | off |
 | `--keep-artifacts` | Preserve runtime artifacts under `.rundown/runs/` even on success. | off |
+| `--show-agent-output` | Show planner worker stdout/stderr during execution (hidden by default). | off |
+| `--no-show-agent-output` | Explicitly hide planner worker stdout/stderr during execution. Useful to override prior toggles. | on (effective default) |
 | `--trace` | Write structured trace events to `.rundown/runs/<id>/trace.jsonl` and mirror them to `.rundown/logs/trace.jsonl`. | off |
 | `--vars-file [path]` | Load template variables from JSON (default path: `<config-dir>/vars.json`). | unset |
 | `--var <key=value>` | Inject template variables (repeatable). | none |
@@ -284,6 +286,75 @@ rundown plan docs/migration.md --scan-count 2 -- opencode run
 
 # PowerShell-safe worker form
 rundown plan docs/spec.md --scan-count 2 --worker opencode run
+```
+
+### `rundown make <seed-text> <markdown-file>`
+
+Create a new Markdown file from seed text, then run `research` followed by `plan` on that same file.
+
+Synopsis:
+
+```bash
+rundown make "<seed-text>" "<markdown-file>" [options] -- <command>
+rundown make "<seed-text>" "<markdown-file>" [options] --worker <command...>
+```
+
+`make` is a composition command for the authoring bootstrap flow:
+
+1. create target Markdown file,
+2. write `seed-text` as the initial file body,
+3. run `research` on that file,
+4. run `plan` on that file.
+
+Execution is sequential and fail-fast:
+
+- If file creation fails, `research` and `plan` do not run.
+- If `research` fails, `plan` does not run.
+- If `plan` fails, `make` exits non-zero and preserves generated artifacts per normal command behavior.
+
+Input rules:
+
+- Exactly two positional arguments are required: `<seed-text>` and `<markdown-file>`.
+- Target extension must be `.md` or `.markdown`.
+- Target must be a file path (directories are rejected).
+- Existing files are not overwritten; `make` fails on collisions.
+- Missing parent directories are treated as an error.
+
+Options:
+
+| Option | Description | Default |
+|---|---|---|
+| `--mode <mode>` | Make execution mode. Only `wait` is supported for deterministic non-interactive chaining. | `wait` |
+| `--scan-count <n>` | Maximum clean-session scan iterations for the `plan` phase. Must be a safe positive integer. | `3` |
+| `--transport <file|arg>` | Prompt transport for both `research` and `plan` worker invocations. | `file` |
+| `--force-unlock` | Remove stale source lockfiles before each phase lock acquisition. Active locks held by live processes are not removed. | off |
+| `--dry-run` | Render phase prompts + execution intent and exit without running workers. | off |
+| `--print-prompt` | Print rendered phase prompts and exit `0` without running workers. | off |
+| `--keep-artifacts` | Preserve runtime artifacts under `.rundown/runs/` even on success. | off |
+| `--show-agent-output` | Show worker stdout/stderr during phase execution (hidden by default). | off |
+| `--trace` | Write structured trace events to `.rundown/runs/<id>/trace.jsonl` and mirror to `.rundown/logs/trace.jsonl`. | off |
+| `--vars-file [path]` | Load template variables from JSON (default path: `<config-dir>/vars.json`). | unset |
+| `--var <key=value>` | Inject template variables (repeatable). | none |
+| `--ignore-cli-block` | Skip `cli` fenced-block command execution during prompt expansion. | off |
+| `--cli-block-timeout <ms>` | Per-command timeout for `cli` fenced-block execution (`0` disables timeout). | `30000` |
+| `--worker <command...>` | Worker command (preferred on PowerShell). | unset |
+
+Worker resolution:
+
+- `--worker <command...>` and separator form `-- <command>` are both supported.
+- If neither is provided, `make` resolves worker input using the same command resolution behavior as `research` and `plan`.
+
+Examples:
+
+```bash
+# One-step authoring bootstrap: create -> research -> plan
+rundown make "please do something" "8. Do something.md" -- opencode run
+
+# Use .markdown extension
+rundown make "Draft migration plan" "docs/migration.markdown" --worker opencode run
+
+# Preview prompts without running workers
+rundown make "Release prep" "docs/release-prep.md" --print-prompt --worker opencode run
 ```
 
 ### `rundown unlock <source>`
@@ -412,6 +483,7 @@ Lock scope by command:
 
 - `run`: acquires before task-selection reads and holds through the full task lifecycle, including `--all` loops, verification/repair, checkbox updates, and `--on-complete`/`--on-fail` hooks.
 - `plan`: acquires before planning starts and holds for the full scan loop until planning finalization completes.
+- `make`: acquires phase locks in sequence (`research` lock first, then `plan` lock) while running create -> research -> plan.
 - `research`: acquires before reading the source and holds through worker invocation plus document replacement/guard checks.
 - `revert`: acquires before git undo operations for the target source set and releases after undo processing finishes.
 - `discuss`: acquires before task-selection reads and holds for the full discussion lifecycle, including worker invocation and finalization.
@@ -489,7 +561,7 @@ With a freshly initialized empty config (`{}`), no worker is resolved by default
 Worker resolution cascade (lowest to highest priority):
 
 - `defaults` in `.rundown/config.json`
-- `commands.<command>` in `.rundown/config.json` (`run`, `plan`, `discuss`, `research`, `reverify`)
+- `commands.<command>` in `.rundown/config.json` (`run`, `plan`, `make`, `discuss`, `research`, `reverify`)
 - Markdown frontmatter `profile: <name>`
 - Parent directive item `- profile: <name>` for child checkbox tasks
 - CLI `--worker` or separator form `-- <command>`
@@ -598,7 +670,7 @@ rundown research docs/spec.md --dry-run --vars-file --var ticket=ENG-42 --worker
 - `--ignore-cli-block` — skip execution of markdown fenced `cli` blocks during prompt expansion (blocks remain unexpanded)
 - `--cli-block-timeout <ms>` — per-command timeout for fenced `cli` block execution (default `30000`, `0` disables timeout)
 
-These options apply to `run`, `discuss`, `plan`, and `reverify`.
+These options apply to `run`, `discuss`, `plan`, `make`, and `reverify`.
 These options also apply to `research`.
 
 ### Sorting
@@ -737,6 +809,7 @@ Behavior notes:
 - For `reverify`, `--print-prompt` and `--dry-run` target the verify prompt for the resolved historical task.
 - For `reverify --all` or `reverify --last <n>`, `--print-prompt` is not supported and returns exit code `1`; use `--dry-run` to inspect all selected runs.
 - For `plan`, both flags apply to the planner prompt.
+- For `make`, both flags apply to the research/plan phase prompts.
 - For `research`, both flags apply to the research prompt.
 - Fenced `cli` blocks run during `--print-prompt` so printed prompts match worker-visible prompts (unless `--ignore-cli-block` is set).
 - Fenced `cli` blocks do not run during `--dry-run`; prompts remain unexpanded.

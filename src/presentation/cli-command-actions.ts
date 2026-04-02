@@ -1,4 +1,6 @@
 import type { ProcessRunMode } from "../domain/ports/index.js";
+import fs from "node:fs";
+import path from "node:path";
 import {
   normalizeOptionalString,
   parseCliBlockTimeout,
@@ -11,10 +13,13 @@ import {
   parseRunnerMode,
   parseScanCount,
   parseSortMode,
+  resolveSharedWorkerRuntimeOptions,
+  resolveShowAgentOutputOption,
   resolveIgnoreCliBlockFlag,
   resolveNoRepairFlag,
   resolvePlanMarkdownFile,
   resolveResearchMarkdownFile,
+  resolveMakeMarkdownFile,
   resolveVerifyFlag,
 } from "./cli-options.js";
 import type { CliApp } from "./cli-app-init.js";
@@ -51,6 +56,10 @@ interface PlanActionDependencies extends WorkerActionDependencies {
 
 interface ResearchActionDependencies extends WorkerActionDependencies {
   researchModes: readonly ProcessRunMode[];
+}
+
+interface MakeActionDependencies extends WorkerActionDependencies {
+  makeModes: readonly ProcessRunMode[];
 }
 
 /**
@@ -110,7 +119,7 @@ export function createRunCommandAction({
     const commitMessageTemplate = normalizeOptionalString(opts.commitMessage);
     const onCompleteCommand = normalizeOptionalString(opts.onComplete);
     const onFailCommand = normalizeOptionalString(opts.onFail);
-    const showAgentOutput = Boolean(opts.showAgentOutput as boolean | undefined);
+    const showAgentOutput = resolveShowAgentOutputOption(opts);
     const runAll = Boolean(opts.all as boolean | undefined);
     const clean = Boolean(opts.clean as boolean | undefined);
     const redo = Boolean(opts.redo as boolean | undefined) || clean;
@@ -180,7 +189,7 @@ export function createDiscussCommandAction({
     const keepArtifacts = opts.keepArtifacts as boolean;
     const varsFileOption = opts.varsFile as string | boolean | undefined;
     const cliTemplateVarArgs = (opts.var as string[] | undefined) ?? [];
-    const showAgentOutput = Boolean(opts.showAgentOutput as boolean | undefined);
+    const showAgentOutput = resolveShowAgentOutputOption(opts);
     const trace = Boolean(opts.trace as boolean | undefined);
     const forceUnlock = Boolean(opts.forceUnlock as boolean | undefined);
     const ignoreCliBlock = resolveIgnoreCliBlockFlag(opts);
@@ -381,7 +390,7 @@ export function createPlanCommandAction({
     const printPrompt = opts.printPrompt as boolean;
     const keepArtifacts = opts.keepArtifacts as boolean;
     const trace = opts.trace as boolean;
-    const showAgentOutput = Boolean(opts.showAgentOutput as boolean | undefined);
+    const showAgentOutput = resolveShowAgentOutputOption(opts);
     const forceUnlock = Boolean(opts.forceUnlock as boolean | undefined);
     const ignoreCliBlock = resolveIgnoreCliBlockFlag(opts);
     const cliBlockTimeoutMs = parseCliBlockTimeout(opts.cliBlockTimeout as string | undefined);
@@ -429,7 +438,7 @@ export function createResearchCommandAction({
     const printPrompt = opts.printPrompt as boolean;
     const keepArtifacts = opts.keepArtifacts as boolean;
     const trace = opts.trace as boolean;
-    const showAgentOutput = Boolean(opts.showAgentOutput as boolean | undefined);
+    const showAgentOutput = resolveShowAgentOutputOption(opts);
     const forceUnlock = Boolean(opts.forceUnlock as boolean | undefined);
     const ignoreCliBlock = resolveIgnoreCliBlockFlag(opts);
     const cliBlockTimeoutMs = parseCliBlockTimeout(opts.cliBlockTimeout as string | undefined);
@@ -457,6 +466,116 @@ export function createResearchCommandAction({
 
     return getApp().researchTask(request);
   };
+}
+
+/**
+ * Creates the `make` command action handler.
+ *
+ * The returned action creates a new Markdown file from seed text, then runs `research` and `plan`
+ * in strict sequence against that same file.
+ */
+export function createMakeCommandAction({
+  getApp,
+  getWorkerFromSeparator,
+  makeModes,
+}: MakeActionDependencies): (seedText: string, markdownFile: string, opts: CliOpts) => CliActionResult {
+  return async (seedText: string, markdownFile: string, opts: CliOpts) => {
+    const targetMarkdownFile = resolveMakeMarkdownFile(markdownFile);
+    const mode = parseRunnerMode(opts.mode as string | undefined, makeModes);
+    const sharedRuntimeOptions = resolveSharedWorkerRuntimeOptions(opts, getWorkerFromSeparator);
+    const dryRun = Boolean(opts.dryRun as boolean | undefined);
+    const printPrompt = Boolean(opts.printPrompt as boolean | undefined);
+    const scanCount = parseScanCount(opts.scanCount as string | undefined);
+
+    createSeedMarkdownFile(targetMarkdownFile, seedText);
+
+    const researchCode = normalizeMakePhaseExitCode(await getApp().researchTask({
+      source: targetMarkdownFile,
+      mode,
+      transport: sharedRuntimeOptions.transport,
+      showAgentOutput: sharedRuntimeOptions.showAgentOutput,
+      dryRun,
+      printPrompt,
+      keepArtifacts: sharedRuntimeOptions.keepArtifacts,
+      trace: sharedRuntimeOptions.trace,
+      forceUnlock: sharedRuntimeOptions.forceUnlock,
+      ignoreCliBlock: sharedRuntimeOptions.ignoreCliBlock,
+      cliBlockTimeoutMs: sharedRuntimeOptions.cliBlockTimeoutMs,
+      configDirOption: sharedRuntimeOptions.configDirOption,
+      varsFileOption: sharedRuntimeOptions.varsFileOption,
+      cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,
+      workerCommand: sharedRuntimeOptions.workerCommand,
+    }));
+
+    if (researchCode !== 0) {
+      return researchCode;
+    }
+
+    return normalizeMakePhaseExitCode(await getApp().planTask({
+      source: targetMarkdownFile,
+      scanCount,
+      mode,
+      transport: sharedRuntimeOptions.transport,
+      showAgentOutput: sharedRuntimeOptions.showAgentOutput,
+      dryRun,
+      printPrompt,
+      keepArtifacts: sharedRuntimeOptions.keepArtifacts,
+      trace: sharedRuntimeOptions.trace,
+      forceUnlock: sharedRuntimeOptions.forceUnlock,
+      ignoreCliBlock: sharedRuntimeOptions.ignoreCliBlock,
+      cliBlockTimeoutMs: sharedRuntimeOptions.cliBlockTimeoutMs,
+      varsFileOption: sharedRuntimeOptions.varsFileOption,
+      cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,
+      workerCommand: sharedRuntimeOptions.workerCommand,
+    }));
+  };
+}
+
+/**
+ * Creates a new Markdown file with seed text and validates collision/parent-directory constraints.
+ */
+function createSeedMarkdownFile(markdownFile: string, seedText: string): void {
+  const parentDirectory = path.dirname(markdownFile);
+  let parentDirectoryStats: fs.Stats;
+  try {
+    parentDirectoryStats = fs.statSync(parentDirectory);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new Error(`Cannot create make document: ${markdownFile}. Parent directory does not exist: ${parentDirectory}.`);
+    }
+    throw new Error(`Cannot create make document: ${markdownFile}. Cannot access parent directory: ${parentDirectory}.`);
+  }
+
+  if (!parentDirectoryStats.isDirectory()) {
+    throw new Error(`Cannot create make document: ${markdownFile}. Parent path is not a directory: ${parentDirectory}.`);
+  }
+
+  try {
+    fs.writeFileSync(markdownFile, seedText, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EEXIST") {
+      throw new Error(`Cannot create make document: ${markdownFile}. File already exists.`);
+    }
+    if (code === "ENOENT") {
+      throw new Error(`Cannot create make document: ${markdownFile}. Parent directory does not exist: ${parentDirectory}.`);
+    }
+    if (code === "ENOTDIR") {
+      throw new Error(`Cannot create make document: ${markdownFile}. Parent path is not a directory: ${parentDirectory}.`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Preserves valid subcommand exit codes while falling back to a generic execution failure.
+ */
+function normalizeMakePhaseExitCode(exitCode: number): number {
+  if (Number.isSafeInteger(exitCode) && exitCode >= 0) {
+    return exitCode;
+  }
+
+  return 1;
 }
 
 /**

@@ -301,6 +301,43 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("Dry run — would run: opencode run"))).toBe(true);
   });
 
+  it("run keeps agent output hidden by default when worker comes from config defaults", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "run-worker-config-default-hidden-output.cjs");
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+
+    fs.writeFileSync(roadmapPath, "- [ ] Write docs\n", "utf-8");
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "console.log('run diagnostic hidden via config defaults');",
+        "console.error('run diagnostic hidden via config defaults stderr');",
+      ].join("\n"),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(workspace, ".rundown", "config.json"),
+      JSON.stringify({
+        defaults: {
+          worker: ["node", workerScriptPath.replace(/\\/g, "/")],
+        },
+      }, null, 2),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("run diagnostic hidden via config defaults"))).toBe(false);
+    expect(result.stderrWrites.some((line) => line.includes("run diagnostic hidden via config defaults stderr"))).toBe(false);
+    expect(result.logs.some((line) => line.includes("Task checked: Write docs"))).toBe(true);
+  });
+
   it("run rejects unknown show-agent-output variants", async () => {
     const workspace = makeTempWorkspace();
     fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] Write docs\n", "utf-8");
@@ -324,6 +361,191 @@ describe.sequential("CLI integration", () => {
     ].join("\n").toLowerCase();
     expect(combinedOutput.includes("--show-agent-outputs")).toBe(true);
     expect(combinedOutput.includes("unknown option")).toBe(true);
+  });
+
+  it("make rejects non-wait modes that break sequential chaining", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli([
+      "make",
+      "please do something",
+      "8. Do something.md",
+      "--mode",
+      "tui",
+    ], workspace);
+
+    expect(result.code).toBe(1);
+    const combinedOutput = [
+      ...result.errors,
+      ...result.logs,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n").toLowerCase();
+    expect(combinedOutput.includes("invalid --mode value: tui")).toBe(true);
+    expect(combinedOutput.includes("allowed: wait")).toBe(true);
+  });
+
+  it("make does not overwrite an existing markdown target", async () => {
+    const workspace = makeTempWorkspace();
+    const markdownFile = path.join(workspace, "8. Do something.md");
+    fs.writeFileSync(markdownFile, "existing content\n", "utf-8");
+
+    const result = await runCli([
+      "make",
+      "please do something",
+      "8. Do something.md",
+    ], workspace);
+
+    expect(result.code).toBe(1);
+    expect(fs.readFileSync(markdownFile, "utf-8")).toBe("existing content\n");
+    const combinedOutput = [
+      ...result.errors,
+      ...result.logs,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n").toLowerCase();
+    expect(combinedOutput.includes("file already exists")).toBe(true);
+  });
+
+  it("make returns 1 when no worker command can be resolved", async () => {
+    const workspace = makeTempWorkspace();
+    const markdownFile = path.join(workspace, "8. Do something.md");
+
+    const result = await runCli([
+      "make",
+      "please do something",
+      "8. Do something.md",
+    ], workspace);
+
+    expect(result.code).toBe(1);
+    expect(fs.readFileSync(markdownFile, "utf-8")).toBe("please do something");
+    const combinedOutput = [
+      ...result.errors,
+      ...result.logs,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n").toLowerCase();
+    expect(combinedOutput.includes("no worker command available")).toBe(true);
+  });
+
+  it("make returns 1 when worker config is invalid", async () => {
+    const workspace = makeTempWorkspace();
+    const markdownFile = path.join(workspace, "8. Do something.md");
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, ".rundown", "config.json"), JSON.stringify({
+      defaults: {
+        worker: "opencode",
+      },
+    }, null, 2), "utf-8");
+
+    const result = await runCli([
+      "make",
+      "please do something",
+      "8. Do something.md",
+    ], workspace);
+
+    expect(result.code).toBe(1);
+    expect(fs.readFileSync(markdownFile, "utf-8")).toBe("please do something");
+    const combinedOutput = [
+      ...result.errors,
+      ...result.logs,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n").toLowerCase();
+    expect(combinedOutput.includes("invalid worker config")).toBe(true);
+  });
+
+  it("make preserves bootstrap file and skips plan when research fails", async () => {
+    const workspace = makeTempWorkspace();
+    const markdownFile = path.join(workspace, "8. Do something.md");
+    const invocationLogPath = path.join(workspace, "worker-invocations.log");
+    const workerScriptPath = path.join(workspace, "failing-worker.cjs");
+
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        "const path = require('node:path');",
+        `const invocationLogPath = ${JSON.stringify(invocationLogPath.replace(/\\/g, "/"))};`,
+        "fs.appendFileSync(invocationLogPath, 'called\\n', 'utf-8');",
+        "process.exit(2);",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "make",
+      "please do something",
+      "8. Do something.md",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).not.toBe(0);
+    expect(fs.readFileSync(markdownFile, "utf-8")).toBe("please do something");
+    expect(fs.readFileSync(invocationLogPath, "utf-8")).toBe("called\n");
+  });
+
+  it("make hands off source lock cleanly from research to plan", async () => {
+    const workspace = makeTempWorkspace();
+    const markdownFile = path.join(workspace, "8. Do something.md");
+    const sourceName = "8. Do something.md";
+    const lockPath = path.join(workspace, ".rundown", `${sourceName}.lock`).replace(/\\/g, "/");
+    const lockProbePath = path.join(workspace, "make-lock-handoff-probe.jsonl");
+    const workerScriptPath = path.join(workspace, "make-lock-handoff-worker.cjs");
+
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        `const lockPath = ${JSON.stringify(lockPath)};`,
+        `const lockProbePath = ${JSON.stringify(lockProbePath.replace(/\\/g, "/"))};`,
+        "const lockExists = fs.existsSync(lockPath);",
+        "let lockCommand = 'missing';",
+        "if (lockExists) {",
+        "  try {",
+        "    const payload = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));",
+        "    lockCommand = typeof payload.command === 'string' ? payload.command : 'unknown';",
+        "  } catch {",
+        "    lockCommand = 'unreadable';",
+        "  }",
+        "}",
+        "fs.appendFileSync(lockProbePath, JSON.stringify({ lockExists, lockCommand }) + '\\n', 'utf-8');",
+        "if (lockCommand === 'research') {",
+        "  console.log('# Roadmap\\n\\nSeed from make\\n\\n## Research Context\\n- lock observed during research phase');",
+        "  process.exit(0);",
+        "}",
+        "if (lockCommand === 'plan') {",
+        "  console.log('- [ ] Verify lock handoff sequencing');",
+        "  process.exit(0);",
+        "}",
+        "console.error('Unexpected lock command: ' + lockCommand);",
+        "process.exit(91);",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "make",
+      "Seed from make",
+      "8. Do something.md",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const probeEntries = fs.readFileSync(lockProbePath, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { lockExists: boolean; lockCommand: string });
+    expect(probeEntries.length).toBeGreaterThanOrEqual(2);
+    expect(probeEntries[0]).toEqual({ lockExists: true, lockCommand: "research" });
+    expect(probeEntries.slice(1).every((entry) => entry.lockExists && entry.lockCommand === "plan")).toBe(true);
+    expect(fs.existsSync(path.join(workspace, ".rundown", `${sourceName}.lock`))).toBe(false);
   });
 
   it("run auto-skips execution for verify-only tasks", async () => {
@@ -1209,7 +1431,7 @@ describe.sequential("CLI integration", () => {
     expect(combinedOutput.includes("unknown option")).toBe(true);
   });
 
-  it("reverify rejects run-only --show-agent-output flag", async () => {
+  it("reverify rejects run-only --show-agent-output option", async () => {
     const workspace = makeTempWorkspace();
 
     const result = await runCli([
@@ -1545,6 +1767,64 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("worker stdout"))).toBe(false);
     expect(result.stderrWrites.some((line) => line.includes("worker stderr"))).toBe(false);
     expect(result.logs.some((line) => line.includes("Task checked: Write docs"))).toBe(true);
+  });
+
+  it("run and plan keep agent output hidden by default", async () => {
+    const runWorkspace = makeTempWorkspace();
+    const runRoadmapPath = path.join(runWorkspace, "run-roadmap.md");
+    const runWorkerScriptPath = path.join(runWorkspace, "run-worker-hidden-parity.cjs");
+    fs.writeFileSync(runRoadmapPath, "- [ ] Write docs\n", "utf-8");
+    fs.writeFileSync(
+      runWorkerScriptPath,
+      [
+        "console.log('parity hidden run stdout');",
+        "console.error('parity hidden run stderr');",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const runResult = await runCli([
+      "run",
+      "run-roadmap.md",
+      "--no-verify",
+      "--worker",
+      "node",
+      runWorkerScriptPath.replace(/\\/g, "/"),
+    ], runWorkspace);
+
+    const planWorkspace = makeTempWorkspace();
+    const planRoadmapPath = path.join(planWorkspace, "plan-roadmap.md");
+    const planWorkerScriptPath = path.join(planWorkspace, "plan-worker-hidden-parity.cjs");
+    fs.writeFileSync(
+      planRoadmapPath,
+      "# Roadmap\n\n## Scope\nDeliver API workflow.\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      planWorkerScriptPath,
+      [
+        "console.log('- [ ] Add release checklist');",
+        "console.error('parity hidden plan stderr');",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const planResult = await runCli([
+      "plan",
+      "plan-roadmap.md",
+      "--scan-count",
+      "1",
+      "--worker",
+      "node",
+      planWorkerScriptPath.replace(/\\/g, "/"),
+    ], planWorkspace);
+
+    expect(runResult.code).toBe(0);
+    expect(planResult.code).toBe(0);
+    expect(runResult.logs.some((line) => line.includes("parity hidden run stdout"))).toBe(false);
+    expect(runResult.stderrWrites.some((line) => line.includes("parity hidden run stderr"))).toBe(false);
+    expect(planResult.stderrWrites.some((line) => line.includes("parity hidden plan stderr"))).toBe(false);
+    expect(planResult.logs.some((line) => line.includes("Inserted 1 TODO item"))).toBe(true);
   });
 
   it("run keeps exit code stable on inline CLI success with hidden agent output by default", async () => {
@@ -2774,6 +3054,35 @@ describe.sequential("CLI integration", () => {
     expect(result.code).toBe(0);
     expect(result.logs.some((line) => line.includes("CUSTOM EXECUTE TEMPLATE FROM SHARED CONFIG"))).toBe(true);
     expect(result.logs.some((line) => line.includes("Validate shared config templates"))).toBe(true);
+  });
+
+  it("make --config-dir applies shared templates consistently to research and plan phases", async () => {
+    const workspace = makeTempWorkspace();
+    const projectDir = path.join(workspace, "project");
+    const sharedConfigDir = path.join(workspace, "shared", ".rundown");
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.mkdirSync(sharedConfigDir, { recursive: true });
+
+    fs.writeFileSync(path.join(sharedConfigDir, "research.md"), "CUSTOM RESEARCH TEMPLATE\n{{task}}\n", "utf-8");
+    fs.writeFileSync(path.join(sharedConfigDir, "plan.md"), "CUSTOM PLAN TEMPLATE\n{{task}}\n", "utf-8");
+
+    const result = await runCli([
+      "make",
+      "Seed from make",
+      "TODO.md",
+      "--config-dir",
+      "../shared/.rundown",
+      "--print-prompt",
+      "--worker",
+      "opencode",
+      "run",
+    ], projectDir);
+
+    expect(result.code).toBe(0);
+    expect(fs.readFileSync(path.join(projectDir, "TODO.md"), "utf-8")).toBe("Seed from make");
+    expect(result.logs.some((line) => line.includes("CUSTOM RESEARCH TEMPLATE"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("CUSTOM PLAN TEMPLATE"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Seed from make"))).toBe(true);
   });
 
   it("run expands cli blocks in custom templates after template variable substitution", async () => {
@@ -4610,6 +4919,156 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("Inserted 1 TODO item"))).toBe(true);
   });
 
+  it("plan keeps sub-agent diagnostics hidden by default unless explicitly enabled", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "plan-worker-subagent-diagnostics.cjs");
+
+    fs.writeFileSync(
+      roadmapPath,
+      "# Roadmap\n\n## Scope\nDeliver API workflow.\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const { spawnSync } = require('node:child_process');",
+        "const subAgent = spawnSync(",
+        "  process.execPath,",
+        "  [",
+        "    '-e',",
+        "    \"console.error('sub-agent diagnostic from nested worker'); console.log('- [ ] Add release checklist from sub-agent');\"",
+        "  ],",
+        "  { encoding: 'utf-8' },",
+        ");",
+        "if (subAgent.error) {",
+        "  throw subAgent.error;",
+        "}",
+        "if (subAgent.status !== 0) {",
+        "  process.exit(subAgent.status ?? 1);",
+        "}",
+        "if (subAgent.stderr) {",
+        "  process.stderr.write(subAgent.stderr);",
+        "}",
+        "if (subAgent.stdout) {",
+        "  process.stdout.write(subAgent.stdout);",
+        "}",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const hiddenByDefault = await runCli([
+      "plan",
+      "roadmap.md",
+      "--scan-count",
+      "1",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    fs.writeFileSync(
+      roadmapPath,
+      "# Roadmap\n\n## Scope\nDeliver API workflow.\n",
+      "utf-8",
+    );
+
+    const explicitlyShown = await runCli([
+      "plan",
+      "roadmap.md",
+      "--show-agent-output",
+      "--scan-count",
+      "1",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(hiddenByDefault.code).toBe(0);
+    expect(hiddenByDefault.stderrWrites.some((line) => line.includes("sub-agent diagnostic from nested worker"))).toBe(false);
+    expect(hiddenByDefault.logs.some((line) => line.includes("Inserted 1 TODO item"))).toBe(true);
+
+    expect(explicitlyShown.code).toBe(0);
+    expect(explicitlyShown.stderrWrites.some((line) => line.includes("sub-agent diagnostic from nested worker"))).toBe(true);
+    expect(explicitlyShown.logs.some((line) => line.includes("Inserted 1 TODO item"))).toBe(true);
+  });
+
+  it("plan keeps default-hidden planner stderr in both TTY and non-TTY sessions", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "plan-worker-hidden-tty-parity.cjs");
+
+    fs.writeFileSync(
+      roadmapPath,
+      "# Roadmap\n\n## Scope\nDeliver API workflow.\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        "const promptPath = process.argv[process.argv.length - 1];",
+        "void fs.readFileSync(promptPath, 'utf-8');",
+        "console.error('planner diagnostic hidden across tty states');",
+        "console.log('- [ ] Add release checklist');",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const runPlanWithTty = async (isTTY: boolean) => {
+      const stdoutDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+      const stderrDescriptor = Object.getOwnPropertyDescriptor(process.stderr, "isTTY");
+
+      Object.defineProperty(process.stdout, "isTTY", {
+        configurable: true,
+        get: () => isTTY,
+      });
+      Object.defineProperty(process.stderr, "isTTY", {
+        configurable: true,
+        get: () => isTTY,
+      });
+
+      try {
+        return await runCli([
+          "plan",
+          "roadmap.md",
+          "--scan-count",
+          "1",
+          "--worker",
+          "node",
+          workerScriptPath.replace(/\\/g, "/"),
+        ], workspace);
+      } finally {
+        if (stdoutDescriptor) {
+          Object.defineProperty(process.stdout, "isTTY", stdoutDescriptor);
+        } else {
+          Reflect.deleteProperty(process.stdout, "isTTY");
+        }
+
+        if (stderrDescriptor) {
+          Object.defineProperty(process.stderr, "isTTY", stderrDescriptor);
+        } else {
+          Reflect.deleteProperty(process.stderr, "isTTY");
+        }
+      }
+    };
+
+    const ttyResult = await runPlanWithTty(true);
+    fs.writeFileSync(
+      roadmapPath,
+      "# Roadmap\n\n## Scope\nDeliver API workflow.\n",
+      "utf-8",
+    );
+    const nonTtyResult = await runPlanWithTty(false);
+
+    expect(ttyResult.code).toBe(0);
+    expect(nonTtyResult.code).toBe(0);
+    expect(ttyResult.stderrWrites.some((line) => line.includes("planner diagnostic hidden across tty states"))).toBe(false);
+    expect(nonTtyResult.stderrWrites.some((line) => line.includes("planner diagnostic hidden across tty states"))).toBe(false);
+    expect(ttyResult.logs.some((line) => line.includes("Inserted 1 TODO item"))).toBe(true);
+    expect(nonTtyResult.logs.some((line) => line.includes("Inserted 1 TODO item"))).toBe(true);
+  });
+
   it("plan shows planner stderr when --show-agent-output is set", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");
@@ -4645,6 +5104,163 @@ describe.sequential("CLI integration", () => {
 
     expect(result.code).toBe(0);
     expect(result.stderrWrites.some((line) => line.includes("planner diagnostic visible with flag"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Inserted 1 TODO item"))).toBe(true);
+  });
+
+  it("plan shows planner stderr with --show-agent-output in both TTY and non-TTY sessions", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "plan-worker-show-tty-parity.cjs");
+
+    fs.writeFileSync(
+      roadmapPath,
+      "# Roadmap\n\n## Scope\nDeliver API workflow.\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        "const promptPath = process.argv[process.argv.length - 1];",
+        "void fs.readFileSync(promptPath, 'utf-8');",
+        "console.error('planner diagnostic visible across tty states');",
+        "console.log('- [ ] Add release checklist');",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const runPlanWithTty = async (isTTY: boolean) => {
+      const stdoutDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+      const stderrDescriptor = Object.getOwnPropertyDescriptor(process.stderr, "isTTY");
+
+      Object.defineProperty(process.stdout, "isTTY", {
+        configurable: true,
+        get: () => isTTY,
+      });
+      Object.defineProperty(process.stderr, "isTTY", {
+        configurable: true,
+        get: () => isTTY,
+      });
+
+      try {
+        return await runCli([
+          "plan",
+          "roadmap.md",
+          "--show-agent-output",
+          "--scan-count",
+          "1",
+          "--worker",
+          "node",
+          workerScriptPath.replace(/\\/g, "/"),
+        ], workspace);
+      } finally {
+        if (stdoutDescriptor) {
+          Object.defineProperty(process.stdout, "isTTY", stdoutDescriptor);
+        } else {
+          Reflect.deleteProperty(process.stdout, "isTTY");
+        }
+
+        if (stderrDescriptor) {
+          Object.defineProperty(process.stderr, "isTTY", stderrDescriptor);
+        } else {
+          Reflect.deleteProperty(process.stderr, "isTTY");
+        }
+      }
+    };
+
+    const ttyResult = await runPlanWithTty(true);
+    fs.writeFileSync(
+      roadmapPath,
+      "# Roadmap\n\n## Scope\nDeliver API workflow.\n",
+      "utf-8",
+    );
+    const nonTtyResult = await runPlanWithTty(false);
+
+    expect(ttyResult.code).toBe(0);
+    expect(nonTtyResult.code).toBe(0);
+    expect(ttyResult.stderrWrites.some((line) => line.includes("planner diagnostic visible across tty states"))).toBe(true);
+    expect(nonTtyResult.stderrWrites.some((line) => line.includes("planner diagnostic visible across tty states"))).toBe(true);
+    expect(ttyResult.logs.some((line) => line.includes("Inserted 1 TODO item"))).toBe(true);
+    expect(nonTtyResult.logs.some((line) => line.includes("Inserted 1 TODO item"))).toBe(true);
+  });
+
+  it("plan keeps explicit --no-show-agent-output over prior --show-agent-output", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "plan-worker-explicit-hide-stderr.cjs");
+
+    fs.writeFileSync(
+      roadmapPath,
+      "# Roadmap\n\n## Scope\nDeliver API workflow.\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        "const promptPath = process.argv[process.argv.length - 1];",
+        "void fs.readFileSync(promptPath, 'utf-8');",
+        "console.error('planner diagnostic hidden by explicit disable');",
+        "console.log('- [ ] Add release checklist');",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "plan",
+      "roadmap.md",
+      "--show-agent-output",
+      "--no-show-agent-output",
+      "--scan-count",
+      "1",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.stderrWrites.some((line) => line.includes("planner diagnostic hidden by explicit disable"))).toBe(false);
+    expect(result.logs.some((line) => line.includes("Inserted 1 TODO item"))).toBe(true);
+  });
+
+  it("plan keeps agent output hidden by default when worker comes from config defaults", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "plan-worker-config-default-hidden-stderr.cjs");
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+
+    fs.writeFileSync(
+      roadmapPath,
+      "# Roadmap\n\n## Scope\nDeliver API workflow.\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "console.log('- [ ] Add release checklist');",
+        "console.error('planner diagnostic hidden via config defaults');",
+      ].join("\n"),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(workspace, ".rundown", "config.json"),
+      JSON.stringify({
+        defaults: {
+          worker: ["node", workerScriptPath.replace(/\\/g, "/")],
+        },
+      }, null, 2),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "plan",
+      "roadmap.md",
+      "--scan-count",
+      "1",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.stderrWrites.some((line) => line.includes("planner diagnostic hidden via config defaults"))).toBe(false);
     expect(result.logs.some((line) => line.includes("Inserted 1 TODO item"))).toBe(true);
   });
 

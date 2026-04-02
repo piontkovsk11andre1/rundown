@@ -112,7 +112,7 @@ export interface DiscussTaskOptions {
   varsFileOption: string | boolean | undefined;
   cliTemplateVarArgs: string[];
   workerCommand: string[];
-  hideAgentOutput: boolean;
+  showAgentOutput: boolean;
   trace: boolean;
   forceUnlock: boolean;
   ignoreCliBlock: boolean;
@@ -386,15 +386,6 @@ export function createDiscussTask(
           exit_code: result.exitCode,
         },
       }));
-
-      if (!options.hideAgentOutput && !options.keepArtifacts) {
-        if (result.stdout) {
-          emit({ kind: "text", text: result.stdout });
-        }
-        if (result.stderr) {
-          emit({ kind: "stderr", text: result.stderr });
-        }
-      }
 
       // Mark artifact status as cancelled when worker fails or checkbox state mutates.
       const status = result.exitCode === 0 && checkboxMutations.length === 0

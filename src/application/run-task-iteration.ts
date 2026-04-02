@@ -71,7 +71,7 @@ interface IterationExecutionOptions {
   noRepair: boolean;
   repairAttempts: number;
   forceExecute: boolean;
-  hideAgentOutput: boolean;
+  showAgentOutput: boolean;
   hideHookOutput: boolean;
   trace: boolean;
 }
@@ -298,7 +298,7 @@ export async function runTaskIteration(params: {
     resolvedWorkerCommand,
     transport: execution.transport,
     keepArtifacts: execution.keepArtifacts,
-    hideAgentOutput: execution.hideAgentOutput,
+    showAgentOutput: execution.showAgentOutput,
     ignoreCliBlock: execution.ignoreCliBlock,
     verify: execution.verify,
     noRepair: execution.noRepair,
@@ -336,7 +336,7 @@ export async function runTaskIteration(params: {
     mode: execution.mode,
     transport: execution.transport,
     keepArtifacts: execution.keepArtifacts,
-    hideAgentOutput: execution.hideAgentOutput,
+    showAgentOutput: execution.showAgentOutput,
     ignoreCliBlock: execution.ignoreCliBlock,
     verify: execution.verify,
     noRepair: execution.noRepair,

@@ -92,6 +92,7 @@ export interface PlanTaskOptions {
   scanCount?: number;
   mode: RunnerMode;
   transport: PromptTransport;
+  showAgentOutput: boolean;
   dryRun: boolean;
   printPrompt: boolean;
   keepArtifacts: boolean;
@@ -122,6 +123,7 @@ export function createPlanTask(
       scanCount = 3,
       mode,
       transport,
+      showAgentOutput,
       dryRun,
       printPrompt,
       keepArtifacts,
@@ -509,8 +511,8 @@ export function createPlanTask(
             mode === "wait",
           );
 
-          // Forward worker stderr in wait mode to preserve CLI diagnostics.
-          if (mode === "wait" && runResult.stderr) {
+          // Forward worker stderr in wait mode only when explicitly enabled.
+          if (mode === "wait" && showAgentOutput && runResult.stderr) {
             emit({ kind: "stderr", text: runResult.stderr });
           }
 

@@ -65,7 +65,7 @@ export function createWorkerExecutorAdapter(): WorkerExecutorPort {
         parentWorkerCommand: options?.parentWorkerCommand,
         parentTransport: options?.parentTransport,
         parentKeepArtifacts: options?.parentKeepArtifacts,
-        parentHideAgentOutput: options?.parentHideAgentOutput,
+        parentShowAgentOutput: options?.parentShowAgentOutput,
         parentIgnoreCliBlock: options?.parentIgnoreCliBlock,
         parentVerify: options?.parentVerify,
         parentNoRepair: options?.parentNoRepair,

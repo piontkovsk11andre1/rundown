@@ -26,7 +26,7 @@ export interface HandleDryRunOrPrintPromptParams {
   resolvedWorkerCommand: string[];
   transport: PromptTransport;
   keepArtifacts: boolean;
-  hideAgentOutput: boolean;
+  showAgentOutput: boolean;
   ignoreCliBlock: boolean;
   verify: boolean;
   noRepair: boolean;
@@ -79,7 +79,7 @@ export function handleDryRunOrPrintPrompt(params: HandleDryRunOrPrintPromptParam
     resolvedWorkerCommand,
     transport,
     keepArtifacts,
-    hideAgentOutput,
+    showAgentOutput,
     ignoreCliBlock,
     verify,
     noRepair,
@@ -145,7 +145,7 @@ export function handleDryRunOrPrintPrompt(params: HandleDryRunOrPrintPromptParam
       parentWorkerCommand: resolvedWorkerCommand,
       parentTransport: transport,
       parentKeepArtifacts: keepArtifacts,
-      parentHideAgentOutput: hideAgentOutput,
+      parentShowAgentOutput: showAgentOutput,
       parentIgnoreCliBlock: ignoreCliBlock,
       parentVerify: verify,
       parentNoRepair: noRepair,

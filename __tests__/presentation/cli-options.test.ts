@@ -30,7 +30,7 @@ describe("CLI run option normalization", () => {
     expect(call.commitMessageTemplate).toBeUndefined();
     expect(call.onCompleteCommand).toBeUndefined();
     expect(call.onFailCommand).toBeUndefined();
-    expect(call.hideAgentOutput).toBe(false);
+    expect(call.showAgentOutput).toBe(false);
     expect(call.runAll).toBe(false);
     expect(call.noRepair).toBe(false);
     expect(call.repairAttempts).toBe(1);
@@ -52,21 +52,21 @@ describe("CLI run option normalization", () => {
     expect(call.ignoreCliBlock).toBe(true);
   });
 
-  it("passes hide-agent-output option to run task", async () => {
+  it("passes show-agent-output option to run task", async () => {
     const runTask = vi.fn(async () => 0);
     const call = await invokeRunAndCaptureCall([
       "run",
       "tasks.md",
-      "--hide-agent-output",
+      "--show-agent-output",
       "--worker",
       "opencode",
       "run",
     ], runTask);
 
-    expect(call.hideAgentOutput).toBe(true);
+    expect(call.showAgentOutput).toBe(true);
   });
 
-  it("defaults hide-agent-output to false when omitted", async () => {
+  it("defaults show-agent-output to false when omitted", async () => {
     const runTask = vi.fn(async () => 0);
     const call = await invokeRunAndCaptureCall([
       "run",
@@ -76,7 +76,7 @@ describe("CLI run option normalization", () => {
       "run",
     ], runTask);
 
-    expect(call.hideAgentOutput).toBe(false);
+    expect(call.showAgentOutput).toBe(false);
   });
 
   it("normalizes empty commit and hook values to undefined", async () => {
@@ -461,7 +461,7 @@ describe("CLI run option normalization", () => {
     expect(call.varsFileOption).toBeUndefined();
     expect(call.cliTemplateVarArgs).toEqual([]);
     expect(call.workerCommand).toEqual(["opencode", "run"]);
-    expect(call.hideAgentOutput).toBe(false);
+    expect(call.showAgentOutput).toBe(false);
     expect(call.trace).toBe(false);
     expect(call.forceUnlock).toBe(false);
     expect(call.ignoreCliBlock).toBe(false);
@@ -509,7 +509,7 @@ describe("CLI run option normalization", () => {
       "--var",
       "owner=ops",
       "--dry-run",
-      "--hide-agent-output",
+      "--show-agent-output",
       "--trace",
       "--force-unlock",
       "--worker",
@@ -520,7 +520,7 @@ describe("CLI run option normalization", () => {
     expect(call.varsFileOption).toBe("custom-vars.json");
     expect(call.cliTemplateVarArgs).toEqual(["env=prod", "owner=ops"]);
     expect(call.dryRun).toBe(true);
-    expect(call.hideAgentOutput).toBe(true);
+    expect(call.showAgentOutput).toBe(true);
     expect(call.trace).toBe(true);
     expect(call.forceUnlock).toBe(true);
   });
@@ -1379,6 +1379,7 @@ describe("CLI plan and utility command normalization", () => {
     expect(call.scanCount).toBe(3);
     expect(call.mode).toBe("wait");
     expect(call.transport).toBe("file");
+    expect(call.showAgentOutput).toBe(false);
     expect(call.dryRun).toBe(true);
     expect(call.printPrompt).toBe(true);
     expect(call.keepArtifacts).toBe(true);

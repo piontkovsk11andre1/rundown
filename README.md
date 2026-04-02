@@ -324,7 +324,7 @@ rundown run roadmap.md -- opencode run
 Or you can turn it into a more operational loop:
 
 ```bash
-rundown run roadmap.md --hide-agent-output --worker opencode run
+rundown run roadmap.md --show-agent-output --worker opencode run
 rundown run roadmap.md --all --commit --on-complete "git push" -- opencode run
 rundown run roadmap.md --clean --all --worker opencode run
 rundown run roadmap.md --keep-artifacts --transport file -- opencode run
@@ -337,7 +337,7 @@ Useful capabilities that stay out of the way until you need them:
 - reset checklist state with `--redo` (before run), `--reset-after` (after run), or `--clean` (both)
 - expand `cli` fenced blocks in task markdown and templates, or disable execution with `--ignore-cli-block`
 - set per-command `cli` block timeouts with `--cli-block-timeout <ms>`
-- hide worker stdout/stderr with `--hide-agent-output` (default: off) to show only rundown status messages
+- show worker stdout/stderr for execute/verify/plan with `--show-agent-output` (default: off; output hidden otherwise)
 - use interactive sessions with `--mode tui`
 - keep durable prompt handoff on Windows with `--transport file`
 - auto-commit completed work with a task-derived message

@@ -555,6 +555,48 @@ describe("plan-task", () => {
     );
   });
 
+  it("hides planner stderr by default in wait mode", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, workerExecutor, events } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\nBuild a new release process.\n",
+    });
+    vi.mocked(workerExecutor.runWorker).mockResolvedValue({
+      exitCode: 0,
+      stdout: "",
+      stderr: "planner diagnostic\n",
+    });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile }));
+
+    expect(code).toBe(0);
+    expect(events.some((event) => event.kind === "stderr")).toBe(false);
+  });
+
+  it("shows planner stderr in wait mode when showAgentOutput is enabled", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, workerExecutor, events } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\nBuild a new release process.\n",
+    });
+    vi.mocked(workerExecutor.runWorker).mockResolvedValue({
+      exitCode: 0,
+      stdout: "",
+      stderr: "planner diagnostic\n",
+    });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile, showAgentOutput: true }));
+
+    expect(code).toBe(0);
+    expect(events).toContainEqual({ kind: "stderr", text: "planner diagnostic\n" });
+  });
+
   it("completes with warning when planner produces no output", async () => {
     const cwd = "/workspace";
     const markdownFile = path.join(cwd, "roadmap.md");
@@ -1147,6 +1189,7 @@ function createOptions(overrides: Partial<PlanTaskOptions> = {}): PlanTaskOption
     scanCount: 1,
     mode: "wait",
     transport: "arg",
+    showAgentOutput: false,
     dryRun: false,
     printPrompt: false,
     keepArtifacts: false,

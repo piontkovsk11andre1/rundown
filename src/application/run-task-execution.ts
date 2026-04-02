@@ -122,7 +122,7 @@ export interface RunTaskOptions {
   resetAfter: boolean;
   clean: boolean;
   onFailCommand?: string;
-  hideAgentOutput: boolean;
+  showAgentOutput: boolean;
   trace: boolean;
   traceOnly: boolean;
   forceUnlock: boolean;
@@ -174,7 +174,7 @@ export function createRunTaskExecution(
       resetAfter,
       clean,
       onFailCommand,
-      hideAgentOutput,
+      showAgentOutput,
       trace,
       traceOnly,
       forceUnlock,
@@ -462,7 +462,7 @@ export function createRunTaskExecution(
             noRepair,
             repairAttempts,
             forceExecute,
-            hideAgentOutput,
+            showAgentOutput,
             hideHookOutput,
             trace,
           },

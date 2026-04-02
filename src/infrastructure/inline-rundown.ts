@@ -24,7 +24,7 @@ export interface RundownTaskOptions {
   parentWorkerCommand?: string[];
   parentTransport?: string;
   parentKeepArtifacts?: boolean;
-  parentHideAgentOutput?: boolean;
+  parentShowAgentOutput?: boolean;
   parentIgnoreCliBlock?: boolean;
   parentVerify?: boolean;
   parentNoRepair?: boolean;
@@ -150,7 +150,7 @@ function buildForwardedRunArgs(args: string[], options: RundownTaskOptions | und
   const hasWorkerOverride = hasLongOption(forwarded, "--worker");
   const hasTransportOverride = hasLongOption(forwarded, "--transport");
   const hasKeepArtifactsOverride = hasLongOption(forwarded, "--keep-artifacts");
-  const hasHideAgentOutputOverride = hasLongOption(forwarded, "--hide-agent-output");
+  const hasShowAgentOutputOverride = hasLongOption(forwarded, "--show-agent-output");
   const hasIgnoreCliBlockOverride = hasLongOption(forwarded, "--ignore-cli-block");
   const hasVerifyOverride = hasLongOptionVariant(forwarded, ["--verify", "--no-verify"]);
   const hasNoRepairOverride = hasLongOption(forwarded, "--no-repair");
@@ -168,8 +168,8 @@ function buildForwardedRunArgs(args: string[], options: RundownTaskOptions | und
     forwarded.push("--keep-artifacts");
   }
 
-  if (!hasHideAgentOutputOverride && options?.parentHideAgentOutput) {
-    forwarded.push("--hide-agent-output");
+  if (!hasShowAgentOutputOverride && options?.parentShowAgentOutput) {
+    forwarded.push("--show-agent-output");
   }
 
   if (!hasIgnoreCliBlockOverride && options?.parentIgnoreCliBlock) {

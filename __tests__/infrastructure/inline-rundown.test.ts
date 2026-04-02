@@ -124,7 +124,7 @@ describe("executeRundownTask", () => {
       parentWorkerCommand: ["opencode", "run"],
       parentTransport: "arg",
       parentKeepArtifacts: true,
-      parentHideAgentOutput: true,
+      parentShowAgentOutput: true,
       parentIgnoreCliBlock: true,
       parentVerify: false,
       parentNoRepair: true,
@@ -150,7 +150,7 @@ describe("executeRundownTask", () => {
         "--transport",
         "arg",
         "--keep-artifacts",
-        "--hide-agent-output",
+        "--show-agent-output",
         "--ignore-cli-block",
         "--no-verify",
         "--no-repair",
@@ -168,13 +168,13 @@ describe("executeRundownTask", () => {
     spawnMock.mockReturnValue(child);
 
     const promise = executeRundownTask(
-      ["Child.md", "--worker", "child", "--transport=arg", "--keep-artifacts", "--hide-agent-output"],
+      ["Child.md", "--worker", "child", "--transport=arg", "--keep-artifacts", "--show-agent-output"],
       "/repo",
       {
         parentWorkerCommand: ["parent", "run"],
         parentTransport: "file",
         parentKeepArtifacts: true,
-        parentHideAgentOutput: true,
+        parentShowAgentOutput: true,
         parentIgnoreCliBlock: true,
         parentVerify: true,
         parentNoRepair: true,
@@ -199,7 +199,7 @@ describe("executeRundownTask", () => {
         "child",
         "--transport=arg",
         "--keep-artifacts",
-        "--hide-agent-output",
+        "--show-agent-output",
         "--ignore-cli-block",
         "--verify",
         "--no-repair",

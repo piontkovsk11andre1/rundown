@@ -87,7 +87,7 @@ export interface RundownTaskExecutionOptions {
   // Parent keep-artifacts flag forwarded to nested execution.
   parentKeepArtifacts?: boolean;
   // Parent output visibility flag forwarded to nested execution.
-  parentHideAgentOutput?: boolean;
+  parentShowAgentOutput?: boolean;
   // Parent CLI block handling flag forwarded to nested execution.
   parentIgnoreCliBlock?: boolean;
   // Parent verification flag forwarded to nested execution.

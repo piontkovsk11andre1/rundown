@@ -64,7 +64,7 @@ export async function dispatchTaskExecution(params: {
   mode: RunnerMode;
   transport: PromptTransport;
   keepArtifacts: boolean;
-  hideAgentOutput: boolean;
+  showAgentOutput: boolean;
   ignoreCliBlock: boolean;
   verify: boolean;
   noRepair: boolean;
@@ -91,7 +91,7 @@ export async function dispatchTaskExecution(params: {
     mode,
     transport,
     keepArtifacts,
-    hideAgentOutput,
+    showAgentOutput,
     ignoreCliBlock,
     verify,
     noRepair,
@@ -132,9 +132,9 @@ export async function dispatchTaskExecution(params: {
     pendingPreRunResetTraceEvents.length = 0;
   }
 
-  // Forward worker stdout/stderr unless agent output is intentionally hidden.
+  // Forward worker stdout/stderr only when agent output is explicitly enabled.
   const emitExecutionWorkerOutput = (stdout: string, stderr: string): void => {
-    if (hideAgentOutput) {
+    if (!showAgentOutput) {
       return;
     }
 
@@ -243,7 +243,7 @@ export async function dispatchTaskExecution(params: {
       parentWorkerCommand: resolvedWorkerCommand,
       parentTransport: transport,
       parentKeepArtifacts: keepArtifacts,
-      parentHideAgentOutput: hideAgentOutput,
+      parentShowAgentOutput: showAgentOutput,
       parentIgnoreCliBlock: ignoreCliBlock,
       parentVerify: verify,
       parentNoRepair: noRepair,

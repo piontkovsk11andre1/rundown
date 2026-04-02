@@ -8,7 +8,7 @@ export interface DelegatedRundownArgsOptions {
   parentWorkerCommand: string[];
   parentTransport: string;
   parentKeepArtifacts: boolean;
-  parentHideAgentOutput: boolean;
+  parentShowAgentOutput: boolean;
   parentIgnoreCliBlock: boolean;
   parentVerify: boolean;
   parentNoRepair: boolean;
@@ -51,8 +51,8 @@ export function buildDelegatedRundownArgs(
     delegated.push("--keep-artifacts");
   }
 
-  if (!hasLongOption(delegated, "--hide-agent-output") && options.parentHideAgentOutput) {
-    delegated.push("--hide-agent-output");
+  if (!hasLongOption(delegated, "--show-agent-output") && options.parentShowAgentOutput) {
+    delegated.push("--show-agent-output");
   }
 
   if (!hasLongOption(delegated, "--ignore-cli-block") && options.parentIgnoreCliBlock) {

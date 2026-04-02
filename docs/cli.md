@@ -27,7 +27,7 @@ Scan a file, directory, or glob, select the next runnable task, execute it, veri
 
 With `--all` (or the shorthand `all` command), process tasks sequentially until all are complete or a failure occurs.
 
-Use `--hide-agent-output` to suppress execution transcript noise while keeping rundown lifecycle/status messages visible.
+Agent stdout/stderr is hidden by default. Use `--show-agent-output` to display worker output for `execute`, `verify`, and `plan` stages while keeping `discuss` worker output silent.
 
 Examples:
 
@@ -40,7 +40,7 @@ rundown run roadmap.md --redo -- opencode run
 rundown run roadmap.md --reset-after -- opencode run
 rundown run roadmap.md --clean -- opencode run
 rundown all roadmap.md -- opencode run
-rundown run tasks.md --hide-agent-output --worker opencode run
+rundown run tasks.md --show-agent-output --worker opencode run
 ```
 
 PowerShell-safe form:
@@ -49,12 +49,14 @@ PowerShell-safe form:
 rundown run docs/ --worker opencode run
 rundown run docs/ --all --worker opencode run
 rundown all docs/ --worker opencode run
-rundown run docs/ --hide-agent-output --worker opencode run
+rundown run docs/ --show-agent-output --worker opencode run
 ```
 
-Quiet execution notes (`run --hide-agent-output`):
+Agent output notes (`run --show-agent-output`):
 
-- Suppressed during execution: worker-derived `text` and `stderr` transcript output (including inline `cli:` task stdout/stderr).
+- Default behavior (no flag): suppress worker-derived `text` and `stderr` transcript output across stages.
+- With `--show-agent-output`: show worker-derived `text` and `stderr` transcript output for `execute`, `verify`, and `plan` stages (including inline `cli:` task stdout/stderr).
+- `discuss` remains silent for worker transcript output even when `--show-agent-output` is set.
 - Still visible: rundown lifecycle/status messages (`info`, `warn`, `error`, `success`, `task`).
 - Still visible: hook output from `--on-complete` and `--on-fail` (intentionally out of scope for this flag).
 - Artifacts/traces still capture output for audit/debug; terminal suppression does not disable persistence.
@@ -91,7 +93,7 @@ Options:
 | `--var <key=value>` | Inject template variables (repeatable). | none |
 | `--ignore-cli-block` | Skip `cli` fenced-block command execution during prompt expansion. | off |
 | `--cli-block-timeout <ms>` | Per-command timeout for `cli` fenced-block execution (`0` disables timeout). | `30000` |
-| `--hide-agent-output` | Hide worker stdout/stderr while keeping rundown status/lifecycle output visible. | off |
+| `--show-agent-output` | Show worker stdout/stderr for execute/verify/plan stages (output is hidden by default). | off |
 | `--force-unlock` | Remove stale source lockfile before acquiring discuss lock. Active locks held by live processes are not removed. | off |
 | `--worker <command...>` | Worker command (preferred on PowerShell). | unset |
 
@@ -566,7 +568,7 @@ These options are available on `rundown run`.
 | `--commit-message <template>` | Commit message template (supports `{{task}}` and `{{file}}`). | `rundown: complete "{{task}}" in {{file}}` |
 | `--on-complete <command>` | Run a shell command after successful task completion. | unset |
 | `--on-fail <command>` | Run a shell command when a task fails (execution or verification failure). | unset |
-| `--hide-agent-output` | Hide worker stdout/stderr during execution; show only rundown status messages. | off |
+| `--show-agent-output` | Show worker stdout/stderr for execute/verify/plan stages (output is hidden by default). | off |
 | `--all` | Run all tasks sequentially instead of stopping after one. Stops on failure. | off |
 | `--redo` | Reset checked checkboxes in all resolved source files before task selection. Implies `--all`. | off |
 | `--reset-after` | Reset all checkboxes in all resolved source files after run completion. | off |
@@ -725,7 +727,7 @@ Forwarded flags:
 - `--worker <command...>`
 - `--transport <file|arg>`
 - `--keep-artifacts`
-- `--hide-agent-output`
+- `--show-agent-output`
 - verification mode: `--verify` or `--no-verify`
 - repair mode: `--no-repair` or `--repair-attempts <n>`
 

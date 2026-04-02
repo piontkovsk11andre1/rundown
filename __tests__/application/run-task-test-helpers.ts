@@ -234,7 +234,7 @@ export function createOptions(overrides: Partial<RunTaskOptions>): RunTaskOption
     resetAfter: false,
     clean: false,
     onFailCommand: undefined,
-    hideAgentOutput: false,
+    showAgentOutput: false,
     trace: false,
     traceOnly: false,
     forceUnlock: false,

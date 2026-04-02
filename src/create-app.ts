@@ -86,6 +86,7 @@ export interface PlanTaskCommandOptions {
   scanCount?: number;
   mode: PlanTaskUseCaseOptions["mode"];
   transport: PlanTaskUseCaseOptions["transport"];
+  showAgentOutput: boolean;
   dryRun: boolean;
   printPrompt: boolean;
   keepArtifacts: boolean;

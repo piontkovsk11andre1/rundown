@@ -1205,7 +1205,7 @@ function createOptions(overrides: Partial<DiscussTaskOptions>): DiscussTaskOptio
     varsFileOption: undefined,
     cliTemplateVarArgs: [],
     workerCommand: [],
-    hideAgentOutput: false,
+    showAgentOutput: false,
     trace: false,
     forceUnlock: false,
     ignoreCliBlock: false,

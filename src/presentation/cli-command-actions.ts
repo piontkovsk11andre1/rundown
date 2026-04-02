@@ -103,7 +103,7 @@ export function createRunCommandAction({
     const commitMessageTemplate = normalizeOptionalString(opts.commitMessage);
     const onCompleteCommand = normalizeOptionalString(opts.onComplete);
     const onFailCommand = normalizeOptionalString(opts.onFail);
-    const hideAgentOutput = Boolean(opts.hideAgentOutput as boolean | undefined);
+    const showAgentOutput = Boolean(opts.showAgentOutput as boolean | undefined);
     const runAll = Boolean(opts.all as boolean | undefined);
     const clean = Boolean(opts.clean as boolean | undefined);
     const redo = Boolean(opts.redo as boolean | undefined) || clean;
@@ -135,7 +135,7 @@ export function createRunCommandAction({
       commitMessageTemplate,
       onCompleteCommand,
       onFailCommand,
-      hideAgentOutput,
+      showAgentOutput,
       runAll,
       redo,
       resetAfter,
@@ -167,7 +167,7 @@ export function createDiscussCommandAction({
     const keepArtifacts = opts.keepArtifacts as boolean;
     const varsFileOption = opts.varsFile as string | boolean | undefined;
     const cliTemplateVarArgs = (opts.var as string[] | undefined) ?? [];
-    const hideAgentOutput = Boolean(opts.hideAgentOutput as boolean | undefined);
+    const showAgentOutput = Boolean(opts.showAgentOutput as boolean | undefined);
     const trace = Boolean(opts.trace as boolean | undefined);
     const forceUnlock = Boolean(opts.forceUnlock as boolean | undefined);
     const ignoreCliBlock = resolveIgnoreCliBlockFlag(opts);
@@ -186,7 +186,7 @@ export function createDiscussCommandAction({
       varsFileOption,
       cliTemplateVarArgs,
       workerCommand,
-      hideAgentOutput,
+      showAgentOutput,
       trace,
       forceUnlock,
       ignoreCliBlock,
@@ -368,6 +368,7 @@ export function createPlanCommandAction({
     const printPrompt = opts.printPrompt as boolean;
     const keepArtifacts = opts.keepArtifacts as boolean;
     const trace = opts.trace as boolean;
+    const showAgentOutput = Boolean(opts.showAgentOutput as boolean | undefined);
     const forceUnlock = Boolean(opts.forceUnlock as boolean | undefined);
     const ignoreCliBlock = resolveIgnoreCliBlockFlag(opts);
     const cliBlockTimeoutMs = parseCliBlockTimeout(opts.cliBlockTimeout as string | undefined);
@@ -381,6 +382,7 @@ export function createPlanCommandAction({
       scanCount,
       mode,
       transport,
+      showAgentOutput,
       dryRun,
       printPrompt,
       keepArtifacts,

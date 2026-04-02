@@ -234,7 +234,7 @@ This makes failure part of the workload model instead of an untracked side effec
 
 When implementation intent is spread across a full document, `rundown plan` scans that markdown file and appends missing actionable TODOs using `.rundown/plan.md`.
 
-If the document has no TODOs yet, `plan` creates an initial actionable set first, then runs iterative clean-session scans (`--scan-count`) until no additional TODOs are proposed or the scan cap is reached.
+If the document has no TODOs yet, `plan` creates an initial actionable set first, then runs iterative clean-session scans (`--scan-count`, default `3`) until no additional TODOs are proposed or the scan cap is reached.
 
 Updates are append-only for safety: existing TODO text is preserved while missing work is added deterministically.
 

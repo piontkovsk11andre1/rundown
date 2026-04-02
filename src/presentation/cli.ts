@@ -41,7 +41,7 @@ import {
 const RUNNER_MODES: readonly ProcessRunMode[] = ["wait", "tui", "detached"];
 const PLANNER_MODES: readonly ProcessRunMode[] = ["wait"];
 const DISCUSS_MODES: readonly ProcessRunMode[] = ["wait", "tui"];
-const DEFAULT_PLAN_SCAN_COUNT = 1;
+const DEFAULT_PLAN_SCAN_COUNT = 3;
 const DEFAULT_VARS_FILE_HELP = "Load extra template variables from a JSON file (default: <config-dir>/vars.json)";
 
 type CliActionResult = number | Promise<number>;
@@ -239,7 +239,11 @@ program
   .command("plan")
   .description("Synthesize actionable TODOs for a Markdown document.")
   .argument("[markdown-file...]", "Markdown document to plan")
-  .option("--scan-count <n>", "Max clean-session TODO coverage scans", String(DEFAULT_PLAN_SCAN_COUNT))
+  .option(
+    "--scan-count <n>",
+    "Max clean-session TODO coverage scans (default: 3)",
+    String(DEFAULT_PLAN_SCAN_COUNT),
+  )
   .option("--mode <mode>", "Planner mode: wait", "wait")
   .option("--transport <transport>", "Prompt transport: file, arg", "file")
   .option("--dry-run", "Show what would be planned without executing", false)

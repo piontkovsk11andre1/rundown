@@ -4309,7 +4309,7 @@ describe.sequential("CLI integration", () => {
     expect(combinedOutput.includes("rundown")).toBe(true);
   });
 
-  it("plan --help shows --force-unlock option", async () => {
+  it("plan --help shows --force-unlock and scan-count default", async () => {
     const workspace = makeTempWorkspace();
 
     const result = await runCli(["plan", "roadmap.md", "--help"], workspace);
@@ -4318,6 +4318,8 @@ describe.sequential("CLI integration", () => {
     const helpOutput = result.stdoutWrites.join("\n");
     const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
     expect(compactHelpOutput).toContain("--force-unlock");
+    expect(compactHelpOutput).toContain("--scan-count <n>");
+    expect(compactHelpOutput).toContain("Max clean-session TODO coverage scans (default: 3)");
   });
 
   it("init --help explains --config-dir creation target", async () => {
@@ -4628,6 +4630,61 @@ describe.sequential("CLI integration", () => {
     expect(updated).toContain("- [ ] Add CI checks");
     expect(updated.indexOf("- [ ] Existing task")).toBe(updated.lastIndexOf("- [ ] Existing task"));
     expect(updated.indexOf("- [ ] Add CI checks")).toBe(updated.lastIndexOf("- [ ] Add CI checks"));
+  });
+
+  it("plan defaults to 3 scans when --scan-count is omitted", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "plan-worker-default-scan-count.cjs");
+    const scanMarkerPath = path.join(workspace, ".plan-scan-count-default");
+
+    fs.writeFileSync(
+      roadmapPath,
+      "# Roadmap\n\n## Scope\n- [ ] Existing task\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        "const promptPath = process.argv[process.argv.length - 1];",
+        `const markerPath = ${JSON.stringify(scanMarkerPath.replace(/\\/g, "/"))};`,
+        "void fs.readFileSync(promptPath, 'utf-8');",
+        "const previous = fs.existsSync(markerPath) ? Number(fs.readFileSync(markerPath, 'utf-8')) : 0;",
+        "const current = Number.isFinite(previous) ? previous + 1 : 1;",
+        "fs.writeFileSync(markerPath, String(current));",
+        "if (current === 1) {",
+        "  console.log('- [ ] Add API checklist');",
+        "  process.exit(0);",
+        "}",
+        "if (current === 2) {",
+        "  console.log('- [ ] Add rollback checklist');",
+        "  process.exit(0);",
+        "}",
+        "process.exit(0);",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "plan",
+      "roadmap.md",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Planning plan-scan-01-of-03"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Planning plan-scan-02-of-03"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Planning plan-scan-03-of-03"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("converged at scan 3"))).toBe(true);
+    expect(fs.readFileSync(scanMarkerPath, "utf-8").trim()).toBe("3");
+
+    const updated = fs.readFileSync(roadmapPath, "utf-8");
+    expect(updated).toContain("- [ ] Existing task");
+    expect(updated).toContain("- [ ] Add API checklist");
+    expect(updated).toContain("- [ ] Add rollback checklist");
   });
 
   it("plan uses markdown updated by earlier scans in later scan prompts", async () => {

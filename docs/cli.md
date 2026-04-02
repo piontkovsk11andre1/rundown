@@ -225,7 +225,7 @@ Options:
 
 | Option | Description | Default |
 |---|---|---|
-| `--scan-count <n>` | Maximum clean-session scan iterations. Must be a safe positive integer. | `1` |
+| `--scan-count <n>` | Maximum clean-session scan iterations. Must be a safe positive integer. | `3` |
 | `--mode <mode>` | Planner execution mode. Currently only `wait` is supported. | `wait` |
 | `--transport <file|arg>` | Prompt transport for planner invocations. | `file` |
 | `--force-unlock` | Remove stale source lockfile before acquiring the planner lock. Active locks held by live processes are not removed. | off |

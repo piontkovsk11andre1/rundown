@@ -9,7 +9,7 @@ const SORT_MODES: readonly SortMode[] = ["name-sort", "none", "old-first", "new-
 // Supported restore mechanisms for rollback-related commands.
 const REVERT_METHODS = ["revert", "reset"] as const;
 // Default number of plan files scanned when no explicit value is provided.
-const DEFAULT_PLAN_SCAN_COUNT = 1;
+const DEFAULT_PLAN_SCAN_COUNT = 3;
 
 /**
  * Defines validation rules used to parse integer-valued CLI options.

@@ -1524,7 +1524,7 @@ describe("CLI plan and utility command normalization", () => {
     expect(call.forceUnlock).toBe(true);
   });
 
-  it("defaults plan scan count to 1", async () => {
+  it("defaults plan scan count to 3", async () => {
     const planTask = vi.fn(async () => 0);
     const call = await invokePlanAndCaptureCall([
       "plan",
@@ -1534,7 +1534,7 @@ describe("CLI plan and utility command normalization", () => {
       "run",
     ], planTask);
 
-    expect(call.scanCount).toBe(1);
+    expect(call.scanCount).toBe(3);
   });
 
   it("logs a CLI error and exits with code 1 on non-integer scan count", async () => {

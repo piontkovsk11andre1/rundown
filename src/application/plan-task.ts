@@ -119,7 +119,7 @@ export function createPlanTask(
   return async function planTask(options: PlanTaskOptions): Promise<number> {
     const {
       source,
-      scanCount = 1,
+      scanCount = 3,
       mode,
       transport,
       dryRun,

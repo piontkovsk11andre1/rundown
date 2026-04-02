@@ -11,6 +11,9 @@ import path from "node:path";
 import { CONFIG_DIR_NAME } from "../domain/ports/config-dir-port.js";
 import { renderTemplate, type TemplateVars } from "../domain/template.js";
 
+/**
+ * Describes the inputs required to commit a newly checked task.
+ */
 export interface CommitTaskOptions {
   /** The task text. */
   task: string;
@@ -26,8 +29,10 @@ export interface CommitTaskOptions {
   messageTemplate?: string;
 }
 
+// Fallback message format used when callers do not provide a template.
 const DEFAULT_COMMIT_MESSAGE_TEMPLATE = "rundown: complete \"{{task}}\" in {{file}}";
 
+// Pathspec exclusions keep runtime artifacts and lockfiles out of auto-commits.
 const GIT_ARTIFACT_AND_LOCK_EXCLUDES = [
   `:(top,exclude)${CONFIG_DIR_NAME}/runs/**`,
   `:(top,exclude)${CONFIG_DIR_NAME}/logs/**`,
@@ -61,6 +66,7 @@ export async function isGitRepo(cwd: string): Promise<boolean> {
 export async function commitCheckedTask(options: CommitTaskOptions): Promise<string> {
   const { task, file, line, index, cwd, messageTemplate } = options;
 
+  // Render file paths in a cross-platform, git-friendly format.
   const relativePath = path.relative(cwd, file).replace(/\\/g, "/");
 
   const message = renderCommitMessage(
@@ -99,6 +105,7 @@ function git(args: string[], cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile("git", args, { cwd, timeout: 30_000 }, (error, stdout, stderr) => {
       if (error) {
+        // Prefer stderr for actionable details, then stdout, then process message.
         const message = stderr?.trim() || stdout?.trim() || error.message;
         reject(new Error(`git ${args[0]}: ${message}`));
       } else {

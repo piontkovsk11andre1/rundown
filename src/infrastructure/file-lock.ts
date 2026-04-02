@@ -10,7 +10,14 @@ interface LockfilePayload {
   file: string;
 }
 
+/**
+ * Creates a file-lock implementation backed by lockfiles on disk.
+ *
+ * The returned lock tracks lockfiles created by the current process so they can
+ * be released individually or in bulk during shutdown.
+ */
 export function createLockfileFileLock(): FileLock {
+  // Track only locks acquired by this process for safe ownership-aware release.
   const heldLocks = new Map<string, string>();
 
   return {
@@ -44,6 +51,7 @@ export function createLockfileFileLock(): FileLock {
             throw wrapLockIoError(sourcePath, lockPath, "acquire", error);
           }
 
+          // Recover stale lockfiles left by processes that are no longer running.
           const existingHolder = readLockHolder(lockPath);
           if (existingHolder !== null && !isProcessRunning(existingHolder.pid)) {
             releaseLockfile(lockPath);
@@ -84,6 +92,7 @@ export function createLockfileFileLock(): FileLock {
     },
     releaseAll() {
       const sourcePaths = Array.from(heldLocks.keys());
+      // Release via the public path to preserve ownership checks.
       for (const sourcePath of sourcePaths) {
         this.release(sourcePath);
       }
@@ -91,6 +100,12 @@ export function createLockfileFileLock(): FileLock {
   };
 }
 
+/**
+ * Builds the lockfile path for a given source file.
+ *
+ * Lockfiles are stored in the source file's local config directory to keep lock
+ * metadata colocated with the file being protected.
+ */
 export function lockfilePathFor(filePath: string): string {
   const sourcePath = normalizePath(filePath);
   const sourceDirectory = path.dirname(sourcePath);
@@ -98,6 +113,12 @@ export function lockfilePathFor(filePath: string): string {
   return path.join(sourceDirectory, CONFIG_DIR_NAME, `${sourceName}.lock`);
 }
 
+/**
+ * Creates a lockfile atomically and writes holder metadata to disk.
+ *
+ * If writing fails after file creation, this function attempts cleanup so a
+ * partial lockfile does not block future lock attempts.
+ */
 function createLockfile(lockPath: string, payload: LockfilePayload): void {
   const lockFd = fs.openSync(lockPath, "wx");
   try {
@@ -114,6 +135,12 @@ function createLockfile(lockPath: string, payload: LockfilePayload): void {
   fs.closeSync(lockFd);
 }
 
+/**
+ * Reads and validates lockfile metadata.
+ *
+ * Returns `null` for unreadable or malformed lockfiles so callers can treat the
+ * lock owner as unknown without crashing lock operations.
+ */
 function readLockHolder(lockPath: string): FileLockHolder | null {
   let raw = "";
   try {
@@ -135,6 +162,7 @@ function readLockHolder(lockPath: string): FileLockHolder | null {
     return null;
   }
 
+  // Accept legacy and current timestamp keys for backward compatibility.
   const startTime =
     typeof candidate.startedAt === "string" && candidate.startedAt.trim() !== ""
       ? candidate.startedAt
@@ -152,6 +180,9 @@ function readLockHolder(lockPath: string): FileLockHolder | null {
   };
 }
 
+/**
+ * Parses JSON without throwing, returning `null` for invalid payloads.
+ */
 function safeJsonParse(raw: string): unknown | null {
   try {
     return JSON.parse(raw);
@@ -160,10 +191,18 @@ function safeJsonParse(raw: string): unknown | null {
   }
 }
 
+/**
+ * Ensures the lockfile directory exists before lock creation.
+ */
 function ensureDirectory(dirPath: string): void {
   fs.mkdirSync(dirPath, { recursive: true });
 }
 
+/**
+ * Removes a lockfile if it exists.
+ *
+ * Missing files are ignored to keep release paths idempotent.
+ */
 function releaseLockfile(lockPath: string): void {
   try {
     fs.unlinkSync(lockPath);
@@ -175,6 +214,9 @@ function releaseLockfile(lockPath: string): void {
   }
 }
 
+/**
+ * Releases a lockfile only when it is owned by the current process.
+ */
 function releaseLockfileIfOwnedByCurrentProcess(lockPath: string): void {
   const holder = readLockHolder(lockPath);
   if (!holder || holder.pid !== process.pid) {
@@ -184,6 +226,9 @@ function releaseLockfileIfOwnedByCurrentProcess(lockPath: string): void {
   releaseLockfile(lockPath);
 }
 
+/**
+ * Builds a user-facing message that describes the lock holder when known.
+ */
 function buildHeldLockMessage(filePath: string, holder: FileLockHolder | null): string {
   if (!holder) {
     return `File is locked: ${filePath}`;
@@ -192,6 +237,9 @@ function buildHeldLockMessage(filePath: string, holder: FileLockHolder | null): 
   return `File is locked: ${filePath} (held by pid=${holder.pid}, command=${holder.command}, startTime=${holder.startTime})`;
 }
 
+/**
+ * Returns a placeholder holder when lock metadata cannot be determined.
+ */
 function unknownHolder(): FileLockHolder {
   return {
     pid: -1,
@@ -200,6 +248,12 @@ function unknownHolder(): FileLockHolder {
   };
 }
 
+/**
+ * Checks whether a process appears to be alive.
+ *
+ * Uses signal `0`, which performs existence/permission checks without
+ * terminating the process.
+ */
 function isProcessRunning(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 0) {
     return false;
@@ -213,6 +267,7 @@ function isProcessRunning(pid: number): boolean {
       return false;
     }
 
+    // EPERM indicates the process exists but cannot be signaled by this user.
     if (error.code === "EPERM") {
       return true;
     }
@@ -221,10 +276,16 @@ function isProcessRunning(pid: number): boolean {
   }
 }
 
+/**
+ * Normalizes paths to absolute form so lock keys remain stable.
+ */
 function normalizePath(filePath: string): string {
   return path.resolve(filePath);
 }
 
+/**
+ * Wraps permission-related filesystem errors with lock-specific context.
+ */
 function wrapLockIoError(
   filePath: string,
   lockPath: string,
@@ -254,6 +315,9 @@ function wrapLockIoError(
   return wrapped;
 }
 
+/**
+ * Type guard for Node.js-style I/O errors with optional `code` values.
+ */
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error;
 }

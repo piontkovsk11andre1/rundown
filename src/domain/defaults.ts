@@ -10,6 +10,7 @@
  * to reuse the same cache prefix before diverging.
  */
 
+// Shared preamble reused by all default prompt templates.
 const DEFAULT_TEMPLATE_SHARED_PREFIX = `\
 {{context}}
 
@@ -26,6 +27,11 @@ The Markdown above is the source document up to but not including the selected u
 {{task}}
 `;
 
+/**
+ * Appends trace-output instructions to a template when tracing is enabled.
+ *
+ * The block defines a strict fenced format that downstream parsing expects.
+ */
 export const TRACE_INSTRUCTIONS_BLOCK = `\
 
 ## Trace output
@@ -46,10 +52,19 @@ blockers: <issues or "none">
 Keep values short and concrete.
 `;
 
+/**
+ * Returns the trace instructions block when tracing is enabled.
+ *
+ * @param trace Whether trace output should be requested from the agent.
+ * @returns Trace instructions text or an empty string.
+ */
 export function getTraceInstructions(trace: boolean): string {
   return trace ? TRACE_INSTRUCTIONS_BLOCK : "";
 }
 
+/**
+ * Default execute-phase prompt template used to run a selected task.
+ */
 export const DEFAULT_TASK_TEMPLATE = `\
 ${DEFAULT_TEMPLATE_SHARED_PREFIX}
 
@@ -66,6 +81,9 @@ Complete the task described above. Make the necessary changes to the project, bu
 {{traceInstructions}}
 `;
 
+/**
+ * Default discuss-phase prompt template used to refine task scope before implementation.
+ */
 export const DEFAULT_DISCUSS_TEMPLATE = `\
 ${DEFAULT_TEMPLATE_SHARED_PREFIX}
 
@@ -105,6 +123,9 @@ Rules:
 - do not perform implementation work in this phase
 `;
 
+/**
+ * Default verify-phase prompt template used to validate task completion.
+ */
 export const DEFAULT_VERIFY_TEMPLATE = `\
 ${DEFAULT_TEMPLATE_SHARED_PREFIX}
 
@@ -127,6 +148,9 @@ Do not write anything else.
 {{traceInstructions}}
 `;
 
+/**
+ * Default repair-phase prompt template used after a failed verification result.
+ */
 export const DEFAULT_REPAIR_TEMPLATE = `\
 ${DEFAULT_TEMPLATE_SHARED_PREFIX}
 
@@ -148,12 +172,21 @@ After making corrections, the task will be validated again.
 {{traceInstructions}}
 `;
 
+/**
+ * Default contents for the generated variables file.
+ */
 export const DEFAULT_VARS_FILE_CONTENT = `{}
 `;
 
+/**
+ * Default contents for the generated rundown config file.
+ */
 export const DEFAULT_CONFIG_CONTENT = `{}
 `;
 
+/**
+ * Default plan-phase prompt template used to propose missing additive TODO items.
+ */
 export const DEFAULT_PLAN_TEMPLATE = `\
 ${DEFAULT_TEMPLATE_SHARED_PREFIX}
 
@@ -181,6 +214,9 @@ Example output format:
 {{traceInstructions}}
 `;
 
+/**
+ * Default trace-phase prompt template used to produce an analysis.summary payload.
+ */
 export const DEFAULT_TRACE_TEMPLATE = `\
 ${DEFAULT_TEMPLATE_SHARED_PREFIX}
 

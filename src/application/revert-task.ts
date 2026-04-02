@@ -1,6 +1,11 @@
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
-import { CONFIG_DIR_NAME } from "../domain/ports/config-dir-port.js";
 import { FileLockError } from "../domain/ports/file-lock.js";
+import {
+  isGitRepoWithGitClient,
+  isPathInsideRepo,
+  isWorkingDirectoryClean,
+  resolveGitArtifactAndLockExcludes,
+} from "./git-operations.js";
 import type {
   ArtifactRunMetadata,
   ArtifactStore,
@@ -12,6 +17,10 @@ import type {
   WorkingDirectoryPort,
 } from "../domain/ports/index.js";
 
+/**
+ * External services required to resolve saved runs, perform git operations,
+ * and persist artifacts for the `revert` command.
+ */
 export interface RevertTaskDependencies {
   artifactStore: ArtifactStore;
   gitClient: GitClient;
@@ -23,6 +32,9 @@ export interface RevertTaskDependencies {
   output: ApplicationOutputPort;
 }
 
+/**
+ * User-provided options that control target selection and revert strategy.
+ */
 export interface RevertTaskOptions {
   runId: string;
   last?: number;
@@ -33,15 +45,30 @@ export interface RevertTaskOptions {
   force: boolean;
 }
 
+// Base explanation shown when no run can be reverted from saved artifacts.
 const NO_REVERTABLE_RUNS_BASE_MESSAGE = "No revertable runs found. The original run must be completed with --commit and --keep-artifacts so run.json contains extra.commitSha.";
+// Extra discovery hint appended when there are runs that can be inspected in logs.
 const REVERTABLE_LOG_HINT = "See `rundown log --revertable` for eligible runs.";
 
+/**
+ * Normalized git target resolved from a saved run.
+ *
+ * - `commit`: a completed run with a commit SHA to revert/reset.
+ * - `pre-reset-ref`: a prior reset revert run that recorded the original HEAD.
+ */
 interface RevertOperation {
   run: ArtifactRunMetadata;
   type: "commit" | "pre-reset-ref";
   ref: string;
 }
 
+/**
+ * Builds the application-level `revert` command handler.
+ *
+ * The returned function resolves target runs from artifacts, validates git
+ * preconditions, performs either `git revert` or `git reset --hard`, and then
+ * records the terminal result in a new runtime artifact entry.
+ */
 export function createRevertTask(
   dependencies: RevertTaskDependencies,
 ): (options: RevertTaskOptions) => Promise<number> {
@@ -49,18 +76,22 @@ export function createRevertTask(
 
   return async function revertTask(options: RevertTaskOptions): Promise<number> {
     const { runId, last, all, method, dryRun, keepArtifacts, force } = options;
+    // Multi-run mode is enabled when `--all` or `--last` is supplied.
     const hasMultiRunSelection = all === true || last !== undefined;
 
+    // Guard incompatible selectors early to keep behavior predictable.
     if (all && last !== undefined) {
       emit({ kind: "error", message: "Cannot combine --all with --last." });
       return 3;
     }
 
+    // Explicit run ids cannot be mixed with bulk selectors.
     if (hasMultiRunSelection && runId !== "latest") {
       emit({ kind: "error", message: "Cannot combine --run <id> with --all or --last." });
       return 3;
     }
 
+    // `--last` accepts only positive integer counts.
     if (last !== undefined && (!Number.isInteger(last) || last < 1)) {
       emit({ kind: "error", message: "--last must be a positive integer." });
       return 3;
@@ -68,9 +99,12 @@ export function createRevertTask(
 
     const cwd = dependencies.workingDirectory.cwd();
     const artifactBaseDir = dependencies.configDir?.configDir;
+    // Selected runs can include non-revertable runs (for example metadata-only entries).
     const selectedRuns = resolveTargetRuns(dependencies.artifactStore, artifactBaseDir, { runId, last, all });
+    // Completed runs are used only to provide clearer diagnostics.
     const completedRuns = resolveCompletedRuns(dependencies.artifactStore, artifactBaseDir);
 
+    // Report selection failures with context-sensitive guidance.
     if (selectedRuns.length === 0) {
       if (completedRuns.length > 0) {
         emit({
@@ -92,6 +126,7 @@ export function createRevertTask(
       return 3;
     }
 
+    // Convert saved runs into executable git targets.
     const revertOperations = selectedRuns
       .map(resolveRevertOperation)
       .filter((operation): operation is RevertOperation => operation !== null);
@@ -103,6 +138,7 @@ export function createRevertTask(
       return 3;
     }
 
+    // `pre-reset-ref` entries represent prior reset reverts and must be replayed one-at-a-time.
     const hasPreResetRefTargets = revertOperations.some((operation) => operation.type === "pre-reset-ref");
     if (hasPreResetRefTargets) {
       if (revertOperations.length > 1) {
@@ -122,9 +158,11 @@ export function createRevertTask(
       }
     }
 
+    // Revert mode processes newest-first to reduce conflict risk.
     const executionOperations = orderOperationsForMethod(revertOperations, method);
     const executionRuns = executionOperations.map((operation) => operation.run);
 
+    // Lock every referenced task/source file before mutating git state.
     const lockTargets = collectRevertLockTargets(executionRuns, cwd, dependencies.pathOperations);
     try {
       for (const filePath of lockTargets) {
@@ -149,6 +187,7 @@ export function createRevertTask(
     }
 
     try {
+      // Missing task files are informational only; git history still provides commit references.
       for (const run of executionRuns) {
         const taskFile = run.task?.file;
         const missingTaskFile = isTaskFileMissing(
@@ -168,6 +207,7 @@ export function createRevertTask(
         });
       }
 
+      // Revert/reset requires repository context and optionally a clean worktree.
       const inGitRepo = await isGitRepoWithGitClient(dependencies.gitClient, cwd);
       if (!inGitRepo) {
         emit({ kind: "error", message: "Not inside a git repository." });
@@ -195,14 +235,17 @@ export function createRevertTask(
         }
       }
 
+      // For reset mode, this tracks the oldest selected commit used to compute `<sha>~1`.
       let resetOldestSha: string | null = null;
 
       try {
+        // Validate commit-backed targets first so failures are reported before execution.
         const commitOperations = executionOperations.filter((operation) => operation.type === "commit");
         if (commitOperations.length > 0) {
           await validateTargetCommitsExistInHistory(dependencies.gitClient, cwd, commitOperations);
         }
 
+        // Reset mode must target a contiguous HEAD block unless force bypasses that safety check.
         if (method === "reset" && commitOperations.length > 0) {
           if (force) {
             emit({
@@ -215,12 +258,14 @@ export function createRevertTask(
           }
         }
 
+        // Validate pre-reset refs when reverting a prior reset operation.
         await validatePreResetRefTargetsExistInHistory(dependencies.gitClient, cwd, executionOperations);
       } catch (error) {
         emit({ kind: "error", message: String(error) });
         return 1;
       }
 
+      // Dry-run prints planned actions without mutating git history.
       if (dryRun) {
         emit({
           kind: "info",
@@ -265,6 +310,7 @@ export function createRevertTask(
         return 0;
       }
 
+      // Create a fresh artifact context for this revert invocation.
       const artifactContext = dependencies.artifactStore.createContext({
         cwd,
         commandName: "revert",
@@ -274,13 +320,16 @@ export function createRevertTask(
         keepArtifacts,
       });
 
+      // Keep detailed progress for robust artifact finalization on success/failure.
       const successfulRunIds: string[] = [];
       const attemptedRunIds: string[] = [];
       let failedRunId: string | null = null;
+      // Captures HEAD before reset so follow-up operations can be reverted later.
       let preResetRef: string | null = null;
 
       try {
         if (method === "revert") {
+          // Replay `git revert --no-edit` per selected commit.
           for (const operation of executionOperations) {
             if (operation.type !== "commit") {
               continue;
@@ -308,11 +357,13 @@ export function createRevertTask(
             }
           }
         } else {
+          // Record current HEAD before destructive reset to preserve rollback metadata.
           preResetRef = (await dependencies.gitClient.run(["rev-parse", "HEAD"], cwd)).trim();
           for (const run of executionRuns) {
             attemptedRunIds.push(run.runId);
           }
 
+          // When reverting a prior reset, use the saved pre-reset ref directly.
           const preResetRefTarget = executionOperations[0]?.type === "pre-reset-ref"
             ? executionOperations[0].ref
             : null;
@@ -320,6 +371,7 @@ export function createRevertTask(
             emit({ kind: "info", message: "Resetting to saved pre-reset ref " + preResetRefTarget + "." });
             await dependencies.gitClient.run(["reset", "--hard", preResetRefTarget], cwd);
           } else {
+            // Standard reset mode moves HEAD to one commit before the oldest target.
             const oldestSha = resetOldestSha;
             if (!oldestSha) {
               throw new Error("No commit SHAs available for reset.");
@@ -330,6 +382,7 @@ export function createRevertTask(
           successfulRunIds.push(...executionRuns.map((run) => run.runId));
         }
 
+        // Persist success metadata so this revert can itself be audited/reverted later.
         dependencies.artifactStore.finalize(artifactContext, {
           status: "reverted",
           preserve: keepArtifacts,
@@ -345,6 +398,7 @@ export function createRevertTask(
           },
         });
 
+        // Optionally expose artifact location for follow-up inspection.
         if (keepArtifacts) {
           emit({
             kind: "info",
@@ -360,6 +414,7 @@ export function createRevertTask(
         });
         return 0;
       } catch (error) {
+        // Persist partial progress for debuggability when execution fails mid-stream.
         dependencies.artifactStore.finalize(artifactContext, {
           status: "revert-failed",
           preserve: keepArtifacts,
@@ -386,6 +441,7 @@ export function createRevertTask(
         return 1;
       }
     } finally {
+      // Always release locks, even after early returns or thrown errors.
       try {
         dependencies.fileLock.releaseAll();
       } catch (error) {
@@ -395,6 +451,12 @@ export function createRevertTask(
   };
 }
 
+/**
+ * Orders operations according to execution method requirements.
+ *
+ * Revert mode processes newest-first so each inverse commit is applied on top of
+ * current HEAD in natural reverse chronological order.
+ */
 function orderOperationsForMethod(
   operations: RevertOperation[],
   method: RevertTaskOptions["method"],
@@ -406,6 +468,9 @@ function orderOperationsForMethod(
   return [...operations].sort((a, b) => b.run.startedAt.localeCompare(a.run.startedAt));
 }
 
+/**
+ * Resolves a single target run from user selection semantics.
+ */
 function resolveTargetRunMetadata(
   artifactStore: ArtifactStore,
   artifactBaseDir: string | undefined,
@@ -418,6 +483,9 @@ function resolveTargetRunMetadata(
   return artifactStore.find(runId, artifactBaseDir);
 }
 
+/**
+ * Resolves all runs targeted by `--run`, `--last`, or `--all`.
+ */
 function resolveTargetRuns(
   artifactStore: ArtifactStore,
   artifactBaseDir: string | undefined,
@@ -437,6 +505,9 @@ function resolveTargetRuns(
   return selectedRun ? [selectedRun] : [];
 }
 
+/**
+ * Returns saved runs that can currently be transformed into revert operations.
+ */
 function resolveRevertableRuns(
   artifactStore: ArtifactStore,
   artifactBaseDir: string | undefined,
@@ -444,6 +515,9 @@ function resolveRevertableRuns(
   return artifactStore.listSaved(artifactBaseDir).filter((run) => resolveRevertOperation(run) !== null);
 }
 
+/**
+ * Returns saved runs with `completed` status for diagnostics and selection UX.
+ */
 function resolveCompletedRuns(
   artifactStore: ArtifactStore,
   artifactBaseDir: string | undefined,
@@ -451,6 +525,9 @@ function resolveCompletedRuns(
   return artifactStore.listSaved(artifactBaseDir).filter((run) => run.status === "completed");
 }
 
+/**
+ * Reads and normalizes `extra.commitSha` from run metadata.
+ */
 function getCommitSha(run: ArtifactRunMetadata): string | null {
   const commitSha = run.extra?.["commitSha"];
   if (typeof commitSha !== "string" || commitSha.trim() === "") {
@@ -460,6 +537,9 @@ function getCommitSha(run: ArtifactRunMetadata): string | null {
   return commitSha.trim();
 }
 
+/**
+ * Reads and normalizes `extra.preResetRef` from run metadata.
+ */
 function getPreResetRef(run: ArtifactRunMetadata): string | null {
   const preResetRef = run.extra?.["preResetRef"];
   if (typeof preResetRef !== "string" || preResetRef.trim() === "") {
@@ -469,6 +549,13 @@ function getPreResetRef(run: ArtifactRunMetadata): string | null {
   return preResetRef.trim();
 }
 
+/**
+ * Converts saved run metadata into an executable git target.
+ *
+ * A run is revertable when either:
+ * - it is `completed` and recorded `extra.commitSha`, or
+ * - it is a prior `revert --method reset` run that recorded `extra.preResetRef`.
+ */
 function resolveRevertOperation(run: ArtifactRunMetadata): RevertOperation | null {
   const commitSha = getCommitSha(run);
   if (run.status === "completed" && commitSha) {
@@ -497,83 +584,9 @@ function resolveRevertOperation(run: ArtifactRunMetadata): RevertOperation | nul
   return null;
 }
 
-async function isGitRepoWithGitClient(gitClient: GitClient, cwd: string): Promise<boolean> {
-  try {
-    const output = await gitClient.run(["rev-parse", "--is-inside-work-tree"], cwd);
-    return output.trim() === "true";
-  } catch {
-    return false;
-  }
-}
-
-async function isWorkingDirectoryClean(
-  gitClient: GitClient,
-  cwd: string,
-  configDir: ConfigDirResult | undefined,
-  pathOperations: PathOperationsPort,
-): Promise<boolean> {
-  const excludes = await resolveGitArtifactAndLockExcludes(
-    gitClient,
-    cwd,
-    configDir,
-    pathOperations,
-  );
-  const output = await gitClient.run(
-    ["status", "--porcelain", "--", ":/", ...excludes],
-    cwd,
-  );
-  return output.trim().length === 0;
-}
-
-async function resolveGitArtifactAndLockExcludes(
-  gitClient: GitClient,
-  cwd: string,
-  configDir: ConfigDirResult | undefined,
-  pathOperations: PathOperationsPort,
-): Promise<string[]> {
-  const excludes = [`:(glob,exclude)**/${CONFIG_DIR_NAME}/*.lock`];
-  const effectiveConfigDir = configDir?.configDir;
-  if (!effectiveConfigDir) {
-    return excludes;
-  }
-
-  let repoRoot = "";
-  try {
-    repoRoot = (await gitClient.run(["rev-parse", "--show-toplevel"], cwd)).trim();
-  } catch {
-    return excludes;
-  }
-
-  const relativeConfigDir = pathOperations.relative(repoRoot, effectiveConfigDir).replace(/\\/g, "/");
-  if (!isPathInsideRepo(relativeConfigDir)) {
-    return excludes;
-  }
-
-  excludes.unshift(
-    `:(top,exclude)${relativeConfigDir}/runs/**`,
-    `:(top,exclude)${relativeConfigDir}/logs/**`,
-    `:(top,exclude)${relativeConfigDir}/*.lock`,
-  );
-
-  return excludes;
-}
-
-function isPathInsideRepo(relativePath: string): boolean {
-  if (relativePath.length === 0 || relativePath === ".") {
-    return false;
-  }
-
-  if (relativePath === ".." || relativePath.startsWith("../")) {
-    return false;
-  }
-
-  if (relativePath.startsWith("/") || /^[A-Za-z]:\//.test(relativePath)) {
-    return false;
-  }
-
-  return true;
-}
-
+/**
+ * Ensures every commit target exists and resolves to a commit object.
+ */
 async function validateTargetCommitsExistInHistory(
   gitClient: GitClient,
   cwd: string,
@@ -601,6 +614,10 @@ async function validateTargetCommitsExistInHistory(
   }
 }
 
+/**
+ * Validates reset safety by ensuring target commits are exactly the top `N`
+ * commits at HEAD, then returns the oldest commit in that contiguous block.
+ */
 async function validateResetTargetsAtHead(
   gitClient: GitClient,
   cwd: string,
@@ -645,6 +662,9 @@ async function validateResetTargetsAtHead(
   return oldest;
 }
 
+/**
+ * Builds a reset-contiguity failure message with optional multi-target guidance.
+ */
 function buildResetNotContiguousMessage(options: { hasMultipleTargets: boolean }): string {
   const baseMessage = "Cannot reset: target commits are not a contiguous block at HEAD.";
   if (!options.hasMultipleTargets) {
@@ -656,6 +676,9 @@ function buildResetNotContiguousMessage(options: { hasMultipleTargets: boolean }
     + " Use --method revert for bulk revert in this history.";
 }
 
+/**
+ * Resolves the oldest commit target by run start time for force-reset fallback.
+ */
 function resolveOldestResetTarget(operations: RevertOperation[]): string {
   const commitOperations = operations.filter((operation) => operation.type === "commit");
   if (commitOperations.length === 0) {
@@ -670,6 +693,9 @@ function resolveOldestResetTarget(operations: RevertOperation[]): string {
   return oldestOperation.ref;
 }
 
+/**
+ * Ensures every `pre-reset-ref` target exists and points to a commit object.
+ */
 async function validatePreResetRefTargetsExistInHistory(
   gitClient: GitClient,
   cwd: string,
@@ -696,6 +722,9 @@ async function validatePreResetRefTargetsExistInHistory(
   }
 }
 
+/**
+ * Formats task metadata for user-facing diagnostics.
+ */
 function formatTaskLabel(run: ArtifactRunMetadata): string {
   if (!run.task) {
     return "(task metadata unavailable)";
@@ -704,6 +733,9 @@ function formatTaskLabel(run: ArtifactRunMetadata): string {
   return `${run.task.file}:${run.task.line} [#${run.task.index}] ${run.task.text}`;
 }
 
+/**
+ * Detects whether the task file referenced by a run still exists on disk.
+ */
 function isTaskFileMissing(
   run: ArtifactRunMetadata,
   cwd: string,
@@ -721,6 +753,12 @@ function isTaskFileMissing(
   return !fileSystem.exists(resolvedTaskFile);
 }
 
+/**
+ * Collects unique absolute file paths that must be locked for this revert.
+ *
+ * Task file paths are preferred; source file paths are used as a fallback when
+ * task metadata is unavailable.
+ */
 function collectRevertLockTargets(
   runs: ArtifactRunMetadata[],
   cwd: string,
@@ -750,6 +788,9 @@ function collectRevertLockTargets(
   return Array.from(lockTargets);
 }
 
+/**
+ * Builds the user-facing message when no revertable runs are available.
+ */
 function buildNoRevertableRunsMessage(includeLogHint: boolean): string {
   if (!includeLogHint) {
     return NO_REVERTABLE_RUNS_BASE_MESSAGE;

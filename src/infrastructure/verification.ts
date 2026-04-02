@@ -23,19 +23,29 @@ interface VerificationResult {
   sidecarContent: string;
 }
 
+/**
+ * Normalize worker output into the canonical verification result shape.
+ *
+ * Accepts explicit success output (`OK`) and various failure formats,
+ * then returns a deterministic payload for sidecar persistence.
+ */
 function parseVerificationResult(output: { exitCode: number | null; stdout: string; stderr: string }): VerificationResult {
+  // Trim streams once so later checks can treat empty output consistently.
   const stdout = output.stdout.trim();
   const stderr = output.stderr.trim();
 
+  // Non-zero exit means the worker failed before producing a valid OK payload.
   if (output.exitCode !== 0) {
     const reason = stdout || stderr || `Verification worker exited with code ${String(output.exitCode)}.`;
     return { ok: false, sidecarContent: reason };
   }
 
+  // `OK` is the only accepted success token.
   if (stdout.toUpperCase() === "OK") {
     return { ok: true, sidecarContent: "OK" };
   }
 
+  // Any stdout content is treated as a human-readable failure reason.
   if (stdout !== "") {
     const notOkPrefix = /^NOT_OK\s*:\s*/i;
     const normalizedReason = stdout.replace(notOkPrefix, "").trim();
@@ -47,16 +57,24 @@ function parseVerificationResult(output: { exitCode: number | null; stdout: stri
     };
   }
 
+  // Fall back to stderr when stdout is empty.
   if (stderr !== "") {
     return { ok: false, sidecarContent: stderr };
   }
 
+  // Guard against empty worker output to keep sidecar diagnostics explicit.
   return {
     ok: false,
     sidecarContent: "Verification worker returned empty output. Expected OK or a short failure reason.",
   };
 }
 
+/**
+ * Inputs required to execute task verification and store its sidecar result.
+ *
+ * Includes prompt rendering inputs, worker execution settings, and optional
+ * CLI block expansion controls used by infrastructure-level verification.
+ */
 export interface VerifyOptions {
   task: Task;
   source: string;
@@ -82,6 +100,7 @@ export interface VerifyOptions {
  * parse worker output, and persist a deterministic sidecar result.
  */
 export async function verify(options: VerifyOptions): Promise<boolean> {
+  // Build the template context from task metadata and optional custom variables.
   const vars: TemplateVars = {
     ...options.templateVars,
     task: options.task.text,
@@ -93,7 +112,9 @@ export async function verify(options: VerifyOptions): Promise<boolean> {
     ...buildTaskHierarchyTemplateVars(options.task),
   };
 
+  // Render the verification prompt before optional CLI block expansion.
   const renderedPrompt = renderTemplate(options.template, vars);
+  // Pass artifact metadata only when artifact retention is enabled.
   const cliExpansionOptions = options.artifactContext?.keepArtifacts
     ? {
       ...options.cliExecutionOptions,
@@ -106,6 +127,7 @@ export async function verify(options: VerifyOptions): Promise<boolean> {
       },
     }
     : options.cliExecutionOptions;
+  // Expand embedded CLI blocks unless explicitly disabled.
   const prompt = options.cliExpansionEnabled === false
     ? renderedPrompt
     : await expandCliBlocks(
@@ -115,8 +137,10 @@ export async function verify(options: VerifyOptions): Promise<boolean> {
       cliExpansionOptions,
     );
 
+  // Clear any previous sidecar data to avoid stale verification state.
   options.verificationStore.remove(options.task);
 
+  // Execute the verifier worker with the prepared prompt.
   const runResult = await runWorker({
     command: options.command,
     prompt,
@@ -129,6 +153,7 @@ export async function verify(options: VerifyOptions): Promise<boolean> {
     artifactPhase: "verify",
   });
 
+  // Persist the normalized sidecar output and return final pass/fail status.
   const result = parseVerificationResult(runResult);
   options.verificationStore.write(options.task, result.sidecarContent);
   return result.ok;

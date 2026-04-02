@@ -10,6 +10,12 @@ import type { InlineCliResult } from "./inline-cli.js";
 
 const DISABLE_AUTO_PARSE_ENV = "RUNDOWN_DISABLE_AUTO_PARSE";
 
+/**
+ * Options for delegating a task to a nested rundown run.
+ *
+ * These values let the parent process forward runtime behavior and artifact
+ * preferences while still allowing explicit CLI arguments to take precedence.
+ */
 export interface RundownTaskOptions {
   artifactContext?: RuntimeArtifactsContext;
   keepArtifacts?: boolean;
@@ -25,12 +31,20 @@ export interface RundownTaskOptions {
   parentRepairAttempts?: number;
 }
 
+/**
+ * Executes a nested `rundown run` command and captures its output.
+ *
+ * The function creates or reuses runtime artifact tracking, forwards compatible
+ * parent flags, and returns the child process exit code plus collected streams.
+ */
 export async function executeRundownTask(
   args: string[],
   cwd: string = process.cwd(),
   options?: RundownTaskOptions,
 ): Promise<InlineCliResult> {
+  // Resolve how to invoke rundown in this runtime (override, node entrypoint, or PATH).
   const invocation = resolveRundownInvocation(options?.rundownCommand);
+  // Build nested `run` arguments while preserving explicit child overrides.
   const forwardedArgs = buildForwardedRunArgs(args, options);
   const command = invocation.command;
   const commandArgs = [...invocation.args, "run", ...forwardedArgs];
@@ -62,6 +76,7 @@ export async function executeRundownTask(
   });
 
   return new Promise((resolve, reject) => {
+    // Ensure delegated runs can auto-parse their own output unless explicitly disabled there.
     const childEnv: NodeJS.ProcessEnv = { ...process.env };
     delete childEnv[DISABLE_AUTO_PARSE_ENV];
 
@@ -93,6 +108,7 @@ export async function executeRundownTask(
       });
 
       if (ownedArtifactContext) {
+        // Finalize only contexts owned by this call; caller-owned contexts remain external.
         finalizeRuntimeArtifacts(ownedArtifactContext, {
           status: code === 0 ? "completed" : "failed",
           preserve: options?.keepArtifacts ?? false,
@@ -122,7 +138,13 @@ export async function executeRundownTask(
   });
 }
 
+/**
+ * Merges parent-level options into nested `run` arguments.
+ *
+ * Explicit long-form options already present in `args` are never overwritten.
+ */
 function buildForwardedRunArgs(args: string[], options: RundownTaskOptions | undefined): string[] {
+  // Normalize legacy retry flags before checking for explicit overrides.
   const forwarded: string[] = normalizeLegacyRetryArgs(args);
 
   const hasWorkerOverride = hasLongOption(forwarded, "--worker");
@@ -176,6 +198,9 @@ function buildForwardedRunArgs(args: string[], options: RundownTaskOptions | und
   return forwarded;
 }
 
+/**
+ * Rewrites legacy retry flags to the current repair-attempts form.
+ */
 function normalizeLegacyRetryArgs(args: string[]): string[] {
   const normalized: string[] = [];
 
@@ -202,14 +227,26 @@ function normalizeLegacyRetryArgs(args: string[]): string[] {
   return normalized;
 }
 
+/**
+ * Returns whether any argument matches the provided long option.
+ */
 function hasLongOption(args: string[], option: string): boolean {
   return args.some((arg) => arg === option || arg.startsWith(option + "="));
 }
 
+/**
+ * Returns whether any of the provided long options are present.
+ */
 function hasLongOptionVariant(args: string[], options: string[]): boolean {
   return options.some((option) => hasLongOption(args, option));
 }
 
+/**
+ * Determines the executable and base arguments used to invoke rundown.
+ *
+ * Priority order is explicit override, current Node.js process/entrypoint, then
+ * the plain `rundown` executable on PATH.
+ */
 function resolveRundownInvocation(override: string[] | undefined): { command: string; args: string[] } {
   if (override && override.length > 0) {
     return {

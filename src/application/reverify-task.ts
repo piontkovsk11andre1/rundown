@@ -1,10 +1,7 @@
 import {
-  DEFAULT_REPAIR_TEMPLATE,
   getTraceInstructions,
-  DEFAULT_VERIFY_TEMPLATE,
 } from "../domain/defaults.js";
 import { expandCliBlocks, extractCliBlocks } from "../domain/cli-block.js";
-import { type Task, parseTasks } from "../domain/parser.js";
 import { resolveRunBehavior } from "../domain/run-options.js";
 import {
   buildTaskHierarchyTemplateVars,
@@ -15,13 +12,29 @@ import {
   createRunCompletedEvent,
   createRunStartedEvent,
 } from "../domain/trace.js";
+import {
+  TemplateCliBlockExecutionError,
+  withTemplateCliFailureAbort,
+} from "./cli-block-handlers.js";
+import {
+  loadProjectTemplatesFromPorts,
+  type ProjectTemplates,
+} from "./project-templates.js";
+import { formatTaskLabel } from "./run-task-utils.js";
+import {
+  resolveLatestCompletedRun,
+  resolveTaskContextFromRuntimeMetadata,
+  type ResolvedTaskContext,
+  type RuntimeTaskMetadata,
+  toRuntimeTaskMetadata,
+  validateRuntimeTaskMetadata,
+} from "./task-context-resolution.js";
 import { runVerifyRepairLoop } from "./verify-repair-loop.js";
 import { resolveWorkerForInvocation } from "./resolve-worker.js";
 import type {
   ArtifactStoreStatus,
   ArtifactRunMetadata,
   ArtifactStore,
-  CommandExecutionOptions,
   CommandExecutor,
   ConfigDirResult,
   FileSystem,
@@ -37,43 +50,16 @@ import type {
 } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
-interface ReverifyTemplates {
-  verify: string;
-  repair: string;
-}
-
-interface RuntimeTaskMetadata {
-  text: string;
-  file: string;
-  line: number;
-  index: number;
-  source: string;
-}
-
-interface ResolvedTaskContext {
-  task: Task;
-  source: string;
-  contextBefore: string;
-}
-
 interface ReverifyPromptContext {
+  // Fully rendered verification prompt for the selected task context.
   verificationPrompt: string;
+  // Fully rendered repair prompt paired with the verification template.
   repairPrompt: string;
 }
 
-class TemplateCliBlockExecutionError extends Error {
-  readonly templateLabel: string;
-  readonly command: string;
-  readonly exitCode: number | null;
-
-  constructor(templateLabel: string, command: string, exitCode: number | null) {
-    super("Template cli block execution failed");
-    this.templateLabel = templateLabel;
-    this.command = command;
-    this.exitCode = exitCode;
-  }
-}
-
+/**
+ * Services required to resolve saved run metadata and execute re-verification.
+ */
 export interface ReverifyTaskDependencies {
   artifactStore: ArtifactStore;
   taskVerification: TaskVerificationPort;
@@ -93,6 +79,9 @@ export interface ReverifyTaskDependencies {
   cliBlockExecutor: CommandExecutor;
 }
 
+/**
+ * Runtime options that control which saved run(s) are re-verified and how.
+ */
 export interface ReverifyTaskOptions {
   runId: string;
   last?: number;
@@ -110,6 +99,10 @@ export interface ReverifyTaskOptions {
   cliBlockTimeoutMs?: number;
 }
 
+/**
+ * Creates the reverify application command that replays verification/repair
+ * against one or more previously completed artifact runs.
+ */
 export function createReverifyTask(
   dependencies: ReverifyTaskDependencies,
 ): (options: ReverifyTaskOptions) => Promise<number> {
@@ -132,49 +125,14 @@ export function createReverifyTask(
       ignoreCliBlock,
       cliBlockTimeoutMs,
     } = options;
+    // Pass timeout options only when the CLI block timeout flag is provided.
     const cliExecutionOptions = cliBlockTimeoutMs === undefined
       ? undefined
       : { timeoutMs: cliBlockTimeoutMs };
-    const withCommandExecutionHandler = (
-      executionOptions: CommandExecutionOptions | undefined,
-      handler: ((execution: {
-        command: string;
-        exitCode: number | null;
-        stdoutLength: number;
-        stderrLength: number;
-        durationMs: number;
-      }) => void | Promise<void>) | undefined,
-    ): CommandExecutionOptions | undefined => {
-      if (!handler) {
-        return executionOptions;
-      }
-
-      const existingHandler = executionOptions?.onCommandExecuted;
-
-      return {
-        ...(executionOptions ?? {}),
-        onCommandExecuted: async (execution): Promise<void> => {
-          await existingHandler?.(execution);
-          await handler(execution);
-        },
-      };
-    };
-    const templateCliFailureHandler = (templateLabel: string) => (execution: {
-      command: string;
-      exitCode: number | null;
-      stdoutLength: number;
-      stderrLength: number;
-      durationMs: number;
-    }): void => {
-      if (typeof execution.exitCode === "number" && execution.exitCode === 0) {
-        return;
-      }
-
-      throw new TemplateCliBlockExecutionError(templateLabel, execution.command, execution.exitCode);
-    };
-    const cliExecutionOptionsWithTemplateFailureAbort = withCommandExecutionHandler(
+    // Abort prompt expansion immediately when template CLI commands fail.
+    const cliExecutionOptionsWithTemplateFailureAbort = withTemplateCliFailureAbort(
       cliExecutionOptions,
-      templateCliFailureHandler("verification/repair template"),
+      "verification/repair template",
     );
 
     const hasMultiRunSelection = all === true || last !== undefined;
@@ -204,9 +162,14 @@ export function createReverifyTask(
     const loadedWorkerConfig = dependencies.configDir?.configDir
       ? dependencies.workerConfigPort.load(dependencies.configDir.configDir)
       : undefined;
+    /**
+     * Re-verifies a single saved run and returns both process exit code and
+     * artifact finalization status information.
+     */
     const reverifyOneRun = async (
       selectedRun: ArtifactRunMetadata,
     ): Promise<{ exitCode: number; status: ArtifactStoreStatus | null }> => {
+      // Saved run metadata is required to resolve source and task context.
       if (selectedRun.status === "metadata-missing") {
         emit({
           kind: "error",
@@ -215,6 +178,7 @@ export function createReverifyTask(
         return { exitCode: 3, status: null };
       }
 
+      // Reverify only supports runs that reached a completed terminal state.
       if (!isCompletedRun(selectedRun)) {
         emit({
           kind: "error",
@@ -223,6 +187,7 @@ export function createReverifyTask(
         return { exitCode: 3, status: null };
       }
 
+      // Runtime task metadata is mandatory because reverify does not re-parse CLI input.
       if (!selectedRun.task) {
         emit({
           kind: "error",
@@ -231,7 +196,8 @@ export function createReverifyTask(
         return { exitCode: 3, status: null };
       }
 
-      const metadataError = validateTaskMetadata(selectedRun.task);
+      // Validate metadata shape before using it to resolve file/task references.
+      const metadataError = validateRuntimeTaskMetadata(selectedRun.task);
       if (metadataError) {
         emit({
           kind: "error",
@@ -241,7 +207,8 @@ export function createReverifyTask(
         return { exitCode: 3, status: null };
       }
 
-      const taskContext = resolveTaskContextFromMetadata(
+      // Resolve the current task view from persisted runtime metadata.
+      const taskContext = resolveTaskContextFromRuntimeMetadata(
         selectedRun.task,
         cwd,
         dependencies.fileSystem,
@@ -257,18 +224,21 @@ export function createReverifyTask(
 
       emit({ kind: "info", message: "Re-verify task: " + formatTaskLabel(taskContext.task) });
 
-      const templates = loadProjectTemplates(
+      // Load verify/repair templates from config or built-in defaults.
+      const templates = loadProjectTemplatesFromPorts(
         dependencies.configDir,
         dependencies.templateLoader,
         dependencies.pathOperations,
       );
       const cliBlockExecutor = dependencies.cliBlockExecutor;
       const promptContext = buildReverifyPromptContext(taskContext, templates, trace);
+      // Count `cli` fenced blocks so dry-run output can report skipped work.
       const verificationPromptCliBlockCount = extractCliBlocks(promptContext.verificationPrompt).length;
       const repairPromptCliBlockCount = extractCliBlocks(promptContext.repairPrompt).length;
       const dryRunSuppressesCliExpansion = dryRun && !printPrompt;
       let expandedVerificationPrompt = promptContext.verificationPrompt;
       let expandedRepairPrompt = promptContext.repairPrompt;
+      // Expand template CLI blocks unless explicitly ignored or dry-run suppressed.
       if (!ignoreCliBlock && !dryRunSuppressesCliExpansion) {
         try {
           expandedVerificationPrompt = await expandCliBlocks(
@@ -301,6 +271,7 @@ export function createReverifyTask(
           throw error;
         }
       }
+      // Reuse original worker command when no stronger override is provided.
       const effectiveWorkerCommand = resolveWorkerForInvocation({
         commandName: "reverify",
         workerConfig: loadedWorkerConfig,
@@ -311,11 +282,13 @@ export function createReverifyTask(
         emit,
       });
 
+      // Print prompt mode stops before any worker invocation or artifact writes.
       if (printPrompt) {
         emit({ kind: "text", text: expandedVerificationPrompt });
         return { exitCode: 0, status: null };
       }
 
+      // Dry-run reports what would execute without mutating artifacts or tasks.
       if (dryRun) {
         if (dryRunSuppressesCliExpansion && !ignoreCliBlock) {
           const totalCliBlockCount = verificationPromptCliBlockCount + repairPromptCliBlockCount;
@@ -333,6 +306,7 @@ export function createReverifyTask(
         return { exitCode: 0, status: null };
       }
 
+      // Verification always requires a concrete worker command at execution time.
       if (effectiveWorkerCommand.length === 0) {
         emit({
           kind: "error",
@@ -341,6 +315,7 @@ export function createReverifyTask(
         return { exitCode: 1, status: null };
       }
 
+      // Reverify mode always performs verification and conditionally repairs.
       const runBehavior = resolveRunBehavior({
         verify: true,
         onlyVerify: true,
@@ -348,6 +323,7 @@ export function createReverifyTask(
         repairAttempts,
       });
 
+      // Create a fresh artifact context for this reverify invocation.
       const artifactContext = dependencies.artifactStore.createContext({
         cwd,
         configDir: dependencies.configDir?.configDir,
@@ -366,6 +342,7 @@ export function createReverifyTask(
 
       const nowIso = (): string => new Date().toISOString();
 
+      // Record run start trace metadata before entering verification loop.
       traceWriter.write(createRunStartedEvent({
         timestamp: nowIso(),
         run_id: artifactContext.runId,
@@ -381,6 +358,7 @@ export function createReverifyTask(
         },
       }));
 
+      // Emits exactly one run-completed trace event per reverify invocation.
       const completeTraceRun = (status: ArtifactStoreStatus): void => {
         if (traceCompleted) {
           return;
@@ -398,6 +376,7 @@ export function createReverifyTask(
         traceCompleted = true;
       };
 
+      // Finalizes trace/artifacts once, then returns the intended process result.
       const finalizeAndReturn = (
         exitCode: number,
         status: ArtifactStoreStatus,
@@ -418,6 +397,7 @@ export function createReverifyTask(
       };
 
       try {
+        // Drive verification and optional repair using the resolved prompts.
         const verificationResult = await runVerifyRepairLoop({
           taskVerification: dependencies.taskVerification,
           taskRepair: dependencies.taskRepair,
@@ -453,6 +433,7 @@ export function createReverifyTask(
         emit({ kind: "success", message: "Re-verification passed." });
         return finalizeAndReturn(0, "reverify-completed");
       } catch (error) {
+        // Ensure failure states still flush traces and artifact metadata.
         if (!artifactsFinalized) {
           completeTraceRun("reverify-failed");
           traceWriter.flush();
@@ -466,6 +447,7 @@ export function createReverifyTask(
       }
     };
 
+    // Resolve the run set from selector flags before entering the loop.
     const targetRuns = resolveTargetRuns(dependencies.artifactStore, artifactBaseDir, {
       runId,
       last,
@@ -501,6 +483,7 @@ export function createReverifyTask(
       return 0;
     }
 
+    // Process selected runs sequentially and stop at the first failure.
     let tasksReverified = 0;
     for (const run of targetRuns) {
       const result = await reverifyOneRun(run);
@@ -529,38 +512,25 @@ export function createReverifyTask(
   };
 }
 
-function loadProjectTemplates(
-  configDir: ConfigDirResult | undefined,
-  templateLoader: TemplateLoader,
-  pathOperations: PathOperationsPort,
-): ReverifyTemplates {
-  if (!configDir) {
-    return {
-      verify: DEFAULT_VERIFY_TEMPLATE,
-      repair: DEFAULT_REPAIR_TEMPLATE,
-    };
-  }
-
-  const configRoot = configDir.configDir;
-  return {
-    verify: templateLoader.load(pathOperations.join(configRoot, "verify.md")) ?? DEFAULT_VERIFY_TEMPLATE,
-    repair: templateLoader.load(pathOperations.join(configRoot, "repair.md")) ?? DEFAULT_REPAIR_TEMPLATE,
-  };
-}
-
+/**
+ * Resolves one run by id or the latest completed run alias.
+ */
 function resolveTargetRunMetadata(
   artifactStore: ArtifactStore,
   artifactBaseDir: string | undefined,
   runId: string,
 ): ArtifactRunMetadata | null {
   if (runId === "latest") {
-    const runs = artifactStore.listSaved(artifactBaseDir);
-    return runs.find((run) => isCompletedRun(run) && hasReverifiableTask(run)) ?? null;
+    return resolveLatestCompletedRun(artifactStore, artifactBaseDir);
   }
 
   return artifactStore.find(runId, artifactBaseDir);
 }
 
+/**
+ * Expands run selectors (`--all`, `--last`, explicit run id) into a concrete
+ * ordered list of runs eligible for re-verification.
+ */
 function resolveTargetRuns(
   artifactStore: ArtifactStore,
   artifactBaseDir: string | undefined,
@@ -586,102 +556,27 @@ function resolveTargetRuns(
   return oldestFirst ? [...selectedRuns].reverse() : selectedRuns;
 }
 
+/**
+ * Guards multi-run selectors so only runs with usable task metadata are queued.
+ */
 function hasReverifiableTask(run: ArtifactRunMetadata): boolean {
   return Boolean(run.task && run.task.text && run.task.file);
 }
 
+/**
+ * Determines whether run status represents a finished, re-verifiable run.
+ */
 function isCompletedRun(run: ArtifactRunMetadata): boolean {
   const status = run.status;
   return status === "completed" || status === "reverify-completed";
 }
 
-function validateTaskMetadata(task: {
-  text: string;
-  file: string;
-  line: number;
-  index: number;
-  source: string;
-}): string | null {
-  if (!task.text || task.text.trim() === "") {
-    return "Selected run task metadata is missing task text.";
-  }
-  if (!task.file || task.file.trim() === "") {
-    return "Selected run task metadata is missing task file path.";
-  }
-  if (!Number.isInteger(task.line) || task.line < 1) {
-    return "Selected run task metadata has invalid task line.";
-  }
-  if (!Number.isInteger(task.index) || task.index < 0) {
-    return "task index must be a non-negative integer.";
-  }
-  if (!task.source || task.source.trim() === "") {
-    return "task source is missing.";
-  }
-
-  return null;
-}
-
-function resolveTaskContextFromMetadata(
-  metadata: RuntimeTaskMetadata,
-  cwd: string,
-  fileSystem: FileSystem,
-  pathOperations: PathOperationsPort,
-): ResolvedTaskContext | null {
-  const resolvedFilePath = pathOperations.isAbsolute(metadata.file)
-    ? metadata.file
-    : pathOperations.resolve(cwd, metadata.file);
-
-  if (!fileSystem.exists(resolvedFilePath)) {
-    return null;
-  }
-
-  const source = fileSystem.readText(resolvedFilePath);
-  const tasks = parseTasks(source, resolvedFilePath);
-  const resolvedTask = findTaskByFallback(tasks, metadata);
-  if (!resolvedTask) {
-    return null;
-  }
-
-  const lines = source.split("\n");
-  return {
-    task: resolvedTask,
-    source,
-    contextBefore: lines.slice(0, resolvedTask.line - 1).join("\n"),
-  };
-}
-
-function findTaskByFallback(tasks: Task[], metadata: RuntimeTaskMetadata): Task | null {
-  const byLineAndText = tasks.find((task) => task.line === metadata.line && task.text === metadata.text);
-  if (byLineAndText) {
-    return byLineAndText;
-  }
-
-  const byIndexAndText = tasks.find((task) => task.index === metadata.index && task.text === metadata.text);
-  if (byIndexAndText) {
-    return byIndexAndText;
-  }
-
-  const textMatches = tasks.filter((task) => task.text === metadata.text);
-  if (textMatches.length === 1) {
-    return textMatches[0] ?? null;
-  }
-
-  return null;
-}
-
-function toRuntimeTaskMetadata(task: Task, source: string): RuntimeTaskMetadata {
-  return {
-    text: task.text,
-    file: task.file,
-    line: task.line,
-    index: task.index,
-    source,
-  };
-}
-
+/**
+ * Renders verification and repair prompts for a resolved runtime task context.
+ */
 function buildReverifyPromptContext(
   taskContext: ResolvedTaskContext,
-  templates: ReverifyTemplates,
+  templates: Pick<ProjectTemplates, "verify" | "repair">,
   trace: boolean,
 ): ReverifyPromptContext {
   const vars: TemplateVars = {
@@ -695,17 +590,31 @@ function buildReverifyPromptContext(
     ...buildTaskHierarchyTemplateVars(taskContext.task),
   };
 
+  // Render both templates from the same variable set to keep context aligned.
   return {
     verificationPrompt: renderTemplate(templates.verify, vars),
     repairPrompt: renderTemplate(templates.repair, vars),
   };
 }
 
-function formatTaskLabel(task: Task): string {
-  return `${task.file}:${task.line} [#${task.index}] ${task.text}`;
-}
-
+/**
+ * Formats runtime task metadata into the standard human-readable task label.
+ */
 function formatTaskMetadataLabel(task: RuntimeTaskMetadata): string {
-  return `${task.file}:${task.line} [#${task.index}] ${task.text}`;
+  return formatTaskLabel({
+    text: task.text,
+    checked: false,
+    index: task.index,
+    line: task.line,
+    column: 0,
+    offsetStart: 0,
+    offsetEnd: 0,
+    file: task.file,
+    isInlineCli: false,
+    isRundownTask: false,
+    depth: 0,
+    children: [],
+    subItems: [],
+  });
 }
 

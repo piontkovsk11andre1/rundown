@@ -20,26 +20,50 @@ import type { RuntimeArtifactsContext } from "./runtime-artifacts.js";
 import { createCliBlockExecutor } from "./cli-block-executor.js";
 
 export interface RepairOptions {
+  /** Parsed task metadata for the currently selected TODO item. */
   task: Task;
+  /** Full source markdown document that contains the TODO list. */
   source: string;
+  /** Markdown content before the selected task, used as prompt context. */
   contextBefore: string;
+  /** Prompt template used to ask the worker to apply a repair. */
   repairTemplate: string;
+  /** Prompt template used to re-run verification after each repair. */
   verifyTemplate: string;
+  /** Worker command and arguments used for repair and verification runs. */
   command: string[];
+  /** Maximum number of repair attempts before failing the loop. */
   maxRetries: number;
+  /** Store used to read/write verification outcomes between attempts. */
   verificationStore: VerificationStore;
+  /** Optional worker run mode override. */
   mode?: RunnerMode;
+  /** Optional prompt transport override. */
   transport?: PromptTransport;
+  /** Enables verbose worker diagnostics when true. */
   trace?: boolean;
+  /** Working directory for worker and CLI block execution. */
   cwd?: string;
+  /** Optional config directory passed to the worker process. */
   configDir?: string;
+  /** Additional template variables merged into repair and verify prompts. */
   templateVars?: ExtraTemplateVars;
+  /** Runtime artifact context used to capture phase outputs. */
   artifactContext?: RuntimeArtifactsContext;
+  /** Optional executor used when expanding CLI blocks in prompts. */
   cliBlockExecutor?: CommandExecutor;
+  /** Options forwarded to CLI block execution during prompt expansion. */
   cliExecutionOptions?: CommandExecutionOptions;
+  /** Disables CLI block expansion when explicitly set to false. */
   cliExpansionEnabled?: boolean;
 }
 
+/**
+ * Represents the final state of the repair loop.
+ *
+ * The result indicates whether verification ever passed and how many repair
+ * attempts were consumed before termination.
+ */
 export interface RepairResult {
   /** Whether verification eventually passed. */
   valid: boolean;
@@ -59,12 +83,14 @@ export interface RepairResult {
 export async function repair(options: RepairOptions): Promise<RepairResult> {
   let attempts = 0;
 
+  // Retry until verification succeeds or the configured attempt limit is reached.
   for (let i = 0; i < options.maxRetries; i++) {
     attempts++;
 
-    // Read current verification failure reason
+    // Use the last verification output to guide the next repair prompt.
     const verificationResult = options.verificationStore.read(options.task) ?? "Verification failed (no details).";
 
+    // Build template variables from task metadata and the latest verification result.
     const vars: TemplateVars = {
       ...options.templateVars,
       task: options.task.text,
@@ -77,6 +103,7 @@ export async function repair(options: RepairOptions): Promise<RepairResult> {
       ...buildTaskHierarchyTemplateVars(options.task),
     };
 
+    // Render the repair prompt and expand inline CLI blocks when enabled.
     const renderedPrompt = renderTemplate(options.repairTemplate, vars);
     const cliExpansionOptions = options.artifactContext?.keepArtifacts
       ? {
@@ -100,7 +127,7 @@ export async function repair(options: RepairOptions): Promise<RepairResult> {
         cliExpansionOptions,
       );
 
-    // Run repair worker
+    // Execute one repair attempt with the prepared prompt.
     await runWorker({
       command: options.command,
       prompt,
@@ -114,7 +141,7 @@ export async function repair(options: RepairOptions): Promise<RepairResult> {
       artifactExtra: { attempt: attempts },
     });
 
-    // Re-verify
+    // Re-run verification immediately after each repair attempt.
     const valid = await verify({
       task: options.task,
       source: options.source,
@@ -134,10 +161,12 @@ export async function repair(options: RepairOptions): Promise<RepairResult> {
       cliExpansionEnabled: options.cliExpansionEnabled,
     });
 
+    // Exit early as soon as verification passes.
     if (valid) {
       return { valid: true, attempts };
     }
   }
 
+  // Exhausted all retries without reaching a valid state.
   return { valid: false, attempts };
 }

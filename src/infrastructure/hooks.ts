@@ -16,6 +16,12 @@
 import { execFile } from "node:child_process";
 import path from "node:path";
 
+/**
+ * Canonical task metadata passed into post-completion hook execution.
+ *
+ * Values are later surfaced as environment variables so hook commands can
+ * make decisions based on the completed task context.
+ */
 export interface HookTaskInfo {
   /** The task text. */
   task: string;
@@ -27,6 +33,12 @@ export interface HookTaskInfo {
   index: number;
 }
 
+/**
+ * Configuration for invoking the on-complete hook command.
+ *
+ * Contains the shell command and execution context needed to launch the hook
+ * after a task is validated as complete.
+ */
 export interface OnCompleteHookOptions {
   /** The shell command to run. */
   command: string;
@@ -38,6 +50,12 @@ export interface OnCompleteHookOptions {
   cwd: string;
 }
 
+/**
+ * Structured result returned after hook command execution.
+ *
+ * Captures process outcome and output streams so callers can decide whether
+ * to fail hard, warn, or continue.
+ */
 export interface HookResult {
   /** Whether the hook exited successfully (code 0). */
   success: boolean;
@@ -58,6 +76,7 @@ export interface HookResult {
 export async function runOnCompleteHook(options: OnCompleteHookOptions): Promise<HookResult> {
   const { command, taskInfo, source, cwd } = options;
 
+  // Merge task metadata into the child-process environment for the hook.
   const env: Record<string, string> = {
     ...process.env,
     RUNDOWN_TASK: taskInfo.task,
@@ -68,10 +87,12 @@ export async function runOnCompleteHook(options: OnCompleteHookOptions): Promise
   };
 
   return new Promise((resolve) => {
+    // Pick the platform-appropriate shell executable and execute flag.
     const shell = process.platform === "win32" ? "cmd" : "/bin/sh";
     const shellFlag = process.platform === "win32" ? "/c" : "-c";
 
     execFile(shell, [shellFlag, command], { cwd, env, timeout: 60_000 }, (error, stdout, stderr) => {
+      // Numeric exit codes indicate command-level failures from the shell.
       if (error && "code" in error && typeof error.code === "number") {
         resolve({
           success: false,
@@ -82,6 +103,7 @@ export async function runOnCompleteHook(options: OnCompleteHookOptions): Promise
         return;
       }
 
+      // Non-numeric codes usually represent spawn/runtime failures.
       if (error) {
         const errCode = (error as NodeJS.ErrnoException & { code?: number | string }).code;
         const numericCode = typeof errCode === "number" ? errCode : null;
@@ -94,6 +116,7 @@ export async function runOnCompleteHook(options: OnCompleteHookOptions): Promise
         return;
       }
 
+      // Reaching this branch means the command completed successfully.
       resolve({
         success: true,
         exitCode: 0,

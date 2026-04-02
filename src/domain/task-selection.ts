@@ -1,5 +1,8 @@
 import type { Task } from "./parser.js";
 
+/**
+ * Options that control how unchecked descendant checks are performed.
+ */
 export interface DescendantSelectionOptions {
   /**
    * Prefer traversing `task.children` when present.
@@ -20,6 +23,7 @@ export function hasUncheckedDescendants(
   allTasks: Task[],
   options: DescendantSelectionOptions = {},
 ): boolean {
+  // Prefer tree traversal when parser-attached children are available.
   if (options.useChildren) {
     const children = task.children ?? [];
     if (children.length > 0) {
@@ -27,24 +31,32 @@ export function hasUncheckedDescendants(
     }
   }
 
+  // Locate the task in document order to scan only its descendant range.
   const startIdx = allTasks.indexOf(task);
   if (startIdx === -1) return false;
 
   for (let i = startIdx + 1; i < allTasks.length; i++) {
     const candidate = allTasks[i]!;
+    // Stop once we leave this task's subtree.
     if (candidate.depth <= task.depth) break;
+    // Any unchecked descendant means the current task is not runnable yet.
     if (!candidate.checked) return true;
   }
 
   return false;
 }
 
+/**
+ * Recursively checks whether any task in a child subtree is unchecked.
+ */
 function hasUncheckedInTree(children: Task[]): boolean {
   for (const child of children) {
+    // Return immediately for the first unchecked child encountered.
     if (!child.checked) {
       return true;
     }
 
+    // Continue the search through deeper descendants.
     if (hasUncheckedInTree(child.children ?? [])) {
       return true;
     }

@@ -6,18 +6,31 @@ import type { FileSystem } from "../domain/ports/file-system.js";
 import type { SourceResolverPort } from "../domain/ports/source-resolver-port.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
+/**
+ * Dependencies required to list tasks from Markdown sources.
+ */
 export interface ListTasksDependencies {
   fileSystem: FileSystem;
   sourceResolver: SourceResolverPort;
   output: ApplicationOutputPort;
 }
 
+/**
+ * Runtime options that control source selection and task filtering.
+ */
 export interface ListTasksOptions {
   source: string;
   sortMode: SortMode;
   includeAll: boolean;
 }
 
+/**
+ * Creates the list-tasks application use case.
+ *
+ * The returned function resolves Markdown sources, parses task items,
+ * applies filtering and ordering, and emits task records through the
+ * configured output port.
+ */
 export function createListTasks(
   dependencies: ListTasksDependencies,
 ): (options: ListTasksOptions) => Promise<number> {
@@ -39,10 +52,12 @@ export function createListTasks(
           throw new Error(`ENOENT: no such file or directory, stat '${filePath}'`);
         }
 
+        // Prefer creation time when available to support stable chronological sorting.
         if (stats.birthtimeMs !== undefined && Number.isFinite(stats.birthtimeMs)) {
           return stats.birthtimeMs;
         }
 
+        // Fall back to modification time on filesystems that do not expose birthtime.
         if (stats.mtimeMs !== undefined && Number.isFinite(stats.mtimeMs)) {
           return stats.mtimeMs;
         }
@@ -55,9 +70,11 @@ export function createListTasks(
     for (const file of sorted) {
       const content = dependencies.fileSystem.readText(file);
       const tasks = parseTasks(content, file);
+      // By default only unfinished tasks are listed unless includeAll is requested.
       const filtered = includeAll ? tasks : tasks.filter((task) => !task.checked);
 
       for (const task of filtered) {
+        // Unchecked ancestors with pending descendants are marked as blocked.
         const blocked = !task.checked && hasUncheckedDescendants(task, tasks, { useChildren: true });
         emit({ kind: "task", task, blocked, children: task.children, subItems: task.subItems });
         count++;

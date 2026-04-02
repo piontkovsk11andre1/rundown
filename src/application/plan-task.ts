@@ -1,15 +1,22 @@
-import { DEFAULT_PLAN_TEMPLATE, getTraceInstructions } from "../domain/defaults.js";
+import { getTraceInstructions } from "../domain/defaults.js";
 import { expandCliBlocks, extractCliBlocks } from "../domain/cli-block.js";
 import { parseTasks } from "../domain/parser.js";
 import { insertPlannerTodos } from "../domain/planner.js";
 import { renderTemplate, type TemplateVars } from "../domain/template.js";
 import { resolveWorkerForInvocation } from "./resolve-worker.js";
+import { isOpenCodeWorkerCommand } from "./run-task.js";
 import {
   parseCliTemplateVars,
   resolveTemplateVarsFilePath,
   type ExtraTemplateVars,
 } from "../domain/template-vars.js";
 import { FileLockError } from "../domain/ports/file-lock.js";
+import {
+  TemplateCliBlockExecutionError,
+  withTemplateCliFailureAbort,
+} from "./cli-block-handlers.js";
+import { loadProjectTemplatesFromPorts } from "./project-templates.js";
+import { countTraceLines } from "./run-task-utils.js";
 import {
   createOutputVolumeEvent,
   createPhaseCompletedEvent,
@@ -22,7 +29,6 @@ import type {
   ArtifactStoreStatus,
   ArtifactRunContext,
   ArtifactStore,
-  CommandExecutionOptions,
   CommandExecutor,
   ConfigDirResult,
   FileLock,
@@ -38,24 +44,29 @@ import type {
  } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
+/**
+ * Execution mode used when invoking the planning worker.
+ */
 export type RunnerMode = ProcessRunMode;
+
+/**
+ * Transport strategy used to deliver prompts to the planning worker.
+ */
 export type PromptTransport = "file" | "arg";
+
+/**
+ * Artifact context alias used for plan command runs.
+ */
 type ArtifactContext = ArtifactRunContext;
+
+/**
+ * Convergence states tracked across multi-scan planning runs.
+ */
 type PlanConvergenceOutcome = "converged" | "scan-cap-reached";
 
-class TemplateCliBlockExecutionError extends Error {
-  readonly templateLabel: string;
-  readonly command: string;
-  readonly exitCode: number | null;
-
-  constructor(templateLabel: string, command: string, exitCode: number | null) {
-    super("Template cli block execution failed");
-    this.templateLabel = templateLabel;
-    this.command = command;
-    this.exitCode = exitCode;
-  }
-}
-
+/**
+ * Ports and services required to execute the `plan` command.
+ */
 export interface PlanTaskDependencies {
   workerExecutor: WorkerExecutorPort;
   workingDirectory: WorkingDirectoryPort;
@@ -73,6 +84,9 @@ export interface PlanTaskDependencies {
   output: ApplicationOutputPort;
 }
 
+/**
+ * Runtime options accepted by a single `plan` command invocation.
+ */
 export interface PlanTaskOptions {
   source: string;
   scanCount?: number;
@@ -92,6 +106,10 @@ export interface PlanTaskOptions {
 
 const OPENCODE_CONTINUATION_ARG_PATTERN = /^--(?:continue|resume|session|thread|conversation)(?:=|$)/i;
 
+/**
+ * Creates the plan task runner that expands templates, invokes the worker, and
+ * inserts additive TODO items into the source Markdown document.
+ */
 export function createPlanTask(
   dependencies: PlanTaskDependencies,
 ): (options: PlanTaskOptions) => Promise<number> {
@@ -118,48 +136,12 @@ export function createPlanTask(
     const cliExecutionOptions = cliBlockTimeoutMs === undefined
       ? undefined
       : { timeoutMs: cliBlockTimeoutMs };
-    const withCommandExecutionHandler = (
-      executionOptions: CommandExecutionOptions | undefined,
-      handler: ((execution: {
-        command: string;
-        exitCode: number | null;
-        stdoutLength: number;
-        stderrLength: number;
-        durationMs: number;
-      }) => void | Promise<void>) | undefined,
-    ): CommandExecutionOptions | undefined => {
-      if (!handler) {
-        return executionOptions;
-      }
-
-      const existingHandler = executionOptions?.onCommandExecuted;
-
-      return {
-        ...(executionOptions ?? {}),
-        onCommandExecuted: async (execution): Promise<void> => {
-          await existingHandler?.(execution);
-          await handler(execution);
-        },
-      };
-    };
-    const templateCliFailureHandler = (templateLabel: string) => (execution: {
-      command: string;
-      exitCode: number | null;
-      stdoutLength: number;
-      stderrLength: number;
-      durationMs: number;
-    }): void => {
-      if (typeof execution.exitCode === "number" && execution.exitCode === 0) {
-        return;
-      }
-
-      throw new TemplateCliBlockExecutionError(templateLabel, execution.command, execution.exitCode);
-    };
-    const cliExecutionOptionsWithTemplateFailureAbort = withCommandExecutionHandler(
+    const cliExecutionOptionsWithTemplateFailureAbort = withTemplateCliFailureAbort(
       cliExecutionOptions,
-      templateCliFailureHandler("plan template"),
+      "plan template",
     );
 
+    // Allow manual lock cleanup before acquiring a fresh lock for this run.
     if (forceUnlock) {
       if (!dependencies.fileLock.isLocked(source)) {
         dependencies.fileLock.forceRelease(source);
@@ -167,6 +149,7 @@ export function createPlanTask(
       }
     }
 
+    // Acquire an exclusive lock so concurrent runs cannot modify the same source.
     try {
       dependencies.fileLock.acquire(source, { command: "plan" });
     } catch (error) {
@@ -188,6 +171,7 @@ export function createPlanTask(
     }
 
     try {
+      // Merge template variables loaded from file and CLI flags.
       const varsFilePath = resolveTemplateVarsFilePath(
         varsFileOption,
         dependencies.configDir?.configDir,
@@ -206,6 +190,7 @@ export function createPlanTask(
         ...cliTemplateVars,
       };
 
+      // Read the Markdown source that will receive planner TODO insertions.
       let documentSource: string;
       try {
         documentSource = dependencies.fileSystem.readText(source);
@@ -217,6 +202,7 @@ export function createPlanTask(
         return 3;
       }
 
+      // Infer user intent and current TODO density to guide prompt rendering.
       const documentIntent = deriveDocumentIntent(documentSource, source);
       const existingTodoCount = parseTasks(documentSource, source).length;
       const hasExistingTodos = existingTodoCount > 0;
@@ -241,6 +227,7 @@ export function createPlanTask(
           : "No existing TODO items detected in document.",
       });
 
+      // Planner execution requires a resolved worker command.
       if (resolvedWorkerCommand.length === 0) {
         emit({
           kind: "error",
@@ -249,17 +236,19 @@ export function createPlanTask(
         return 1;
       }
 
+      // Multi-scan planning must always run in clean worker sessions.
       const cleanSessionCommandError = validatePlanCleanSessionWorkerCommand(resolvedWorkerCommand);
       if (cleanSessionCommandError) {
         emit({ kind: "error", message: cleanSessionCommandError });
         return 1;
       }
 
-      const planTemplate = loadPlanTemplateFromPorts(
+      // Render the plan prompt template with the current document context.
+      const planTemplate = loadProjectTemplatesFromPorts(
         dependencies.configDir,
         dependencies.templateLoader,
         dependencies.pathOperations,
-      );
+      ).plan;
 
       const vars: TemplateVars = {
         ...extraTemplateVars,
@@ -279,6 +268,8 @@ export function createPlanTask(
       const promptCliBlockCount = extractCliBlocks(renderedPrompt).length;
       const dryRunSuppressesCliExpansion = dryRun && !printPrompt;
       let prompt = renderedPrompt;
+
+      // Expand `cli` fenced blocks unless disabled for this invocation.
       if (!ignoreCliBlock && !dryRunSuppressesCliExpansion) {
         try {
           prompt = await expandCliBlocks(
@@ -306,11 +297,13 @@ export function createPlanTask(
         }
       }
 
+      // Print mode returns the effective prompt without invoking the worker.
       if (printPrompt) {
         emit({ kind: "text", text: buildPlanScanPrompt(prompt, documentSource, 1, scanCount) });
         return 0;
       }
 
+      // Dry run reports planned execution details and exits successfully.
       if (dryRun) {
         if (dryRunSuppressesCliExpansion && !ignoreCliBlock) {
           emit({
@@ -328,6 +321,7 @@ export function createPlanTask(
         return 0;
       }
 
+      // Create artifact and trace context for a real planning execution.
       const artifactContext = dependencies.artifactStore.createContext({
         cwd,
         configDir: dependencies.configDir?.configDir,
@@ -355,6 +349,7 @@ export function createPlanTask(
       const nowIso = (): string => new Date().toISOString();
       const toTraceStatus = (status: ArtifactStoreStatus): TraceRunStatus => status;
 
+      // Emit run-start trace event before any scan executes.
       traceWriter.write(createRunStartedEvent({
         timestamp: nowIso(),
         run_id: artifactContext.runId,
@@ -370,6 +365,7 @@ export function createPlanTask(
         },
       }));
 
+      // Record phase start timing and metadata for each scan execution.
       const beginPlanPhaseTrace = (command: string[]): { sequence: number; startedAtMs: number } => {
         const sequence = tracePhaseCount + 1;
         tracePhaseCount = sequence;
@@ -386,6 +382,7 @@ export function createPlanTask(
         return { sequence, startedAtMs: Date.now() };
       };
 
+      // Emit phase completion and output volume metrics for each scan.
       const completePlanPhaseTrace = (
         phaseTrace: { sequence: number; startedAtMs: number },
         exitCode: number | null,
@@ -421,6 +418,7 @@ export function createPlanTask(
         }));
       };
 
+      // Finalize the trace run once, even if multiple exit paths are hit.
       const completeTraceRun = (status: ArtifactStoreStatus): void => {
         if (traceCompleted) {
           return;
@@ -438,6 +436,7 @@ export function createPlanTask(
         traceCompleted = true;
       };
 
+      // Complete the run by flushing trace output and finalizing artifacts.
       const finishPlan = (
         code: number,
         status: ArtifactStoreStatus,
@@ -457,11 +456,13 @@ export function createPlanTask(
           message: "Running planner: " + resolvedWorkerCommand.join(" ") + " [mode=" + mode + ", transport=" + transport + "]",
         });
 
+        // Track mutable scan-loop state for convergence reporting and totals.
         let latestDocumentSource = documentSource;
         let insertedTotal = 0;
         let scansExecuted = 0;
         let convergenceOutcome: PlanConvergenceOutcome | null = null;
 
+        // Execute up to `scanCount` independent scans, reloading source each time.
         for (let scanIndex = 1; scanIndex <= scanCount; scanIndex += 1) {
           const scanLabel = buildPlanScanLabel(scanIndex, scanCount);
           try {
@@ -480,6 +481,7 @@ export function createPlanTask(
           });
           scansExecuted += 1;
 
+          // Build per-scan prompt context and execute the planner worker.
           const scanPrompt = buildPlanScanPrompt(prompt, latestDocumentSource, scanIndex, scanCount);
           const planPhaseTrace = beginPlanPhaseTrace(resolvedWorkerCommand);
           const runResult = await dependencies.workerExecutor.runWorker({
@@ -507,15 +509,18 @@ export function createPlanTask(
             mode === "wait",
           );
 
+          // Forward worker stderr in wait mode to preserve CLI diagnostics.
           if (mode === "wait" && runResult.stderr) {
             emit({ kind: "stderr", text: runResult.stderr });
           }
 
+          // Non-zero exits fail the planning run for this task.
           if (runResult.exitCode !== 0 && runResult.exitCode !== null) {
             emit({ kind: "error", message: "Planner worker exited with code " + runResult.exitCode + " during scan " + scanIndex + "." });
             return finishPlan(1, "execution-failed");
           }
 
+          // Empty output indicates there are no additional TODOs to add.
           if (!runResult.stdout || runResult.stdout.trim().length === 0) {
             convergenceOutcome = "converged";
             if (scanIndex === 1) {
@@ -526,6 +531,7 @@ export function createPlanTask(
             break;
           }
 
+          // Accept only additive TODO changes and reject destructive output.
           const applyResult = applyPlannerOutput(latestDocumentSource, runResult.stdout);
           if (applyResult.rejected) {
             emit({
@@ -535,6 +541,7 @@ export function createPlanTask(
             return finishPlan(1, "failed");
           }
 
+          // Zero insertions from valid output also counts as convergence.
           if (applyResult.insertedCount === 0) {
             convergenceOutcome = "converged";
             if (scanIndex === 1) {
@@ -545,11 +552,13 @@ export function createPlanTask(
             break;
           }
 
+          // Persist inserted TODO items before running the next scan.
           latestDocumentSource = applyResult.updatedSource;
           dependencies.fileSystem.writeText(source, latestDocumentSource);
           insertedTotal += applyResult.insertedCount;
         }
 
+        // Hitting the scan cap without convergence is tracked explicitly.
         if (scansExecuted > 0 && convergenceOutcome === null) {
           convergenceOutcome = "scan-cap-reached";
         }
@@ -558,6 +567,7 @@ export function createPlanTask(
           ? buildPlanConvergenceMetadata(scanCount, scansExecuted, convergenceOutcome)
           : undefined;
 
+        // Return success when no insertions are needed after all scans.
         if (insertedTotal === 0) {
           return finishPlan(0, "completed", convergenceMetadata);
         }
@@ -568,6 +578,7 @@ export function createPlanTask(
         });
         return finishPlan(0, "completed", convergenceMetadata);
       } finally {
+        // Ensure trace and artifacts are finalized on all exceptional exits.
         if (!artifactsFinalized) {
           const finalStatus = artifactStatus === "running" ? "failed" : artifactStatus;
           completeTraceRun(finalStatus);
@@ -578,6 +589,7 @@ export function createPlanTask(
       }
     } finally {
       try {
+        // Release all held source locks regardless of execution outcome.
         dependencies.fileLock.releaseAll();
       } catch (error) {
         emit({ kind: "warn", message: "Failed to release file locks: " + String(error) });
@@ -586,14 +598,9 @@ export function createPlanTask(
   };
 }
 
-function countTraceLines(text: string): number {
-  if (text.length === 0) {
-    return 0;
-  }
-
-  return text.split(/\r?\n/).length;
-}
-
+/**
+ * Finalizes artifact storage and emits the artifact location when preserved.
+ */
 function finalizePlanArtifacts(
   artifactStore: ArtifactStore,
   artifactContext: ArtifactContext,
@@ -619,19 +626,9 @@ function finalizePlanArtifacts(
   }
 }
 
-function loadPlanTemplateFromPorts(
-  configDir: ConfigDirResult | undefined,
-  templateLoader: TemplateLoader,
-  pathOperations: PathOperationsPort,
-): string {
-  if (!configDir) {
-    return DEFAULT_PLAN_TEMPLATE;
-  }
-
-  const configRoot = configDir.configDir;
-  return templateLoader.load(pathOperations.join(configRoot, "plan.md")) ?? DEFAULT_PLAN_TEMPLATE;
-}
-
+/**
+ * Applies planner output with additive-only TODO insertion rules.
+ */
 function applyPlannerOutput(
   markdownSource: string,
   plannerOutput: string,
@@ -640,6 +637,9 @@ function applyPlannerOutput(
   return insertPlannerTodos(markdownSource, plannerOutput, { hasExistingTodos });
 }
 
+/**
+ * Builds structured convergence metadata for artifact finalization.
+ */
 function buildPlanConvergenceMetadata(
   scanCount: number,
   scansExecuted: number,
@@ -654,6 +654,9 @@ function buildPlanConvergenceMetadata(
   };
 }
 
+/**
+ * Derives a user-facing planning intent from the first H1 heading when present.
+ */
 function deriveDocumentIntent(source: string, fallbackPath: string): string {
   const headingMatch = source.match(/^\s{0,3}#\s+(.+)$/m);
   if (headingMatch?.[1]) {
@@ -663,6 +666,9 @@ function deriveDocumentIntent(source: string, fallbackPath: string): string {
   return "Plan TODO coverage for " + fallbackPath;
 }
 
+/**
+ * Builds the per-scan worker prompt with clean-session guidance and current source.
+ */
 function buildPlanScanPrompt(
   basePrompt: string,
   latestDocumentSource: string,
@@ -675,6 +681,9 @@ function buildPlanScanPrompt(
   return `${basePrompt}\n\n## Scan Context\n\nScan label: ${scanLabel}\nScan pass ${scanIndex} of ${scanCount}.\n\nTreat this scan as a clean standalone worker session. Do not rely on prior prompt history or prior scan outputs beyond the current document state shown below.\n\nCurrent document state (normalized to LF newlines):\n\n\`\`\`markdown\n${stableDocumentSource}\n\`\`\`\n\nReturn ONLY missing TODO additions that are not already present in the current document.\nIf there are no missing TODO additions, return an empty response.`;
 }
 
+/**
+ * Builds a stable scan label used in messages and trace metadata.
+ */
 function buildPlanScanLabel(scanIndex: number, scanCount: number): string {
   const width = Math.max(2, String(scanCount).length);
   const indexLabel = String(scanIndex).padStart(width, "0");
@@ -682,17 +691,26 @@ function buildPlanScanLabel(scanIndex: number, scanCount: number): string {
   return `plan-scan-${indexLabel}-of-${countLabel}`;
 }
 
+/**
+ * Builds the artifact phase label for a specific scan index.
+ */
 function buildPlanScanPhaseLabel(scanIndex: number, scanCount: number): string {
   const width = Math.max(2, String(scanCount).length);
   const indexLabel = String(scanIndex).padStart(width, "0");
   return `plan-scan-${indexLabel}`;
 }
 
+/**
+ * Normalizes source text to LF newlines and guarantees a trailing newline.
+ */
 function normalizeScanDocumentSource(source: string): string {
   const normalized = source.replace(/\r\n?/g, "\n");
   return normalized.endsWith("\n") ? normalized : `${normalized}\n`;
 }
 
+/**
+ * Validates worker command arguments that would violate clean per-scan sessions.
+ */
 function validatePlanCleanSessionWorkerCommand(workerCommand: string[]): string | null {
   if (!isOpenCodeCommand(workerCommand[0])) {
     return null;
@@ -711,19 +729,13 @@ function validatePlanCleanSessionWorkerCommand(workerCommand: string[]): string 
   return null;
 }
 
+/**
+ * Detects whether the worker command targets OpenCode execution.
+ */
 function isOpenCodeCommand(command: string | undefined): boolean {
-  if (!command) {
+  if (typeof command !== "string") {
     return false;
   }
 
-  const normalized = command.toLowerCase();
-  return normalized === "opencode"
-    || normalized.endsWith("/opencode")
-    || normalized.endsWith("\\opencode")
-    || normalized.endsWith("/opencode.cmd")
-    || normalized.endsWith("\\opencode.cmd")
-    || normalized.endsWith("/opencode.exe")
-    || normalized.endsWith("\\opencode.exe")
-    || normalized.endsWith("/opencode.ps1")
-    || normalized.endsWith("\\opencode.ps1");
+  return isOpenCodeWorkerCommand([command]);
 }

@@ -1,3 +1,4 @@
+// Canonical directory name used for rundown project configuration.
 export const CONFIG_DIR_NAME = ".rundown";
 
 /**
@@ -7,7 +8,9 @@ export const CONFIG_DIR_NAME = ".rundown";
  * - `isExplicit`: true when provided via `--config-dir`, false when discovered
  */
 export interface ConfigDirResult {
+  // Absolute path to the resolved configuration directory.
   configDir: string;
+  // Indicates whether the directory came from an explicit CLI flag.
   isExplicit: boolean;
 }
 
@@ -28,5 +31,6 @@ export interface ConfigDirResult {
  *   bypasses discovery; path validation errors are fatal.
  */
 export interface ConfigDirPort {
+  // Resolves from the provided start directory using adapter-specific discovery.
   resolve(startDir: string): ConfigDirResult | undefined;
 }

@@ -5,6 +5,9 @@ import type {
   DirectoryOpenerPort,
 } from "../domain/ports/index.js";
 
+/**
+ * Represents a saved runtime artifact run persisted by the artifact store.
+ */
 export interface SavedRuntimeArtifactRun {
   runId: string;
   rootDir: string;
@@ -27,6 +30,9 @@ export interface SavedRuntimeArtifactRun {
   status?: string;
 }
 
+/**
+ * Dependencies required to manage runtime artifact runs.
+ */
 export interface ManageArtifactsDependencies {
   artifactStore: ArtifactStore;
   directoryOpener: DirectoryOpenerPort;
@@ -34,6 +40,9 @@ export interface ManageArtifactsDependencies {
   output: ApplicationOutputPort;
 }
 
+/**
+ * CLI options supported by the artifacts management command.
+ */
 export interface ManageArtifactsOptions {
   clean: boolean;
   json: boolean;
@@ -42,6 +51,12 @@ export interface ManageArtifactsOptions {
   configDir?: string;
 }
 
+/**
+ * Creates the artifacts management application use case.
+ *
+ * Supports listing, opening, JSON rendering, and cleanup operations for
+ * saved runtime artifact runs.
+ */
 export function createManageArtifacts(
   dependencies: ManageArtifactsDependencies,
 ): (options: ManageArtifactsOptions) => number {
@@ -54,6 +69,7 @@ export function createManageArtifacts(
     const runToOpen = options.open;
     const artifactBaseDir = options.configDir ?? dependencies.configDir?.configDir;
 
+    // Guard against mutually exclusive options that would produce ambiguous behavior.
     if (shouldClean && (shouldPrintJson || runToOpen)) {
       emit({ kind: "error", message: "--clean cannot be combined with --json or --open." });
       return 1;
@@ -64,6 +80,7 @@ export function createManageArtifacts(
       return 1;
     }
 
+    // Open a specific run directory and exit early when --open is requested.
     if (runToOpen) {
       const run = runToOpen === "latest"
         ? dependencies.artifactStore.latest(artifactBaseDir)
@@ -78,6 +95,7 @@ export function createManageArtifacts(
       return 0;
     }
 
+    // Remove saved runs when --clean is provided, optionally scoped to failures.
     if (shouldClean) {
       const removed = onlyFailed
         ? dependencies.artifactStore.removeFailed(artifactBaseDir)
@@ -98,6 +116,7 @@ export function createManageArtifacts(
       return 0;
     }
 
+    // Default behavior is listing saved runs, filtered to failed runs when requested.
     const runs = onlyFailed
       ? dependencies.artifactStore.listFailed(artifactBaseDir)
       : dependencies.artifactStore.listSaved(artifactBaseDir);
@@ -107,11 +126,13 @@ export function createManageArtifacts(
       return 0;
     }
 
+    // Emit machine-readable JSON output for scripting use cases.
     if (shouldPrintJson) {
       emit({ kind: "text", text: JSON.stringify(runs, null, 2) });
       return 0;
     }
 
+    // Emit a human-readable summary followed by key details for each run.
     for (const run of runs) {
       const worker = run.workerCommand?.join(" ") ?? run.commandName;
       const summary = [

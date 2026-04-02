@@ -16,6 +16,7 @@ import { sortFiles, type SortMode } from "../domain/sorting.js";
 import { getFileBirthtimeMs } from "./file-birthtime.js";
 
 const selectorFileSystem = {
+  // Read file metadata in a minimal shape required by sorting logic.
   stat(filePath: string) {
     const stats = fs.statSync(filePath);
     return {
@@ -50,16 +51,20 @@ export function selectNextTask(
   files: string[],
   sortMode: SortMode = "name-sort",
 ): SelectionResult | null {
+  // Normalize traversal order so selection is deterministic.
   const sorted = sortFiles(files, sortMode, {
     getBirthtimeMs: (filePath) => getFileBirthtimeMs(filePath, selectorFileSystem),
   });
 
   for (const file of sorted) {
+    // Parse all tasks from the current source document.
     const source = fs.readFileSync(file, "utf-8");
     const tasks = parseTasks(source, file);
+    // Restrict candidates to tasks that are currently executable.
     const runnable = filterRunnable(tasks);
 
     for (const task of runnable) {
+      // Capture the file content that appears before the selected task.
       const lines = source.split("\n");
       const contextBefore = lines.slice(0, task.line - 1).join("\n");
 
@@ -80,6 +85,7 @@ export function selectTaskByLocation(
   file: string,
   line: number,
 ): SelectionResult | null {
+  // Read and parse the target file before matching by exact line number.
   const source = fs.readFileSync(file, "utf-8");
   const tasks = parseTasks(source, file);
   const task = tasks.find((t) => t.line === line);
@@ -88,6 +94,7 @@ export function selectTaskByLocation(
     return null;
   }
 
+  // Provide preceding content so callers can build execution prompts.
   const lines = source.split("\n");
   const contextBefore = lines.slice(0, task.line - 1).join("\n");
 

@@ -67,33 +67,54 @@ export interface SubItem {
 /** Document-level TODO item extracted from Markdown. */
 export type TodoItem = Task;
 
+/** Represents a Markdown ATX heading with normalized lookup metadata. */
 export interface MarkdownHeadingLine {
+  /** Zero-based line index where the heading appears. */
   lineIndex: number;
+  /** Heading level (`1` to `6`). */
   level: number;
+  /** Raw heading text without leading `#` markers. */
   text: string;
+  /** Lowercased heading text used for case-insensitive matching. */
   normalizedText: string;
 }
 
+/** Describes a heading section as a half-open line range. */
 export interface MarkdownSection {
+  /** Heading line that starts this section. */
   heading: MarkdownHeadingLine;
+  /** Zero-based start line index for this section. */
   startLineIndex: number;
+  /** First line index that is outside this section. */
   endLineIndexExclusive: number;
 }
 
+/** Minimal frontmatter data consumed by task-planning flows. */
 export interface FrontmatterData {
+  /** Optional profile declared in YAML frontmatter. */
   profile?: string;
 }
 
+// Prefix used to classify inline CLI tasks.
 const CLI_PREFIX = /^cli:\s*/i;
+// Prefix used to classify rundown sub-command tasks.
 const RUNDOWN_PREFIX = /^rundown:\s*/i;
+// Matches ATX-style headings (`#` through `######`).
 const ATX_HEADING_PATTERN = /^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/;
+// Captures the first YAML frontmatter block in the document.
 const FRONTMATTER_BLOCK_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---/;
+// Matches simple `key: value` lines within frontmatter.
 const FRONTMATTER_KEY_VALUE_PATTERN = /^\s*([^:#\s][^:]*)\s*:\s*(.*)$/;
+// Detects directive list items that set a profile context.
 const PROFILE_DIRECTIVE_PATTERN = /^profile\s*:\s*(.+)$/i;
+// Detects directive list items that switch tasks to verify-only intent.
 const VERIFY_DIRECTIVE_PATTERN = /^(?:verify|confirm|check)\s*:\s*$/i;
 
+/** Context inherited while walking nested directive list items. */
 interface DirectiveContext {
+  /** Active profile inherited from parent directive items. */
   directiveProfile?: string;
+  /** Active task intent inherited from parent directive items. */
   intent?: TaskIntent;
 }
 
@@ -134,6 +155,12 @@ export function countTodoItems(source: string): number {
   return extractTodoItems(source).length;
 }
 
+/**
+ * Parse YAML-style frontmatter and return supported metadata fields.
+ *
+ * Unknown keys are ignored intentionally so the parser remains tolerant of
+ * unrelated document metadata.
+ */
 export function extractFrontmatter(source: string): FrontmatterData {
   const match = source.match(FRONTMATTER_BLOCK_PATTERN);
   if (!match) {
@@ -305,6 +332,12 @@ function walkForTasks(
   }
 }
 
+/**
+ * Parse directive-style parent list items and map them to inheritance context.
+ *
+ * Supported directives currently include profile selection and verify-only
+ * intent markers.
+ */
 function parseDirectiveParent(text: string): DirectiveContext {
   const profileMatch = text.match(PROFILE_DIRECTIVE_PATTERN);
   if (profileMatch) {
@@ -321,6 +354,7 @@ function parseDirectiveParent(text: string): DirectiveContext {
   return {};
 }
 
+/** Type guard for mdast list item nodes. */
 function isListItem(node: unknown): node is ListItem {
   return (node as ListItem).type === "listItem";
 }
@@ -342,6 +376,7 @@ function extractText(node: ListItem): string {
   return parts.join("").trim();
 }
 
+/** Recursively collect inline text values from supported mdast node types. */
 function collectText(node: Parent | RootContent, parts: string[]): void {
   if (node.type === "text" || node.type === "inlineCode") {
     parts.push((node as { value: string }).value);

@@ -18,6 +18,9 @@ import {
 
 type ArtifactContext = any;
 
+/**
+ * Dependency ports required to verify a task and optionally run repair attempts.
+ */
 export interface VerifyRepairLoopDependencies {
   taskVerification: TaskVerificationPort;
   taskRepair: TaskRepairPort;
@@ -26,6 +29,9 @@ export interface VerifyRepairLoopDependencies {
   output: ApplicationOutputPort;
 }
 
+/**
+ * Runtime inputs needed to execute a verify-then-repair loop for a single task.
+ */
 export interface VerifyRepairLoopInput {
   task: Task;
   source: string;
@@ -45,17 +51,25 @@ export interface VerifyRepairLoopInput {
   cliExpansionEnabled?: boolean;
 }
 
+/**
+ * Final verification status returned by the verify/repair orchestration.
+ */
 export interface VerifyRepairLoopResult {
   valid: boolean;
   failureReason: string | null;
 }
 
+/**
+ * Runs initial verification and, when allowed, retries task repair until success or exhaustion.
+ */
 export async function runVerifyRepairLoop(
   dependencies: VerifyRepairLoopDependencies,
   input: VerifyRepairLoopInput,
 ): Promise<VerifyRepairLoopResult> {
   const emit = dependencies.output.emit.bind(dependencies.output);
+  // Trace events are tied to a run id derived from artifact context.
   const runId = resolveTraceRunId(input.artifactContext);
+  // Emits pass/fail details for each verification attempt.
   const emitVerificationResult = (valid: boolean, attemptNumber: number): void => {
     if (!input.trace || !runId) {
       return;
@@ -74,6 +88,7 @@ export async function runVerifyRepairLoop(
     }));
   };
 
+  // Emits metadata before each repair attempt starts.
   const emitRepairAttempt = (attemptNumber: number, previousFailure: string | null): void => {
     if (!input.trace || !runId) {
       return;
@@ -90,6 +105,7 @@ export async function runVerifyRepairLoop(
     }));
   };
 
+  // Emits summary outcome after the repair loop completes.
   const emitRepairOutcome = (finalValid: boolean, totalAttempts: number): void => {
     if (!input.trace || !runId) {
       return;
@@ -112,6 +128,7 @@ export async function runVerifyRepairLoop(
   let verificationDurationMs = 0;
   let executionDurationMs = 0;
 
+  // Emits aggregate efficiency metrics for verification and repair behavior.
   const emitVerificationEfficiency = (): void => {
     if (!input.trace || !runId) {
       return;
@@ -134,6 +151,7 @@ export async function runVerifyRepairLoop(
     }));
   };
 
+  // Always run one initial verification before considering repairs.
   emit({ kind: "info", message: "Running verification..." });
 
   const initialVerificationStartedAt = Date.now();
@@ -167,6 +185,7 @@ export async function runVerifyRepairLoop(
   firstPassSuccess = valid;
   emitVerificationResult(valid, 1);
 
+  // Successful first-pass verification ends the flow immediately.
   if (valid) {
     dependencies.verificationStore.remove(input.task);
     emitVerificationEfficiency();
@@ -174,6 +193,7 @@ export async function runVerifyRepairLoop(
     return { valid: true, failureReason: null };
   }
 
+  // When repair is disabled, return the latest verification failure.
   if (!input.allowRepair) {
     const failureReason = cumulativeFailureReasons.at(-1) ?? initialFailureReason;
     emitRepairOutcome(false, 0);
@@ -182,6 +202,7 @@ export async function runVerifyRepairLoop(
     return { valid: false, failureReason };
   }
 
+  // Enter repair mode after a failed initial verification.
   const repairWarningReason = initialFailureReason ?? "Verification failed (no details).";
   emit({
     kind: "warn",
@@ -195,6 +216,7 @@ export async function runVerifyRepairLoop(
     repairAttempts = attempts;
     emitRepairAttempt(attempts, previousFailure);
 
+    // Each repair invocation performs one repair cycle and one verification pass.
     const repairStartedAt = Date.now();
     const result = await dependencies.taskRepair.repair({
       task: input.task,
@@ -226,6 +248,7 @@ export async function runVerifyRepairLoop(
     }
     emitVerificationResult(result.valid, attempts + 1);
 
+    // Stop on first successful repair and clear stored failure details.
     if (result.valid) {
       emitRepairOutcome(true, attempts);
       dependencies.verificationStore.remove(input.task);
@@ -242,6 +265,7 @@ export async function runVerifyRepairLoop(
     previousFailure = repairFailureReason ?? "Verification failed (no details).";
   }
 
+  // All repair attempts failed; report the most recent failure reason.
   emitRepairOutcome(false, attempts);
   emitVerificationEfficiency();
   const failureReason = cumulativeFailureReasons.at(-1) ?? initialFailureReason;
@@ -249,6 +273,9 @@ export async function runVerifyRepairLoop(
   return { valid: false, failureReason };
 }
 
+/**
+ * Extracts the trace run id from artifact context when present.
+ */
 function resolveTraceRunId(artifactContext: ArtifactContext): string | null {
   if (!artifactContext || typeof artifactContext !== "object") {
     return null;

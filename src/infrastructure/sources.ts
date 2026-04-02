@@ -10,7 +10,7 @@ import path from "node:path";
 import fg from "fast-glob";
 
 /**
- * Resolve a source string into a sorted list of Markdown file paths.
+ * Resolves a source string into a list of Markdown file paths.
  *
  * Supports:
  * - single file path
@@ -18,41 +18,55 @@ import fg from "fast-glob";
  * - glob pattern
  */
 export async function resolveSources(source: string): Promise<string[]> {
+  // Resolve relative paths early so file and directory checks are stable.
   const resolved = path.resolve(source);
 
-  // Single file
+  // Return immediately when the source points to one concrete file.
   if (isFile(resolved)) {
     return [resolved];
   }
 
-  // Directory
+  // Expand directories into a recursive Markdown glob.
   if (isDirectory(resolved)) {
+    // Normalize separators because glob patterns expect POSIX-style slashes.
     const pattern = path.join(resolved, "**/*.md").replace(/\\/g, "/");
     return await fg(pattern, { absolute: true, onlyFiles: true });
   }
 
-  // Glob
+  // Treat any non-file, non-directory input as a glob expression.
   const files = await fg(source.replace(/\\/g, "/"), {
     absolute: true,
     onlyFiles: true,
   });
 
-  // Filter to only .md files
+  // Keep only Markdown files when the glob is broader than *.md.
   return files.filter((f) => f.endsWith(".md"));
 }
 
+/**
+ * Determines whether the provided path exists and points to a file.
+ *
+ * Returns `false` for missing paths and inaccessible filesystem entries.
+ */
 function isFile(p: string): boolean {
   try {
     return fs.statSync(p).isFile();
   } catch {
+    // Missing or inaccessible paths are not treated as files.
     return false;
   }
 }
 
+/**
+ * Determines whether the provided path exists and points to a directory.
+ *
+ * Returns `false` for missing paths and inaccessible filesystem entries.
+ */
 function isDirectory(p: string): boolean {
   try {
     return fs.statSync(p).isDirectory();
   } catch {
+    // Missing or inaccessible paths are not treated as directories.
     return false;
   }
 }

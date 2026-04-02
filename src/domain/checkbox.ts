@@ -1,6 +1,7 @@
 import type { Task } from "./parser.js";
 import { parseTasks } from "./parser.js";
 
+/** Re-export the task shape used by checkbox helpers. */
 export type { Task } from "./parser.js";
 
 /**
@@ -9,8 +10,11 @@ export type { Task } from "./parser.js";
  * Uses the task's line number for safety.
  */
 export function markChecked(source: string, task: Task): string {
+  // Preserve the original line-ending style when rewriting the file.
   const eol = source.includes("\r\n") ? "\r\n" : "\n";
+  // Split into logical lines so updates stay scoped to one task line.
   const lines = source.split(/\r?\n/);
+  // Convert 1-based parser line numbers to a 0-based array index.
   const lineIndex = task.line - 1;
 
   if (lineIndex < 0 || lineIndex >= lines.length) {
@@ -18,6 +22,7 @@ export function markChecked(source: string, task: Task): string {
   }
 
   const line = lines[lineIndex]!;
+  // Only toggle the first unchecked box on the exact task line.
   const updated = line.replace(/\[ \]/, "[x]");
 
   if (updated === line) {
@@ -34,8 +39,11 @@ export function markChecked(source: string, task: Task): string {
  * Uses the task's line number for safety.
  */
 export function markUnchecked(source: string, task: Task): string {
+  // Preserve the original line-ending style when rewriting the file.
   const eol = source.includes("\r\n") ? "\r\n" : "\n";
+  // Split into logical lines so updates stay scoped to one task line.
   const lines = source.split(/\r?\n/);
+  // Convert 1-based parser line numbers to a 0-based array index.
   const lineIndex = task.line - 1;
 
   if (lineIndex < 0 || lineIndex >= lines.length) {
@@ -43,6 +51,7 @@ export function markUnchecked(source: string, task: Task): string {
   }
 
   const line = lines[lineIndex]!;
+  // Only toggle the first checked box on the exact task line.
   const updated = line.replace(/\[x\]/, "[ ]");
 
   if (updated === line) {
@@ -55,9 +64,14 @@ export function markUnchecked(source: string, task: Task): string {
 
 /**
  * Reset all checked task checkboxes in a Markdown source back to unchecked.
+ *
+ * Parses tasks from the original source and applies unchecked updates one by one
+ * so each change stays line-accurate and preserves the file's newline format.
  */
 export function resetAllCheckboxes(source: string, file: string): string {
+  // Keep an evolving source snapshot as each task is toggled back.
   let updatedSource = source;
+  // Only process tasks that are currently marked as checked.
   const checkedTasks = parseTasks(source, file).filter((task) => task.checked);
 
   for (const task of checkedTasks) {

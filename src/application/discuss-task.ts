@@ -1,6 +1,5 @@
 import type { SortMode } from "../domain/sorting.js";
 import type { Task } from "../domain/parser.js";
-import { DEFAULT_DISCUSS_TEMPLATE } from "../domain/defaults.js";
 import { expandCliBlocks, extractCliBlocks } from "../domain/cli-block.js";
 import {
   buildTaskHierarchyTemplateVars,
@@ -16,13 +15,23 @@ import {
   resolveTemplateVarsFilePath,
   type ExtraTemplateVars,
 } from "../domain/template-vars.js";
+import {
+  TemplateCliBlockExecutionError,
+  withTemplateCliFailureAbort,
+} from "./cli-block-handlers.js";
+import {
+  captureCheckboxState,
+  detectCheckboxMutations,
+  type CheckboxStateSnapshot,
+} from "./checkbox-operations.js";
+import { loadProjectTemplatesFromPorts } from "./project-templates.js";
 import { resolveWorkerForInvocation } from "./resolve-worker.js";
+import { formatTaskLabel } from "./run-task-utils.js";
 import { FileLockError } from "../domain/ports/file-lock.js";
 import type { FileLock } from "../domain/ports/file-lock.js";
 import type {
   ArtifactRunContext,
   ArtifactStore,
-  CommandExecutionOptions,
   CommandExecutor,
   FileSystem,
   ConfigDirResult,
@@ -42,38 +51,34 @@ import type {
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
 export type RunnerMode = ProcessRunMode;
+
+/**
+ * Transport strategy used to deliver prompts to the discussion worker.
+ */
 export type PromptTransport = PortPromptTransport;
+
+/**
+ * Artifact context alias used for discuss command runs.
+ */
 type ArtifactContext = ArtifactRunContext;
 
-interface ProjectTemplates {
-  discuss: string;
-}
-
+/**
+ * Task payload and source metadata required to render a discuss prompt.
+ */
 interface ResolvedTaskContext {
   task: Task;
   source: string;
   contextBefore: string;
 }
 
-interface CheckboxStateSnapshot {
-  orderedStates: boolean[];
-}
-
-class TemplateCliBlockExecutionError extends Error {
-  readonly templateLabel: string;
-  readonly command: string;
-  readonly exitCode: number | null;
-
-  constructor(templateLabel: string, command: string, exitCode: number | null) {
-    super("Template cli block execution failed");
-    this.templateLabel = templateLabel;
-    this.command = command;
-    this.exitCode = exitCode;
-  }
-}
-
+/**
+ * Task selection payload returned by the task selector port.
+ */
 type TaskSelectionResult = PortTaskSelectionResult;
 
+/**
+ * Ports and services required to execute the `discuss` command.
+ */
 export interface DiscussTaskDependencies {
   sourceResolver: SourceResolverPort;
   taskSelector: TaskSelectorPort;
@@ -93,6 +98,9 @@ export interface DiscussTaskDependencies {
   output: ApplicationOutputPort;
 }
 
+/**
+ * Runtime options accepted by a single `discuss` command invocation.
+ */
 export interface DiscussTaskOptions {
   source: string;
   mode: RunnerMode;
@@ -111,6 +119,10 @@ export interface DiscussTaskOptions {
   cliBlockTimeoutMs?: number;
 }
 
+/**
+ * Creates the discuss task runner that renders prompts, invokes the worker,
+ * restores checkbox integrity, and records discussion trace events.
+ */
 export function createDiscussTask(
   dependencies: DiscussTaskDependencies,
 ): (options: DiscussTaskOptions) => Promise<number> {
@@ -131,46 +143,9 @@ export function createDiscussTask(
     const cliExecutionOptions = cliBlockTimeoutMs === undefined
       ? undefined
       : { timeoutMs: cliBlockTimeoutMs };
-    const withCommandExecutionHandler = (
-      executionOptions: CommandExecutionOptions | undefined,
-      handler: ((execution: {
-        command: string;
-        exitCode: number | null;
-        stdoutLength: number;
-        stderrLength: number;
-        durationMs: number;
-      }) => void | Promise<void>) | undefined,
-    ): CommandExecutionOptions | undefined => {
-      if (!handler) {
-        return executionOptions;
-      }
-
-      const existingHandler = executionOptions?.onCommandExecuted;
-
-      return {
-        ...(executionOptions ?? {}),
-        onCommandExecuted: async (execution): Promise<void> => {
-          await existingHandler?.(execution);
-          await handler(execution);
-        },
-      };
-    };
-    const templateCliFailureHandler = (templateLabel: string) => (execution: {
-      command: string;
-      exitCode: number | null;
-      stdoutLength: number;
-      stderrLength: number;
-      durationMs: number;
-    }): void => {
-      if (typeof execution.exitCode === "number" && execution.exitCode === 0) {
-        return;
-      }
-
-      throw new TemplateCliBlockExecutionError(templateLabel, execution.command, execution.exitCode);
-    };
-    const cliExecutionOptionsWithTemplateFailureAbort = withCommandExecutionHandler(
+    const cliExecutionOptionsWithTemplateFailureAbort = withTemplateCliFailureAbort(
       cliExecutionOptions,
-      templateCliFailureHandler("discuss template"),
+      "discuss template",
     );
 
     const varsFilePath = resolveTemplateVarsFilePath(
@@ -191,13 +166,16 @@ export function createDiscussTask(
       ...cliTemplateVars,
     };
 
+    // Resolve markdown sources up front so locking and selection operate on the same set.
     const files = await dependencies.sourceResolver.resolveSources(source);
     if (files.length === 0) {
       emit({ kind: "warn", message: "No Markdown files found matching: " + source });
       return 3;
     }
 
+    // Deduplicate lock targets in case globbing or resolver behavior returns repeated paths.
     const lockTargets = Array.from(new Set(files));
+    // Optionally clear stale lock files before acquiring fresh locks for this run.
     if (options.forceUnlock) {
       for (const filePath of lockTargets) {
         if (dependencies.fileLock.isLocked(filePath)) {
@@ -211,6 +189,7 @@ export function createDiscussTask(
 
     let traceWriter: TraceWriterPort = dependencies.traceWriter;
 
+    // Acquire all locks before any task selection to prevent concurrent source mutation.
     try {
       for (const filePath of lockTargets) {
         dependencies.fileLock.acquire(filePath, { command: "discuss" });
@@ -235,6 +214,7 @@ export function createDiscussTask(
 
     try {
 
+      // Select a single unchecked task according to configured sort behavior.
       const selectedTask = dependencies.taskSelector.selectNextTask(files, sortMode);
       if (!selectedTask) {
         emit({ kind: "info", message: "No unchecked tasks found." });
@@ -242,6 +222,7 @@ export function createDiscussTask(
       }
 
       const taskContext = resolveTaskContext(selectedTask);
+      // Resolve worker command and prompt template for the selected task.
       const loadedWorkerConfig = dependencies.configDir?.configDir
         ? dependencies.workerConfigPort.load(dependencies.configDir.configDir)
         : undefined;
@@ -262,6 +243,8 @@ export function createDiscussTask(
       const promptCliBlockCount = extractCliBlocks(renderedPrompt).length;
       const dryRunSuppressesCliExpansion = dryRun && !printPrompt;
       let prompt = renderedPrompt;
+
+      // Expand `cli` fenced blocks unless expansion is suppressed for this run mode.
       if (!options.ignoreCliBlock && !dryRunSuppressesCliExpansion) {
         try {
           prompt = await expandCliBlocks(
@@ -312,6 +295,7 @@ export function createDiscussTask(
         return 0;
       }
 
+      // Discuss execution requires a worker command from config or CLI flags.
       if (resolvedWorkerCommand.length === 0) {
         emit({
           kind: "error",
@@ -320,6 +304,7 @@ export function createDiscussTask(
         return 1;
       }
 
+      // Snapshot checkbox state so discuss mode can enforce non-mutating checkbox behavior.
       const beforeCheckboxStateByFile = new Map<string, CheckboxStateSnapshot>();
       const sourceBeforeDiscussionByFile = new Map<string, string>();
       for (const filePath of lockTargets) {
@@ -328,6 +313,7 @@ export function createDiscussTask(
         beforeCheckboxStateByFile.set(filePath, captureCheckboxState(sourceBeforeDiscussion));
       }
 
+      // Create artifact context and emit a trace start event for this discussion run.
       const artifactContext = dependencies.artifactStore.createContext({
         cwd,
         configDir: dependencies.configDir?.configDir,
@@ -360,6 +346,7 @@ export function createDiscussTask(
         },
       }));
 
+      // Invoke worker in TUI mode to collect discussion output.
       const result = await dependencies.workerExecutor.runWorker({
         command: resolvedWorkerCommand,
         prompt,
@@ -373,6 +360,7 @@ export function createDiscussTask(
         artifactPhase: "discuss",
       });
 
+      // Detect and immediately revert checkbox edits introduced by the discussion step.
       const checkboxMutations = detectCheckboxMutations(lockTargets, beforeCheckboxStateByFile, dependencies.fileSystem);
 
       if (checkboxMutations.length > 0) {
@@ -386,6 +374,7 @@ export function createDiscussTask(
         }
       }
 
+      // Emit completion trace event with duration and worker exit details.
       traceWriter.write(createDiscussionCompletedEvent({
         timestamp: new Date().toISOString(),
         run_id: artifactContext.runId,
@@ -407,6 +396,7 @@ export function createDiscussTask(
         }
       }
 
+      // Mark artifact status as cancelled when worker fails or checkbox state mutates.
       const status = result.exitCode === 0 && checkboxMutations.length === 0
         ? "discuss-completed"
         : "discuss-cancelled";
@@ -445,6 +435,7 @@ export function createDiscussTask(
       emit({ kind: "success", message: "Discussion completed." });
       return 0;
     } finally {
+      // Flush trace output and release all source locks on every exit path.
       traceWriter.flush();
       try {
         dependencies.fileLock.releaseAll();
@@ -455,6 +446,9 @@ export function createDiscussTask(
   };
 }
 
+/**
+ * Renders the discuss template with task fields, source context, and extra vars.
+ */
 function renderDiscussPrompt(
   template: string,
   taskContext: ResolvedTaskContext,
@@ -474,83 +468,13 @@ function renderDiscussPrompt(
   return renderTemplate(template, vars);
 }
 
-function loadProjectTemplatesFromPorts(
-  configDir: ConfigDirResult | undefined,
-  templateLoader: TemplateLoader,
-  pathOperations: PathOperationsPort,
-): ProjectTemplates {
-  if (!configDir) {
-    return {
-      discuss: DEFAULT_DISCUSS_TEMPLATE,
-    };
-  }
-
-  const dir = configDir.configDir;
-  return {
-    discuss: templateLoader.load(pathOperations.join(dir, "discuss.md")) ?? DEFAULT_DISCUSS_TEMPLATE,
-  };
-}
-
+/**
+ * Normalizes task selection output into the context used by discuss rendering.
+ */
 function resolveTaskContext(selection: TaskSelectionResult): ResolvedTaskContext {
   return {
     task: selection.task,
     source: selection.source,
     contextBefore: selection.contextBefore,
   };
-}
-
-function formatTaskLabel(task: Task): string {
-  return `${task.file}:${task.line} [#${task.index}] ${task.text}`;
-}
-
-function captureCheckboxState(source: string): CheckboxStateSnapshot {
-  const checkboxPattern = /^(\s*[-*+]\s+)\[([ xX])\](\s+\S.*)$/;
-  const lines = source.split(/\r?\n/);
-  const orderedStates: boolean[] = [];
-
-  for (const line of lines) {
-    const match = line.match(checkboxPattern);
-    if (!match) {
-      continue;
-    }
-
-    const checked = /[xX]/.test(match[2]);
-    orderedStates.push(checked);
-  }
-
-  return {
-    orderedStates,
-  };
-}
-
-function detectCheckboxMutations(
-  files: string[],
-  beforeByFile: Map<string, CheckboxStateSnapshot>,
-  fileSystem: FileSystem,
-): string[] {
-  const mutatedFiles: string[] = [];
-
-  for (const filePath of files) {
-    const before = beforeByFile.get(filePath);
-    if (!before) {
-      continue;
-    }
-
-    const after = captureCheckboxState(fileSystem.readText(filePath));
-    const comparableCount = Math.min(before.orderedStates.length, after.orderedStates.length);
-    let hasMutation = false;
-
-    for (let index = 0; index < comparableCount; index += 1) {
-      if (before.orderedStates[index] !== after.orderedStates[index]) {
-        hasMutation = true;
-        break;
-      }
-    }
-
-    if (hasMutation) {
-      mutatedFiles.push(filePath);
-    }
-  }
-
-  return mutatedFiles;
 }

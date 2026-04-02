@@ -3,6 +3,9 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { CONFIG_DIR_NAME } from "../domain/ports/config-dir-port.js";
 
+/**
+ * Identifies the runtime stage that produced a captured artifact.
+ */
 export type RuntimePhase =
   | "execute"
   | "verify"
@@ -13,6 +16,9 @@ export type RuntimePhase =
   | "rundown-delegate"
   | "worker";
 
+/**
+ * Represents the final lifecycle state recorded for a runtime artifact run.
+ */
 export type RuntimeArtifactStatus =
   | "running"
   | "completed"
@@ -28,6 +34,9 @@ export type RuntimeArtifactStatus =
   | "revert-failed"
   | "metadata-missing";
 
+/**
+ * Stores source information for the task currently being executed.
+ */
 export interface RuntimeTaskMetadata {
   text: string;
   file: string;
@@ -36,6 +45,9 @@ export interface RuntimeTaskMetadata {
   source: string;
 }
 
+/**
+ * Carries mutable and immutable context required while recording artifacts.
+ */
 export interface RuntimeArtifactsContext {
   readonly runId: string;
   readonly rootDir: string;
@@ -65,6 +77,9 @@ interface RuntimeArtifactsMetadata {
   extra?: Record<string, unknown>;
 }
 
+/**
+ * Describes a persisted runtime artifact run discovered on disk.
+ */
 export interface SavedRuntimeArtifactRun {
   runId: string;
   rootDir: string;
@@ -103,6 +118,9 @@ interface PhaseMetadata {
   extra?: Record<string, unknown>;
 }
 
+/**
+ * Defines inputs used when starting a new runtime phase.
+ */
 export interface BeginRuntimePhaseOptions {
   phase: RuntimePhase;
   phaseLabel?: string;
@@ -114,6 +132,9 @@ export interface BeginRuntimePhaseOptions {
   extra?: Record<string, unknown>;
 }
 
+/**
+ * Exposes phase-specific file locations and mutable metadata during execution.
+ */
 export interface RuntimePhaseHandle {
   readonly context: RuntimeArtifactsContext;
   readonly phase: RuntimePhase;
@@ -124,6 +145,9 @@ export interface RuntimePhaseHandle {
   metadata: PhaseMetadata;
 }
 
+/**
+ * Defines fields captured when completing a runtime phase.
+ */
 export interface CompleteRuntimePhaseOptions {
   exitCode: number | null;
   stdout?: string;
@@ -134,14 +158,26 @@ export interface CompleteRuntimePhaseOptions {
   extra?: Record<string, unknown>;
 }
 
+/**
+ * Controls final status and retention behavior for a runtime artifact run.
+ */
 export interface FinalizeRuntimeArtifactsOptions {
   status: RuntimeArtifactStatus;
   preserve?: boolean;
   extra?: Record<string, unknown>;
 }
 
+/**
+ * Relative path for the shared JSONL log used by runtime output capture.
+ */
 export const GLOBAL_OUTPUT_LOG_RELATIVE_PATH = "logs/output.jsonl";
 
+/**
+ * Creates a new runtime artifact context and initializes run-level metadata.
+ *
+ * The context owns a run directory and sequence counter used by subsequent
+ * phase operations.
+ */
 export function createRuntimeArtifactsContext(options: {
   cwd?: string;
   configDir?: string;
@@ -158,6 +194,7 @@ export function createRuntimeArtifactsContext(options: {
   const rootBase = path.join(configDir, "runs");
   fs.mkdirSync(rootBase, { recursive: true });
 
+  // Generate a unique run directory for this execution.
   const runId = buildRunId();
   const rootDir = path.join(rootBase, runId);
   fs.mkdirSync(rootDir, { recursive: true });
@@ -192,6 +229,9 @@ export function createRuntimeArtifactsContext(options: {
   return context;
 }
 
+/**
+ * Returns the directory that stores all runtime artifact runs.
+ */
 export function runtimeArtifactsRootDir(
   startDir: string = process.cwd(),
 ): string {
@@ -199,6 +239,9 @@ export function runtimeArtifactsRootDir(
   return path.join(configDir, "runs");
 }
 
+/**
+ * Returns the absolute path to the global runtime output log file.
+ */
 export function globalOutputLogFilePath(
   startDir: string = process.cwd(),
 ): string {
@@ -206,6 +249,12 @@ export function globalOutputLogFilePath(
   return path.join(configDir, GLOBAL_OUTPUT_LOG_RELATIVE_PATH);
 }
 
+/**
+ * Lists saved runtime artifact runs sorted by newest first.
+ *
+ * If a run is missing `run.json`, a best-effort fallback entry is returned so
+ * callers can still inspect and clean orphaned directories.
+ */
 export function listSavedRuntimeArtifacts(
   startDir: string = process.cwd(),
 ): SavedRuntimeArtifactRun[] {
@@ -225,6 +274,7 @@ export function listSavedRuntimeArtifacts(
     const runDir = path.join(rootDir, entry.name);
     const metadata = readJson<RuntimeArtifactsMetadata>(path.join(runDir, "run.json"));
     if (!metadata) {
+      // Fall back to filesystem timestamps when structured metadata is unavailable.
       const stats = fs.statSync(runDir);
       const fallbackStartedAt = (stats.birthtime ?? stats.mtime).toISOString();
 
@@ -269,6 +319,9 @@ export function listSavedRuntimeArtifacts(
   return runs;
 }
 
+/**
+ * Lists only runs whose status indicates a failure condition.
+ */
 export function listFailedRuntimeArtifacts(
   startDir: string = process.cwd(),
 ): SavedRuntimeArtifactRun[] {
@@ -276,6 +329,9 @@ export function listFailedRuntimeArtifacts(
   return listSavedRuntimeArtifacts(configDir).filter((run) => isFailedRuntimeArtifactStatus(run.status));
 }
 
+/**
+ * Returns the most recently started saved runtime artifact run.
+ */
 export function latestSavedRuntimeArtifact(
   startDir: string = process.cwd(),
 ): SavedRuntimeArtifactRun | null {
@@ -283,6 +339,9 @@ export function latestSavedRuntimeArtifact(
   return listSavedRuntimeArtifacts(configDir)[0] ?? null;
 }
 
+/**
+ * Finds a saved run by exact id, or by unique id prefix.
+ */
 export function findSavedRuntimeArtifact(
   runId: string,
   startDir: string = process.cwd(),
@@ -294,6 +353,7 @@ export function findSavedRuntimeArtifact(
     return exact;
   }
 
+  // Support shorthand lookup when the run-id prefix resolves unambiguously.
   const prefixMatches = runs.filter((run) => run.runId.startsWith(runId));
   if (prefixMatches.length === 1) {
     return prefixMatches[0] ?? null;
@@ -302,6 +362,9 @@ export function findSavedRuntimeArtifact(
   return null;
 }
 
+/**
+ * Removes all saved runtime artifact runs and returns the number deleted.
+ */
 export function removeSavedRuntimeArtifacts(
   startDir: string = process.cwd(),
 ): number {
@@ -309,6 +372,9 @@ export function removeSavedRuntimeArtifacts(
   return removeRuntimeArtifactsMatching(() => true, configDir);
 }
 
+/**
+ * Removes failed saved runs and returns the number deleted.
+ */
 export function removeFailedRuntimeArtifacts(
   startDir: string = process.cwd(),
 ): number {
@@ -316,6 +382,9 @@ export function removeFailedRuntimeArtifacts(
   return removeRuntimeArtifactsMatching((run) => isFailedRuntimeArtifactStatus(run.status), configDir);
 }
 
+/**
+ * Deletes saved run directories that satisfy the provided predicate.
+ */
 function removeRuntimeArtifactsMatching(
   predicate: (run: SavedRuntimeArtifactRun) => boolean,
   configDir: string,
@@ -332,6 +401,7 @@ function removeRuntimeArtifactsMatching(
       continue;
     }
 
+    // Force removal because artifact directories may contain nested logs.
     fs.rmSync(run.rootDir, { recursive: true, force: true });
     removed += 1;
   }
@@ -339,6 +409,9 @@ function removeRuntimeArtifactsMatching(
   return removed;
 }
 
+/**
+ * Returns whether a status value represents a failed artifact outcome.
+ */
 export function isFailedRuntimeArtifactStatus(status: RuntimeArtifactStatus | undefined): boolean {
   if (!status) {
     return false;
@@ -347,6 +420,9 @@ export function isFailedRuntimeArtifactStatus(status: RuntimeArtifactStatus | un
   return status.includes("failed");
 }
 
+/**
+ * Starts a new phase directory and records initial phase metadata.
+ */
 export function beginRuntimePhase(
   context: RuntimeArtifactsContext,
   options: BeginRuntimePhaseOptions,
@@ -358,6 +434,7 @@ export function beginRuntimePhase(
   const dir = path.join(context.rootDir, dirName);
   fs.mkdirSync(dir, { recursive: true });
 
+  // Prompt files are optional because not every phase is prompt-driven.
   const promptFile = options.prompt === undefined
     ? null
     : path.join(dir, "prompt.md");
@@ -398,6 +475,9 @@ export function beginRuntimePhase(
   };
 }
 
+/**
+ * Completes a phase by recording outputs, timestamps, and optional diagnostics.
+ */
 export function completeRuntimePhase(
   handle: RuntimePhaseHandle,
   options: CompleteRuntimePhaseOptions,
@@ -406,6 +486,7 @@ export function completeRuntimePhase(
   handle.metadata.outputCaptured = options.outputCaptured;
   handle.metadata.completedAt = new Date().toISOString();
 
+  // Persist streams only when non-empty to avoid creating redundant files.
   if (options.stdout !== undefined && options.stdout.length > 0) {
     const stdoutFile = path.join(handle.dir, "stdout.log");
     ensureParentDir(stdoutFile);
@@ -429,6 +510,7 @@ export function completeRuntimePhase(
   }
 
   if (options.extra !== undefined) {
+    // Merge extra values so callers can append metadata incrementally.
     handle.metadata.extra = {
       ...(handle.metadata.extra ?? {}),
       ...options.extra,
@@ -438,6 +520,9 @@ export function completeRuntimePhase(
   writeJson(handle.metadataFile, handle.metadata);
 }
 
+/**
+ * Finalizes run-level metadata and optionally removes the run directory.
+ */
 export function finalizeRuntimeArtifacts(
   context: RuntimeArtifactsContext,
   options: FinalizeRuntimeArtifactsOptions,
@@ -466,6 +551,7 @@ export function finalizeRuntimeArtifacts(
   metadata.completedAt = new Date().toISOString();
   metadata.status = options.status;
   if (options.extra !== undefined) {
+    // Preserve previously recorded extra fields while applying updates.
     metadata.extra = {
       ...(metadata.extra ?? {}),
       ...options.extra,
@@ -482,6 +568,7 @@ export function finalizeRuntimeArtifacts(
       return;
     }
 
+    // Recreate the directory when retention was requested but files were removed.
     fs.mkdirSync(context.rootDir, { recursive: true });
     writeJson(metadataFile, metadata);
   }
@@ -491,11 +578,17 @@ export function finalizeRuntimeArtifacts(
   }
 }
 
+/**
+ * Returns a user-friendly artifact path relative to the original working directory.
+ */
 export function displayArtifactsPath(context: RuntimeArtifactsContext): string {
   const relative = path.relative(context.cwd, context.rootDir);
   return relative === "" ? path.basename(context.rootDir) : relative.split(path.sep).join("/");
 }
 
+/**
+ * Resolves a safe phase label for directory naming.
+ */
 function resolvePhaseLabel(phase: RuntimePhase, phaseLabel: string | undefined): string {
   const normalized = (phaseLabel ?? "").trim().toLowerCase();
   if (!normalized) {
@@ -510,17 +603,26 @@ function resolvePhaseLabel(phase: RuntimePhase, phaseLabel: string | undefined):
   return sanitized.length > 0 ? sanitized : phase;
 }
 
+/**
+ * Builds a unique run id using an ISO timestamp and random suffix.
+ */
 function buildRunId(): string {
   const timestamp = new Date().toISOString().replace(/[-:.]/g, "").replace("Z", "Z");
   const suffix = randomBytes(4).toString("hex");
   return `run-${timestamp}-${suffix}`;
 }
 
+/**
+ * Writes JSON to disk with stable indentation and a trailing newline.
+ */
 function writeJson(filePath: string, value: unknown): void {
   ensureParentDir(filePath);
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
 }
 
+/**
+ * Reads JSON from disk and returns `null` when parsing fails.
+ */
 function readJson<T>(filePath: string): T | null {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf-8")) as T;
@@ -529,6 +631,9 @@ function readJson<T>(filePath: string): T | null {
   }
 }
 
+/**
+ * Returns whether an unknown error is an ENOENT filesystem error.
+ */
 function isEnoentError(error: unknown): boolean {
   return typeof error === "object"
     && error !== null
@@ -536,11 +641,17 @@ function isEnoentError(error: unknown): boolean {
     && (error as { code?: unknown }).code === "ENOENT";
 }
 
+/**
+ * Ensures the parent directory for a file path exists.
+ */
 function ensureParentDir(filePath: string): void {
   const parentDir = path.dirname(filePath);
   fs.mkdirSync(parentDir, { recursive: true });
 }
 
+/**
+ * Resolves the runtime config directory from either a project root or config path.
+ */
 function resolveRuntimeConfigDir(startDir: string): string {
   const resolved = path.resolve(startDir);
   return path.basename(resolved) === CONFIG_DIR_NAME

@@ -14,6 +14,13 @@ import {
   type RuntimePhaseHandle,
 } from "./runtime-artifacts.js";
 
+/**
+ * Creates a command executor that runs commands through the host shell and
+ * waits for completion.
+ *
+ * The executor captures stdout/stderr, enforces optional timeouts, and writes
+ * runtime phase artifacts when artifact context is provided.
+ */
 export function createCliBlockExecutor(): CommandExecutor {
   return {
     execute(
@@ -22,6 +29,7 @@ export function createCliBlockExecutor(): CommandExecutor {
       options?: CommandExecutionOptions,
     ): Promise<CommandResult> {
       return new Promise((resolve, reject) => {
+        // Start artifact phase tracking when runtime context is available.
         const phaseHandle = beginCliCommandPhase(command, options);
         const child = spawn(command, {
           stdio: ["inherit", "pipe", "pipe"],
@@ -35,6 +43,7 @@ export function createCliBlockExecutor(): CommandExecutor {
         const stderr: Buffer[] = [];
         let timedOut = false;
 
+        // Normalize timeout to a non-negative integer before scheduling it.
         const configuredTimeout = options?.timeoutMs;
         const effectiveTimeoutMs = typeof configuredTimeout === "number"
           ? configuredTimeout
@@ -43,10 +52,12 @@ export function createCliBlockExecutor(): CommandExecutor {
         const timeoutHandle = timeoutMs > 0
           ? setTimeout(() => {
             timedOut = true;
+            // Use SIGTERM first to allow graceful shutdown on timeout.
             child.kill("SIGTERM");
           }, timeoutMs)
           : null;
 
+        // Accumulate output chunks so we can return full stream content.
         child.stdout?.on("data", (chunk: Buffer) => stdout.push(chunk));
         child.stderr?.on("data", (chunk: Buffer) => stderr.push(chunk));
 
@@ -56,6 +67,7 @@ export function createCliBlockExecutor(): CommandExecutor {
           }
 
           if (timedOut) {
+            // Include a clear timeout message in stderr for callers and logs.
             const timedOutStderr = Buffer.concat(stderr).toString("utf-8");
             const timeoutMessage = `Command timed out after ${timeoutMs}ms.`;
             const stderrWithTimeout = timedOutStderr.length > 0
@@ -80,6 +92,7 @@ export function createCliBlockExecutor(): CommandExecutor {
           const stdoutText = Buffer.concat(stdout).toString("utf-8");
           const stderrText = Buffer.concat(stderr).toString("utf-8");
 
+          // Persist completion metadata before resolving the result.
           completeCliCommandPhase(phaseHandle, {
             exitCode,
             stdout: stdoutText,
@@ -98,6 +111,7 @@ export function createCliBlockExecutor(): CommandExecutor {
             clearTimeout(timeoutHandle);
           }
 
+          // Record failure in artifacts, then surface the original process error.
           completeRuntimePhaseSafely(phaseHandle, {
             exitCode: null,
             outputCaptured: true,
@@ -111,10 +125,14 @@ export function createCliBlockExecutor(): CommandExecutor {
   };
 }
 
+/**
+ * Begins runtime phase tracking for a CLI block command when artifacts are enabled.
+ */
 function beginCliCommandPhase(
   command: string,
   options: CommandExecutionOptions | undefined,
 ): RuntimePhaseHandle | null {
+  // Ignore invalid contexts so command execution remains unaffected.
   const artifactContext = resolveArtifactContext(options?.artifactContext);
   if (!artifactContext) {
     return null;
@@ -133,6 +151,9 @@ function beginCliCommandPhase(
   });
 }
 
+/**
+ * Completes a CLI command runtime phase with captured command output.
+ */
 function completeCliCommandPhase(
   phaseHandle: RuntimePhaseHandle | null,
   result: CommandResult,
@@ -145,6 +166,9 @@ function completeCliCommandPhase(
   });
 }
 
+/**
+ * Completes a runtime phase only when a valid phase handle exists.
+ */
 function completeRuntimePhaseSafely(
   phaseHandle: RuntimePhaseHandle | null,
   options: {
@@ -163,6 +187,9 @@ function completeRuntimePhaseSafely(
   completeRuntimePhase(phaseHandle, options);
 }
 
+/**
+ * Validates unknown input and returns a typed runtime artifact context.
+ */
 function resolveArtifactContext(input: unknown): RuntimeArtifactsContext | null {
   if (!input || typeof input !== "object") {
     return null;
@@ -176,6 +203,9 @@ function resolveArtifactContext(input: unknown): RuntimeArtifactsContext | null 
   return candidate as RuntimeArtifactsContext;
 }
 
+/**
+ * Writes stdout and stderr command output files for the CLI block phase.
+ */
 function writeCliCommandOutputArtifacts(
   phaseHandle: RuntimePhaseHandle | null,
   options: CommandExecutionOptions | undefined,
@@ -186,6 +216,7 @@ function writeCliCommandOutputArtifacts(
     return;
   }
 
+  // Keep ordinal values deterministic to avoid unstable artifact filenames.
   const commandOrdinal = normalizeCommandOrdinal(options?.artifactCommandOrdinal);
   const stdoutFileName = `cli-block-${commandOrdinal}-stdout.txt`;
   const stderrFileName = `cli-block-${commandOrdinal}-stderr.txt`;
@@ -194,6 +225,9 @@ function writeCliCommandOutputArtifacts(
   fs.writeFileSync(path.join(phaseHandle.dir, stderrFileName), stderr, "utf-8");
 }
 
+/**
+ * Normalizes the command ordinal used in CLI block artifact filenames.
+ */
 function normalizeCommandOrdinal(ordinal: number | undefined): number {
   if (typeof ordinal !== "number") {
     return 1;

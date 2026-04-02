@@ -27,8 +27,12 @@ import {
   type RuntimePhase,
 } from "./runtime-artifacts.js";
 
+/** Re-exported runner mode and prompt transport types for infrastructure callers. */
 export type { RunnerMode, PromptTransport };
 
+/**
+ * Configuration for launching the worker process and tracking its runtime artifacts.
+ */
 export interface RunnerOptions {
   /** The command and its base arguments (everything after --). */
   command: string[];
@@ -58,6 +62,9 @@ export interface RunnerOptions {
   keepArtifacts?: boolean;
 }
 
+/**
+ * Normalized process result returned by the runner across all execution modes.
+ */
 export interface RunnerResult {
   /** Exit code of the process (null if detached or killed). */
   exitCode: number | null;
@@ -78,9 +85,11 @@ export async function runWorker(options: RunnerOptions): Promise<RunnerResult> {
   let ownedArtifactContext: RuntimeArtifactsContext | null = null;
   let artifactContext: RuntimeArtifactsContext;
 
+  // Reuse caller-managed artifact context when supplied.
   if (options.artifactContext) {
     artifactContext = options.artifactContext;
   } else {
+    // Otherwise create and own a context for this invocation.
     ownedArtifactContext = createRuntimeArtifactsContext({
       cwd,
       configDir,
@@ -93,6 +102,7 @@ export async function runWorker(options: RunnerOptions): Promise<RunnerResult> {
     artifactContext = ownedArtifactContext;
   }
 
+  // Start a phase record before execution so prompt/command metadata is always persisted.
   const phase = beginRuntimePhase(artifactContext, {
     phase: options.artifactPhase ?? "worker",
     phaseLabel: options.artifactPhaseLabel,
@@ -104,6 +114,7 @@ export async function runWorker(options: RunnerOptions): Promise<RunnerResult> {
     extra: options.artifactExtra,
   });
 
+  // The prompt file is available only when file transport is active.
   const transportPromptFile = transport === "file" ? phase.promptFile : null;
   const args = buildWorkerArgs(
     options.command,
@@ -140,6 +151,7 @@ export async function runWorker(options: RunnerOptions): Promise<RunnerResult> {
     });
     throw error;
   } finally {
+    // Finalize only contexts created by this function; shared contexts are finalized by the caller.
     if (ownedArtifactContext) {
       finalizeRuntimeArtifacts(ownedArtifactContext, {
         status: mode === "detached" ? "detached" : "completed",
@@ -149,6 +161,9 @@ export async function runWorker(options: RunnerOptions): Promise<RunnerResult> {
   }
 }
 
+/**
+ * Build the final worker command line by applying transport rules and OpenCode-specific behavior.
+ */
 function buildWorkerArgs(
   command: string[],
   prompt: string,
@@ -178,6 +193,9 @@ function buildWorkerArgs(
   return args;
 }
 
+/**
+ * Determine whether the executable target is OpenCode so tailored argument shaping can be applied.
+ */
 function isOpenCodeCommand(command: string): boolean {
   const normalized = path.basename(command).toLowerCase();
   return normalized === "opencode"
@@ -186,6 +204,9 @@ function isOpenCodeCommand(command: string): boolean {
     || normalized === "opencode.ps1";
 }
 
+/**
+ * Build command arguments for OpenCode run/TUI modes, including optional trace and bootstrap prompts.
+ */
 function buildOpenCodeArgs(
   command: string[],
   prompt: string,
@@ -216,14 +237,23 @@ function buildOpenCodeArgs(
   return [cmd, ...rest, ...traceArgs, buildOpenCodeTuiPromptArg(prompt)];
 }
 
+/**
+ * Detect whether --thinking is already present to avoid duplicating trace flags.
+ */
 function hasOpenCodeThinkingArg(args: string[]): boolean {
   return args.some((arg) => arg === "--thinking" || arg.startsWith("--thinking="));
 }
 
+/**
+ * Build the canonical bootstrap prompt for OpenCode `run` mode when using a prompt file.
+ */
 function buildOpenCodeRunBootstrapPrompt(): string {
   return "Read the attached Markdown file first. It contains the full task instructions and context for this run.";
 }
 
+/**
+ * Build a TUI bootstrap prompt that points the agent to the staged prompt file.
+ */
 function buildOpenCodeTuiBootstrapPrompt(tempFile: string, cwd: string): string {
   const displayPath = path.relative(cwd, tempFile) || path.basename(tempFile);
   const normalizedPath = displayPath.split(path.sep).join("/");
@@ -231,10 +261,16 @@ function buildOpenCodeTuiBootstrapPrompt(tempFile: string, cwd: string): string 
   return `The full rendered rundown task prompt is staged in ${normalizedPath}. Open and read that file completely before taking any action, then continue the work in this session.`;
 }
 
+/**
+ * Convert prompt text into OpenCode's `--prompt=` argument format.
+ */
 function buildOpenCodeTuiPromptArg(prompt: string): string {
   return `--prompt=${prompt}`;
 }
 
+/**
+ * Spawn and monitor the worker process according to the selected run mode.
+ */
 function executeCommand(
   cmd: string,
   args: string[],
@@ -340,6 +376,9 @@ function executeCommand(
   });
 }
 
+/**
+ * Generate a concise artifact note describing stdout/stderr capture behavior for non-wait modes.
+ */
 function buildCaptureNotes(mode: RunnerMode, captureOutput: boolean): string | undefined {
   if (mode === "wait") {
     return undefined;

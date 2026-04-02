@@ -1,7 +1,19 @@
+/**
+ * Canonical schema definitions for trace events emitted during a rundown run.
+ *
+ * This module provides strongly typed payload contracts and event factories so
+ * producers can emit consistent trace records across execution phases.
+ */
 export const TRACE_SCHEMA_VERSION = 1 as const;
 
+/**
+ * Current trace schema version literal used on all events.
+ */
 export type TraceSchemaVersion = typeof TRACE_SCHEMA_VERSION;
 
+/**
+ * Supported trace event identifiers emitted by the runtime.
+ */
 export type TraceEventType =
   | "run.started"
   | "discussion.started"
@@ -25,6 +37,9 @@ export type TraceEventType =
   | "task.failed"
   | "run.completed";
 
+/**
+ * Execution phases that can be recorded in trace output.
+ */
 export type TracePhase =
   | "execute"
   | "verify"
@@ -35,6 +50,9 @@ export type TracePhase =
   | "pre-run-reset"
   | "post-run-reset";
 
+/**
+ * Aggregate run status values captured when a run finishes.
+ */
 export type TraceRunStatus =
   | "running"
   | "completed"
@@ -50,6 +68,12 @@ export type TraceRunStatus =
   | "revert-failed"
   | "metadata-missing";
 
+/**
+ * Base shape shared by all trace events.
+ *
+ * @template TEventType Specific event discriminator.
+ * @template TPayload Payload type for the event.
+ */
 export interface TraceEventBase<TEventType extends TraceEventType, TPayload> {
   schema_version: TraceSchemaVersion;
   timestamp: string;
@@ -58,6 +82,9 @@ export interface TraceEventBase<TEventType extends TraceEventType, TPayload> {
   payload: TPayload;
 }
 
+/**
+ * Payload for `run.started` events.
+ */
 export interface RunStartedPayload {
   command: string;
   source: string;
@@ -69,12 +96,18 @@ export interface RunStartedPayload {
   task_line: number;
 }
 
+/**
+ * Payload for `discussion.started` events.
+ */
 export interface DiscussionStartedPayload {
   task_text: string;
   task_file: string;
   task_line: number;
 }
 
+/**
+ * Payload for `discussion.completed` events.
+ */
 export interface DiscussionCompletedPayload {
   task_text: string;
   task_file: string;
@@ -83,12 +116,18 @@ export interface DiscussionCompletedPayload {
   exit_code: number | null;
 }
 
+/**
+ * Payload for `phase.started` events.
+ */
 export interface PhaseStartedPayload {
   phase: TracePhase;
   sequence: number;
   command: string[];
 }
 
+/**
+ * Payload describing discovered task context before execution starts.
+ */
 export interface TaskContextPayload {
   source_files_scanned: number;
   total_unchecked_tasks: number;
@@ -99,6 +138,9 @@ export interface TaskContextPayload {
   is_verify_only: boolean;
 }
 
+/**
+ * Payload for `phase.completed` events.
+ */
 export interface PhaseCompletedPayload {
   phase: TracePhase;
   sequence: number;
@@ -109,6 +151,9 @@ export interface PhaseCompletedPayload {
   output_captured: boolean;
 }
 
+/**
+ * Payload reporting prompt-size and template metrics.
+ */
 export interface PromptMetricsPayload {
   char_count: number;
   estimated_tokens: number;
@@ -116,6 +161,9 @@ export interface PromptMetricsPayload {
   template_name: string;
 }
 
+/**
+ * Payload describing stdout/stderr volume for a completed phase.
+ */
 export interface OutputVolumePayload {
   phase: TracePhase;
   sequence: number;
@@ -125,6 +173,9 @@ export interface OutputVolumePayload {
   stderr_lines: number;
 }
 
+/**
+ * Payload for a single executed inline CLI command.
+ */
 export interface CliBlockExecutedPayload {
   command: string;
   exit_code: number | null;
@@ -133,6 +184,9 @@ export interface CliBlockExecutedPayload {
   duration_ms: number;
 }
 
+/**
+ * Timing details for one recorded phase in the waterfall timeline.
+ */
 export interface TimingWaterfallPhase {
   phase: TracePhase;
   sequence: number;
@@ -141,6 +195,9 @@ export interface TimingWaterfallPhase {
   duration_ms: number;
 }
 
+/**
+ * Payload summarizing phase timing and overall wall/worker durations.
+ */
 export interface TimingWaterfallPayload {
   phases: TimingWaterfallPhase[];
   idle_time_ms: number;
@@ -148,6 +205,9 @@ export interface TimingWaterfallPayload {
   total_worker_time_ms: number;
 }
 
+/**
+ * Payload containing optional self-reported agent telemetry.
+ */
 export interface AgentSignalsPayload {
   confidence: number | null;
   files_read: string[];
@@ -157,25 +217,43 @@ export interface AgentSignalsPayload {
   blockers: string | null;
 }
 
+/**
+ * Payload summarizing internal reasoning block volume.
+ */
 export interface AgentThinkingPayload {
   thinking_blocks_count: number;
   total_thinking_chars: number;
 }
 
+/**
+ * Payload listing tools observed during execution.
+ */
 export interface AgentToolUsagePayload {
   tools: string[];
 }
 
+/**
+ * Classification levels used to report perceived task complexity.
+ */
 export type TaskComplexity = "low" | "medium" | "high" | "critical";
 
+/**
+ * Overall quality labels for execution outcome.
+ */
 export type ExecutionQuality =
   | "clean"
   | "minor_issues"
   | "significant_issues"
   | "failed";
 
+/**
+ * Labels describing the coherence of thinking output.
+ */
 export type ThinkingQuality = "clear" | "scattered" | "circular";
 
+/**
+ * Payload for `analysis.summary` events.
+ */
 export interface AnalysisSummaryPayload {
   task_complexity: TaskComplexity;
   execution_quality: ExecutionQuality;
@@ -190,14 +268,23 @@ export interface AnalysisSummaryPayload {
   uncertainty_moments: number;
 }
 
+/**
+ * Binary outcome for a verification pass.
+ */
 export type VerificationOutcome = "pass" | "fail";
 
+/**
+ * Payload for `verification.result` events.
+ */
 export interface VerificationResultPayload {
   outcome: VerificationOutcome;
   failure_reason: string | null;
   attempt_number: number;
 }
 
+/**
+ * Payload tracking verification/repair efficiency across attempts.
+ */
 export interface VerificationEfficiencyPayload {
   first_pass_success: boolean;
   total_verify_attempts: number;
@@ -206,17 +293,26 @@ export interface VerificationEfficiencyPayload {
   cumulative_failure_reasons: string[];
 }
 
+/**
+ * Payload emitted before a repair attempt starts.
+ */
 export interface RepairAttemptPayload {
   attempt_number: number;
   max_attempts: number;
   previous_failure: string | null;
 }
 
+/**
+ * Payload emitted after repair attempts finish.
+ */
 export interface RepairOutcomePayload {
   final_valid: boolean;
   total_attempts: number;
 }
 
+/**
+ * Payload for `task.completed` events.
+ */
 export interface TaskCompletedPayload {
   task_text: string;
   task_file: string;
@@ -225,6 +321,9 @@ export interface TaskCompletedPayload {
   phases_count: number;
 }
 
+/**
+ * Payload for `task.failed` events.
+ */
 export interface TaskFailedPayload {
   task_text: string;
   reason: string;
@@ -232,40 +331,109 @@ export interface TaskFailedPayload {
   final_status: TraceRunStatus;
 }
 
+/**
+ * Payload emitted when the run reaches a terminal status.
+ */
 export interface RunCompletedPayload {
   status: TraceRunStatus;
   total_duration_ms: number;
   total_phases: number;
 }
 
+/**
+ * Strongly typed event shape for `run.started`.
+ */
 export type RunStartedEvent = TraceEventBase<"run.started", RunStartedPayload>;
+/**
+ * Strongly typed event shape for `discussion.started`.
+ */
 export type DiscussionStartedEvent = TraceEventBase<
   "discussion.started",
   DiscussionStartedPayload
 >;
+/**
+ * Strongly typed event shape for `discussion.completed`.
+ */
 export type DiscussionCompletedEvent = TraceEventBase<
   "discussion.completed",
   DiscussionCompletedPayload
 >;
+/**
+ * Strongly typed event shape for `task.context`.
+ */
 export type TaskContextEvent = TraceEventBase<"task.context", TaskContextPayload>;
+/**
+ * Strongly typed event shape for `phase.started`.
+ */
 export type PhaseStartedEvent = TraceEventBase<"phase.started", PhaseStartedPayload>;
+/**
+ * Strongly typed event shape for `phase.completed`.
+ */
 export type PhaseCompletedEvent = TraceEventBase<"phase.completed", PhaseCompletedPayload>;
+/**
+ * Strongly typed event shape for `output.volume`.
+ */
 export type OutputVolumeEvent = TraceEventBase<"output.volume", OutputVolumePayload>;
+/**
+ * Strongly typed event shape for `cli_block.executed`.
+ */
 export type CliBlockExecutedEvent = TraceEventBase<"cli_block.executed", CliBlockExecutedPayload>;
+/**
+ * Strongly typed event shape for `prompt.metrics`.
+ */
 export type PromptMetricsEvent = TraceEventBase<"prompt.metrics", PromptMetricsPayload>;
+/**
+ * Strongly typed event shape for `timing.waterfall`.
+ */
 export type TimingWaterfallEvent = TraceEventBase<"timing.waterfall", TimingWaterfallPayload>;
+/**
+ * Strongly typed event shape for `agent.signals`.
+ */
 export type AgentSignalsEvent = TraceEventBase<"agent.signals", AgentSignalsPayload>;
+/**
+ * Strongly typed event shape for `agent.thinking`.
+ */
 export type AgentThinkingEvent = TraceEventBase<"agent.thinking", AgentThinkingPayload>;
+/**
+ * Strongly typed event shape for `agent.tool_usage`.
+ */
 export type AgentToolUsageEvent = TraceEventBase<"agent.tool_usage", AgentToolUsagePayload>;
+/**
+ * Strongly typed event shape for `analysis.summary`.
+ */
 export type AnalysisSummaryEvent = TraceEventBase<"analysis.summary", AnalysisSummaryPayload>;
+/**
+ * Strongly typed event shape for `verification.result`.
+ */
 export type VerificationResultEvent = TraceEventBase<"verification.result", VerificationResultPayload>;
+/**
+ * Strongly typed event shape for `verification.efficiency`.
+ */
 export type VerificationEfficiencyEvent = TraceEventBase<"verification.efficiency", VerificationEfficiencyPayload>;
+/**
+ * Strongly typed event shape for `repair.attempt`.
+ */
 export type RepairAttemptEvent = TraceEventBase<"repair.attempt", RepairAttemptPayload>;
+/**
+ * Strongly typed event shape for `repair.outcome`.
+ */
 export type RepairOutcomeEvent = TraceEventBase<"repair.outcome", RepairOutcomePayload>;
+/**
+ * Strongly typed event shape for `task.completed`.
+ */
 export type TaskCompletedEvent = TraceEventBase<"task.completed", TaskCompletedPayload>;
+/**
+ * Strongly typed event shape for `task.failed`.
+ */
 export type TaskFailedEvent = TraceEventBase<"task.failed", TaskFailedPayload>;
+/**
+ * Strongly typed event shape for `run.completed`.
+ */
 export type RunCompletedEvent = TraceEventBase<"run.completed", RunCompletedPayload>;
 
+/**
+ * Discriminated union of every event record emitted by the trace subsystem.
+ */
 export type TraceEvent =
   | RunStartedEvent
   | DiscussionStartedEvent
@@ -289,6 +457,12 @@ export type TraceEvent =
   | TaskFailedEvent
   | RunCompletedEvent;
 
+/**
+ * Shared constructor input for concrete trace event factory functions.
+ *
+ * @template TEventType Specific event discriminator.
+ * @template TPayload Payload type for the event.
+ */
 interface CreateTraceEventInput<TEventType extends TraceEventType, TPayload> {
   timestamp: string;
   run_id: string;
@@ -296,10 +470,19 @@ interface CreateTraceEventInput<TEventType extends TraceEventType, TPayload> {
   event_type: TEventType;
 }
 
+/**
+ * Builds a trace event with shared metadata and payload fields.
+ *
+ * @template TEventType Specific event discriminator.
+ * @template TPayload Payload type for the event.
+ * @param input Event construction input values.
+ * @returns Fully formed trace event object.
+ */
 function createTraceEvent<TEventType extends TraceEventType, TPayload>(
   input: CreateTraceEventInput<TEventType, TPayload>,
 ): TraceEventBase<TEventType, TPayload> {
   return {
+    // Stamp all emitted events with the canonical schema version.
     schema_version: TRACE_SCHEMA_VERSION,
     timestamp: input.timestamp,
     run_id: input.run_id,
@@ -308,6 +491,12 @@ function createTraceEvent<TEventType extends TraceEventType, TPayload>(
   };
 }
 
+/**
+ * Creates a `run.started` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `run.started` event.
+ */
 export function createRunStartedEvent(input: {
   timestamp: string;
   run_id: string;
@@ -321,6 +510,12 @@ export function createRunStartedEvent(input: {
   });
 }
 
+/**
+ * Creates a `discussion.started` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `discussion.started` event.
+ */
 export function createDiscussionStartedEvent(input: {
   timestamp: string;
   run_id: string;
@@ -334,6 +529,12 @@ export function createDiscussionStartedEvent(input: {
   });
 }
 
+/**
+ * Creates a `discussion.completed` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `discussion.completed` event.
+ */
 export function createDiscussionCompletedEvent(input: {
   timestamp: string;
   run_id: string;
@@ -347,6 +548,12 @@ export function createDiscussionCompletedEvent(input: {
   });
 }
 
+/**
+ * Creates a `phase.started` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `phase.started` event.
+ */
 export function createPhaseStartedEvent(input: {
   timestamp: string;
   run_id: string;
@@ -360,6 +567,12 @@ export function createPhaseStartedEvent(input: {
   });
 }
 
+/**
+ * Creates a `task.context` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `task.context` event.
+ */
 export function createTaskContextEvent(input: {
   timestamp: string;
   run_id: string;
@@ -373,6 +586,12 @@ export function createTaskContextEvent(input: {
   });
 }
 
+/**
+ * Creates a `phase.completed` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `phase.completed` event.
+ */
 export function createPhaseCompletedEvent(input: {
   timestamp: string;
   run_id: string;
@@ -386,6 +605,12 @@ export function createPhaseCompletedEvent(input: {
   });
 }
 
+/**
+ * Creates a `prompt.metrics` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `prompt.metrics` event.
+ */
 export function createPromptMetricsEvent(input: {
   timestamp: string;
   run_id: string;
@@ -399,6 +624,12 @@ export function createPromptMetricsEvent(input: {
   });
 }
 
+/**
+ * Creates an `output.volume` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `output.volume` event.
+ */
 export function createOutputVolumeEvent(input: {
   timestamp: string;
   run_id: string;
@@ -412,6 +643,12 @@ export function createOutputVolumeEvent(input: {
   });
 }
 
+/**
+ * Creates a `cli_block.executed` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `cli_block.executed` event.
+ */
 export function createCliBlockExecutedEvent(input: {
   timestamp: string;
   run_id: string;
@@ -425,6 +662,12 @@ export function createCliBlockExecutedEvent(input: {
   });
 }
 
+/**
+ * Creates a `timing.waterfall` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `timing.waterfall` event.
+ */
 export function createTimingWaterfallEvent(input: {
   timestamp: string;
   run_id: string;
@@ -438,6 +681,12 @@ export function createTimingWaterfallEvent(input: {
   });
 }
 
+/**
+ * Creates an `agent.signals` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `agent.signals` event.
+ */
 export function createAgentSignalsEvent(input: {
   timestamp: string;
   run_id: string;
@@ -451,6 +700,12 @@ export function createAgentSignalsEvent(input: {
   });
 }
 
+/**
+ * Creates an `agent.thinking` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `agent.thinking` event.
+ */
 export function createAgentThinkingEvent(input: {
   timestamp: string;
   run_id: string;
@@ -464,6 +719,12 @@ export function createAgentThinkingEvent(input: {
   });
 }
 
+/**
+ * Creates an `agent.tool_usage` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `agent.tool_usage` event.
+ */
 export function createAgentToolUsageEvent(input: {
   timestamp: string;
   run_id: string;
@@ -477,6 +738,12 @@ export function createAgentToolUsageEvent(input: {
   });
 }
 
+/**
+ * Creates an `analysis.summary` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `analysis.summary` event.
+ */
 export function createAnalysisSummaryEvent(input: {
   timestamp: string;
   run_id: string;
@@ -490,6 +757,12 @@ export function createAnalysisSummaryEvent(input: {
   });
 }
 
+/**
+ * Creates a `verification.result` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `verification.result` event.
+ */
 export function createVerificationResultEvent(input: {
   timestamp: string;
   run_id: string;
@@ -503,6 +776,12 @@ export function createVerificationResultEvent(input: {
   });
 }
 
+/**
+ * Creates a `verification.efficiency` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `verification.efficiency` event.
+ */
 export function createVerificationEfficiencyEvent(input: {
   timestamp: string;
   run_id: string;
@@ -516,6 +795,12 @@ export function createVerificationEfficiencyEvent(input: {
   });
 }
 
+/**
+ * Creates a `repair.attempt` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `repair.attempt` event.
+ */
 export function createRepairAttemptEvent(input: {
   timestamp: string;
   run_id: string;
@@ -529,6 +814,12 @@ export function createRepairAttemptEvent(input: {
   });
 }
 
+/**
+ * Creates a `repair.outcome` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `repair.outcome` event.
+ */
 export function createRepairOutcomeEvent(input: {
   timestamp: string;
   run_id: string;
@@ -542,6 +833,12 @@ export function createRepairOutcomeEvent(input: {
   });
 }
 
+/**
+ * Creates a `task.completed` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `task.completed` event.
+ */
 export function createTaskCompletedEvent(input: {
   timestamp: string;
   run_id: string;
@@ -555,6 +852,12 @@ export function createTaskCompletedEvent(input: {
   });
 }
 
+/**
+ * Creates a `task.failed` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `task.failed` event.
+ */
 export function createTaskFailedEvent(input: {
   timestamp: string;
   run_id: string;
@@ -568,6 +871,12 @@ export function createTaskFailedEvent(input: {
   });
 }
 
+/**
+ * Creates a `run.completed` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `run.completed` event.
+ */
 export function createRunCompletedEvent(input: {
   timestamp: string;
   run_id: string;

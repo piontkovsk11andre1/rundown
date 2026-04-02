@@ -5,9 +5,20 @@
  */
 
 
+/**
+ * Supported sorting strategies for resolved file paths.
+ */
 export type SortMode = "name-sort" | "none" | "old-first" | "new-first";
 
+/**
+ * Optional dependencies used by file sorting.
+ */
 export interface SortFilesOptions {
+  /**
+   * Returns a file birthtime in milliseconds.
+   *
+   * When omitted, birthtime-based modes use `0` for all files.
+   */
   getBirthtimeMs?: (filePath: string) => number;
 }
 
@@ -24,6 +35,7 @@ export function sortFiles(
   mode: SortMode = "name-sort",
   options: SortFilesOptions = {},
 ): string[] {
+  // Apply the selected strategy while preserving immutability for sorted modes.
   switch (mode) {
     case "none":
       return files;
@@ -48,6 +60,7 @@ export function sortFiles(
  * "2. Plan.md" comes before "10. Plan.md".
  */
 function naturalCompare(a: string, b: string): number {
+  // Split each string into alternating text and numeric tokens.
   const ax = tokenize(a);
   const bx = tokenize(b);
 
@@ -61,6 +74,7 @@ function naturalCompare(a: string, b: string): number {
     const bn = typeof bi === "number";
 
     if (an && bn) {
+      // Compare numeric parts as numbers so 2 < 10.
       if (ai !== bi) return (ai as number) - (bi as number);
     } else if (an) {
       return -1;
@@ -74,10 +88,16 @@ function naturalCompare(a: string, b: string): number {
   return 0;
 }
 
+/**
+ * Tokenizes a string into ordered numeric and non-numeric chunks.
+ *
+ * Example: `"12. Plan.md"` becomes `[12, ". Plan.md"]`.
+ */
 function tokenize(s: string): (string | number)[] {
   const tokens: (string | number)[] = [];
   const re = /(\d+)|(\D+)/g;
   let m: RegExpExecArray | null;
+  // Iterate through every regex match and normalize numeric segments.
   while ((m = re.exec(s)) !== null) {
     if (m[1] !== undefined) {
       tokens.push(parseInt(m[1], 10));
@@ -88,11 +108,17 @@ function tokenize(s: string): (string | number)[] {
   return tokens;
 }
 
+/**
+ * Resolves a comparable birthtime value for a file path.
+ */
 function getBirthtime(filePath: string, options: SortFilesOptions): number {
   if (!options.getBirthtimeMs) return 0;
   return options.getBirthtimeMs(filePath);
 }
 
+/**
+ * Extracts the final path segment for name-based comparison.
+ */
 function fileName(filePath: string): string {
   const parts = filePath.split(/[\\/]/);
   return parts[parts.length - 1] ?? filePath;

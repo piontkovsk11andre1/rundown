@@ -603,6 +603,23 @@ export function createInitCommandAction({
 }
 
 /**
+ * Creates the `intro` command action handler.
+ *
+ * The returned action renders an animated CLI presentation introducing rundown.
+ * This command has no app dependencies — it only needs the CLI version string.
+ */
+export function createIntroCommandAction({
+  version,
+}: {
+  version: string;
+}): () => CliActionResult {
+  return async () => {
+    const { renderIntro } = await import("./intro.js");
+    return renderIntro(version);
+  };
+}
+
+/**
  * Resolves the active log command implementation for the current app build.
  *
  * Supports both `logTask` (current) and `logRuns` (legacy) method names to preserve compatibility.

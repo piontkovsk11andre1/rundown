@@ -28,6 +28,7 @@ import {
   createArtifactsCommandAction,
   createDiscussCommandAction,
   createInitCommandAction,
+  createIntroCommandAction,
   createListCommandAction,
   createLogCommandAction,
   createMakeCommandAction,
@@ -347,6 +348,22 @@ program
   .command("init")
   .description("Create a .rundown/ directory with default templates (plan, execute, verify, repair, trace) plus vars.json/config.json initialized as empty JSON objects. Use --config-dir to control where it is created.")
   .action(withCliAction(createInitCommandAction({ getApp })));
+
+program
+  .command("intro")
+  .description("Display an animated introduction to rundown — concepts, workflow, and commands.")
+  .action(async () => {
+    try {
+      const exitCode = await createIntroCommandAction({ version: cliVersion })();
+      terminate(exitCode);
+    } catch (err) {
+      if (isCliExitSignal(err)) {
+        throw err;
+      }
+      emitCliFatalError(err, runtimeState.invocationLogState);
+      terminate(1);
+    }
+  });
 
 /**
  * Wraps a command action with shared CLI initialization and fatal error handling.

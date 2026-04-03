@@ -114,6 +114,89 @@ describe("discuss-task", () => {
     }
   });
 
+  it("includes memory path and summary in discuss prompt without memory body text", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Refine rollout scope");
+    const source = "- [ ] Refine rollout scope\n";
+    const memoryBodyText = "MEMORY-BODY-SHOULD-NOT-BE-INLINED";
+    const memoryFilePath = path.join(cwd, ".rundown", "tasks.memory.md");
+
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: source,
+    });
+
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source,
+      contextBefore: "",
+      fileSystem,
+    });
+    dependencies.memoryResolver = {
+      resolve: vi.fn(() => ({
+        available: true,
+        filePath: memoryFilePath,
+        summary: "Discussed constraints and rollout notes",
+      })),
+    };
+
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "discuss.md"))) {
+        return "Memory path: {{memoryFilePath}}\nMemory summary: {{memorySummary}}";
+      }
+      return null;
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      printPrompt: true,
+    }));
+
+    expect(code).toBe(0);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain("Memory path: " + memoryFilePath);
+    expect(prompt).toContain("Memory summary: Discussed constraints and rollout notes");
+    expect(prompt).not.toContain(memoryBodyText);
+    expect(dependencies.memoryResolver.resolve).toHaveBeenCalledWith(taskFile);
+  });
+
+  it("keeps dry-run exit code and behavior when memory metadata is unavailable", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Refine rollout scope");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Refine rollout scope\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [ ] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+    dependencies.memoryResolver = {
+      resolve: vi.fn(() => ({
+        available: false,
+        filePath: path.join(cwd, ".rundown", "tasks.memory.md"),
+        summary: undefined,
+      })),
+    };
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      dryRun: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.workerExecutor.runWorker)).not.toHaveBeenCalled();
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Dry run — would discuss with: opencode run"))).toBe(true);
+    expect(dependencies.memoryResolver.resolve).toHaveBeenCalledWith(taskFile);
+  });
+
   it("print-prompt renders and prints discuss prompt without launching worker", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");

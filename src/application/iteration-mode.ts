@@ -1,4 +1,4 @@
-import { classifyTaskIntent } from "../domain/task-intent.js";
+import { classifyTaskIntent, type TaskIntentDecision } from "../domain/task-intent.js";
 import { type Task } from "../domain/parser.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
@@ -13,6 +13,7 @@ type EmitFn = (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
 export interface IterationVerificationMode {
   onlyVerify: boolean;
   shouldVerify: boolean;
+  taskIntentDecision: TaskIntentDecision;
 }
 
 /**
@@ -55,5 +56,5 @@ export function resolveIterationVerificationMode(params: {
     }
   }
 
-  return { onlyVerify, shouldVerify };
+  return { onlyVerify, shouldVerify, taskIntentDecision: taskIntent };
 }

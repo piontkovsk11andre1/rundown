@@ -1676,6 +1676,111 @@ describe("reverify-task", () => {
     expect(prompt).toContain("\"text\":\"Extra note\"");
   });
 
+  it("includes memory path and summary in reverify prompts without memory body text", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "roadmap.md");
+    const memoryFilePath = path.join(cwd, ".rundown", "roadmap.memory.md");
+    const memoryBodyText = "MEMORY-BODY-SHOULD-NOT-BE-INLINED";
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [x] Build release\n",
+    });
+    const completedRun = createRunMetadata({
+      runId: "run-memory",
+      status: "completed",
+      task: {
+        text: "Build release",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "roadmap.md",
+      },
+    });
+
+    const { dependencies, events } = createDependencies({
+      cwd,
+      fileSystem,
+      runs: [completedRun],
+    });
+    dependencies.memoryResolver = {
+      resolve: vi.fn(() => ({
+        available: true,
+        filePath: memoryFilePath,
+        summary: "Verification caveats and prior fixes",
+      })),
+    };
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "verify.md"))) {
+        return "Verify memory path: {{memoryFilePath}}\nVerify memory summary: {{memorySummary}}";
+      }
+      if (templatePath.endsWith(path.join(".rundown", "repair.md"))) {
+        return "Repair memory path: {{memoryFilePath}}\nRepair memory summary: {{memorySummary}}";
+      }
+      return null;
+    });
+
+    const reverifyTask = createReverifyTask(dependencies);
+    const code = await reverifyTask(createOptions({
+      runId: "latest",
+      printPrompt: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain("Verify memory path: " + memoryFilePath);
+    expect(prompt).toContain("Verify memory summary: Verification caveats and prior fixes");
+    expect(prompt).not.toContain(memoryBodyText);
+    expect(dependencies.memoryResolver.resolve).toHaveBeenCalledWith(taskFile);
+  });
+
+  it("keeps dry-run exit code and behavior when memory metadata is unavailable", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "roadmap.md");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [x] Build release\n",
+    });
+    const completedRun = createRunMetadata({
+      runId: "run-memory-unavailable",
+      status: "completed",
+      task: {
+        text: "Build release",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "roadmap.md",
+      },
+    });
+
+    const { dependencies, events, artifactStore, taskVerification, taskRepair, verificationStore } =
+      createDependencies({
+        cwd,
+        fileSystem,
+        runs: [completedRun],
+      });
+    dependencies.memoryResolver = {
+      resolve: vi.fn(() => ({
+        available: false,
+        filePath: path.join(cwd, ".rundown", "roadmap.memory.md"),
+        summary: undefined,
+      })),
+    };
+
+    const reverifyTask = createReverifyTask(dependencies);
+    const code = await reverifyTask(createOptions({
+      runId: "latest",
+      dryRun: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(artifactStore.createContext)).not.toHaveBeenCalled();
+    expect(vi.mocked(taskVerification.verify)).not.toHaveBeenCalled();
+    expect(vi.mocked(taskRepair.repair)).not.toHaveBeenCalled();
+    expect(vi.mocked(verificationStore.remove)).not.toHaveBeenCalled();
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Dry run - would run verification with: opencode run"))).toBe(true);
+    expect(dependencies.memoryResolver.resolve).toHaveBeenCalledWith(taskFile);
+  });
+
   it("loads verify/repair templates from resolved config dir", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "roadmap.md");

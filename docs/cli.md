@@ -571,6 +571,44 @@ Profile behavior:
 - Named profiles are defined under `profiles` in `.rundown/config.json`.
 - A resolved profile contributes `workerArgs`, appended to the resolved base worker command.
 - Verify-only prefixes support colon-only syntax: `verify:`, `confirm:`, `check:`.
+- Memory-capture prefixes support colon syntax: `memory:`, `memorize:`, `remember:`, `inventory:`.
+
+## Memory capture prefixes
+
+If a selected task starts with a memory prefix, rundown treats it as a memory-capture task.
+
+Supported aliases:
+
+- `memory:`
+- `memorize:`
+- `remember:`
+- `inventory:`
+
+Prefix parsing rules:
+
+- Matching is case-insensitive.
+- Whitespace around `:` is allowed.
+- The payload is everything after the first matched prefix.
+- Empty payload fails with exit code `1`.
+
+Execution behavior:
+
+- Rundown executes the normalized payload as the worker prompt.
+- On successful worker output, rundown appends the captured content to source-local memory.
+- Memory-capture tasks still follow normal run lifecycle behavior (verification/repair/checkbox handling) unless overridden by flags.
+
+Storage layout (source-local):
+
+- Memory body file: `<source-dir>/.rundown/<source-basename>.memory.md`
+- Memory index file: `<source-dir>/.rundown/memory-index.json`
+
+Index metadata is keyed by canonical absolute source path and stores a compact summary for each source (plus diagnostic metadata such as update time).
+
+Example:
+
+```md
+- [ ] memory: capture release checklist assumptions and deployment caveats
+```
 
 ## Common options
 

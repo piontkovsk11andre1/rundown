@@ -62,6 +62,72 @@ describe("research-task", () => {
     expect(prompt).toContain("Env: prod");
   });
 
+  it("includes memory path and summary in research prompt without memory body text", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const memoryFilePath = path.join(cwd, ".rundown", "roadmap.memory.md");
+    const memoryBodyText = "MEMORY-BODY-SHOULD-NOT-BE-INLINED";
+    const { dependencies, events } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\nBuild a new release process.\n",
+    });
+
+    dependencies.memoryResolver = {
+      resolve: vi.fn(() => ({
+        available: true,
+        filePath: memoryFilePath,
+        summary: "Research findings and architecture notes",
+      })),
+    };
+    vi.mocked(dependencies.templateLoader.load).mockReturnValue(
+      "Memory path: {{memoryFilePath}}\nMemory summary: {{memorySummary}}",
+    );
+
+    const researchTask = createResearchTask(dependencies);
+    const code = await researchTask(createOptions({
+      source: markdownFile,
+      printPrompt: true,
+    }));
+
+    expect(code).toBe(0);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain("Memory path: " + memoryFilePath);
+    expect(prompt).toContain("Memory summary: Research findings and architecture notes");
+    expect(prompt).not.toContain(memoryBodyText);
+    expect(dependencies.memoryResolver.resolve).toHaveBeenCalledWith(markdownFile);
+  });
+
+  it("keeps dry-run exit code and behavior when memory metadata is unavailable", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, events, artifactStore } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\nBuild a new release process.\n",
+    });
+    dependencies.memoryResolver = {
+      resolve: vi.fn(() => ({
+        available: false,
+        filePath: path.join(cwd, ".rundown", "roadmap.memory.md"),
+        summary: undefined,
+      })),
+    };
+
+    const researchTask = createResearchTask(dependencies);
+    const code = await researchTask(createOptions({
+      source: markdownFile,
+      dryRun: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(events).toContainEqual({ kind: "info", message: "Dry run - would research: opencode run" });
+    expect(vi.mocked(dependencies.workerExecutor.runWorker)).not.toHaveBeenCalled();
+    expect(vi.mocked(artifactStore.createContext)).not.toHaveBeenCalled();
+    expect(dependencies.memoryResolver.resolve).toHaveBeenCalledWith(markdownFile);
+  });
+
   it("keeps core research template variables authoritative over user vars", async () => {
     const cwd = "/workspace";
     const markdownFile = path.join(cwd, "roadmap.md");

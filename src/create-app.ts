@@ -24,6 +24,8 @@ import type {
   FileLock,
   FileSystem,
   GitClient,
+  MemoryResolverPort,
+  MemoryWriterPort,
   ProcessRunner,
   PathOperationsPort,
   SourceResolverPort,
@@ -51,6 +53,8 @@ import {
   createFanoutTraceWriter,
   createCliBlockExecutor,
   createJsonlTraceWriter,
+  createMemoryWriterAdapter,
+  createMemoryResolverAdapter,
   createNodeFileSystem,
   createNoopTraceWriter,
   createNodePathOperationsAdapter,
@@ -142,6 +146,8 @@ export interface AppPorts {
   taskRepair: TaskRepairPort;
   workingDirectory: WorkingDirectoryPort;
   pathOperations: PathOperationsPort;
+  memoryResolver: MemoryResolverPort;
+  memoryWriter?: MemoryWriterPort;
   workerConfigPort: WorkerConfigPort;
   templateVarsLoader: TemplateVarsLoaderPort;
   traceWriter: TraceWriterPort;
@@ -169,9 +175,18 @@ function createAppPorts(overrides: Partial<AppPorts> = {}): AppPorts {
     ?? createTaskVerificationAdapter(verificationStore);
   const taskRepair = overrides.taskRepair
     ?? createTaskRepairAdapter(verificationStore);
+  const fileSystem = overrides.fileSystem ?? createNodeFileSystem();
+  const memoryResolver = overrides.memoryResolver ?? createMemoryResolverAdapter({
+    fileSystem,
+    pathOperations,
+  });
+  const memoryWriter = overrides.memoryWriter ?? createMemoryWriterAdapter({
+    fileSystem,
+    pathOperations,
+  });
 
   return {
-    fileSystem: overrides.fileSystem ?? createNodeFileSystem(),
+    fileSystem,
     fileLock: overrides.fileLock ?? createFsFileLock(),
     configDirPort,
     configDir,
@@ -189,6 +204,8 @@ function createAppPorts(overrides: Partial<AppPorts> = {}): AppPorts {
     taskRepair,
     workingDirectory,
     pathOperations,
+    memoryResolver,
+    memoryWriter,
     workerConfigPort: overrides.workerConfigPort ?? createWorkerConfigAdapter(),
     templateVarsLoader: overrides.templateVarsLoader ?? createFsTemplateVarsLoaderAdapter(),
     traceWriter: overrides.traceWriter ?? createNoopTraceWriter(),
@@ -228,6 +245,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
     fileLock: ports.fileLock,
     templateLoader: ports.templateLoader,
     pathOperations: ports.pathOperations,
+    memoryResolver: ports.memoryResolver,
     templateVarsLoader: ports.templateVarsLoader,
     workerConfigPort: ports.workerConfigPort,
     artifactStore: ports.artifactStore,
@@ -259,6 +277,8 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       gitClient: ports.gitClient,
       processRunner: ports.processRunner,
       pathOperations: ports.pathOperations,
+      memoryResolver: ports.memoryResolver,
+      memoryWriter: ports.memoryWriter,
       templateVarsLoader: ports.templateVarsLoader,
       workerConfigPort: ports.workerConfigPort,
       traceWriter: ports.traceWriter,
@@ -289,6 +309,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
 
         return createArtifactTraceWriter(ports, artifactContext);
       },
+      memoryResolver: ports.memoryResolver,
       templateLoader: ports.templateLoader,
       workerConfigPort: ports.workerConfigPort,
       cliBlockExecutor: ports.cliBlockExecutor,
@@ -314,6 +335,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       fileLock: ports.fileLock,
       workingDirectory: ports.workingDirectory,
       pathOperations: ports.pathOperations,
+      memoryResolver: ports.memoryResolver,
       templateLoader: ports.templateLoader,
       templateVarsLoader: ports.templateVarsLoader,
       workerConfigPort: ports.workerConfigPort,
@@ -346,6 +368,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       templateLoader: ports.templateLoader,
       artifactStore: ports.artifactStore,
       pathOperations: ports.pathOperations,
+      memoryResolver: ports.memoryResolver,
       templateVarsLoader: ports.templateVarsLoader,
       workerConfigPort: ports.workerConfigPort,
       traceWriter: ports.traceWriter,

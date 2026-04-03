@@ -17,6 +17,7 @@ import type {
   RunTaskDependencies,
   RunTaskOptions,
 } from "../../src/application/run-task.js";
+import { createMemoryWriterAdapter } from "../../src/infrastructure/adapters/memory-writer-adapter.js";
 
 export function createDependencies(options: {
   cwd: string;
@@ -112,6 +113,16 @@ export function createDependencies(options: {
     workerConfigPort: {
       load: vi.fn(() => options.workerConfig),
     },
+    memoryWriter: createMemoryWriterAdapter({
+      fileSystem: options.fileSystem,
+      pathOperations: {
+        join: (...parts) => path.join(...parts),
+        resolve: (...parts) => path.resolve(...parts),
+        dirname: (filePath) => path.dirname(filePath),
+        relative: (from, to) => path.relative(from, to),
+        isAbsolute: (filePath) => path.isAbsolute(filePath),
+      },
+    }),
     traceWriter: {
       write: vi.fn(),
       flush: vi.fn(),

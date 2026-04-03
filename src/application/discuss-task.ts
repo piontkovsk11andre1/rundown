@@ -2,6 +2,7 @@ import type { SortMode } from "../domain/sorting.js";
 import type { Task } from "../domain/parser.js";
 import { expandCliBlocks, extractCliBlocks } from "../domain/cli-block.js";
 import {
+  buildMemoryTemplateVars,
   buildTaskHierarchyTemplateVars,
   renderTemplate,
   type TemplateVars,
@@ -33,21 +34,22 @@ import type {
   ArtifactRunContext,
   ArtifactStore,
   CommandExecutor,
-  FileSystem,
   ConfigDirResult,
+  FileSystem,
+  MemoryResolverPort,
   PathOperationsPort,
   ProcessRunMode,
   PromptTransport as PortPromptTransport,
   SourceResolverPort,
   TaskSelectionResult as PortTaskSelectionResult,
   TaskSelectorPort,
-   TemplateLoader,
-   TemplateVarsLoaderPort,
-   TraceWriterPort,
-   WorkerConfigPort,
-   WorkerExecutorPort,
-   WorkingDirectoryPort,
- } from "../domain/ports/index.js";
+  TemplateLoader,
+  TemplateVarsLoaderPort,
+  TraceWriterPort,
+  WorkerConfigPort,
+  WorkerExecutorPort,
+  WorkingDirectoryPort,
+} from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
 export type RunnerMode = ProcessRunMode;
@@ -89,6 +91,7 @@ export interface DiscussTaskDependencies {
   templateLoader: TemplateLoader;
   artifactStore: ArtifactStore;
   pathOperations: PathOperationsPort;
+  memoryResolver?: MemoryResolverPort;
   templateVarsLoader: TemplateVarsLoaderPort;
   workerConfigPort: WorkerConfigPort;
   traceWriter: TraceWriterPort;
@@ -239,7 +242,13 @@ export function createDiscussTask(
         dependencies.templateLoader,
         dependencies.pathOperations,
       );
-      const renderedPrompt = renderDiscussPrompt(templates.discuss, taskContext, extraTemplateVars);
+      const templateVarsWithMemory: ExtraTemplateVars = {
+        ...extraTemplateVars,
+        ...buildMemoryTemplateVars({
+          memoryMetadata: dependencies.memoryResolver?.resolve(taskContext.task.file) ?? null,
+        }),
+      };
+      const renderedPrompt = renderDiscussPrompt(templates.discuss, taskContext, templateVarsWithMemory);
       const promptCliBlockCount = extractCliBlocks(renderedPrompt).length;
       const dryRunSuppressesCliExpansion = dryRun && !printPrompt;
       let prompt = renderedPrompt;

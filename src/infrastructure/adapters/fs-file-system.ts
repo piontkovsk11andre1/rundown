@@ -56,5 +56,9 @@ export function createNodeFileSystem(): FileSystem {
     rm(filePath, options) {
       fs.rmSync(filePath, options);
     },
+    // Renames or moves a file-system path.
+    rename(fromPath, toPath) {
+      fs.renameSync(fromPath, toPath);
+    },
   };
 }

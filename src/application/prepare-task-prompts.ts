@@ -2,6 +2,7 @@ import { getTraceInstructions } from "../domain/defaults.js";
 import { expandCliBlocks, extractCliBlocks } from "../domain/cli-block.js";
 import { type Task, parseTasks } from "../domain/parser.js";
 import {
+  buildMemoryTemplateVars,
   buildTaskHierarchyTemplateVars,
   renderTemplate,
   type TemplateVars,
@@ -226,6 +227,9 @@ export async function prepareTaskPrompts(params: {
   const templateVarsWithTrace: ExtraTemplateVars = {
     ...extraTemplateVars,
     traceInstructions: getTraceInstructions(trace),
+    ...buildMemoryTemplateVars({
+      memoryMetadata: dependencies.memoryResolver?.resolve(task.file) ?? null,
+    }),
   };
   const vars: TemplateVars = {
     ...templateVarsWithTrace,

@@ -2,7 +2,11 @@ import { getTraceInstructions } from "../domain/defaults.js";
 import { expandCliBlocks, extractCliBlocks } from "../domain/cli-block.js";
 import { parseTasks } from "../domain/parser.js";
 import { insertPlannerTodos } from "../domain/planner.js";
-import { renderTemplate, type TemplateVars } from "../domain/template.js";
+import {
+  buildMemoryTemplateVars,
+  renderTemplate,
+  type TemplateVars,
+} from "../domain/template.js";
 import { resolveWorkerForInvocation } from "./resolve-worker.js";
 import { isOpenCodeWorkerCommand } from "./run-task.js";
 import {
@@ -33,15 +37,16 @@ import type {
   ConfigDirResult,
   FileLock,
   FileSystem,
+  MemoryResolverPort,
   PathOperationsPort,
   ProcessRunMode,
-   TemplateLoader,
-   TemplateVarsLoaderPort,
-   TraceWriterPort,
-   WorkerConfigPort,
-   WorkerExecutorPort,
-   WorkingDirectoryPort,
- } from "../domain/ports/index.js";
+  TemplateLoader,
+  TemplateVarsLoaderPort,
+  TraceWriterPort,
+  WorkerConfigPort,
+  WorkerExecutorPort,
+  WorkingDirectoryPort,
+} from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
 /**
@@ -74,6 +79,7 @@ export interface PlanTaskDependencies {
   fileSystem: FileSystem;
   fileLock: FileLock;
   pathOperations: PathOperationsPort;
+  memoryResolver?: MemoryResolverPort;
   templateVarsLoader: TemplateVarsLoaderPort;
   workerConfigPort: WorkerConfigPort;
   templateLoader: TemplateLoader;
@@ -254,6 +260,9 @@ export function createPlanTask(
 
       const vars: TemplateVars = {
         ...extraTemplateVars,
+        ...buildMemoryTemplateVars({
+          memoryMetadata: dependencies.memoryResolver?.resolve(source) ?? null,
+        }),
         traceInstructions: getTraceInstructions(trace),
         task: documentIntent,
         file: source,

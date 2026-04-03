@@ -34,11 +34,63 @@ export interface TemplateVars {
   /** Command output from the previous run (if captured). */
   commandOutput?: string;
 
+  /** Whether source-local memory metadata is available for this document. */
+  memoryStatus?: string;
+
+  /** Source-local memory file path for this document. */
+  memoryFilePath?: string;
+
+  /** Short human-readable summary of memory context for this document. */
+  memorySummary?: string;
+
+  /** Source-local memory index metadata path for this document. */
+  memoryIndexPath?: string;
+
+  /** Compact JSON map of memory metadata for prompt/template rendering. */
+  memoryMap?: string;
+
   /** JSON array of nested checkbox children for the selected task. */
   children?: string;
 
   /** JSON array of nested non-checkable sub-items for the selected task. */
   subItems?: string;
+}
+
+const MEMORY_INDEX_FILE_NAME = "memory-index.json";
+
+type MemoryTemplateMetadata = {
+  available: boolean;
+  filePath: string;
+  summary?: string;
+};
+
+/**
+ * Builds stable memory template variables from source-local memory metadata.
+ *
+ * The returned map is intentionally compact and excludes raw memory body
+ * contents so prompts can reference memory artifacts without context bloat.
+ */
+export function buildMemoryTemplateVars(params: {
+  memoryMetadata: MemoryTemplateMetadata | null;
+}): Pick<TemplateVars, "memoryStatus" | "memoryFilePath" | "memorySummary" | "memoryIndexPath" | "memoryMap"> {
+  const { memoryMetadata } = params;
+  const memoryStatus = memoryMetadata?.available ? "available" : "unavailable";
+  const memoryFilePath = memoryMetadata?.filePath ?? "";
+  const memorySummary = memoryMetadata?.summary ?? "";
+  const memoryIndexPath = deriveMemoryIndexPath(memoryFilePath);
+
+  return {
+    memoryStatus,
+    memoryFilePath,
+    memorySummary,
+    memoryIndexPath,
+    memoryMap: JSON.stringify({
+      status: memoryStatus,
+      filePath: memoryFilePath,
+      summary: memorySummary,
+      indexPath: memoryIndexPath,
+    }),
+  };
 }
 
 /**
@@ -68,6 +120,19 @@ export function buildTaskHierarchyTemplateVars(task: TaskHierarchyLike): Pick<Te
     children: JSON.stringify(children),
     subItems: JSON.stringify(subItems),
   };
+}
+
+function deriveMemoryIndexPath(memoryFilePath: string): string {
+  if (memoryFilePath.length === 0) {
+    return "";
+  }
+
+  const separatorIndex = Math.max(memoryFilePath.lastIndexOf("/"), memoryFilePath.lastIndexOf("\\"));
+  if (separatorIndex < 0) {
+    return MEMORY_INDEX_FILE_NAME;
+  }
+
+  return memoryFilePath.slice(0, separatorIndex + 1) + MEMORY_INDEX_FILE_NAME;
 }
 
 /**

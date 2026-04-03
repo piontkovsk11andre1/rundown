@@ -44,4 +44,6 @@ export interface FileSystem {
   unlink(filePath: string): void;
   /** Removes a file or directory path with optional recursive and force behavior. */
   rm(path: string, options?: { recursive?: boolean; force?: boolean }): void;
+  /** Renames or moves a path, replacing destination when supported by platform semantics. */
+  rename?(fromPath: string, toPath: string): void;
 }

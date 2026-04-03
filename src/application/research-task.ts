@@ -1,6 +1,10 @@
 import { getTraceInstructions } from "../domain/defaults.js";
 import { expandCliBlocks, extractCliBlocks } from "../domain/cli-block.js";
-import { renderTemplate, type TemplateVars } from "../domain/template.js";
+import {
+  buildMemoryTemplateVars,
+  renderTemplate,
+  type TemplateVars,
+} from "../domain/template.js";
 import {
   parseCliTemplateVars,
   resolveTemplateVarsFilePath,
@@ -25,6 +29,7 @@ import type {
   FileSystem,
   PathOperationsPort,
   ProcessRunMode,
+  MemoryResolverPort,
   TemplateLoader,
   TemplateVarsLoaderPort,
   WorkerConfigPort,
@@ -59,6 +64,7 @@ export interface ResearchTaskDependencies {
   fileLock: FileLock;
   workingDirectory: WorkingDirectoryPort;
   pathOperations: PathOperationsPort;
+  memoryResolver?: MemoryResolverPort;
   templateLoader: TemplateLoader;
   templateVarsLoader: TemplateVarsLoaderPort;
   workerConfigPort: WorkerConfigPort;
@@ -160,6 +166,9 @@ export function createResearchTask(
       );
       const vars: TemplateVars = {
         ...extraTemplateVars,
+        ...buildMemoryTemplateVars({
+          memoryMetadata: dependencies.memoryResolver?.resolve(source) ?? null,
+        }),
         traceInstructions: getTraceInstructions(trace),
         task: deriveDocumentIntent(sourceDocument, source),
         file: source,
@@ -332,6 +341,9 @@ export function createResearchTask(
       );
       const vars: TemplateVars = {
         ...extraTemplateVars,
+        ...buildMemoryTemplateVars({
+          memoryMetadata: dependencies.memoryResolver?.resolve(source) ?? null,
+        }),
         traceInstructions: getTraceInstructions(trace),
         task: deriveDocumentIntent(sourceDocument, source),
         file: source,

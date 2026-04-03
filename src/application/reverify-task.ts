@@ -4,6 +4,7 @@ import {
 import { expandCliBlocks, extractCliBlocks } from "../domain/cli-block.js";
 import { resolveRunBehavior } from "../domain/run-options.js";
 import {
+  buildMemoryTemplateVars,
   buildTaskHierarchyTemplateVars,
   renderTemplate,
   type TemplateVars,
@@ -38,6 +39,8 @@ import type {
   CommandExecutor,
   ConfigDirResult,
   FileSystem,
+  MemoryMetadata,
+  MemoryResolverPort,
   PathOperationsPort,
   PromptTransport,
   TaskRepairPort,
@@ -73,6 +76,7 @@ export interface ReverifyTaskDependencies {
   configDir: ConfigDirResult | undefined;
   createTraceWriter: (trace: boolean, artifactContext: { rootDir: string }) => TraceWriterPort;
   pathOperations: PathOperationsPort;
+  memoryResolver?: MemoryResolverPort;
   templateLoader: TemplateLoader;
   workerConfigPort: WorkerConfigPort;
   output: ApplicationOutputPort;
@@ -231,7 +235,12 @@ export function createReverifyTask(
         dependencies.pathOperations,
       );
       const cliBlockExecutor = dependencies.cliBlockExecutor;
-      const promptContext = buildReverifyPromptContext(taskContext, templates, trace);
+      const promptContext = buildReverifyPromptContext(
+        taskContext,
+        templates,
+        trace,
+        dependencies.memoryResolver?.resolve(taskContext.task.file) ?? null,
+      );
       // Count `cli` fenced blocks so dry-run output can report skipped work.
       const verificationPromptCliBlockCount = extractCliBlocks(promptContext.verificationPrompt).length;
       const repairPromptCliBlockCount = extractCliBlocks(promptContext.repairPrompt).length;
@@ -578,6 +587,7 @@ function buildReverifyPromptContext(
   taskContext: ResolvedTaskContext,
   templates: Pick<ProjectTemplates, "verify" | "repair">,
   trace: boolean,
+  memoryMetadata: MemoryMetadata | null,
 ): ReverifyPromptContext {
   const vars: TemplateVars = {
     task: taskContext.task.text,
@@ -587,6 +597,7 @@ function buildReverifyPromptContext(
     taskLine: taskContext.task.line,
     source: taskContext.source,
     traceInstructions: getTraceInstructions(trace),
+    ...buildMemoryTemplateVars({ memoryMetadata }),
     ...buildTaskHierarchyTemplateVars(taskContext.task),
   };
 

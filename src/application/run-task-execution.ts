@@ -40,6 +40,8 @@ import type {
   PathOperationsPort,
   ProcessRunner,
   PromptTransport as PortPromptTransport,
+  MemoryResolverPort,
+  MemoryWriterPort,
   SourceResolverPort,
   TaskRepairPort,
   TaskSelectionResult as PortTaskSelectionResult,
@@ -88,6 +90,8 @@ export interface RunTaskDependencies {
   pathOperations: PathOperationsPort;
   templateVarsLoader: TemplateVarsLoaderPort;
   workerConfigPort: WorkerConfigPort;
+  memoryResolver?: MemoryResolverPort;
+  memoryWriter?: MemoryWriterPort;
   traceWriter: TraceWriterPort;
   configDir: ConfigDirResult | undefined;
   createTraceWriter: (trace: boolean, artifactContext: ArtifactContext) => TraceWriterPort;

@@ -83,6 +83,14 @@ export { createDirectoryOpenerAdapter } from "./directory-opener-adapter.js";
  */
 export { createNodePathOperationsAdapter } from "./node-path-operations-adapter.js";
 /**
+ * Creates the source-local memory resolver adapter.
+ */
+export { createMemoryResolverAdapter } from "./memory-resolver-adapter.js";
+/**
+ * Creates the source-local memory writer adapter.
+ */
+export { createMemoryWriterAdapter } from "./memory-writer-adapter.js";
+/**
  * Creates the configuration directory adapter.
  */
 export { createConfigDirAdapter } from "./config-dir-adapter.js";

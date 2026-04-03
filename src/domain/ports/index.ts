@@ -54,6 +54,17 @@ export type { ApplicationOutputEvent, ApplicationOutputPort } from "./output-por
 /** Source file resolution contract used for task loading. */
 export type { SourceResolverPort } from "./source-resolver-port.js";
 
+/** Source-local memory metadata resolution contract. */
+export type { MemoryMetadata, MemoryResolverPort } from "./memory-resolver-port.js";
+
+/** Source-local memory persistence contract for body and index writes. */
+export type {
+  MemoryWriteFailure,
+  MemoryWriteInput,
+  MemoryWriteSuccess,
+  MemoryWriterPort,
+} from "./memory-writer-port.js";
+
 /** Task-selection result and selector port contracts. */
 export type { TaskSelectionResult, TaskSelectorPort } from "./task-selector-port.js";
 

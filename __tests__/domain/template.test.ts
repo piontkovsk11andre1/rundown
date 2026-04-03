@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildTaskHierarchyTemplateVars, renderTemplate } from "../../src/domain/template.js";
+import {
+  buildMemoryTemplateVars,
+  buildTaskHierarchyTemplateVars,
+  renderTemplate,
+} from "../../src/domain/template.js";
 
 describe("renderTemplate", () => {
   it("should replace known placeholders", () => {
@@ -156,5 +160,58 @@ describe("renderTemplate", () => {
       children: "[]",
       subItems: "[]",
     });
+  });
+
+  it("should build unavailable memory map vars when metadata is missing", () => {
+    expect(buildMemoryTemplateVars({ memoryMetadata: null })).toEqual({
+      memoryStatus: "unavailable",
+      memoryFilePath: "",
+      memorySummary: "",
+      memoryIndexPath: "",
+      memoryMap: JSON.stringify({
+        status: "unavailable",
+        filePath: "",
+        summary: "",
+        indexPath: "",
+      }),
+    });
+  });
+
+  it("should build available memory map vars from metadata", () => {
+    expect(buildMemoryTemplateVars({
+      memoryMetadata: {
+        available: true,
+        filePath: "/repo/.rundown/todo.md.memory.md",
+        summary: "Known constraints and decisions",
+      },
+    })).toEqual({
+      memoryStatus: "available",
+      memoryFilePath: "/repo/.rundown/todo.md.memory.md",
+      memorySummary: "Known constraints and decisions",
+      memoryIndexPath: "/repo/.rundown/memory-index.json",
+      memoryMap: JSON.stringify({
+        status: "available",
+        filePath: "/repo/.rundown/todo.md.memory.md",
+        summary: "Known constraints and decisions",
+        indexPath: "/repo/.rundown/memory-index.json",
+      }),
+    });
+  });
+
+  it("should derive memory index path for Windows-style memory paths", () => {
+    const vars = buildMemoryTemplateVars({
+      memoryMetadata: {
+        available: true,
+        filePath: "C:\\repo\\.rundown\\todo.md.memory.md",
+      },
+    });
+
+    expect(vars.memoryIndexPath).toBe("C:\\repo\\.rundown\\memory-index.json");
+    expect(vars.memoryMap).toBe(JSON.stringify({
+      status: "available",
+      filePath: "C:\\repo\\.rundown\\todo.md.memory.md",
+      summary: "",
+      indexPath: "C:\\repo\\.rundown\\memory-index.json",
+    }));
   });
 });

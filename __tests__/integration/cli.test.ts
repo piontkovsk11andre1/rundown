@@ -585,6 +585,110 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("would run: opencode run"))).toBe(true);
   });
 
+  it("run executes memory-prefixed tasks and persists source-local memory artifacts", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "memory-capture-worker.cjs");
+    fs.writeFileSync(roadmapPath, "- [ ] memory: capture release context\n", "utf-8");
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "console.log('Captured release context');",
+        "console.log('Owner: platform');",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Task checked: capture release context"))).toBe(true);
+
+    const memoryFilePath = path.join(workspace, ".rundown", "roadmap.md.memory.md");
+    const memoryIndexPath = path.join(workspace, ".rundown", "memory-index.json");
+    const canonicalSourcePath = path.resolve(roadmapPath);
+
+    expect(fs.existsSync(memoryFilePath)).toBe(true);
+    expect(fs.existsSync(memoryIndexPath)).toBe(true);
+    expect(fs.readFileSync(memoryFilePath, "utf-8")).toContain("Captured release context");
+
+    const index = JSON.parse(fs.readFileSync(memoryIndexPath, "utf-8")) as Record<string, { summary?: string }>;
+    expect(index[canonicalSourcePath]?.summary).toBe("Captured release context");
+  });
+
+  it("run returns execution error for memory prefix with empty payload and does not write memory files", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    fs.writeFileSync(roadmapPath, "- [ ] memory:   \n", "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--worker",
+      "opencode",
+      "run",
+    ], workspace);
+
+    expect(result.code).toBe(1);
+    expect(result.errors.some((line) => line.includes("Memory capture task requires payload text after the prefix"))).toBe(true);
+
+    const memoryFilePath = path.join(workspace, ".rundown", "roadmap.md.memory.md");
+    const memoryIndexPath = path.join(workspace, ".rundown", "memory-index.json");
+    expect(fs.existsSync(memoryFilePath)).toBe(false);
+    expect(fs.existsSync(memoryIndexPath)).toBe(false);
+  });
+
+  it("run --print-prompt renders memory-map template fields when source memory is available", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const sourceCanonicalPath = path.resolve(roadmapPath);
+    const memoryFilePath = path.join(workspace, ".rundown", "roadmap.md.memory.md");
+    const memoryIndexPath = path.join(workspace, ".rundown", "memory-index.json");
+    fs.writeFileSync(roadmapPath, "- [ ] Draft release checklist\n", "utf-8");
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(memoryFilePath, "Captured release context\n", "utf-8");
+    fs.writeFileSync(memoryIndexPath, JSON.stringify({
+      [sourceCanonicalPath]: {
+        summary: "Captured release context",
+      },
+    }, null, 2), "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--print-prompt",
+      "--worker",
+      "opencode",
+      "run",
+    ], workspace);
+
+    const combinedOutput = [
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n");
+
+    expect(result.code).toBe(0);
+    expect(combinedOutput.includes("## Memory context")).toBe(true);
+    expect(combinedOutput.includes("- Status: available")).toBe(true);
+    expect(combinedOutput.includes(`- File: \`${memoryFilePath}\``)).toBe(true);
+    expect(combinedOutput.includes(`- Index: \`${memoryIndexPath}\``)).toBe(true);
+    expect(combinedOutput.includes("- Summary: Captured release context")).toBe(true);
+    expect(combinedOutput.includes("Memory map:")).toBe(true);
+    expect(combinedOutput.includes('"status":"available"')).toBe(true);
+    expect(combinedOutput.includes('"summary":"Captured release context"')).toBe(true);
+  });
+
   it("reverify dry-run exits with 3 when no completed artifacts exist", async () => {
     const workspace = makeTempWorkspace();
 
@@ -3903,6 +4007,39 @@ describe.sequential("CLI integration", () => {
       expect(result.errors.some((line) => line.includes("--force-unlock"))).toBe(true);
       expect(result.errors.some((line) => line.includes("rundown unlock"))).toBe(true);
       expect(durationMs).toBeLessThan(1500);
+    } finally {
+      firstRunLock.releaseAll();
+    }
+  });
+
+  it("run memory-capture fails fast under an existing source lock and does not persist memory artifacts", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "roadmap.md";
+    const sourcePath = path.join(workspace, sourceName);
+    const workerScriptPath = path.join(workspace, "memory-capture-locked-worker.cjs");
+    fs.writeFileSync(sourcePath, "- [ ] memory: capture release context\n", "utf-8");
+    fs.writeFileSync(workerScriptPath, "console.log('Captured release context');\n", "utf-8");
+
+    const firstRunLock = createLockfileFileLock();
+    firstRunLock.acquire(sourcePath, { command: "run" });
+
+    try {
+      const result = await runCli([
+        "run",
+        sourceName,
+        "--no-verify",
+        "--worker",
+        "node",
+        workerScriptPath.replace(/\\/g, "/"),
+      ], workspace);
+
+      expect(result.code).toBe(1);
+      expect(result.errors.some((line) => line.includes("Source file is locked by another rundown process"))).toBe(true);
+
+      const memoryFilePath = path.join(workspace, ".rundown", "roadmap.md.memory.md");
+      const memoryIndexPath = path.join(workspace, ".rundown", "memory-index.json");
+      expect(fs.existsSync(memoryFilePath)).toBe(false);
+      expect(fs.existsSync(memoryIndexPath)).toBe(false);
     } finally {
       firstRunLock.releaseAll();
     }

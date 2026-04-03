@@ -166,6 +166,82 @@ describe("prepare-task-prompts", () => {
     expect(result).toEqual({ earlyExitCode: 9 });
     expect(onTemplateCliFailure).toHaveBeenCalledTimes(1);
   });
+
+  it("injects memory path and summary into run prompts without inlining memory body text", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Ship release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Ship release\n",
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    const memoryBodyText = "MEMORY-BODY-SHOULD-NOT-BE-INLINED";
+    const memoryFilePath = path.join(cwd, ".rundown", "tasks.memory.md");
+    dependencies.memoryResolver = {
+      resolve: vi.fn(() => ({
+        available: true,
+        filePath: memoryFilePath,
+        summary: "Release decisions and follow-ups",
+      })),
+    };
+
+    dependencies.templateLoader.load = vi.fn((templatePath: string) => {
+      if (templatePath.endsWith("execute.md")) {
+        return "Execute {{task}}\nMemory path: {{memoryFilePath}}\nMemory summary: {{memorySummary}}";
+      }
+      if (templatePath.endsWith("verify.md")) {
+        return "Verify {{task}}\nMemory path: {{memoryFilePath}}\nMemory summary: {{memorySummary}}";
+      }
+      return null;
+    });
+
+    const result = await prepareTaskPrompts({
+      dependencies,
+      task,
+      fileSource: "- [ ] Ship release",
+      sourceDir: cwd,
+      shouldVerify: true,
+      trace: false,
+      extraTemplateVars: {},
+      cliExpansionEnabled: true,
+      ignoreCliBlock: false,
+      cliExecutionOptions: undefined,
+      artifactContext: null,
+      traceWriter: {
+        write: vi.fn(),
+        flush: vi.fn(),
+      },
+      cliBlockExecutor: {
+        execute: vi.fn(async () => ({
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+        })),
+      },
+      nowIso: () => "2026-01-01T00:00:00.000Z",
+      emit: vi.fn(),
+      onTemplateCliFailure: vi.fn(async () => null),
+    });
+
+    expect("earlyExitCode" in result).toBe(false);
+    if ("earlyExitCode" in result) {
+      return;
+    }
+
+    expect(result.prompt).toContain("Memory path: " + memoryFilePath);
+    expect(result.prompt).toContain("Memory summary: Release decisions and follow-ups");
+    expect(result.verificationPrompt).toContain("Memory path: " + memoryFilePath);
+    expect(result.verificationPrompt).toContain("Memory summary: Release decisions and follow-ups");
+    expect(result.prompt).not.toContain(memoryBodyText);
+    expect(result.verificationPrompt).not.toContain(memoryBodyText);
+    expect(dependencies.memoryResolver.resolve).toHaveBeenCalledWith(taskFile);
+  });
 });
 
 describe("dry-run-dispatch", () => {
@@ -329,6 +405,7 @@ describe("task-execution-dispatch", () => {
       verify: true,
       noRepair: false,
       repairAttempts: 0,
+      taskIntent: "execute-and-verify",
       task,
       prompt: "prompt",
       expandedContextBefore: "",
@@ -391,6 +468,7 @@ describe("task-execution-dispatch", () => {
       verify: true,
       noRepair: false,
       repairAttempts: 0,
+      taskIntent: "execute-and-verify",
       task,
       prompt: "prompt",
       expandedContextBefore: "",
@@ -450,6 +528,7 @@ describe("task-execution-dispatch", () => {
       verify: true,
       noRepair: false,
       repairAttempts: 0,
+      taskIntent: "execute-and-verify",
       task,
       prompt: "prompt",
       expandedContextBefore: "",
@@ -461,6 +540,241 @@ describe("task-execution-dispatch", () => {
     });
 
     expect(result).toEqual({ kind: "detached" });
+  });
+
+  it("preserves default execute-and-verify lifecycle metadata for non-memory tasks", async () => {
+    const task = createTask(path.join(cwd, "tasks.md"), "Ship release");
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] Ship release\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    dependencies.workerExecutor.runWorker = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "done",
+      stderr: "",
+    }));
+    const verifyAfterExecuteOptions = { timeoutMs: 45 };
+
+    const result = await dispatchTaskExecution({
+      dependencies,
+      emit: (event) => events.push(event),
+      files: [task.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "wait",
+      transport: "file",
+      keepArtifacts: true,
+      showAgentOutput: false,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "execute-and-verify",
+      task,
+      prompt: "prompt",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      trace: true,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: verifyAfterExecuteOptions,
+    });
+
+    expect(result).toEqual({
+      kind: "ready-for-completion",
+      shouldVerify: true,
+      cliExecutionOptionsForVerification: verifyAfterExecuteOptions,
+      verificationFailureMessage: "Verification failed after all repair attempts. Task not checked.",
+      verificationFailureRunReason: "Verification failed after all repair attempts.",
+    });
+  });
+
+  it("preserves non-memory execution failure exit-code mapping across default, cli, and rundown routes", async () => {
+    const defaultTask = createTask(path.join(cwd, "tasks-default.md"), "Ship release");
+    const defaultFileSystem = createInMemoryFileSystem({
+      [defaultTask.file]: "- [ ] Ship release\n",
+    });
+    const defaultDeps = createDependencies({
+      cwd,
+      task: defaultTask,
+      fileSystem: defaultFileSystem,
+      gitClient: createGitClientMock(),
+    });
+    defaultDeps.dependencies.workerExecutor.runWorker = vi.fn(async () => ({
+      exitCode: 7,
+      stdout: "",
+      stderr: "worker failed",
+    }));
+
+    const defaultResult = await dispatchTaskExecution({
+      dependencies: defaultDeps.dependencies,
+      emit: (event) => defaultDeps.events.push(event),
+      files: [defaultTask.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "wait",
+      transport: "file",
+      keepArtifacts: true,
+      showAgentOutput: true,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "execute-and-verify",
+      task: defaultTask,
+      prompt: "prompt",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      trace: true,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+    });
+
+    expect(defaultResult).toEqual({
+      kind: "execution-failed",
+      executionFailureMessage: "Worker exited with code 7.",
+      executionFailureRunReason: "Worker exited with a non-zero code.",
+      executionFailureExitCode: 7,
+    });
+
+    const cliTask = createInlineTask(path.join(cwd, "tasks-cli.md"), "cli: npm test");
+    const cliFileSystem = createInMemoryFileSystem({
+      [cliTask.file]: "- [ ] cli: npm test\n",
+    });
+    const cliDeps = createDependencies({
+      cwd,
+      task: cliTask,
+      fileSystem: cliFileSystem,
+      gitClient: createGitClientMock(),
+    });
+    cliDeps.dependencies.workerExecutor.executeInlineCli = vi.fn(async () => ({
+      exitCode: 5,
+      stdout: "",
+      stderr: "inline failed",
+    }));
+
+    const cliResult = await dispatchTaskExecution({
+      dependencies: cliDeps.dependencies,
+      emit: (event) => cliDeps.events.push(event),
+      files: [cliTask.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "wait",
+      transport: "file",
+      keepArtifacts: true,
+      showAgentOutput: true,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "execute-and-verify",
+      task: cliTask,
+      prompt: "prompt",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      trace: true,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+    });
+
+    expect(cliResult).toEqual({
+      kind: "execution-failed",
+      executionFailureMessage: "Inline CLI exited with code 5",
+      executionFailureRunReason: "Inline CLI exited with a non-zero code.",
+      executionFailureExitCode: 5,
+    });
+
+    const rundownTask: Task = {
+      ...createTask(path.join(cwd, "tasks-rundown.md"), "rundown: run Child.md --verify"),
+      isRundownTask: true,
+      rundownArgs: "run Child.md --verify",
+    };
+    const rundownFileSystem = createInMemoryFileSystem({
+      [rundownTask.file]: "- [ ] rundown: run Child.md --verify\n",
+      [path.join(cwd, "Child.md")]: "- [ ] child\n",
+    });
+    const rundownDeps = createDependencies({
+      cwd,
+      task: rundownTask,
+      fileSystem: rundownFileSystem,
+      gitClient: createGitClientMock(),
+    });
+    rundownDeps.dependencies.workerExecutor.executeRundownTask = vi.fn(async () => ({
+      exitCode: 9,
+      stdout: "",
+      stderr: "delegated failed",
+    }));
+
+    const rundownResult = await dispatchTaskExecution({
+      dependencies: rundownDeps.dependencies,
+      emit: (event) => rundownDeps.events.push(event),
+      files: [rundownTask.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "wait",
+      transport: "file",
+      keepArtifacts: true,
+      showAgentOutput: true,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "execute-and-verify",
+      task: rundownTask,
+      prompt: "prompt",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      trace: true,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+    });
+
+    expect(rundownResult).toEqual({
+      kind: "execution-failed",
+      executionFailureMessage: "Rundown run task exited with code 9",
+      executionFailureRunReason: "Rundown run task exited with a non-zero code.",
+      executionFailureExitCode: 9,
+    });
   });
 
   it("delegates explicit rundown make using make subcommand messaging and args", async () => {
@@ -501,6 +815,7 @@ describe("task-execution-dispatch", () => {
       verify: true,
       noRepair: false,
       repairAttempts: 0,
+      taskIntent: "execute-and-verify",
       task,
       prompt: "prompt",
       expandedContextBefore: "",
@@ -594,6 +909,7 @@ describe("task-execution-dispatch", () => {
         verify: true,
         noRepair: false,
         repairAttempts: 0,
+        taskIntent: "execute-and-verify",
         task,
         prompt: "prompt",
         expandedContextBefore: "",
@@ -684,6 +1000,7 @@ describe("task-execution-dispatch", () => {
         verify: true,
         noRepair: false,
         repairAttempts: 0,
+        taskIntent: "execute-and-verify",
         task,
         prompt: "prompt",
         expandedContextBefore: "",
@@ -698,6 +1015,590 @@ describe("task-execution-dispatch", () => {
       expect(events).toContainEqual({ kind: "text", text: delegatedCase.stdout });
       expect(events).toContainEqual({ kind: "stderr", text: delegatedCase.stderr });
     }
+  });
+
+  it("persists worker output for memory-capture tasks", async () => {
+    const task = createTask(path.join(cwd, "tasks.md"), "Capture release memory");
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] Capture release memory\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    const canonicalTaskPath = path.resolve(task.file);
+    const memoryFilePath = path.join(path.dirname(canonicalTaskPath), ".rundown", "tasks.md.memory.md");
+    dependencies.memoryResolver = {
+      resolve: vi.fn(() => ({
+        available: false,
+        filePath: memoryFilePath,
+        summary: undefined,
+      })),
+    };
+    dependencies.workerExecutor.runWorker = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "Captured release context\n- Owner: platform",
+      stderr: "",
+    }));
+
+    const result = await dispatchTaskExecution({
+      dependencies,
+      emit: (event) => events.push(event),
+      files: [task.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "wait",
+      transport: "file",
+      keepArtifacts: true,
+      showAgentOutput: false,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "memory-capture",
+      task,
+      prompt: "capture memory",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      trace: true,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+    });
+
+    expect(result.kind).toBe("ready-for-completion");
+    expect(fileSystem.readText(memoryFilePath)).toContain("Captured release context");
+
+    const memoryIndexPath = path.join(path.dirname(memoryFilePath), "memory-index.json");
+    const index = JSON.parse(fileSystem.readText(memoryIndexPath)) as Record<string, { summary?: string }>;
+    const canonicalSourcePath = path.resolve(task.file);
+    expect(index[canonicalSourcePath]?.summary).toBe("Captured release context");
+  });
+
+  it("passes memory capture prefix through to memory writer for index metadata composition", async () => {
+    const task = createTask(path.join(cwd, "tasks.md"), "remember: capture release memory");
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] remember: capture release memory\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    dependencies.workerExecutor.runWorker = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "Captured release context",
+      stderr: "",
+    }));
+    dependencies.memoryWriter = {
+      write: vi.fn(() => ({
+        ok: true as const,
+        value: {
+          memoryFilePath: "/workspace/.rundown/tasks.md.memory.md",
+          memoryIndexPath: "/workspace/.rundown/memory-index.json",
+          canonicalSourcePath: path.resolve(task.file),
+        },
+      })),
+    };
+
+    const result = await dispatchTaskExecution({
+      dependencies,
+      emit: (event) => events.push(event),
+      files: [task.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "wait",
+      transport: "file",
+      keepArtifacts: true,
+      showAgentOutput: false,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "memory-capture",
+      memoryCapturePrefix: "remember",
+      task,
+      prompt: "capture memory",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      trace: true,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+    });
+
+    expect(result.kind).toBe("ready-for-completion");
+    expect(dependencies.memoryWriter.write).toHaveBeenCalledWith({
+      sourcePath: task.file,
+      workerOutput: "Captured release context",
+      capturePrefix: "remember",
+    });
+  });
+
+  it("fails memory-capture tasks when worker output is empty", async () => {
+    const task = createTask(path.join(cwd, "tasks.md"), "Capture release memory");
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] Capture release memory\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    dependencies.memoryResolver = {
+      resolve: vi.fn(() => ({
+        available: false,
+        filePath: path.join(cwd, ".rundown", "tasks.md.memory.md"),
+        summary: undefined,
+      })),
+    };
+    dependencies.workerExecutor.runWorker = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "   \n\t ",
+      stderr: "",
+    }));
+
+    const result = await dispatchTaskExecution({
+      dependencies,
+      emit: (event) => events.push(event),
+      files: [task.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "wait",
+      transport: "file",
+      keepArtifacts: true,
+      showAgentOutput: false,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "memory-capture",
+      task,
+      prompt: "capture memory",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      trace: true,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+    });
+
+    expect(result).toEqual({
+      kind: "execution-failed",
+      executionFailureMessage: "Memory capture worker returned empty output; nothing to persist.",
+      executionFailureRunReason: "Memory capture worker returned empty output.",
+      executionFailureExitCode: 1,
+    });
+  });
+
+  it("emits warning when memory body persists but index update fails", async () => {
+    const task = createTask(path.join(cwd, "tasks.md"), "Capture release memory");
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] Capture release memory\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    dependencies.workerExecutor.runWorker = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "Captured release context",
+      stderr: "",
+    }));
+    dependencies.memoryWriter = {
+      write: vi.fn(() => ({
+        ok: false as const,
+        error: {
+          message: "Memory body was written to /workspace/.rundown/tasks.md.memory.md but updating memory index failed at /workspace/.rundown/memory-index.json: Error: rename failed",
+          reason: "Memory index update failed after writing memory body.",
+          warningMessage: "Memory capture output was persisted to /workspace/.rundown/tasks.md.memory.md, but memory index metadata could not be updated.",
+        },
+      })),
+    };
+
+    const result = await dispatchTaskExecution({
+      dependencies,
+      emit: (event) => events.push(event),
+      files: [task.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "wait",
+      transport: "file",
+      keepArtifacts: true,
+      showAgentOutput: false,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "memory-capture",
+      task,
+      prompt: "capture memory",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      trace: true,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+    });
+
+    expect(result).toEqual({
+      kind: "execution-failed",
+      executionFailureMessage:
+        "Memory body was written to /workspace/.rundown/tasks.md.memory.md but updating memory index failed at /workspace/.rundown/memory-index.json: Error: rename failed",
+      executionFailureRunReason: "Memory index update failed after writing memory body.",
+      executionFailureExitCode: 1,
+    });
+    expect(events).toContainEqual({
+      kind: "warn",
+      message:
+        "Memory capture output was persisted to /workspace/.rundown/tasks.md.memory.md, but memory index metadata could not be updated.",
+    });
+  });
+
+  it("rejects detached mode for memory-capture tasks", async () => {
+    const task = createTask(path.join(cwd, "tasks.md"), "Capture release memory");
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] Capture release memory\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    dependencies.workerExecutor.runWorker = vi.fn(async () => ({
+      exitCode: null,
+      stdout: "",
+      stderr: "",
+    }));
+
+    const result = await dispatchTaskExecution({
+      dependencies,
+      emit: (event) => events.push(event),
+      files: [task.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "detached",
+      transport: "file",
+      keepArtifacts: true,
+      showAgentOutput: false,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "memory-capture",
+      task,
+      prompt: "capture memory",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      trace: false,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+    });
+
+    expect(result).toEqual({
+      kind: "execution-failed",
+      executionFailureMessage:
+        "Memory capture tasks do not support detached mode because worker output is required for persistence.",
+      executionFailureRunReason: "Memory capture task cannot persist memory in detached mode.",
+      executionFailureExitCode: 1,
+    });
+  });
+
+  it("preserves verify-only precedence when task intent is memory-capture", async () => {
+    const task = createTask(path.join(cwd, "tasks.md"), "Capture release memory");
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] Capture release memory\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    const result = await dispatchTaskExecution({
+      dependencies,
+      emit: (event) => events.push(event),
+      files: [task.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: true,
+      shouldVerify: true,
+      mode: "wait",
+      transport: "file",
+      keepArtifacts: true,
+      showAgentOutput: false,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "memory-capture",
+      task,
+      prompt: "capture memory",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      trace: false,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: { timeoutMs: 25 },
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: { timeoutMs: 30 },
+    });
+
+    expect(result).toEqual({
+      kind: "ready-for-completion",
+      shouldVerify: true,
+      cliExecutionOptionsForVerification: { timeoutMs: 25 },
+      verificationFailureMessage: "Verification failed after all repair attempts. Task not checked.",
+      verificationFailureRunReason: "Verification failed after all repair attempts.",
+    });
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+    expect(dependencies.workerExecutor.executeInlineCli).not.toHaveBeenCalled();
+    expect(dependencies.workerExecutor.executeRundownTask).not.toHaveBeenCalled();
+  });
+
+  it("keeps task-derived verify-only execution on the existing verification lifecycle", async () => {
+    const task = createTask(path.join(cwd, "tasks.md"), "verify: release notes are aligned");
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] verify: release notes are aligned\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    const verifyOnlyOptions = { timeoutMs: 22 };
+
+    const result = await dispatchTaskExecution({
+      dependencies,
+      emit: (event) => events.push(event),
+      files: [task.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: true,
+      shouldVerify: true,
+      mode: "wait",
+      transport: "file",
+      keepArtifacts: true,
+      showAgentOutput: true,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "verify-only",
+      task,
+      prompt: "prompt",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      trace: true,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: verifyOnlyOptions,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: { timeoutMs: 31 },
+    });
+
+    expect(result).toEqual({
+      kind: "ready-for-completion",
+      shouldVerify: true,
+      cliExecutionOptionsForVerification: verifyOnlyOptions,
+      verificationFailureMessage: "Verification failed after all repair attempts. Task not checked.",
+      verificationFailureRunReason: "Verification failed after all repair attempts.",
+    });
+    expect(events).toContainEqual({
+      kind: "info",
+      message: "Verify-only task mode — skipping task execution.",
+    });
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+    expect(dependencies.workerExecutor.executeInlineCli).not.toHaveBeenCalled();
+    expect(dependencies.workerExecutor.executeRundownTask).not.toHaveBeenCalled();
+  });
+
+  it("preserves inline cli routing precedence over memory-capture intent", async () => {
+    const task = createInlineTask(path.join(cwd, "tasks.md"), "cli: npm test");
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] cli: npm test\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    const memoryFilePath = path.join(cwd, ".rundown", "tasks.md.memory.md");
+    dependencies.memoryResolver = {
+      resolve: vi.fn(() => ({
+        available: false,
+        filePath: memoryFilePath,
+        summary: undefined,
+      })),
+    };
+    dependencies.workerExecutor.executeInlineCli = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "ok",
+      stderr: "",
+    }));
+
+    const result = await dispatchTaskExecution({
+      dependencies,
+      emit: (event) => events.push(event),
+      files: [task.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "wait",
+      transport: "file",
+      keepArtifacts: true,
+      showAgentOutput: false,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "memory-capture",
+      task,
+      prompt: "capture memory",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      trace: true,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+    });
+
+    expect(result.kind).toBe("ready-for-completion");
+    expect(dependencies.workerExecutor.executeInlineCli).toHaveBeenCalledTimes(1);
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+    expect(dependencies.memoryResolver.resolve).not.toHaveBeenCalled();
+    expect(fileSystem.exists(memoryFilePath)).toBe(false);
+  });
+
+  it("preserves rundown routing precedence over memory-capture intent", async () => {
+    const task: Task = {
+      ...createTask(path.join(cwd, "tasks.md"), "rundown: run Child.md --verify"),
+      isRundownTask: true,
+      rundownArgs: "run Child.md --verify",
+    };
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] rundown: run Child.md --verify\n",
+      [path.join(cwd, "Child.md")]: "- [ ] child\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    const memoryFilePath = path.join(cwd, ".rundown", "tasks.md.memory.md");
+    dependencies.memoryResolver = {
+      resolve: vi.fn(() => ({
+        available: false,
+        filePath: memoryFilePath,
+        summary: undefined,
+      })),
+    };
+
+    const result = await dispatchTaskExecution({
+      dependencies,
+      emit: (event) => events.push(event),
+      files: [task.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "wait",
+      transport: "file",
+      keepArtifacts: true,
+      showAgentOutput: false,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "memory-capture",
+      task,
+      prompt: "capture memory",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      trace: true,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+    });
+
+    expect(result.kind).toBe("ready-for-completion");
+    expect(dependencies.workerExecutor.executeRundownTask).toHaveBeenCalledTimes(1);
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+    expect(dependencies.memoryResolver.resolve).not.toHaveBeenCalled();
+    expect(fileSystem.exists(memoryFilePath)).toBe(false);
   });
 });
 

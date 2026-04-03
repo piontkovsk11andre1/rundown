@@ -67,6 +67,49 @@ When both are provided, direct `--var` entries override file-loaded values.
 
 These values are available in templates as placeholders such as `{{branch}}` or `{{ticket}}`.
 
+## Built-in memory variables
+
+Worker-facing templates receive source-local memory metadata as compact placeholders.
+
+| Variable | Description |
+| --- | --- |
+| `{{memoryStatus}}` | `available` when source memory metadata is present, otherwise `unavailable`. |
+| `{{memoryFilePath}}` | Absolute path to the source-local memory body file. |
+| `{{memorySummary}}` | One-line summary from memory index metadata for the source. |
+| `{{memoryIndexPath}}` | Absolute path to the source-local memory index file. |
+| `{{memoryMap}}` | Compact JSON object containing `status`, `filePath`, `summary`, and `indexPath`. |
+
+Notes:
+
+- Memory variables are additive; custom templates that do not reference them continue to work.
+- Rundown does not inline full memory body content into prompts by default.
+
+### Memory storage layout
+
+Memory artifacts are source-local (same directory as the Markdown source):
+
+- Memory body: `<source-dir>/.rundown/<source-basename>.memory.md`
+- Memory index: `<source-dir>/.rundown/memory-index.json`
+
+The index is keyed by canonical absolute source path and stores concise per-source metadata used to populate memory placeholders.
+
+### Memory map block example
+
+You can embed a compact map section in custom templates:
+
+````md
+## Memory context
+
+- Status: {{memoryStatus}}
+- File: `{{memoryFilePath}}`
+- Index: `{{memoryIndexPath}}`
+- Summary: {{memorySummary}}
+
+```json
+{{memoryMap}}
+```
+````
+
 ## Example template content
 
 The examples below show realistic templates you can copy into `.rundown/` and customize.

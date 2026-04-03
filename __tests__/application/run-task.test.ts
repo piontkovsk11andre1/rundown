@@ -453,6 +453,60 @@ describe("run-task orchestration", () => {
     expect(events.some((event) => event.kind === "info" && event.message.includes("Round 2/3"))).toBe(false);
   });
 
+  it("returns execution error when memory prefix payload is empty", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "memory:   "),
+      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] memory:   \n" }),
+      gitClient: createGitClientMock(),
+    });
+
+    const code = await createRunTask(dependencies)(
+      createOptions({
+        verify: false,
+        workerCommand: ["opencode", "run"],
+      }),
+    );
+
+    expect(code).toBe(1);
+    expect(events.some(
+      (event) => event.kind === "error"
+        && event.message.includes("Memory capture task requires payload text after the prefix"),
+    )).toBe(true);
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+  });
+
+  it("keeps dry-run exit code and behavior when memory metadata is unavailable", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "build release"),
+      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] build release\n" }),
+      gitClient: createGitClientMock(),
+    });
+    dependencies.memoryResolver = {
+      resolve: vi.fn(() => ({
+        available: false,
+        filePath: path.join(cwd, ".rundown", "tasks.memory.md"),
+        summary: undefined,
+      })),
+    };
+
+    const code = await createRunTask(dependencies)(createOptions({
+      verify: false,
+      dryRun: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Dry run — would run: opencode run"))).toBe(true);
+    expect(dependencies.memoryResolver.resolve).toHaveBeenCalledWith(taskFile);
+  });
+
   it("runs multiple rounds and emits round headers plus aggregate summary", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");

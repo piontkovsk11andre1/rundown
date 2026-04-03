@@ -185,21 +185,8 @@ export async function runTaskIteration(params: {
   const { dependencies, emit, state, context, execution, worker, verifyConfig, completion, prompts, traceConfig, lifecycle } = params;
   const { source, fileSource, files, task } = context;
 
-  // Announce the next task before any execution or validation occurs.
-  emit({ kind: "info", message: "Next task: " + formatTaskLabel(task) });
-  // Resolve the effective worker command using CLI, config, and task metadata.
-  const resolvedWorkerCommand = resolveWorkerForInvocation({
-    commandName: "run",
-    workerConfig: worker.loadedWorkerConfig,
-    source: fileSource,
-    task,
-    cliWorkerCommand: worker.workerCommand,
-    emit,
-  });
-  // Build the automation command variant used for verification-only execution.
-  const automationCommand = getAutomationWorkerCommand(resolvedWorkerCommand, execution.mode);
   // Decide whether this iteration should execute, verify, or do both.
-  const { onlyVerify, shouldVerify } = resolveIterationVerificationMode({
+  const { onlyVerify, shouldVerify, taskIntentDecision } = resolveIterationVerificationMode({
     configuredOnlyVerify: verifyConfig.configuredOnlyVerify,
     configuredShouldVerify: verifyConfig.configuredShouldVerify,
     forceExecute: execution.forceExecute,
@@ -207,12 +194,41 @@ export async function runTaskIteration(params: {
     emit,
   });
 
+  if (taskIntentDecision.intent === "memory-capture" && taskIntentDecision.hasEmptyPayload) {
+    emit({
+      kind: "error",
+      message: "Memory capture task requires payload text after the prefix (memory:, memorize:, remember:, inventory:).",
+    });
+    return { continueLoop: false, exitCode: 1 };
+  }
+
+  const taskForExecution = taskIntentDecision.normalizedTaskText === task.text
+    ? task
+    : {
+      ...task,
+      text: taskIntentDecision.normalizedTaskText,
+    };
+
+  // Announce the next task before any execution or validation occurs.
+  emit({ kind: "info", message: "Next task: " + formatTaskLabel(task) });
+  // Resolve the effective worker command using CLI, config, and task metadata.
+  const resolvedWorkerCommand = resolveWorkerForInvocation({
+    commandName: "run",
+    workerConfig: worker.loadedWorkerConfig,
+    source: fileSource,
+    task: taskForExecution,
+    cliWorkerCommand: worker.workerCommand,
+    emit,
+  });
+  // Build the automation command variant used for verification-only execution.
+  const automationCommand = getAutomationWorkerCommand(resolvedWorkerCommand, execution.mode);
+
   // Abort early when a task requires a worker command but none is available.
   if (requiresWorkerCommand({
     workerCommand: resolvedWorkerCommand,
     hasConfigWorker: resolvedWorkerCommand.length > 0,
-    isInlineCli: task.isInlineCli,
-    isRundownTask: task.isRundownTask,
+    isInlineCli: taskForExecution.isInlineCli,
+    isRundownTask: taskForExecution.isRundownTask,
     shouldVerify,
     onlyVerify,
   })) {
@@ -224,8 +240,8 @@ export async function runTaskIteration(params: {
   }
 
   // Delegated rundown tasks must satisfy subcommand-specific operand requirements.
-  if (!onlyVerify && task.isRundownTask) {
-    const validation = validateRundownTaskArgs(task.rundownArgs);
+  if (!onlyVerify && taskForExecution.isRundownTask) {
+    const validation = validateRundownTaskArgs(taskForExecution.rundownArgs);
     if (!validation.valid) {
       emit({
         kind: "error",
@@ -245,7 +261,7 @@ export async function runTaskIteration(params: {
       mode: execution.mode,
       transport: execution.transport,
       source,
-      task: toRuntimeTaskMetadata(task, fileSource),
+      task: toRuntimeTaskMetadata(taskForExecution, fileSource),
       keepArtifacts: execution.keepArtifacts,
     });
     state.traceWriter = dependencies.createTraceWriter(execution.trace, state.artifactContext);
@@ -255,7 +271,7 @@ export async function runTaskIteration(params: {
   const sourceDir = dependencies.pathOperations.dirname(dependencies.pathOperations.resolve(task.file));
   const preparedPrompts = await prepareTaskPrompts({
     dependencies,
-    task,
+    task: taskForExecution,
     fileSource,
     sourceDir,
     shouldVerify,
@@ -272,7 +288,7 @@ export async function runTaskIteration(params: {
     onTemplateCliFailure: async (error: unknown): Promise<number | null> => await handleTemplateCliFailure(
       error,
       emit,
-      async () => await afterTaskFailed(dependencies, task, source, completion.onFailCommand, execution.hideHookOutput),
+      async () => await afterTaskFailed(dependencies, taskForExecution, source, completion.onFailCommand, execution.hideHookOutput),
       async (failureMessage) => await lifecycle.failRun(1, "failed", failureMessage, 1),
     ),
   });
@@ -289,7 +305,7 @@ export async function runTaskIteration(params: {
     dryRunSuppressesCliExpansion: execution.dryRunSuppressesCliExpansion,
     dryRunCliBlockCount: preparedPrompts.dryRunCliBlockCount,
     onlyVerify,
-    task,
+    task: taskForExecution,
     prompt: preparedPrompts.prompt,
     verificationPrompt: preparedPrompts.verificationPrompt,
     automationCommand,
@@ -313,7 +329,7 @@ export async function runTaskIteration(params: {
   const selectedWorkerCommand = onlyVerify ? automationCommand : resolvedWorkerCommand;
   // Persist expanded prompt context for trace enrichment in later phases.
   state.traceEnrichmentContext = {
-    task,
+    task: taskForExecution,
     source: preparedPrompts.expandedSource,
     contextBefore: preparedPrompts.expandedContextBefore,
     worker: selectedWorkerCommand,
@@ -337,11 +353,13 @@ export async function runTaskIteration(params: {
     keepArtifacts: execution.keepArtifacts,
     showAgentOutput: execution.showAgentOutput,
     ignoreCliBlock: execution.ignoreCliBlock,
-    verify: execution.verify,
-    noRepair: execution.noRepair,
-    repairAttempts: execution.repairAttempts,
-    task,
-    prompt: preparedPrompts.prompt,
+      verify: execution.verify,
+      noRepair: execution.noRepair,
+      repairAttempts: execution.repairAttempts,
+      taskIntent: taskIntentDecision.intent,
+      memoryCapturePrefix: taskIntentDecision.memoryCapturePrefix,
+      task: taskForExecution,
+      prompt: preparedPrompts.prompt,
     expandedContextBefore: preparedPrompts.expandedContextBefore,
     artifactContext: state.artifactContext,
     resolvedWorkerCommand,
@@ -360,7 +378,7 @@ export async function runTaskIteration(params: {
         dispatchResult,
         emit,
         dependencies,
-        task,
+        task: taskForExecution,
         source,
         onFailCommand: completion.onFailCommand,
         hideHookOutput: execution.hideHookOutput,
@@ -401,7 +419,7 @@ export async function runTaskIteration(params: {
     trace: execution.trace,
     cliBlockExecutor: prompts.cliBlockExecutor,
     cliExpansionEnabled: execution.cliExpansionEnabled,
-    task,
+    task: taskForExecution,
     sourceText: source,
     expandedSource: preparedPrompts.expandedSource,
     expandedContextBefore: preparedPrompts.expandedContextBefore,

@@ -1,4 +1,5 @@
 import { type Task } from "../domain/parser.js";
+import type { TaskIntent } from "../domain/task-intent.js";
 import type {
   ArtifactRunContext,
   CommandExecutionOptions,
@@ -74,6 +75,8 @@ export async function dispatchTaskExecution(params: {
   verify: boolean;
   noRepair: boolean;
   repairAttempts: number;
+  taskIntent?: TaskIntent;
+  memoryCapturePrefix?: "memory" | "memorize" | "remember" | "inventory";
   task: Task;
   prompt: string;
   expandedContextBefore: string;
@@ -102,6 +105,8 @@ export async function dispatchTaskExecution(params: {
     verify,
     noRepair,
     repairAttempts,
+    taskIntent,
+    memoryCapturePrefix,
     task,
     prompt,
     expandedContextBefore,
@@ -153,6 +158,8 @@ export async function dispatchTaskExecution(params: {
       emit({ kind: "stderr", text: stderr });
     }
   };
+
+  const isMemoryCaptureTask = taskIntent === "memory-capture";
 
   // Verify-only mode skips execution and returns verification-only settings.
   if (onlyVerify) {
@@ -327,6 +334,16 @@ export async function dispatchTaskExecution(params: {
 
   // Detached mode returns early because completion continues out-of-process.
   if (mode === "detached") {
+    if (isMemoryCaptureTask) {
+      return {
+        kind: "execution-failed",
+        executionFailureMessage:
+          "Memory capture tasks do not support detached mode because worker output is required for persistence.",
+        executionFailureRunReason: "Memory capture task cannot persist memory in detached mode.",
+        executionFailureExitCode: 1,
+      };
+    }
+
     return { kind: "detached" };
   }
 
@@ -340,6 +357,24 @@ export async function dispatchTaskExecution(params: {
     };
   }
 
+  if (isMemoryCaptureTask) {
+    const persistenceResult = persistMemoryCaptureOutput({
+      sourcePath: task.file,
+      workerOutput: runResult.stdout,
+      memoryCapturePrefix,
+      dependencies,
+      emit,
+    });
+    if (!persistenceResult.ok) {
+      return {
+        kind: "execution-failed",
+        executionFailureMessage: persistenceResult.message,
+        executionFailureRunReason: persistenceResult.reason,
+        executionFailureExitCode: 1,
+      };
+    }
+  }
+
   // Success path returns verification options for downstream completion flow.
   return {
     kind: "ready-for-completion",
@@ -348,4 +383,59 @@ export async function dispatchTaskExecution(params: {
     verificationFailureMessage: "Verification failed after all repair attempts. Task not checked.",
     verificationFailureRunReason: "Verification failed after all repair attempts.",
   };
+}
+
+function persistMemoryCaptureOutput(params: {
+  sourcePath: string;
+  workerOutput: string;
+  memoryCapturePrefix?: "memory" | "memorize" | "remember" | "inventory";
+  dependencies: RunTaskDependencies;
+  emit: EmitFn;
+}): { ok: true } | { ok: false; message: string; reason: string } {
+  const { sourcePath, workerOutput, memoryCapturePrefix, dependencies, emit } = params;
+  const normalizedOutput = workerOutput.trim();
+  if (normalizedOutput.length === 0) {
+    return {
+      ok: false,
+      message: "Memory capture worker returned empty output; nothing to persist.",
+      reason: "Memory capture worker returned empty output.",
+    };
+  }
+
+  if (!dependencies.memoryWriter) {
+    return {
+      ok: false,
+      message: "Memory capture requires a configured memory writer.",
+      reason: "Memory writer is not configured.",
+    };
+  }
+
+  const writeResult = dependencies.memoryWriter.write({
+    sourcePath,
+    workerOutput: normalizedOutput,
+    capturePrefix: memoryCapturePrefix,
+  });
+  if (!writeResult.ok) {
+    if (writeResult.error.warningMessage) {
+      emit({
+        kind: "warn",
+        message: writeResult.error.warningMessage,
+      });
+    }
+
+    return {
+      ok: false,
+      message: writeResult.error.message,
+      reason: writeResult.error.reason,
+    };
+  }
+
+  if (writeResult.value.warningMessage) {
+    emit({
+      kind: "warn",
+      message: writeResult.value.warningMessage,
+    });
+  }
+
+  return { ok: true };
 }

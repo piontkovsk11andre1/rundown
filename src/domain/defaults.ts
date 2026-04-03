@@ -27,6 +27,23 @@ The Markdown above is the source document up to but not including the selected u
 {{task}}
 `;
 
+// Shared compact memory metadata block for worker-facing prompts.
+const DEFAULT_TEMPLATE_MEMORY_SECTION = `\
+
+## Memory context
+
+- Status: {{memoryStatus}}
+- File: \`{{memoryFilePath}}\`
+- Index: \`{{memoryIndexPath}}\`
+- Summary: {{memorySummary}}
+
+Memory map:
+
+\`\`\`json
+{{memoryMap}}
+\`\`\`
+`;
+
 /**
  * Appends trace-output instructions to a template when tracing is enabled.
  *
@@ -67,6 +84,7 @@ export function getTraceInstructions(trace: boolean): string {
  */
 export const DEFAULT_TASK_TEMPLATE = `\
 ${DEFAULT_TEMPLATE_SHARED_PREFIX}
+${DEFAULT_TEMPLATE_MEMORY_SECTION}
 
 ## Phase
 
@@ -86,6 +104,7 @@ Complete the task described above. Make the necessary changes to the project, bu
  */
 export const DEFAULT_DISCUSS_TEMPLATE = `\
 ${DEFAULT_TEMPLATE_SHARED_PREFIX}
+${DEFAULT_TEMPLATE_MEMORY_SECTION}
 
 ## Phase
 
@@ -128,6 +147,7 @@ Rules:
  */
 export const DEFAULT_VERIFY_TEMPLATE = `\
 ${DEFAULT_TEMPLATE_SHARED_PREFIX}
+${DEFAULT_TEMPLATE_MEMORY_SECTION}
 
 ## Phase
 
@@ -153,6 +173,7 @@ Do not write anything else.
  */
 export const DEFAULT_REPAIR_TEMPLATE = `\
 ${DEFAULT_TEMPLATE_SHARED_PREFIX}
+${DEFAULT_TEMPLATE_MEMORY_SECTION}
 
 ## Phase
 
@@ -189,6 +210,7 @@ export const DEFAULT_CONFIG_CONTENT = `{}
  */
 export const DEFAULT_PLAN_TEMPLATE = `\
 ${DEFAULT_TEMPLATE_SHARED_PREFIX}
+${DEFAULT_TEMPLATE_MEMORY_SECTION}
 
 ## Phase
 
@@ -220,6 +242,7 @@ Example output format:
  */
 export const DEFAULT_RESEARCH_TEMPLATE = `\
 ${DEFAULT_TEMPLATE_SHARED_PREFIX}
+${DEFAULT_TEMPLATE_MEMORY_SECTION}
 
 ## Full document
 

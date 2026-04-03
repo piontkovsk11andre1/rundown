@@ -314,6 +314,10 @@ describe("task-execution-dispatch", () => {
       selectedWorkerCommand: ["opencode", "run"],
       pendingPreRunResetTraceEvents: pendingResets,
       traceRunSession: session,
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
       configuredOnlyVerify: true,
       onlyVerify: true,
       shouldVerify: true,
@@ -372,6 +376,10 @@ describe("task-execution-dispatch", () => {
       selectedWorkerCommand: ["opencode", "run"],
       pendingPreRunResetTraceEvents: [],
       traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
       configuredOnlyVerify: false,
       onlyVerify: false,
       shouldVerify: true,
@@ -427,6 +435,10 @@ describe("task-execution-dispatch", () => {
       selectedWorkerCommand: ["opencode", "run"],
       pendingPreRunResetTraceEvents: [],
       traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
       configuredOnlyVerify: false,
       onlyVerify: false,
       shouldVerify: true,
@@ -449,6 +461,243 @@ describe("task-execution-dispatch", () => {
     });
 
     expect(result).toEqual({ kind: "detached" });
+  });
+
+  it("delegates explicit rundown make using make subcommand messaging and args", async () => {
+    const task: Task = {
+      ...createTask(path.join(cwd, "tasks.md"), "rundown: make SeedText 3.Feature.md"),
+      isRundownTask: true,
+      rundownArgs: "make SeedText 3.Feature.md",
+    };
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] rundown: make SeedText 3.Feature.md\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    const result = await dispatchTaskExecution({
+      dependencies,
+      emit: (event) => events.push(event),
+      files: [task.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "wait",
+      transport: "file",
+      keepArtifacts: true,
+      showAgentOutput: false,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      task,
+      prompt: "prompt",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      trace: true,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+    });
+
+    expect(result.kind).toBe("ready-for-completion");
+    expect(events).toContainEqual({
+      kind: "info",
+      message: "Delegating to rundown: rundown make SeedText 3.Feature.md",
+    });
+    expect(dependencies.workerExecutor.executeRundownTask).toHaveBeenCalledWith(
+      "make",
+      ["SeedText", "3.Feature.md"],
+      expect.stringContaining("workspace"),
+      expect.any(Object),
+    );
+  });
+
+  it("keeps delegated child output hidden by default while tracing rundown-delegate for run and make", async () => {
+    const delegatedCases: Array<{
+      label: string;
+      text: string;
+      rundownArgs: string;
+      subcommand: "run" | "make";
+      args: string[];
+    }> = [
+      {
+        label: "run",
+        text: "rundown: run Child.md --verify",
+        rundownArgs: "run Child.md --verify",
+        subcommand: "run",
+        args: ["Child.md", "--verify"],
+      },
+      {
+        label: "make",
+        text: "rundown: make SeedText 3.Feature.md",
+        rundownArgs: "make SeedText 3.Feature.md",
+        subcommand: "make",
+        args: ["SeedText", "3.Feature.md"],
+      },
+    ];
+
+    for (const delegatedCase of delegatedCases) {
+      traceWriter.write.mockClear();
+      traceWriter.flush.mockClear();
+      const task: Task = {
+        ...createTask(path.join(cwd, "tasks.md"), delegatedCase.text),
+        isRundownTask: true,
+        rundownArgs: delegatedCase.rundownArgs,
+      };
+      const fileSystem = createInMemoryFileSystem({
+        [task.file]: "- [ ] " + delegatedCase.text + "\n",
+        [path.join(cwd, "Child.md")]: "- [ ] child\n",
+      });
+      const { dependencies, events } = createDependencies({
+        cwd,
+        task,
+        fileSystem,
+        gitClient: createGitClientMock(),
+      });
+      dependencies.workerExecutor.executeRundownTask = vi.fn(async () => ({
+        exitCode: 0,
+        stdout: delegatedCase.label + " stdout",
+        stderr: delegatedCase.label + " stderr",
+      }));
+
+      const result = await dispatchTaskExecution({
+        dependencies,
+        emit: (event) => events.push(event),
+        files: [task.file],
+        selectedWorkerCommand: ["opencode", "run"],
+        pendingPreRunResetTraceEvents: [],
+        traceRunSession: createSession(),
+        roundContext: {
+          currentRound: 1,
+          totalRounds: 1,
+        },
+        configuredOnlyVerify: false,
+        onlyVerify: false,
+        shouldVerify: true,
+        mode: "wait",
+        transport: "file",
+        keepArtifacts: true,
+        showAgentOutput: false,
+        ignoreCliBlock: false,
+        verify: true,
+        noRepair: false,
+        repairAttempts: 0,
+        task,
+        prompt: "prompt",
+        expandedContextBefore: "",
+        artifactContext: createArtifactContext(),
+        resolvedWorkerCommand: ["opencode", "run"],
+        trace: true,
+        cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+        cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+      });
+
+      expect(result.kind).toBe("ready-for-completion");
+      expect(events.some((event) => event.kind === "text" || event.kind === "stderr")).toBe(false);
+      expect(dependencies.workerExecutor.executeRundownTask).toHaveBeenCalledWith(
+        delegatedCase.subcommand,
+        delegatedCase.args,
+        expect.stringContaining("workspace"),
+        expect.any(Object),
+      );
+
+      const traceEvents = traceWriter.write.mock.calls
+        .map(([event]) => event as { event_type: string; payload: { phase?: string } });
+      expect(
+        traceEvents.some((event) => event.event_type === "phase.started" && event.payload.phase === "rundown-delegate"),
+      ).toBe(true);
+      expect(
+        traceEvents.some((event) => event.event_type === "phase.completed" && event.payload.phase === "rundown-delegate"),
+      ).toBe(true);
+    }
+  });
+
+  it("shows delegated child stdout/stderr when show-agent-output is enabled for run and make", async () => {
+    const delegatedCases: Array<{ text: string; rundownArgs: string; stdout: string; stderr: string }> = [
+      {
+        text: "rundown: run Child.md --verify",
+        rundownArgs: "run Child.md --verify",
+        stdout: "run stdout",
+        stderr: "run stderr",
+      },
+      {
+        text: "rundown: make SeedText 3.Feature.md",
+        rundownArgs: "make SeedText 3.Feature.md",
+        stdout: "make stdout",
+        stderr: "make stderr",
+      },
+    ];
+
+    for (const delegatedCase of delegatedCases) {
+      const task: Task = {
+        ...createTask(path.join(cwd, "tasks.md"), delegatedCase.text),
+        isRundownTask: true,
+        rundownArgs: delegatedCase.rundownArgs,
+      };
+      const fileSystem = createInMemoryFileSystem({
+        [task.file]: "- [ ] " + delegatedCase.text + "\n",
+        [path.join(cwd, "Child.md")]: "- [ ] child\n",
+      });
+      const { dependencies, events } = createDependencies({
+        cwd,
+        task,
+        fileSystem,
+        gitClient: createGitClientMock(),
+      });
+      dependencies.workerExecutor.executeRundownTask = vi.fn(async () => ({
+        exitCode: 0,
+        stdout: delegatedCase.stdout,
+        stderr: delegatedCase.stderr,
+      }));
+
+      const result = await dispatchTaskExecution({
+        dependencies,
+        emit: (event) => events.push(event),
+        files: [task.file],
+        selectedWorkerCommand: ["opencode", "run"],
+        pendingPreRunResetTraceEvents: [],
+        traceRunSession: createSession(),
+        roundContext: {
+          currentRound: 1,
+          totalRounds: 1,
+        },
+        configuredOnlyVerify: false,
+        onlyVerify: false,
+        shouldVerify: true,
+        mode: "wait",
+        transport: "file",
+        keepArtifacts: true,
+        showAgentOutput: true,
+        ignoreCliBlock: false,
+        verify: true,
+        noRepair: false,
+        repairAttempts: 0,
+        task,
+        prompt: "prompt",
+        expandedContextBefore: "",
+        artifactContext: createArtifactContext(),
+        resolvedWorkerCommand: ["opencode", "run"],
+        trace: true,
+        cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+        cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+      });
+
+      expect(result.kind).toBe("ready-for-completion");
+      expect(events).toContainEqual({ kind: "text", text: delegatedCase.stdout });
+      expect(events).toContainEqual({ kind: "stderr", text: delegatedCase.stderr });
+    }
   });
 });
 
@@ -518,6 +767,7 @@ describe("complete-task-iteration", () => {
       templates: {
         task: "",
         discuss: "",
+        research: "",
         verify: "{{task}}",
         repair: "{{task}}",
         plan: "",
@@ -598,6 +848,7 @@ describe("complete-task-iteration", () => {
       templates: {
         task: "",
         discuss: "",
+        research: "",
         verify: "",
         repair: "",
         plan: "",
@@ -709,6 +960,7 @@ describe("trace-enrichment", () => {
         templates: {
           task: "",
           discuss: "",
+          research: "",
           verify: "",
           repair: "",
           plan: "",
@@ -779,6 +1031,7 @@ describe("trace-enrichment", () => {
         templates: {
           task: "",
           discuss: "",
+          research: "",
           verify: "",
           repair: "",
           plan: "",

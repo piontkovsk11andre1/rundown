@@ -99,6 +99,11 @@ export interface RundownTaskExecutionOptions {
 }
 
 /**
+ * Explicit delegated rundown subcommands currently supported inline.
+ */
+export type DelegatedRundownSubcommand = "run" | "make";
+
+/**
  * Defines the worker execution gateway used by domain services.
  *
  * Implementations encapsulate process-level details while exposing uniform
@@ -116,6 +121,7 @@ export interface WorkerExecutorPort {
   ): Promise<WorkerRunResult>;
   /** Executes a nested Rundown task command in the provided working directory. */
   executeRundownTask(
+    subcommand: DelegatedRundownSubcommand,
     args: string[],
     cwd: string,
     options?: RundownTaskExecutionOptions,

@@ -15,6 +15,42 @@ export interface DelegatedRundownArgsOptions {
   parentRepairAttempts: number;
 }
 
+export type DelegatedRundownSubcommand = "run" | "make";
+
+export interface ParsedDelegatedRundownInvocation {
+  subcommand: DelegatedRundownSubcommand;
+  args: string[];
+  isExplicitSubcommand: boolean;
+  unsupportedSubcommand?: string;
+}
+
+export interface DelegatedRundownValidationResult {
+  valid: boolean;
+  errorMessage?: string;
+}
+
+const SUPPORTED_DELEGATED_RUNDOWN_SUBCOMMANDS = new Set<DelegatedRundownSubcommand>([
+  "run",
+  "make",
+]);
+
+const KNOWN_RUNDOWN_COMMANDS = new Set<string>([
+  "run",
+  "make",
+  "init",
+  "intro",
+  "research",
+  "plan",
+  "discuss",
+  "reverify",
+  "revert",
+  "next",
+  "list",
+  "unlock",
+  "artifacts",
+  "log",
+]);
+
 /**
  * Parses raw delegated rundown arguments and applies compatibility normalization.
  */
@@ -23,21 +59,157 @@ export function parseRundownTaskArgs(rundownArgs: string | undefined): string[] 
     return [];
   }
 
-  // Split on whitespace to preserve CLI-style token parsing.
-  return normalizeLegacyRetryArgs(rundownArgs
-    .trim()
-    .split(/\s+/)
-    .filter((value) => value.length > 0));
+  return normalizeLegacyRetryArgs(tokenizeRundownArgs(rundownArgs));
+}
+
+/**
+ * Tokenizes delegated rundown args while preserving quoted operand groups.
+ */
+function tokenizeRundownArgs(input: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let quote: "\"" | "'" | null = null;
+  let hasCurrentToken = false;
+
+  const pushCurrentToken = (): void => {
+    if (!hasCurrentToken) {
+      return;
+    }
+
+    tokens.push(current);
+    current = "";
+    hasCurrentToken = false;
+  };
+
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      } else {
+        current += char;
+        hasCurrentToken = true;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      hasCurrentToken = true;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      pushCurrentToken();
+      continue;
+    }
+
+    current += char;
+    hasCurrentToken = true;
+  }
+
+  pushCurrentToken();
+  return tokens;
+}
+
+/**
+ * Resolves the delegated inline rundown invocation command.
+ *
+ * Supported explicit subcommands are `run` and `make`. All other forms are
+ * treated as the legacy implicit-`run` syntax.
+ */
+export function resolveDelegatedRundownInvocation(args: string[]): ParsedDelegatedRundownInvocation {
+  const [firstArg, ...remainingArgs] = args;
+  if (firstArg && SUPPORTED_DELEGATED_RUNDOWN_SUBCOMMANDS.has(firstArg as DelegatedRundownSubcommand)) {
+    return {
+      subcommand: firstArg as DelegatedRundownSubcommand,
+      args: remainingArgs,
+      isExplicitSubcommand: true,
+    };
+  }
+
+  if (firstArg && KNOWN_RUNDOWN_COMMANDS.has(firstArg)) {
+    return {
+      subcommand: "run",
+      args: remainingArgs,
+      isExplicitSubcommand: true,
+      unsupportedSubcommand: firstArg,
+    };
+  }
+
+  return {
+    subcommand: "run",
+    args,
+    isExplicitSubcommand: false,
+  };
+}
+
+/**
+ * Validates delegated rundown invocation operands using subcommand-specific rules.
+ */
+export function validateDelegatedRundownInvocation(
+  invocation: ParsedDelegatedRundownInvocation,
+): DelegatedRundownValidationResult {
+  if (invocation.unsupportedSubcommand) {
+    return {
+      valid: false,
+      errorMessage: "Unsupported delegated rundown subcommand `"
+        + invocation.unsupportedSubcommand
+        + "`. Supported inline subcommands: run, make.",
+    };
+  }
+
+  if (invocation.subcommand === "run") {
+    if (!resolveDelegatedRundownTargetArg(invocation.args)) {
+      const example = invocation.isExplicitSubcommand
+        ? "rundown: run Child.md --verify"
+        : "rundown: Child.md --verify";
+      return {
+        valid: false,
+        errorMessage: "Rundown task requires a source operand before any flags (example: " + example + ").",
+      };
+    }
+
+    return { valid: true };
+  }
+
+  const [seedTextArg, markdownFileArg] = invocation.args;
+  if (!seedTextArg || seedTextArg.startsWith("-") || !markdownFileArg || markdownFileArg.startsWith("-")) {
+    return {
+      valid: false,
+      errorMessage: "Rundown task delegated `make` requires <seed-text> and <markdown-file> operands (example: rundown: make \"Feature text\" \"3. Feature.md\").",
+    };
+  }
+
+  if (!/\.(md|markdown)$/i.test(markdownFileArg)) {
+    return {
+      valid: false,
+      errorMessage: "Rundown task delegated `make` requires a Markdown <markdown-file> operand (.md or .markdown).",
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Parses and validates delegated rundown arguments in one step.
+ */
+export function validateRundownTaskArgs(rundownArgs: string | undefined): DelegatedRundownValidationResult {
+  const parsedArgs = parseRundownTaskArgs(rundownArgs);
+  const invocation = resolveDelegatedRundownInvocation(parsedArgs);
+  return validateDelegatedRundownInvocation(invocation);
 }
 
 /**
  * Merges explicit delegated arguments with inherited parent run defaults.
  */
 export function buildDelegatedRundownArgs(
+  subcommand: DelegatedRundownSubcommand,
   args: string[],
   options: DelegatedRundownArgsOptions,
 ): string[] {
   const delegated: string[] = [...args];
+  const isRun = subcommand === "run";
 
   if (!hasLongOption(delegated, "--worker") && options.parentWorkerCommand.length > 0) {
     delegated.push("--worker", ...options.parentWorkerCommand);
@@ -59,16 +231,18 @@ export function buildDelegatedRundownArgs(
     delegated.push("--ignore-cli-block");
   }
 
-  if (!hasLongOptionVariant(delegated, ["--verify", "--no-verify"])) {
+  if (isRun && !hasLongOptionVariant(delegated, ["--verify", "--no-verify"])) {
     delegated.push(options.parentVerify ? "--verify" : "--no-verify");
   }
 
   // Preserve explicit child repair settings before inheriting the parent value.
-  if (!hasLongOption(delegated, "--no-repair") && !hasLongOptionVariant(delegated, ["--repair-attempts", "--retries"]) && options.parentNoRepair) {
+  if (isRun && !hasLongOption(delegated, "--no-repair") && !hasLongOptionVariant(delegated, ["--repair-attempts", "--retries"]) && options.parentNoRepair) {
     delegated.push("--no-repair");
   }
 
   if (
+    isRun
+    &&
     !hasLongOptionVariant(delegated, ["--repair-attempts", "--retries"])
     && !hasLongOption(delegated, "--no-repair")
     && !options.parentNoRepair

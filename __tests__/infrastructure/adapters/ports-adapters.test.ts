@@ -149,7 +149,7 @@ describe("infrastructure adapters", () => {
 
     const adapter = createWorkerExecutorAdapter();
     const artifactContext = { runId: "run-2b" };
-    const result = await adapter.executeRundownTask(["Child.md", "--verify"], "/repo", {
+    const result = await adapter.executeRundownTask("run", ["Child.md", "--verify"], "/repo", {
       artifactContext,
       keepArtifacts: true,
       artifactExtra: { taskType: "rundown" },
@@ -157,14 +157,15 @@ describe("infrastructure adapters", () => {
       parentWorkerCommand: ["opencode", "run"],
       parentTransport: "arg",
       parentKeepArtifacts: true,
-      parentHideAgentOutput: true,
+      parentShowAgentOutput: true,
+      parentIgnoreCliBlock: true,
       parentVerify: false,
       parentNoRepair: true,
       parentRepairAttempts: 2,
     });
 
     expect(executeRundownTaskMock).toHaveBeenCalledTimes(1);
-    expect(executeRundownTaskMock).toHaveBeenCalledWith(["Child.md", "--verify"], "/repo", {
+    expect(executeRundownTaskMock).toHaveBeenCalledWith("run", ["Child.md", "--verify"], "/repo", {
       artifactContext,
       keepArtifacts: true,
       artifactExtra: { taskType: "rundown" },
@@ -172,7 +173,8 @@ describe("infrastructure adapters", () => {
       parentWorkerCommand: ["opencode", "run"],
       parentTransport: "arg",
       parentKeepArtifacts: true,
-      parentHideAgentOutput: true,
+      parentShowAgentOutput: true,
+      parentIgnoreCliBlock: true,
       parentVerify: false,
       parentNoRepair: true,
       parentRepairAttempts: 2,

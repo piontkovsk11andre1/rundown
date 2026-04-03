@@ -46,7 +46,7 @@ describe("executeRundownTask", () => {
     const child = createChildProcess();
     spawnMock.mockReturnValue(child);
 
-    const promise = executeRundownTask(["Child.md", "--verify"], "/repo");
+    const promise = executeRundownTask("run", ["Child.md", "--verify"], "/repo");
     child.emit("close", 0);
 
     await expect(promise).resolves.toEqual({
@@ -66,11 +66,154 @@ describe("executeRundownTask", () => {
     );
   });
 
+  it("supports explicit delegated run subcommand without double-prefixing", async () => {
+    process.argv = ["/usr/local/bin/node", "/repo/dist/cli.js", "run", "Parent.md"];
+    const child = createChildProcess();
+    spawnMock.mockReturnValue(child);
+
+    const promise = executeRundownTask("run", ["Child.md", "--verify"], "/repo");
+    child.emit("close", 0);
+
+    await expect(promise).resolves.toEqual({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "/usr/local/bin/node",
+      ["/repo/dist/cli.js", "run", "Child.md", "--verify"],
+      expect.objectContaining({
+        cwd: "/repo",
+        shell: false,
+      }),
+    );
+
+    const spawnedArgs = spawnMock.mock.calls[0]?.[1] as string[];
+    expect(spawnedArgs.filter((arg) => arg === "run")).toHaveLength(1);
+  });
+
+  it("supports explicit delegated make subcommand", async () => {
+    process.argv = ["/usr/local/bin/node", "/repo/dist/cli.js", "run", "Parent.md"];
+    const child = createChildProcess();
+    spawnMock.mockReturnValue(child);
+
+    const promise = executeRundownTask("make", ["Scan count 3 by default", "3. Scan.md", "--dry-run"], "/repo");
+    child.emit("close", 0);
+
+    await expect(promise).resolves.toEqual({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "/usr/local/bin/node",
+      ["/repo/dist/cli.js", "make", "Scan count 3 by default", "3. Scan.md", "--dry-run"],
+      expect.objectContaining({
+        cwd: "/repo",
+        shell: false,
+      }),
+    );
+
+    const spawnedArgs = spawnMock.mock.calls[0]?.[1] as string[];
+    expect(spawnedArgs.filter((arg) => arg === "make")).toHaveLength(1);
+    expect(spawnedArgs.filter((arg) => arg === "run")).toHaveLength(0);
+  });
+
+  it("preserves POSIX and Windows path operands for explicit delegated run", async () => {
+    process.argv = ["C:\\Program Files\\nodejs\\node.exe", "C:\\repo\\dist\\cli.js", "run", "Parent.md"];
+
+    const posixChild = createChildProcess();
+    spawnMock.mockReturnValueOnce(posixChild);
+    const posixPromise = executeRundownTask("run", ["./docs/Child.md", "--verify"], "C:\\repo");
+    posixChild.emit("close", 0);
+    await expect(posixPromise).resolves.toEqual({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+
+    expect(spawnMock).toHaveBeenNthCalledWith(
+      1,
+      "C:\\Program Files\\nodejs\\node.exe",
+      ["C:\\repo\\dist\\cli.js", "run", "./docs/Child.md", "--verify"],
+      expect.objectContaining({
+        cwd: "C:\\repo",
+        shell: false,
+      }),
+    );
+
+    const windowsChild = createChildProcess();
+    spawnMock.mockReturnValueOnce(windowsChild);
+    const windowsPromise = executeRundownTask("run", [".\\docs\\Child.md", "--verify"], "C:\\repo");
+    windowsChild.emit("close", 0);
+    await expect(windowsPromise).resolves.toEqual({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+
+    expect(spawnMock).toHaveBeenNthCalledWith(
+      2,
+      "C:\\Program Files\\nodejs\\node.exe",
+      ["C:\\repo\\dist\\cli.js", "run", ".\\docs\\Child.md", "--verify"],
+      expect.objectContaining({
+        cwd: "C:\\repo",
+        shell: false,
+      }),
+    );
+  });
+
+  it("preserves POSIX and Windows path operands for explicit delegated make", async () => {
+    process.argv = ["C:\\Program Files\\nodejs\\node.exe", "C:\\repo\\dist\\cli.js", "run", "Parent.md"];
+
+    const posixChild = createChildProcess();
+    spawnMock.mockReturnValueOnce(posixChild);
+    const posixPromise = executeRundownTask("make", ["Feature", "./docs/3.Feature.md", "--dry-run"], "C:\\repo");
+    posixChild.emit("close", 0);
+    await expect(posixPromise).resolves.toEqual({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+
+    expect(spawnMock).toHaveBeenNthCalledWith(
+      1,
+      "C:\\Program Files\\nodejs\\node.exe",
+      ["C:\\repo\\dist\\cli.js", "make", "Feature", "./docs/3.Feature.md", "--dry-run"],
+      expect.objectContaining({
+        cwd: "C:\\repo",
+        shell: false,
+      }),
+    );
+
+    const windowsChild = createChildProcess();
+    spawnMock.mockReturnValueOnce(windowsChild);
+    const windowsPromise = executeRundownTask("make", ["Feature", ".\\docs\\3.Feature.md", "--dry-run"], "C:\\repo");
+    windowsChild.emit("close", 0);
+    await expect(windowsPromise).resolves.toEqual({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+
+    expect(spawnMock).toHaveBeenNthCalledWith(
+      2,
+      "C:\\Program Files\\nodejs\\node.exe",
+      ["C:\\repo\\dist\\cli.js", "make", "Feature", ".\\docs\\3.Feature.md", "--dry-run"],
+      expect.objectContaining({
+        cwd: "C:\\repo",
+        shell: false,
+      }),
+    );
+  });
+
   it("uses explicit rundownCommand override when provided", async () => {
     const child = createChildProcess();
     spawnMock.mockReturnValue(child);
 
-    const promise = executeRundownTask(["Child.md"], "/repo", {
+    const promise = executeRundownTask("run", ["Child.md"], "/repo", {
       rundownCommand: ["rundown", "--config", "custom.toml"],
     });
     child.emit("close", 0);
@@ -96,7 +239,7 @@ describe("executeRundownTask", () => {
     const child = createChildProcess();
     spawnMock.mockReturnValue(child);
 
-    const promise = executeRundownTask(["Child.md"], "/repo");
+    const promise = executeRundownTask("run", ["Child.md"], "/repo");
     child.emit("close", 0);
 
     await expect(promise).resolves.toEqual({
@@ -120,7 +263,7 @@ describe("executeRundownTask", () => {
     const child = createChildProcess();
     spawnMock.mockReturnValue(child);
 
-    const promise = executeRundownTask(["Child.md"], "/repo", {
+    const promise = executeRundownTask("run", ["Child.md"], "/repo", {
       parentWorkerCommand: ["opencode", "run"],
       parentTransport: "arg",
       parentKeepArtifacts: true,
@@ -168,6 +311,7 @@ describe("executeRundownTask", () => {
     spawnMock.mockReturnValue(child);
 
     const promise = executeRundownTask(
+      "run",
       ["Child.md", "--worker", "child", "--transport=arg", "--keep-artifacts", "--show-agent-output"],
       "/repo",
       {
@@ -217,6 +361,7 @@ describe("executeRundownTask", () => {
     spawnMock.mockReturnValue(child);
 
     const promise = executeRundownTask(
+      "run",
       ["Child.md", "--no-show-agent-output"],
       "/repo",
       {
@@ -267,6 +412,7 @@ describe("executeRundownTask", () => {
     spawnMock.mockReturnValue(child);
 
     const promise = executeRundownTask(
+      "run",
       ["Child.md", "--no-verify", "--repair-attempts=3"],
       "/repo",
       {
@@ -304,7 +450,7 @@ describe("executeRundownTask", () => {
     const child = createChildProcess();
     spawnMock.mockReturnValue(child);
 
-    const promise = executeRundownTask(["Child.md"], "/repo", {
+    const promise = executeRundownTask("run", ["Child.md"], "/repo", {
       parentVerify: true,
       parentNoRepair: false,
       parentRepairAttempts: 4,
@@ -334,12 +480,92 @@ describe("executeRundownTask", () => {
     );
   });
 
+  it("does not forward run-only verify and repair flags for delegated make", async () => {
+    process.argv = ["/usr/local/bin/node", "/repo/dist/cli.js"];
+    const child = createChildProcess();
+    spawnMock.mockReturnValue(child);
+
+    const promise = executeRundownTask("make", ["Feature text", "3. Feature.md"], "/repo", {
+      parentWorkerCommand: ["opencode", "run"],
+      parentTransport: "arg",
+      parentKeepArtifacts: true,
+      parentShowAgentOutput: true,
+      parentIgnoreCliBlock: true,
+      parentVerify: false,
+      parentNoRepair: true,
+      parentRepairAttempts: 4,
+    });
+    child.emit("close", 0);
+
+    await expect(promise).resolves.toEqual({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "/usr/local/bin/node",
+      [
+        "/repo/dist/cli.js",
+        "make",
+        "Feature text",
+        "3. Feature.md",
+        "--worker",
+        "opencode",
+        "run",
+        "--transport",
+        "arg",
+        "--keep-artifacts",
+        "--show-agent-output",
+        "--ignore-cli-block",
+      ],
+      expect.objectContaining({
+        cwd: "/repo",
+        shell: false,
+      }),
+    );
+  });
+
+  it("ignores incompatible inherited verify and repair defaults for delegated make", async () => {
+    process.argv = ["/usr/local/bin/node", "/repo/dist/cli.js"];
+    const child = createChildProcess();
+    spawnMock.mockReturnValue(child);
+
+    const promise = executeRundownTask("make", ["Feature text", "3. Feature.md"], "/repo", {
+      parentVerify: true,
+      parentNoRepair: false,
+      parentRepairAttempts: 7,
+    });
+    child.emit("close", 0);
+
+    await expect(promise).resolves.toEqual({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "/usr/local/bin/node",
+      [
+        "/repo/dist/cli.js",
+        "make",
+        "Feature text",
+        "3. Feature.md",
+      ],
+      expect.objectContaining({
+        cwd: "/repo",
+        shell: false,
+      }),
+    );
+  });
+
   it("keeps inline verify and no-repair overrides over parent defaults", async () => {
     process.argv = ["/usr/local/bin/node", "/repo/dist/cli.js"];
     const child = createChildProcess();
     spawnMock.mockReturnValue(child);
 
     const promise = executeRundownTask(
+      "run",
       ["Child.md", "--verify", "--no-repair"],
       "/repo",
       {
@@ -378,6 +604,7 @@ describe("executeRundownTask", () => {
     spawnMock.mockReturnValue(child);
 
     const promise = executeRundownTask(
+      "run",
       ["Child.md", "--no-repair", "--retries", "0", "--retries=2"],
       "/repo",
       {
@@ -425,7 +652,7 @@ describe("executeRundownTask", () => {
       commandName: "rundown-delegate",
       sequence: 0,
     };
-    const promise = executeRundownTask(["Child.md", "--verify"], "/repo", {
+    const promise = executeRundownTask("run", ["Child.md", "--verify"], "/repo", {
       artifactContext,
       artifactExtra: { taskType: "rundown" },
     });
@@ -468,7 +695,7 @@ describe("executeRundownTask", () => {
     const child = createChildProcess();
     spawnMock.mockReturnValue(child);
 
-    const promise = executeRundownTask(["Child.md"], "/repo", { keepArtifacts: true });
+    const promise = executeRundownTask("run", ["Child.md"], "/repo", { keepArtifacts: true });
     child.emit("close", 9);
 
     await expect(promise).resolves.toEqual({
@@ -497,7 +724,7 @@ describe("executeRundownTask", () => {
     const child = createChildProcess();
     spawnMock.mockReturnValue(child);
 
-    const promise = executeRundownTask(["Child.md"], "/repo");
+    const promise = executeRundownTask("run", ["Child.md"], "/repo");
     const error = new Error("spawn failed");
     child.emit("error", error);
 

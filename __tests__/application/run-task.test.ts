@@ -280,6 +280,46 @@ describe("run-task orchestration", () => {
     expect(vi.mocked(dependencies.gitClient.run).mock.calls.some(([args]) => args[0] === "commit")).toBe(false);
   });
 
+  it("surfaces delegated make path validation failures through run-task failure reporting", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+
+    const delegatedMakePathFailures = [
+      "Cannot create make document: /workspace/docs/3.Feature.md. File already exists.",
+      "Invalid make document path: /workspace/docs/3.Feature.txt. The `make` command only accepts Markdown files (.md or .markdown).",
+      "Cannot create make document: /workspace/missing/3.Feature.md. Parent directory does not exist: /workspace/missing.",
+    ];
+
+    for (const delegatedMakePathFailure of delegatedMakePathFailures) {
+      const task = createTask(taskFile, "rundown: make SeedText docs/3.Feature.md");
+      task.isRundownTask = true;
+      task.rundownArgs = "make SeedText docs/3.Feature.md";
+
+      const { dependencies, events } = createDependencies({
+        cwd,
+        task,
+        fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] rundown: make SeedText docs/3.Feature.md\n" }),
+        gitClient: createGitClientMock(),
+      });
+      dependencies.workerExecutor.executeRundownTask = vi.fn(async () => ({
+        exitCode: 1,
+        stdout: "",
+        stderr: delegatedMakePathFailure,
+      }));
+
+      const code = await createRunTask(dependencies)(
+        createOptions({
+          verify: false,
+          showAgentOutput: true,
+        }),
+      );
+
+      expect(code).toBe(1);
+      expect(events).toContainEqual({ kind: "stderr", text: delegatedMakePathFailure });
+      expect(events.some((event) => event.kind === "error" && event.message.includes("Rundown make task exited with code 1"))).toBe(true);
+    }
+  });
+
   it("applies post-run reset only after a completed run", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");

@@ -3,8 +3,7 @@ import { requiresWorkerCommand } from "../domain/run-options.js";
 import { resolveWorkerForInvocation } from "./resolve-worker.js";
 import { handleTemplateCliFailure } from "./cli-block-handlers.js";
 import {
-  parseRundownTaskArgs,
-  resolveDelegatedRundownTargetArg,
+  validateRundownTaskArgs,
 } from "./rundown-delegation.js";
 import { handleDryRunOrPrintPrompt } from "./dry-run-dispatch.js";
 import { formatTaskLabel } from "./run-task-utils.js";
@@ -132,14 +131,6 @@ interface IterationLifecycle {
 }
 
 /**
- * Checks whether a delegated rundown task is missing its required target file operand.
- */
-function isMissingRundownTarget(task: Task): boolean {
-  const rundownTaskArgs = parseRundownTaskArgs(task.rundownArgs);
-  return !resolveDelegatedRundownTargetArg(rundownTaskArgs);
-}
-
-/**
  * Emits execution failure details, runs failure hooks, and finalizes the run as failed.
  */
 function handleDispatchFailure(params: {
@@ -232,13 +223,16 @@ export async function runTaskIteration(params: {
     return { continueLoop: false, exitCode: 1 };
   }
 
-  // Delegated rundown tasks must include a target file operand before flags.
-  if (!onlyVerify && task.isRundownTask && isMissingRundownTarget(task)) {
-    emit({
-      kind: "error",
-      message: "Rundown task requires a target file operand before any flags (example: rundown: Child.md --verify).",
-    });
-    return { continueLoop: false, exitCode: 1 };
+  // Delegated rundown tasks must satisfy subcommand-specific operand requirements.
+  if (!onlyVerify && task.isRundownTask) {
+    const validation = validateRundownTaskArgs(task.rundownArgs);
+    if (!validation.valid) {
+      emit({
+        kind: "error",
+        message: validation.errorMessage ?? "Invalid rundown task delegation arguments.",
+      });
+      return { continueLoop: false, exitCode: 1 };
+    }
   }
 
   // Initialize artifact and trace context only for real execution modes.

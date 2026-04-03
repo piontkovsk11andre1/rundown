@@ -4,6 +4,7 @@ import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import {
   buildDelegatedRundownArgs,
   parseRundownTaskArgs,
+  resolveDelegatedRundownInvocation,
 } from "./rundown-delegation.js";
 
 type EmitFn = (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
@@ -141,7 +142,8 @@ export function handleDryRunOrPrintPrompt(params: HandleDryRunOrPrintPromptParam
     // Delegated rundown dry run builds inherited args and reports invocation.
     emitDryRunCliExpansionNote({ emit, dryRunSuppressesCliExpansion, dryRunCliBlockCount });
     const args = parseRundownTaskArgs(task.rundownArgs);
-    const delegatedArgs = buildDelegatedRundownArgs(args, {
+    const delegatedInvocation = resolveDelegatedRundownInvocation(args);
+    const delegatedArgs = buildDelegatedRundownArgs(delegatedInvocation.subcommand, delegatedInvocation.args, {
       parentWorkerCommand: resolvedWorkerCommand,
       parentTransport: transport,
       parentKeepArtifacts: keepArtifacts,
@@ -151,7 +153,13 @@ export function handleDryRunOrPrintPrompt(params: HandleDryRunOrPrintPromptParam
       parentNoRepair: noRepair,
       parentRepairAttempts: repairAttempts,
     });
-    emit({ kind: "info", message: "Dry run — would execute rundown task: rundown run " + delegatedArgs.join(" ") });
+    emit({
+      kind: "info",
+      message: "Dry run — would execute rundown task: rundown "
+        + delegatedInvocation.subcommand
+        + " "
+        + delegatedArgs.join(" "),
+    });
     return 0;
   }
 

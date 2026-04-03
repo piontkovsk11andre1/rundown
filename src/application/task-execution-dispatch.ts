@@ -8,6 +8,7 @@ import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import {
   delegatedTargetExists,
   parseRundownTaskArgs,
+  resolveDelegatedRundownInvocation,
   resolveDelegatedRundownTargetArg,
 } from "./rundown-delegation.js";
 import { isSameFilePath } from "./run-task-utils.js";
@@ -201,11 +202,16 @@ export async function dispatchTaskExecution(params: {
     };
   }
 
-  // Rundown tasks delegate execution to a nested `rundown run` invocation.
+  // Rundown tasks delegate execution to a nested `rundown` subcommand invocation.
   if (task.isRundownTask) {
     const rundownTaskCwd = dependencies.pathOperations.dirname(dependencies.pathOperations.resolve(task.file));
-    const rundownTaskArgs = parseRundownTaskArgs(task.rundownArgs);
-    const delegatedTargetArg = resolveDelegatedRundownTargetArg(rundownTaskArgs);
+    const parsedRundownTaskArgs = parseRundownTaskArgs(task.rundownArgs);
+    const delegatedInvocation = resolveDelegatedRundownInvocation(parsedRundownTaskArgs);
+    const delegatedCommand = [delegatedInvocation.subcommand, ...delegatedInvocation.args];
+    const delegatedExecutionArgs = delegatedInvocation.args;
+    const delegatedTargetArg = delegatedInvocation.subcommand === "run"
+      ? resolveDelegatedRundownTargetArg(delegatedInvocation.args)
+      : null;
     const delegatedTarget = delegatedTargetArg
       ? dependencies.pathOperations.resolve(rundownTaskCwd, delegatedTargetArg)
       : null;
@@ -219,9 +225,11 @@ export async function dispatchTaskExecution(params: {
         executionFailureExitCode: 1,
       };
     }
-    // Validate delegated target existence before spawning nested rundown execution.
+    // Validate delegated run target existence before spawning nested rundown execution.
     if (
-      delegatedTarget
+      delegatedInvocation.subcommand === "run"
+      && delegatedInvocation.args.length > 0
+      && delegatedTarget
       && delegatedTargetArg
       && !delegatedTargetExists(
         delegatedTarget,
@@ -240,9 +248,13 @@ export async function dispatchTaskExecution(params: {
       };
     }
     // Execute delegated rundown task and inherit parent execution settings.
-    emit({ kind: "info", message: "Delegating to rundown: rundown run " + rundownTaskArgs.join(" ") });
-    const rundownTaskPhaseTrace = traceRunSession.beginPhase("rundown-delegate", ["rundown", "run", ...rundownTaskArgs]);
-    const rundownTaskResult = await dependencies.workerExecutor.executeRundownTask(rundownTaskArgs, rundownTaskCwd, {
+    emit({ kind: "info", message: "Delegating to rundown: rundown " + delegatedCommand.join(" ") });
+    const rundownTaskPhaseTrace = traceRunSession.beginPhase("rundown-delegate", ["rundown", ...delegatedCommand]);
+    const rundownTaskResult = await dependencies.workerExecutor.executeRundownTask(
+      delegatedInvocation.subcommand,
+      delegatedExecutionArgs,
+      rundownTaskCwd,
+      {
       artifactContext,
       keepArtifacts,
       artifactExtra: { taskType: "rundown-task" },
@@ -254,7 +266,8 @@ export async function dispatchTaskExecution(params: {
       parentVerify: verify,
       parentNoRepair: noRepair,
       parentRepairAttempts: repairAttempts,
-    });
+    },
+    );
     traceRunSession.completePhase(
       rundownTaskPhaseTrace,
       rundownTaskResult.exitCode,
@@ -268,8 +281,8 @@ export async function dispatchTaskExecution(params: {
     if (rundownTaskResult.exitCode !== 0) {
       return {
         kind: "execution-failed",
-        executionFailureMessage: "Rundown task exited with code " + rundownTaskResult.exitCode,
-        executionFailureRunReason: "Rundown task exited with a non-zero code.",
+        executionFailureMessage: "Rundown " + delegatedInvocation.subcommand + " task exited with code " + rundownTaskResult.exitCode,
+        executionFailureRunReason: "Rundown " + delegatedInvocation.subcommand + " task exited with a non-zero code.",
         executionFailureExitCode: rundownTaskResult.exitCode,
       };
     }
@@ -280,7 +293,7 @@ export async function dispatchTaskExecution(params: {
       shouldVerify,
       cliExecutionOptionsForVerification: cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace,
       verificationFailureMessage: "Verification failed. Task not checked.",
-      verificationFailureRunReason: "Verification failed after rundown task execution.",
+      verificationFailureRunReason: "Verification failed after rundown " + delegatedInvocation.subcommand + " task execution.",
     };
   }
 

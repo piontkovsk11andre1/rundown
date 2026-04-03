@@ -54,8 +54,8 @@ export function createWorkerExecutorAdapter(): WorkerExecutorPort {
      * Executes a nested rundown invocation while preserving parent worker context
      * needed for artifact and behavior propagation.
      */
-    async executeRundownTask(args, cwd, options): Promise<WorkerRunResult> {
-      return executeRundownTask(args, cwd, {
+    async executeRundownTask(subcommand, args, cwd, options): Promise<WorkerRunResult> {
+      return executeRundownTask(subcommand, args, cwd, {
         // Keep artifact handling consistent with other adapter execution paths.
         artifactContext: options?.artifactContext as RuntimeArtifactsContext | undefined,
         keepArtifacts: options?.keepArtifacts,

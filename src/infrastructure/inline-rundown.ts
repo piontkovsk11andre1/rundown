@@ -11,7 +11,7 @@ import type { InlineCliResult } from "./inline-cli.js";
 const DISABLE_AUTO_PARSE_ENV = "RUNDOWN_DISABLE_AUTO_PARSE";
 
 /**
- * Options for delegating a task to a nested rundown run.
+ * Options for delegating a task to a nested rundown command.
  *
  * These values let the parent process forward runtime behavior and artifact
  * preferences while still allowing explicit CLI arguments to take precedence.
@@ -32,22 +32,27 @@ export interface RundownTaskOptions {
 }
 
 /**
- * Executes a nested `rundown run` command and captures its output.
+ * Executes a nested `rundown` command and captures its output.
  *
  * The function creates or reuses runtime artifact tracking, forwards compatible
  * parent flags, and returns the child process exit code plus collected streams.
  */
 export async function executeRundownTask(
+  subcommand: "run" | "make",
   args: string[],
   cwd: string = process.cwd(),
   options?: RundownTaskOptions,
 ): Promise<InlineCliResult> {
   // Resolve how to invoke rundown in this runtime (override, node entrypoint, or PATH).
   const invocation = resolveRundownInvocation(options?.rundownCommand);
-  // Build nested `run` arguments while preserving explicit child overrides.
-  const forwardedArgs = buildForwardedRunArgs(args, options);
+  // Merge inherited parent options for the resolved delegated subcommand.
+  const forwardedArgs = buildForwardedArgs(
+    subcommand,
+    args,
+    options,
+  );
   const command = invocation.command;
-  const commandArgs = [...invocation.args, "run", ...forwardedArgs];
+  const commandArgs = [...invocation.args, subcommand, ...forwardedArgs];
 
   let ownedArtifactContext: RuntimeArtifactsContext | null = null;
   let artifactContext: RuntimeArtifactsContext;
@@ -139,11 +144,15 @@ export async function executeRundownTask(
 }
 
 /**
- * Merges parent-level options into nested `run` arguments.
+ * Merges parent-level options into nested delegated arguments.
  *
  * Explicit long-form options already present in `args` are never overwritten.
  */
-function buildForwardedRunArgs(args: string[], options: RundownTaskOptions | undefined): string[] {
+function buildForwardedArgs(
+  subcommand: "run" | "make",
+  args: string[],
+  options: RundownTaskOptions | undefined,
+): string[] {
   // Normalize legacy retry flags before checking for explicit overrides.
   const forwarded: string[] = normalizeLegacyRetryArgs(args);
 
@@ -152,9 +161,10 @@ function buildForwardedRunArgs(args: string[], options: RundownTaskOptions | und
   const hasKeepArtifactsOverride = hasLongOption(forwarded, "--keep-artifacts");
   const hasShowAgentOutputOverride = hasLongOptionVariant(forwarded, ["--show-agent-output", "--no-show-agent-output"]);
   const hasIgnoreCliBlockOverride = hasLongOption(forwarded, "--ignore-cli-block");
-  const hasVerifyOverride = hasLongOptionVariant(forwarded, ["--verify", "--no-verify"]);
-  const hasNoRepairOverride = hasLongOption(forwarded, "--no-repair");
-  const hasRepairAttemptsOverride = hasLongOptionVariant(forwarded, ["--repair-attempts", "--retries"]);
+  const isRun = subcommand === "run";
+  const hasVerifyOverride = isRun && hasLongOptionVariant(forwarded, ["--verify", "--no-verify"]);
+  const hasNoRepairOverride = isRun && hasLongOption(forwarded, "--no-repair");
+  const hasRepairAttemptsOverride = isRun && hasLongOptionVariant(forwarded, ["--repair-attempts", "--retries"]);
 
   if (!hasWorkerOverride && options?.parentWorkerCommand && options.parentWorkerCommand.length > 0) {
     forwarded.push("--worker", ...options.parentWorkerCommand);
@@ -176,15 +186,17 @@ function buildForwardedRunArgs(args: string[], options: RundownTaskOptions | und
     forwarded.push("--ignore-cli-block");
   }
 
-  if (!hasVerifyOverride && typeof options?.parentVerify === "boolean") {
+  if (isRun && !hasVerifyOverride && typeof options?.parentVerify === "boolean") {
     forwarded.push(options.parentVerify ? "--verify" : "--no-verify");
   }
 
-  if (!hasNoRepairOverride && !hasRepairAttemptsOverride && options?.parentNoRepair) {
+  if (isRun && !hasNoRepairOverride && !hasRepairAttemptsOverride && options?.parentNoRepair) {
     forwarded.push("--no-repair");
   }
 
   if (
+    isRun
+    &&
     !hasRepairAttemptsOverride
     && !hasNoRepairOverride
     && !options?.parentNoRepair

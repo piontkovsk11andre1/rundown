@@ -149,6 +149,33 @@ describe("executeRundownTask", () => {
     expect(spawnedArgs.filter((arg) => arg === "run")).toHaveLength(0);
   });
 
+  it("supports explicit delegated do subcommand", async () => {
+    process.argv = ["/usr/local/bin/node", "/repo/dist/cli.js", "run", "Parent.md"];
+    const child = createChildProcess();
+    spawnMock.mockReturnValue(child);
+
+    const promise = executeRundownTask("do", ["Scan count 3 by default", "3. Scan.md", "--dry-run"], "/repo");
+    child.emit("close", 0);
+
+    await expect(promise).resolves.toEqual({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "/usr/local/bin/node",
+      ["/repo/dist/cli.js", "do", "Scan count 3 by default", "3. Scan.md", "--dry-run"],
+      expect.objectContaining({
+        cwd: "/repo",
+        shell: false,
+      }),
+    );
+
+    const spawnedArgs = spawnMock.mock.calls[0]?.[1] as string[];
+    expect(spawnedArgs.filter((arg) => arg === "do")).toHaveLength(1);
+  });
+
   it("preserves POSIX and Windows path operands for explicit delegated run", async () => {
     process.argv = ["C:\\Program Files\\nodejs\\node.exe", "C:\\repo\\dist\\cli.js", "run", "Parent.md"];
 
@@ -579,6 +606,42 @@ describe("executeRundownTask", () => {
         "make",
         "Feature text",
         "3. Feature.md",
+      ],
+      expect.objectContaining({
+        cwd: "/repo",
+        shell: false,
+      }),
+    );
+  });
+
+  it("forwards run-like verify and repair flags for delegated do", async () => {
+    process.argv = ["/usr/local/bin/node", "/repo/dist/cli.js"];
+    const child = createChildProcess();
+    spawnMock.mockReturnValue(child);
+
+    const promise = executeRundownTask("do", ["Feature text", "3. Feature.md"], "/repo", {
+      parentVerify: false,
+      parentNoRepair: false,
+      parentRepairAttempts: 7,
+    });
+    child.emit("close", 0);
+
+    await expect(promise).resolves.toEqual({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "/usr/local/bin/node",
+      [
+        "/repo/dist/cli.js",
+        "do",
+        "Feature text",
+        "3. Feature.md",
+        "--no-verify",
+        "--repair-attempts",
+        "7",
       ],
       expect.objectContaining({
         cwd: "/repo",

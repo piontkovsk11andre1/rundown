@@ -20,7 +20,6 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     offsetEnd: 0,
     file: "test.md",
     isInlineCli: false,
-    isRundownTask: false,
     depth: 0,
     ...rest,
     children: children ?? [],

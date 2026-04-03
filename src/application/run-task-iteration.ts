@@ -2,9 +2,6 @@ import { type Task } from "../domain/parser.js";
 import { requiresWorkerCommand } from "../domain/run-options.js";
 import { resolveWorkerForInvocation } from "./resolve-worker.js";
 import { handleTemplateCliFailure } from "./cli-block-handlers.js";
-import {
-  validateRundownTaskArgs,
-} from "./rundown-delegation.js";
 import { handleDryRunOrPrintPrompt } from "./dry-run-dispatch.js";
 import { formatTaskLabel } from "./run-task-utils.js";
 import { afterTaskFailed } from "./run-lifecycle.js";
@@ -228,7 +225,6 @@ export async function runTaskIteration(params: {
     workerCommand: resolvedWorkerCommand,
     hasConfigWorker: resolvedWorkerCommand.length > 0,
     isInlineCli: taskForExecution.isInlineCli,
-    isRundownTask: taskForExecution.isRundownTask,
     shouldVerify,
     onlyVerify,
   })) {
@@ -237,18 +233,6 @@ export async function runTaskIteration(params: {
       message: "No worker command available: .rundown/config.json has no configured worker, and no CLI worker was provided. Use --worker <command...> or -- <command>.",
     });
     return { continueLoop: false, exitCode: 1 };
-  }
-
-  // Delegated rundown tasks must satisfy subcommand-specific operand requirements.
-  if (!onlyVerify && taskForExecution.isRundownTask) {
-    const validation = validateRundownTaskArgs(taskForExecution.rundownArgs);
-    if (!validation.valid) {
-      emit({
-        kind: "error",
-        message: validation.errorMessage ?? "Invalid rundown task delegation arguments.",
-      });
-      return { continueLoop: false, exitCode: 1 };
-    }
   }
 
   // Initialize artifact and trace context only for real execution modes.
@@ -310,13 +294,6 @@ export async function runTaskIteration(params: {
     verificationPrompt: preparedPrompts.verificationPrompt,
     automationCommand,
     resolvedWorkerCommand,
-    transport: execution.transport,
-    keepArtifacts: execution.keepArtifacts,
-    showAgentOutput: execution.showAgentOutput,
-    ignoreCliBlock: execution.ignoreCliBlock,
-    verify: execution.verify,
-    noRepair: execution.noRepair,
-    repairAttempts: execution.repairAttempts,
   });
   if (dryRunOrPrintPromptExitCode !== null) {
     return { continueLoop: false, exitCode: dryRunOrPrintPromptExitCode };

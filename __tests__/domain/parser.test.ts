@@ -365,38 +365,12 @@ describe("parseTasks", () => {
     expect(tasks[0]!.cliCommand).toBe("npm test -- --runInBand");
   });
 
-  it("should detect rundown tasks", () => {
-    const md = `- [ ] rundown: Test.md --optional arg-val\n`;
+  it("treats task text starting with rundown as a plain task", () => {
+    const md = `- [ ] rundown release checklist before deploy\n`;
     const tasks = parseTasks(md, "test.md");
 
     expect(tasks).toHaveLength(1);
-    expect(tasks[0]!.isRundownTask).toBe(true);
-    expect(tasks[0]!.rundownArgs).toBe("Test.md --optional arg-val");
-  });
-
-  it("should detect rundown tasks case-insensitively", () => {
-    const md = `- [ ] RuNdOwN: Child.md --worker codex\n`;
-    const tasks = parseTasks(md, "test.md");
-
-    expect(tasks).toHaveLength(1);
-    expect(tasks[0]!.isRundownTask).toBe(true);
-    expect(tasks[0]!.rundownArgs).toBe("Child.md --worker codex");
-  });
-
-  it("should trim whitespace around rundown args", () => {
-    const md = `- [ ] rundown:    Child.md   --transport  stdio   \n`;
-    const tasks = parseTasks(md, "test.md");
-
-    expect(tasks).toHaveLength(1);
-    expect(tasks[0]!.isRundownTask).toBe(true);
-    expect(tasks[0]!.rundownArgs).toBe("Child.md   --transport  stdio");
-  });
-
-  it("keeps inline CLI false for rundown tasks", () => {
-    const md = `- [ ] rundown: Test.md --optional arg-val\n`;
-    const tasks = parseTasks(md, "test.md");
-
-    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.text).toBe("rundown release checklist before deploy");
     expect(tasks[0]!.isInlineCli).toBe(false);
     expect(tasks[0]!.cliCommand).toBeUndefined();
   });

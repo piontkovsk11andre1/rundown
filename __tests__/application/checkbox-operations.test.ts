@@ -20,7 +20,6 @@ function createTask(overrides: Partial<Task> = {}): Task {
     offsetEnd: 10,
     file: "todo.md",
     isInlineCli: false,
-    isRundownTask: false,
     depth: 0,
     children: [],
     subItems: [],

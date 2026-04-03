@@ -52,7 +52,7 @@ export interface RundownTaskOptions {
  * parent flags, and returns the child process exit code plus collected streams.
  */
 export async function executeRundownTask(
-  subcommand: "run" | "make",
+  subcommand: "run" | "make" | "do",
   args: string[],
   cwd: string = process.cwd(),
   options?: RundownTaskOptions,
@@ -165,7 +165,7 @@ export async function executeRundownTask(
  * Explicit long-form options already present in `args` are never overwritten.
  */
 function buildForwardedArgs(
-  subcommand: "run" | "make",
+  subcommand: "run" | "make" | "do",
   args: string[],
   options: RundownTaskOptions | undefined,
 ): string[] {
@@ -177,10 +177,10 @@ function buildForwardedArgs(
   const hasKeepArtifactsOverride = hasLongOption(forwarded, "--keep-artifacts");
   const hasShowAgentOutputOverride = hasLongOptionVariant(forwarded, ["--show-agent-output", "--no-show-agent-output"]);
   const hasIgnoreCliBlockOverride = hasLongOption(forwarded, "--ignore-cli-block");
-  const isRun = subcommand === "run";
-  const hasVerifyOverride = isRun && hasLongOptionVariant(forwarded, ["--verify", "--no-verify"]);
-  const hasNoRepairOverride = isRun && hasLongOption(forwarded, "--no-repair");
-  const hasRepairAttemptsOverride = isRun && hasLongOptionVariant(forwarded, ["--repair-attempts", "--retries"]);
+  const isRunLike = subcommand === "run" || subcommand === "do";
+  const hasVerifyOverride = isRunLike && hasLongOptionVariant(forwarded, ["--verify", "--no-verify"]);
+  const hasNoRepairOverride = isRunLike && hasLongOption(forwarded, "--no-repair");
+  const hasRepairAttemptsOverride = isRunLike && hasLongOptionVariant(forwarded, ["--repair-attempts", "--retries"]);
 
   if (!hasWorkerOverride && options?.parentWorkerCommand && options.parentWorkerCommand.length > 0) {
     forwarded.push("--worker", ...options.parentWorkerCommand);
@@ -202,16 +202,16 @@ function buildForwardedArgs(
     forwarded.push("--ignore-cli-block");
   }
 
-  if (isRun && !hasVerifyOverride && typeof options?.parentVerify === "boolean") {
+  if (isRunLike && !hasVerifyOverride && typeof options?.parentVerify === "boolean") {
     forwarded.push(options.parentVerify ? "--verify" : "--no-verify");
   }
 
-  if (isRun && !hasNoRepairOverride && !hasRepairAttemptsOverride && options?.parentNoRepair) {
+  if (isRunLike && !hasNoRepairOverride && !hasRepairAttemptsOverride && options?.parentNoRepair) {
     forwarded.push("--no-repair");
   }
 
   if (
-    isRun
+    isRunLike
     &&
     !hasRepairAttemptsOverride
     && !hasNoRepairOverride

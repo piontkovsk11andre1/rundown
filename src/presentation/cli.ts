@@ -27,6 +27,7 @@ import {
 import {
   createArtifactsCommandAction,
   createDiscussCommandAction,
+  createDoCommandAction,
   createInitCommandAction,
   createIntroCommandAction,
   createListCommandAction,
@@ -46,6 +47,7 @@ const PLANNER_MODES: readonly ProcessRunMode[] = ["wait"];
 const DISCUSS_MODES: readonly ProcessRunMode[] = ["wait", "tui"];
 const RESEARCH_MODES: readonly ProcessRunMode[] = ["wait", "tui"];
 const MAKE_MODES: readonly ProcessRunMode[] = ["wait"];
+const DO_MODES: readonly ProcessRunMode[] = ["wait"];
 const DEFAULT_PLAN_SCAN_COUNT = 3;
 const DEFAULT_VARS_FILE_HELP = "Load extra template variables from a JSON file (default: <config-dir>/vars.json)";
 
@@ -310,6 +312,56 @@ program
   })));
 
 program
+  .command("do")
+  .description("Bootstrap with make, then execute all tasks against the same Markdown file.")
+  .argument("<seed-text>", "Initial text content to write into the Markdown file")
+  .argument("<markdown-file>", "Markdown file path to create")
+  .option("--mode <mode>", "Do mode: wait", "wait")
+  .option(
+    "--scan-count <n>",
+    "Max clean-session TODO coverage scans for the plan phase (default: 3)",
+    String(DEFAULT_PLAN_SCAN_COUNT),
+  )
+  .option("--sort <sort>", "File sort mode for execution phase: name-sort, none, old-first, new-first", "name-sort")
+  .option("--transport <transport>", "Prompt transport: file, arg", "file")
+  .option("--verify", "Run verification after task execution (default)")
+  .option("--no-verify", "Disable verification after task execution")
+  .option("--only-verify", "Skip execution and run verification directly", false)
+  .option("--force-execute", "Force execute phase even for verify-only task text", false)
+  .option("--repair-attempts <n>", "Max repair attempts on verification failure", "1")
+  .option("--no-repair", "Disable repair even when repair attempts are set")
+  .option("--dry-run", "Show what would run for bootstrap and execution without executing workers", false)
+  .option("--print-prompt", "Print rendered prompts and exit", false)
+  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
+  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
+  .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
+  .option("--trace-only", "Skip task execution and run only trace enrichment on the latest completed artifact run", false)
+  .option("--force-unlock", "Break stale source lockfiles before acquiring phase locks", false)
+  .option("--vars-file [path]", DEFAULT_VARS_FILE_HELP)
+  .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
+  .option("--commit", "Auto-commit checked task file after successful completion", false)
+  .option("--commit-message <template>", "Commit message template (supports {{task}} and {{file}})")
+  .option("--on-complete <command>", "Run a shell command after successful task completion")
+  .option("--on-fail <command>", "Run a shell command when a task fails (execution or verification failure)")
+  .option("--redo", "Reset all checkboxes in the source file before running", false)
+  .option("--reset-after", "Reset all checkboxes in the source file after the run completes", false)
+  .option("--clean", "Shorthand for --redo --reset-after", false)
+  .option("--rounds <n>", "Repeat clean cycles N times (default: 1)")
+  .option("--worker [command...]", "Optional worker command override (alternative to -- <command>)")
+  .option("--ignore-cli-block", "Disable execution of `cli` fenced blocks during prompt expansion")
+  .option(
+    "--cli-block-timeout <ms>",
+    "Timeout in milliseconds for executing `cli` fenced blocks (0 disables timeout)",
+    String(DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS),
+  )
+  .allowUnknownOption(false)
+  .action(withCliAction(createDoCommandAction({
+    getApp,
+    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
+    makeModes: DO_MODES,
+  })));
+
+program
   .command("research")
   .description("Enrich a Markdown document with implementation context and planning scaffolding.")
   .argument("[markdown-file...]", "Markdown document to enrich")
@@ -453,6 +505,7 @@ export async function parseCliArgs(argv: string[]): Promise<void> {
     // Keep research as a strict single-pass workflow for this iteration.
     validateUnsupportedResearchScanCount(rundownArgs);
     validateUnsupportedMakeMode(rundownArgs);
+    validateUnsupportedDoMode(rundownArgs);
   } catch (error) {
     emitCliFatalError(error, runtimeState.invocationLogState);
     terminate(1);
@@ -484,6 +537,22 @@ function validateUnsupportedResearchScanCount(argv: string[]): void {
  */
 function validateUnsupportedMakeMode(argv: string[]): void {
   if (resolveInvocationCommand(argv) !== "make") {
+    return;
+  }
+
+  const mode = resolveModeOptionValue(argv);
+  if (mode === undefined || mode === "wait") {
+    return;
+  }
+
+  throw new Error(`Invalid --mode value: ${mode}. Allowed: wait.`);
+}
+
+/**
+ * Rejects interactive or detached execution modes for `do`.
+ */
+function validateUnsupportedDoMode(argv: string[]): void {
+  if (resolveInvocationCommand(argv) !== "do") {
     return;
   }
 

@@ -6,7 +6,6 @@ const {
   selectTaskByLocationMock,
   runWorkerMock,
   executeInlineCliMock,
-  executeRundownTaskMock,
   verifyMock,
   repairMock,
 } = vi.hoisted(() => ({
@@ -15,7 +14,6 @@ const {
   selectTaskByLocationMock: vi.fn(),
   runWorkerMock: vi.fn(),
   executeInlineCliMock: vi.fn(),
-  executeRundownTaskMock: vi.fn(),
   verifyMock: vi.fn(),
   repairMock: vi.fn(),
 }));
@@ -35,10 +33,6 @@ vi.mock("../../../src/infrastructure/runner.js", () => ({
 
 vi.mock("../../../src/infrastructure/inline-cli.js", () => ({
   executeInlineCli: executeInlineCliMock,
-}));
-
-vi.mock("../../../src/infrastructure/inline-rundown.js", () => ({
-  executeRundownTask: executeRundownTaskMock,
 }));
 
 vi.mock("../../../src/infrastructure/verification.js", () => ({
@@ -144,44 +138,6 @@ describe("infrastructure adapters", () => {
     expect(result).toEqual({ exitCode: 0, stdout: "done", stderr: "" });
   });
 
-  it("worker executor adapter maps executeRundownTask options", async () => {
-    executeRundownTaskMock.mockResolvedValue({ exitCode: 0, stdout: "delegated", stderr: "" });
-
-    const adapter = createWorkerExecutorAdapter();
-    const artifactContext = { runId: "run-2b" };
-    const result = await adapter.executeRundownTask("run", ["Child.md", "--verify"], "/repo", {
-      artifactContext,
-      keepArtifacts: true,
-      artifactExtra: { taskType: "rundown" },
-      rundownCommand: ["node", "dist/cli.js"],
-      parentWorkerCommand: ["opencode", "run"],
-      parentTransport: "arg",
-      parentKeepArtifacts: true,
-      parentShowAgentOutput: true,
-      parentIgnoreCliBlock: true,
-      parentVerify: false,
-      parentNoRepair: true,
-      parentRepairAttempts: 2,
-    });
-
-    expect(executeRundownTaskMock).toHaveBeenCalledTimes(1);
-    expect(executeRundownTaskMock).toHaveBeenCalledWith("run", ["Child.md", "--verify"], "/repo", {
-      artifactContext,
-      keepArtifacts: true,
-      artifactExtra: { taskType: "rundown" },
-      rundownCommand: ["node", "dist/cli.js"],
-      parentWorkerCommand: ["opencode", "run"],
-      parentTransport: "arg",
-      parentKeepArtifacts: true,
-      parentShowAgentOutput: true,
-      parentIgnoreCliBlock: true,
-      parentVerify: false,
-      parentNoRepair: true,
-      parentRepairAttempts: 2,
-    });
-    expect(result).toEqual({ exitCode: 0, stdout: "delegated", stderr: "" });
-  });
-
   it("task verification adapter delegates to verify", async () => {
     verifyMock.mockResolvedValue(true);
 
@@ -201,7 +157,6 @@ describe("infrastructure adapters", () => {
       offsetEnd: 0,
       file: "tasks.md",
       isInlineCli: false,
-      isRundownTask: false,
       depth: 0,
       children: [],
       subItems: [],
@@ -263,7 +218,6 @@ describe("infrastructure adapters", () => {
       offsetEnd: 0,
       file: "tasks.md",
       isInlineCli: false,
-      isRundownTask: false,
       depth: 0,
       children: [],
       subItems: [],

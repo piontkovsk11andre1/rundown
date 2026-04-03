@@ -622,7 +622,6 @@ function formatTaskMetadataLabel(task: RuntimeTaskMetadata): string {
     offsetEnd: 0,
     file: task.file,
     isInlineCli: false,
-    isRundownTask: false,
     depth: 0,
     children: [],
     subItems: [],

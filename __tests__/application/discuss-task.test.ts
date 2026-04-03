@@ -1254,7 +1254,6 @@ function createTask(file: string, text: string): Task {
     offsetEnd: text.length,
     file,
     isInlineCli: false,
-    isRundownTask: false,
     depth: 0,
     children: [],
     subItems: [],

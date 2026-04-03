@@ -101,7 +101,7 @@ export interface RundownTaskExecutionOptions {
 /**
  * Explicit delegated rundown subcommands currently supported inline.
  */
-export type DelegatedRundownSubcommand = "run" | "make";
+export type DelegatedRundownSubcommand = "run" | "make" | "do";
 
 /**
  * Defines the worker execution gateway used by domain services.

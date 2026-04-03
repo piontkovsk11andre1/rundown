@@ -38,10 +38,6 @@ export interface Task {
   isInlineCli: boolean;
   /** If inline CLI, the command string. */
   cliCommand?: string;
-  /** Whether this is a rundown task (starts with "rundown: "). */
-  isRundownTask: boolean;
-  /** If rundown task, the args string after the prefix. */
-  rundownArgs?: string;
   /** Nesting depth (0 = top-level list item). */
   depth: number;
   /** Nested checkbox child tasks. */
@@ -97,8 +93,6 @@ export interface FrontmatterData {
 
 // Prefix used to classify inline CLI tasks.
 const CLI_PREFIX = /^cli:\s*/i;
-// Prefix used to classify rundown sub-command tasks.
-const RUNDOWN_PREFIX = /^rundown:\s*/i;
 // Matches ATX-style headings (`#` through `######`).
 const ATX_HEADING_PATTERN = /^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/;
 // Captures the first YAML frontmatter block in the document.
@@ -258,7 +252,6 @@ function walkForTasks(
     const text = extractText(node);
     const pos = node.position;
     const isInlineCli = CLI_PREFIX.test(text);
-    const isRundownTask = RUNDOWN_PREFIX.test(text);
 
     const task: Task = {
       text,
@@ -270,7 +263,6 @@ function walkForTasks(
       offsetEnd: pos?.end?.offset ?? 0,
       file,
       isInlineCli,
-      isRundownTask,
       depth,
       children: [],
       subItems: [],
@@ -285,10 +277,6 @@ function walkForTasks(
 
     if (isInlineCli) {
       task.cliCommand = text.replace(CLI_PREFIX, "").trim();
-    }
-
-    if (isRundownTask) {
-      task.rundownArgs = text.replace(RUNDOWN_PREFIX, "").trim();
     }
 
     if (parentTask) {

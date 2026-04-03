@@ -34,7 +34,6 @@ describe("run-task-execution helpers", () => {
       offsetEnd: 17,
       file: "/workspace/tasks.md",
       isInlineCli: true,
-      isRundownTask: false,
       depth: 0,
       children: [],
       subItems: [],

@@ -62,6 +62,10 @@ interface MakeActionDependencies extends WorkerActionDependencies {
   makeModes: readonly ProcessRunMode[];
 }
 
+interface DoActionDependencies extends WorkerActionDependencies {
+  makeModes: readonly ProcessRunMode[];
+}
+
 /**
  * Resolves worker command arguments from either parsed CLI options or the `--` separator payload.
  *
@@ -528,6 +532,90 @@ export function createMakeCommandAction({
       cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,
       workerCommand: sharedRuntimeOptions.workerCommand,
     }));
+  };
+}
+
+/**
+ * Creates the `do` command action handler.
+ *
+ * The returned action composes bootstrap (`make`) and execution (`run --all`)
+ * against the same Markdown file with fail-fast phase boundaries.
+ */
+export function createDoCommandAction({
+  getApp,
+  getWorkerFromSeparator,
+  makeModes,
+}: DoActionDependencies): (seedText: string, markdownFile: string, opts: CliOpts) => CliActionResult {
+  return async (seedText: string, markdownFile: string, opts: CliOpts) => {
+    const targetMarkdownFile = resolveMakeMarkdownFile(markdownFile);
+    const mode = parseRunnerMode(opts.mode as string | undefined, makeModes);
+    const sharedRuntimeOptions = resolveSharedWorkerRuntimeOptions(opts, getWorkerFromSeparator);
+    const dryRun = Boolean(opts.dryRun as boolean | undefined);
+    const printPrompt = Boolean(opts.printPrompt as boolean | undefined);
+    const scanCount = parseScanCount(opts.scanCount as string | undefined);
+
+    const runSortMode = parseSortMode(opts.sort as string | undefined);
+    const verify = resolveVerifyFlag(opts);
+    const onlyVerify = Boolean(opts.onlyVerify as boolean | undefined);
+    const forceExecute = Boolean(opts.forceExecute as boolean | undefined);
+    const noRepair = resolveNoRepairFlag(opts);
+    const repairAttempts = parseRepairAttempts(opts.repairAttempts as string | undefined);
+    const traceOnly = Boolean(opts.traceOnly as boolean | undefined);
+    const commitAfterComplete = Boolean(opts.commit as boolean | undefined);
+    const commitMessageTemplate = normalizeOptionalString(opts.commitMessage);
+    const onCompleteCommand = normalizeOptionalString(opts.onComplete);
+    const onFailCommand = normalizeOptionalString(opts.onFail);
+    const clean = Boolean(opts.clean as boolean | undefined);
+    const redo = Boolean(opts.redo as boolean | undefined) || clean;
+    const resetAfter = Boolean(opts.resetAfter as boolean | undefined) || clean;
+    const roundsArg = opts.rounds as string | undefined;
+    const rounds = parseRounds(roundsArg);
+    if (roundsArg !== undefined && !(clean || (redo && resetAfter))) {
+      throw new Error("--rounds requires --clean or both --redo and --reset-after.");
+    }
+
+    const bootstrapCode = normalizeMakePhaseExitCode(await createMakeCommandAction({
+      getApp,
+      getWorkerFromSeparator,
+      makeModes,
+    })(seedText, targetMarkdownFile, opts));
+
+    if (bootstrapCode !== 0) {
+      return bootstrapCode;
+    }
+
+    return getApp().runTask({
+      source: targetMarkdownFile,
+      mode,
+      transport: sharedRuntimeOptions.transport,
+      sortMode: runSortMode,
+      verify,
+      onlyVerify,
+      forceExecute,
+      noRepair,
+      repairAttempts,
+      dryRun,
+      printPrompt,
+      keepArtifacts: sharedRuntimeOptions.keepArtifacts,
+      trace: sharedRuntimeOptions.trace,
+      traceOnly,
+      varsFileOption: sharedRuntimeOptions.varsFileOption,
+      cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,
+      workerCommand: sharedRuntimeOptions.workerCommand,
+      commitAfterComplete,
+      commitMessageTemplate,
+      onCompleteCommand,
+      onFailCommand,
+      showAgentOutput: sharedRuntimeOptions.showAgentOutput,
+      runAll: true,
+      redo,
+      resetAfter,
+      clean,
+      rounds,
+      forceUnlock: sharedRuntimeOptions.forceUnlock,
+      cliBlockTimeoutMs: sharedRuntimeOptions.cliBlockTimeoutMs,
+      ignoreCliBlock: sharedRuntimeOptions.ignoreCliBlock,
+    });
   };
 }
 

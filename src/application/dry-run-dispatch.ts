@@ -1,11 +1,5 @@
 import { type Task } from "../domain/parser.js";
-import { type PromptTransport } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
-import {
-  buildDelegatedRundownArgs,
-  parseRundownTaskArgs,
-  resolveDelegatedRundownInvocation,
-} from "./rundown-delegation.js";
 
 type EmitFn = (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
 
@@ -25,13 +19,6 @@ export interface HandleDryRunOrPrintPromptParams {
   verificationPrompt: string;
   automationCommand: string[];
   resolvedWorkerCommand: string[];
-  transport: PromptTransport;
-  keepArtifacts: boolean;
-  showAgentOutput: boolean;
-  ignoreCliBlock: boolean;
-  verify: boolean;
-  noRepair: boolean;
-  repairAttempts: number;
 }
 
 /**
@@ -78,13 +65,6 @@ export function handleDryRunOrPrintPrompt(params: HandleDryRunOrPrintPromptParam
     verificationPrompt,
     automationCommand,
     resolvedWorkerCommand,
-    transport,
-    keepArtifacts,
-    showAgentOutput,
-    ignoreCliBlock,
-    verify,
-    noRepair,
-    repairAttempts,
   } = params;
 
   if (printPrompt && onlyVerify) {
@@ -101,7 +81,7 @@ export function handleDryRunOrPrintPrompt(params: HandleDryRunOrPrintPromptParam
     return 0;
   }
 
-  if (!onlyVerify && !task.isInlineCli && !task.isRundownTask) {
+  if (!onlyVerify && !task.isInlineCli) {
     if (printPrompt) {
       // Standard worker task print mode emits the final prompt text.
       emit({ kind: "text", text: prompt });
@@ -128,38 +108,6 @@ export function handleDryRunOrPrintPrompt(params: HandleDryRunOrPrintPromptParam
     // Inline CLI dry run reports the command that would be executed.
     emitDryRunCliExpansionNote({ emit, dryRunSuppressesCliExpansion, dryRunCliBlockCount });
     emit({ kind: "info", message: "Dry run — would execute inline CLI: " + task.cliCommand! });
-    return 0;
-  }
-
-  if (!onlyVerify && task.isRundownTask && printPrompt) {
-    // Delegated rundown tasks print their delegation arguments instead of a prompt.
-    emit({ kind: "info", message: "Selected task is rundown delegate; no worker prompt is rendered." });
-    emit({ kind: "text", text: "rundown: " + (task.rundownArgs ?? "") });
-    return 0;
-  }
-
-  if (!onlyVerify && task.isRundownTask && dryRun) {
-    // Delegated rundown dry run builds inherited args and reports invocation.
-    emitDryRunCliExpansionNote({ emit, dryRunSuppressesCliExpansion, dryRunCliBlockCount });
-    const args = parseRundownTaskArgs(task.rundownArgs);
-    const delegatedInvocation = resolveDelegatedRundownInvocation(args);
-    const delegatedArgs = buildDelegatedRundownArgs(delegatedInvocation.subcommand, delegatedInvocation.args, {
-      parentWorkerCommand: resolvedWorkerCommand,
-      parentTransport: transport,
-      parentKeepArtifacts: keepArtifacts,
-      parentShowAgentOutput: showAgentOutput,
-      parentIgnoreCliBlock: ignoreCliBlock,
-      parentVerify: verify,
-      parentNoRepair: noRepair,
-      parentRepairAttempts: repairAttempts,
-    });
-    emit({
-      kind: "info",
-      message: "Dry run — would execute rundown task: rundown "
-        + delegatedInvocation.subcommand
-        + " "
-        + delegatedArgs.join(" "),
-    });
     return 0;
   }
 

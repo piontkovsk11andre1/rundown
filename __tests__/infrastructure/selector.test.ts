@@ -13,7 +13,6 @@ function makeTask(overrides: Partial<Task> & { depth: number; checked?: boolean;
     offsetEnd: 0,
     file: "test.md",
     isInlineCli: false,
-    isRundownTask: false,
     children: [],
     subItems: [],
     ...overrides,

@@ -23,7 +23,6 @@ describe("trace-run-session", () => {
       offsetEnd: 13,
       file: "/workspace/tasks.md",
       isInlineCli: false,
-      isRundownTask: false,
       depth: 0,
       children: [],
       subItems: [],

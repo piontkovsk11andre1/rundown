@@ -96,7 +96,6 @@ describe("run-task-utils", () => {
         offsetEnd: 10,
         file: "todo.md",
         isInlineCli: false,
-        isRundownTask: false,
         depth: 0,
         children: [],
         subItems: [],

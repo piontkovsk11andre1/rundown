@@ -51,7 +51,6 @@ describe("requiresWorkerCommand", () => {
       workerCommand: [],
       hasConfigWorker: false,
       isInlineCli: false,
-      isRundownTask: false,
       shouldVerify: false,
       onlyVerify: false,
     })).toBe(true);
@@ -62,7 +61,6 @@ describe("requiresWorkerCommand", () => {
       workerCommand: [],
       hasConfigWorker: false,
       isInlineCli: true,
-      isRundownTask: false,
       shouldVerify: false,
       onlyVerify: false,
     })).toBe(false);
@@ -73,7 +71,6 @@ describe("requiresWorkerCommand", () => {
       workerCommand: [],
       hasConfigWorker: false,
       isInlineCli: true,
-      isRundownTask: false,
       shouldVerify: true,
       onlyVerify: true,
     })).toBe(true);
@@ -84,31 +81,8 @@ describe("requiresWorkerCommand", () => {
       workerCommand: ["opencode", "run"],
       hasConfigWorker: false,
       isInlineCli: false,
-      isRundownTask: false,
       shouldVerify: true,
       onlyVerify: true,
-    })).toBe(false);
-  });
-
-  it("does not require a worker for rundown tasks", () => {
-    expect(requiresWorkerCommand({
-      workerCommand: [],
-      hasConfigWorker: false,
-      isInlineCli: false,
-      isRundownTask: true,
-      shouldVerify: true,
-      onlyVerify: true,
-    })).toBe(false);
-  });
-
-  it("does not require a worker for rundown tasks during execution", () => {
-    expect(requiresWorkerCommand({
-      workerCommand: [],
-      hasConfigWorker: false,
-      isInlineCli: false,
-      isRundownTask: true,
-      shouldVerify: false,
-      onlyVerify: false,
     })).toBe(false);
   });
 
@@ -117,7 +91,6 @@ describe("requiresWorkerCommand", () => {
       workerCommand: [],
       hasConfigWorker: true,
       isInlineCli: false,
-      isRundownTask: false,
       shouldVerify: true,
       onlyVerify: true,
     })).toBe(false);

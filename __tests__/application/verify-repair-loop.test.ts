@@ -613,7 +613,6 @@ function createTask(file = "tasks.md"): Task {
     offsetEnd: 12,
     file,
     isInlineCli: false,
-    isRundownTask: false,
     depth: 0,
     children: [],
     subItems: [],

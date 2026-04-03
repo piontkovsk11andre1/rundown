@@ -585,6 +585,29 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("would run: opencode run"))).toBe(true);
   });
 
+  it("do is registered and rejects non-wait modes before execution", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli([
+      "do",
+      "please do something",
+      "8. Do something.md",
+      "--mode",
+      "tui",
+    ], workspace);
+
+    expect(result.code).toBe(1);
+    const combinedOutput = [
+      ...result.errors,
+      ...result.logs,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n").toLowerCase();
+    expect(combinedOutput.includes("invalid --mode value: tui")).toBe(true);
+    expect(combinedOutput.includes("allowed: wait")).toBe(true);
+    expect(combinedOutput.includes("unknown command")).toBe(false);
+  });
+
   it("run executes memory-prefixed tasks and persists source-local memory artifacts", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");
@@ -2589,26 +2612,6 @@ describe.sequential("CLI integration", () => {
     expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli:");
   });
 
-  it("run --print-prompt does not execute rundown delegate tasks", async () => {
-    const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-    const childPath = path.join(workspace, "Child.md");
-
-    fs.writeFileSync(roadmapPath, "- [ ] rundown: Child.md --no-verify\n", "utf-8");
-    fs.writeFileSync(childPath, "- [ ] cli: echo child\n", "utf-8");
-
-    const result = await runCli([
-      "run",
-      "roadmap.md",
-      "--print-prompt",
-    ], workspace);
-
-    expect(result.code).toBe(0);
-    expect(result.logs.some((line) => line.includes("rundown delegate; no worker prompt is rendered"))).toBe(true);
-    expect(result.logs.some((line) => line.includes("rundown: Child.md --no-verify"))).toBe(true);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] rundown:");
-    expect(fs.readFileSync(childPath, "utf-8")).toContain("- [ ] cli:");
-  });
 
   it("run --print-prompt executes cli fenced blocks and prints expanded output", async () => {
     const workspace = makeTempWorkspace();
@@ -2899,311 +2902,6 @@ describe.sequential("CLI integration", () => {
     expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] cli: node -e");
   });
 
-  it("run executes a rundown delegate task and checks the parent task", async () => {
-    const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-    const childPath = path.join(workspace, "Child.md");
-    const previousArgv = process.argv.slice();
-    const cliEntrypoint = path.resolve("dist", "cli.js");
-
-    fs.writeFileSync(roadmapPath, "- [ ] rundown: Child.md --no-verify\n", "utf-8");
-    fs.writeFileSync(childPath, "- [ ] cli: echo child\n", "utf-8");
-
-    process.argv = [process.execPath, cliEntrypoint];
-
-    let result: Awaited<ReturnType<typeof runCli>>;
-    try {
-      result = await runCli([
-        "run",
-        "roadmap.md",
-        "--no-verify",
-      ], workspace);
-    } finally {
-      process.argv = previousArgv;
-    }
-
-    expect(result.code).toBe(0);
-    expect(result.logs.some((line) => line.includes("Delegating to rundown: rundown run Child.md --no-verify"))).toBe(true);
-    expect(result.logs.some((line) => line.includes("Task checked: rundown: Child.md --no-verify"))).toBe(true);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] rundown: Child.md --no-verify");
-    expect(fs.readFileSync(childPath, "utf-8")).toContain("- [x] cli: echo child");
-  });
-
-  it("run keeps parent rundown task unchecked when delegated run fails", async () => {
-    const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-    const childPath = path.join(workspace, "Child.md");
-    const previousArgv = process.argv.slice();
-    const cliEntrypoint = path.resolve("dist", "cli.js");
-
-    fs.writeFileSync(roadmapPath, "- [ ] rundown: Child.md --no-verify\n", "utf-8");
-    fs.writeFileSync(childPath, "- [ ] cli: __rundown_missing_command__\n", "utf-8");
-
-    process.argv = [process.execPath, cliEntrypoint];
-
-    let result: Awaited<ReturnType<typeof runCli>>;
-    try {
-      result = await runCli([
-        "run",
-        "roadmap.md",
-        "--no-verify",
-      ], workspace);
-    } finally {
-      process.argv = previousArgv;
-    }
-
-    expect(result.code).toBe(1);
-    expect(result.logs.some((line) => line.includes("Delegating to rundown: rundown run Child.md --no-verify"))).toBe(true);
-    expect(result.errors.some((line) => line.includes("Rundown run task exited with code"))).toBe(true);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] rundown: Child.md --no-verify");
-    expect(fs.readFileSync(childPath, "utf-8")).toContain("- [ ] cli: __rundown_missing_command__");
-  });
-
-  it("run forwards extra inline rundown args to delegated child run", async () => {
-    const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-    const childPath = path.join(workspace, "Child.md");
-    const markerPath = path.join(workspace, "child-inline-ran.txt");
-    const previousArgv = process.argv.slice();
-    const cliEntrypoint = path.resolve("dist", "cli.js");
-
-    fs.writeFileSync(roadmapPath, "- [ ] rundown: Child.md --no-verify --dry-run\n", "utf-8");
-    fs.writeFileSync(
-      childPath,
-      `- [ ] cli: node -e "require('node:fs').writeFileSync(${JSON.stringify(markerPath)},'1')"\n`,
-      "utf-8",
-    );
-
-    process.argv = [process.execPath, cliEntrypoint];
-
-    let result: Awaited<ReturnType<typeof runCli>>;
-    try {
-      result = await runCli([
-        "run",
-        "roadmap.md",
-        "--no-verify",
-      ], workspace);
-    } finally {
-      process.argv = previousArgv;
-    }
-
-    expect(result.code).toBe(0);
-    expect(result.logs.some((line) => line.includes("Delegating to rundown: rundown run Child.md --no-verify --dry-run"))).toBe(true);
-    expect(result.logs.some((line) => line.includes("Task checked: rundown: Child.md --no-verify --dry-run"))).toBe(true);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] rundown: Child.md --no-verify --dry-run");
-    expect(fs.readFileSync(childPath, "utf-8")).toContain("- [ ] cli:");
-    expect(fs.existsSync(markerPath)).toBe(false);
-  });
-
-  it("run supports recursive rundown delegation across three files", async () => {
-    const workspace = makeTempWorkspace();
-    const parentPath = path.join(workspace, "Parent.md");
-    const middlePath = path.join(workspace, "Middle.md");
-    const leafPath = path.join(workspace, "Leaf.md");
-    const workerPath = path.join(workspace, "noop-worker.mjs");
-    const previousArgv = process.argv.slice();
-    const cliEntrypoint = path.resolve("dist", "cli.js");
-
-    fs.writeFileSync(parentPath, "- [ ] rundown: Middle.md --no-verify\n", "utf-8");
-    fs.writeFileSync(middlePath, "- [ ] rundown: Leaf.md --no-verify\n", "utf-8");
-    fs.writeFileSync(leafPath, "- [ ] cli: echo leaf\n", "utf-8");
-    fs.writeFileSync(workerPath, "process.exit(0);\n", "utf-8");
-
-    process.argv = [process.execPath, cliEntrypoint];
-
-    let result: Awaited<ReturnType<typeof runCli>>;
-    try {
-      result = await runCli([
-        "run",
-        "Parent.md",
-        "--no-verify",
-        "--worker",
-        "node",
-        workerPath.replace(/\\/g, "/"),
-      ], workspace);
-    } finally {
-      process.argv = previousArgv;
-    }
-
-    expect(result.code).toBe(0);
-    expect(result.logs.some((line) => line.includes("Delegating to rundown: rundown run Middle.md --no-verify"))).toBe(true);
-    const parentSource = fs.readFileSync(parentPath, "utf-8");
-    const middleSource = fs.readFileSync(middlePath, "utf-8");
-    const leafSource = fs.readFileSync(leafPath, "utf-8");
-    expect(parentSource).toContain("- [x] rundown: Middle.md --no-verify");
-    expect(middleSource).toContain("- [x] rundown: Leaf.md --no-verify");
-    expect(leafSource).toContain("- [x] cli: echo leaf");
-  });
-
-  it("run fails rundown delegation when target matches current source file", async () => {
-    const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-    fs.writeFileSync(roadmapPath, "- [ ] rundown: roadmap.md --no-verify\n", "utf-8");
-
-    const result = await runCli([
-      "run",
-      "roadmap.md",
-      "--no-verify",
-    ], workspace);
-
-    const combinedOutput = [
-      ...result.logs,
-      ...result.errors,
-      ...result.stdoutWrites,
-      ...result.stderrWrites,
-    ].join("\n");
-
-    expect(result.code).toBe(1);
-    expect(combinedOutput.includes("Rundown task target resolves to the current source file; aborting to avoid infinite recursion.")).toBe(true);
-    expect(result.logs.some((line) => line.includes("Delegating to rundown: rundown run roadmap.md --no-verify"))).toBe(false);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe("- [ ] rundown: roadmap.md --no-verify\n");
-  });
-
-  it("run fails rundown delegation when target file is missing", async () => {
-    const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-    fs.writeFileSync(roadmapPath, "- [ ] rundown: Missing.md --no-verify\n", "utf-8");
-
-    const result = await runCli([
-      "run",
-      "roadmap.md",
-      "--no-verify",
-    ], workspace);
-
-    const combinedOutput = [
-      ...result.logs,
-      ...result.errors,
-      ...result.stdoutWrites,
-      ...result.stderrWrites,
-    ].join("\n");
-
-    expect(result.code).toBe(1);
-    expect(combinedOutput.includes("Rundown task target file not found:")).toBe(true);
-    expect(combinedOutput.includes("Update the path or create the file before running again.")).toBe(true);
-    expect(result.logs.some((line) => line.includes("Delegating to rundown: rundown run Missing.md --no-verify"))).toBe(false);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe("- [ ] rundown: Missing.md --no-verify\n");
-  });
-
-  it("run --dry-run with rundown task prints delegated command", async () => {
-    const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-    const childPath = path.join(workspace, "Child.md");
-    const markerPath = path.join(workspace, "child-inline-ran.txt");
-
-    fs.writeFileSync(roadmapPath, "- [ ] rundown: Child.md --no-verify\n", "utf-8");
-    fs.writeFileSync(
-      childPath,
-      `- [ ] cli: node -e "require('node:fs').writeFileSync(${JSON.stringify(markerPath)},'1')"\n`,
-      "utf-8",
-    );
-
-    const result = await runCli([
-      "run",
-      "roadmap.md",
-      "--dry-run",
-      "--no-verify",
-    ], workspace);
-
-    expect(result.code).toBe(0);
-    expect(result.logs.some((line) => line.includes("Dry run — would execute rundown task: rundown run Child.md --no-verify"))).toBe(true);
-    expect(result.logs.some((line) => line.includes("Delegating to rundown: rundown run Child.md --no-verify"))).toBe(false);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] rundown: Child.md --no-verify");
-    expect(fs.readFileSync(childPath, "utf-8")).toContain("- [ ] cli:");
-    expect(fs.existsSync(markerPath)).toBe(false);
-  });
-
-  it("run fails explicit delegated run when source operand is missing", async () => {
-    const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-    fs.writeFileSync(roadmapPath, "- [ ] rundown: run --no-verify\n", "utf-8");
-
-    const result = await runCli([
-      "run",
-      "roadmap.md",
-      "--no-verify",
-    ], workspace);
-
-    const combinedOutput = [
-      ...result.logs,
-      ...result.errors,
-      ...result.stdoutWrites,
-      ...result.stderrWrites,
-    ].join("\n");
-
-    expect(result.code).toBe(1);
-    expect(combinedOutput.includes("Rundown task requires a source operand before any flags")).toBe(true);
-    expect(result.logs.some((line) => line.includes("Delegating to rundown:"))).toBe(false);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe("- [ ] rundown: run --no-verify\n");
-  });
-
-  it("run fails explicit delegated make when required operands are missing", async () => {
-    const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-    fs.writeFileSync(roadmapPath, "- [ ] rundown: make --no-verify\n", "utf-8");
-
-    const result = await runCli([
-      "run",
-      "roadmap.md",
-      "--no-verify",
-    ], workspace);
-
-    const combinedOutput = [
-      ...result.logs,
-      ...result.errors,
-      ...result.stdoutWrites,
-      ...result.stderrWrites,
-    ].join("\n");
-
-    expect(result.code).toBe(1);
-    expect(combinedOutput.includes("Rundown task delegated `make` requires <seed-text> and <markdown-file> operands")).toBe(true);
-    expect(result.logs.some((line) => line.includes("Delegating to rundown:"))).toBe(false);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe("- [ ] rundown: make --no-verify\n");
-  });
-
-  it("run delegated make inherits only compatible parent defaults and keeps child explicit overrides", async () => {
-    const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-    const delegatedFilePath = path.join(workspace, "Delegated.md");
-
-    fs.writeFileSync(
-      roadmapPath,
-      "- [ ] rundown: make SeedFromDelegate Delegated.md --worker opencode run --transport arg\n",
-      "utf-8",
-    );
-
-    const result = await runCli([
-      "run",
-      "roadmap.md",
-      "--dry-run",
-      "--no-verify",
-      "--repair-attempts",
-      "5",
-      "--transport",
-      "file",
-      "--keep-artifacts",
-      "--show-agent-output",
-      "--ignore-cli-block",
-      "--worker",
-      "node",
-      "parent-worker.cjs",
-    ], workspace);
-
-    const combinedOutput = [
-      ...result.logs,
-      ...result.errors,
-      ...result.stdoutWrites,
-      ...result.stderrWrites,
-    ].join("\n");
-
-    expect(result.code).toBe(0);
-    expect(result.logs.some((line) => line.includes("Dry run — would execute rundown task: rundown make SeedFromDelegate Delegated.md --worker opencode run --transport arg --keep-artifacts --show-agent-output --ignore-cli-block"))).toBe(true);
-    expect(combinedOutput.includes("--worker node parent-worker.cjs")).toBe(false);
-    expect(combinedOutput.includes("--transport file")).toBe(false);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] rundown: make SeedFromDelegate Delegated.md --worker opencode run --transport arg");
-    expect(fs.existsSync(delegatedFilePath)).toBe(false);
-    expect(combinedOutput.includes("unknown option '--repair-attempts'")).toBe(false);
-    expect(combinedOutput.includes("unknown option '--no-verify'")).toBe(false);
-  });
 
   it("run --print-prompt takes precedence over --dry-run", async () => {
     const workspace = makeTempWorkspace();
@@ -3562,7 +3260,7 @@ describe.sequential("CLI integration", () => {
     ], workspace);
 
     expect(result.code).toBe(0);
-    expect(result.logs.some((line) => line.includes("discuss worker stdout"))).toBe(false);
+    expect(result.stdoutWrites.some((line) => line.includes("discuss worker stdout"))).toBe(false);
     expect(result.stderrWrites.some((line) => line.includes("discuss worker stderr"))).toBe(false);
     expect(result.logs.some((line) => line.includes("Discussion completed."))).toBe(true);
   });
@@ -4719,109 +4417,6 @@ describe.sequential("CLI integration", () => {
     expect(content).toContain("- [ ] cli: echo unreachable\n");
   });
 
-  it("run --all processes regular, cli, and rundown tasks sequentially", async () => {
-    const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-    const childPath = path.join(workspace, "Child.md");
-    const workerScriptPath = path.join(workspace, "all-worker.mjs");
-    const previousArgv = process.argv.slice();
-    const cliEntrypoint = path.resolve("dist", "cli.js");
-    fs.writeFileSync(
-      roadmapPath,
-      "- [ ] Write docs\n- [ ] cli: echo inline\n- [ ] rundown: Child.md --no-verify\n",
-      "utf-8",
-    );
-    fs.writeFileSync(childPath, "- [ ] cli: echo child\n", "utf-8");
-    fs.writeFileSync(workerScriptPath, "process.exit(0);\n", "utf-8");
-
-    process.argv = [process.execPath, cliEntrypoint];
-
-    let result: Awaited<ReturnType<typeof runCli>>;
-    try {
-      result = await runCli([
-        "run",
-        "roadmap.md",
-        "--no-verify",
-        "--all",
-        "--",
-        "node",
-        workerScriptPath.replace(/\\/g, "/"),
-      ], workspace);
-    } finally {
-      process.argv = previousArgv;
-    }
-
-    expect(result.code).toBe(0);
-    expect(result.logs.some((line) => line.includes("Task checked: Write docs"))).toBe(true);
-    expect(result.logs.some((line) => line.includes("Task checked: cli: echo inline"))).toBe(true);
-    expect(result.logs.some((line) => line.includes("Delegating to rundown: rundown run Child.md --no-verify"))).toBe(true);
-    expect(result.logs.some((line) => line.includes("Task checked: rundown: Child.md --no-verify"))).toBe(true);
-    expect(result.logs.some((line) => line.includes("All tasks completed (3 total)"))).toBe(true);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe(
-      "- [x] Write docs\n- [x] cli: echo inline\n- [x] rundown: Child.md --no-verify\n",
-    );
-    expect(fs.readFileSync(childPath, "utf-8")).toContain("- [x] cli: echo child");
-  });
-
-  it("run --all fails fast when delegated rundown run child exits non-zero", async () => {
-    const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-    const childPath = path.join(workspace, "Child.md");
-
-    fs.writeFileSync(
-      roadmapPath,
-      "- [ ] cli: echo before\n- [ ] rundown: Child.md --no-verify\n- [ ] cli: echo after\n",
-      "utf-8",
-    );
-    fs.writeFileSync(childPath, "- [ ] cli: __rundown_missing_command__\n", "utf-8");
-
-    const result = await runCli([
-      "run",
-      "roadmap.md",
-      "--no-verify",
-      "--all",
-    ], workspace);
-
-    expect(result.code).toBe(1);
-    expect(result.logs.some((line) => line.includes("Task checked: cli: echo before"))).toBe(true);
-    expect(result.logs.some((line) => line.includes("Delegating to rundown: rundown run Child.md --no-verify"))).toBe(true);
-    expect(result.errors.some((line) => line.includes("Rundown run task exited with code"))).toBe(true);
-    expect(result.logs.some((line) => line.includes("Task checked: cli: echo after"))).toBe(false);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe(
-      "- [x] cli: echo before\n- [ ] rundown: Child.md --no-verify\n- [ ] cli: echo after\n",
-    );
-    expect(fs.readFileSync(childPath, "utf-8")).toContain("- [ ] cli: __rundown_missing_command__");
-  });
-
-  it("run --all fails fast when delegated rundown make child exits non-zero", async () => {
-    const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-    const workerScriptPath = path.join(workspace, "delegated-make-failing-worker.cjs");
-
-    fs.writeFileSync(
-      roadmapPath,
-      "- [ ] cli: echo before\n- [ ] rundown: make \"Seed from delegate\" \"3. Delegated.md\"\n- [ ] cli: echo after\n",
-      "utf-8",
-    );
-    fs.writeFileSync(workerScriptPath, "process.exit(2);\n", "utf-8");
-
-    const result = await runCli([
-      "run",
-      "roadmap.md",
-      "--no-verify",
-      "--all",
-      "--worker",
-      "node",
-      workerScriptPath.replace(/\\/g, "/"),
-    ], workspace);
-
-    expect(result.code).toBe(1);
-    expect(result.logs.some((line) => line.includes("Task checked: cli: echo before"))).toBe(true);
-    expect(result.logs.some((line) => line.includes("Task checked: cli: echo after"))).toBe(false);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe(
-      "- [x] cli: echo before\n- [ ] rundown: make \"Seed from delegate\" \"3. Delegated.md\"\n- [ ] cli: echo after\n",
-    );
-  });
 
   it("run --all returns 0 when there are no tasks to run", async () => {
     const workspace = makeTempWorkspace();
@@ -4936,21 +4531,6 @@ describe.sequential("CLI integration", () => {
     expect(compactHelpOutput).toContain("--all");
   });
 
-  it("does not add a standalone rundown subcommand for rundown: tasks", async () => {
-    const workspace = makeTempWorkspace();
-
-    const result = await runCli(["rundown", "roadmap.md"], workspace);
-
-    expect(result.code).toBe(1);
-    const combinedOutput = [
-      ...result.errors,
-      ...result.logs,
-      ...result.stdoutWrites,
-      ...result.stderrWrites,
-    ].join("\n").toLowerCase();
-    expect(combinedOutput.includes("unknown command")).toBe(true);
-    expect(combinedOutput.includes("rundown")).toBe(true);
-  });
 
   it("plan --help shows --force-unlock and scan-count default", async () => {
     const workspace = makeTempWorkspace();

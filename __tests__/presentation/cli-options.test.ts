@@ -1829,6 +1829,94 @@ describe("CLI plan and utility command normalization", () => {
     }
   });
 
+  it("do defaults mode to wait and runs make then run-all on the same markdown file", async () => {
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const runTask = vi.fn(async () => 0);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-do-default-mode-"));
+    const markdownFile = path.join(tempRoot, "8. Do something.md");
+
+    try {
+      const result = await invokeDoAndCaptureCalls([
+        "do",
+        "please do something",
+        markdownFile,
+        "--worker",
+        "opencode",
+        "run",
+      ], runTask, researchTask, planTask);
+
+      expect(result.exitCode).toBe(0);
+      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(planTask).toHaveBeenCalledTimes(1);
+      expect(runTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).toHaveBeenCalledWith(expect.objectContaining({ mode: "wait", source: markdownFile }));
+      expect(planTask).toHaveBeenCalledWith(expect.objectContaining({ mode: "wait", source: markdownFile }));
+      expect(runTask).toHaveBeenCalledWith(expect.objectContaining({
+        source: markdownFile,
+        mode: "wait",
+        runAll: true,
+      }));
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("do rejects interactive --mode values such as tui before bootstrap phases", async () => {
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const runTask = vi.fn(async () => 0);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-do-mode-reject-"));
+    const markdownFile = path.join(tempRoot, "8. Do something.md");
+
+    try {
+      const result = await invokeDoAndCaptureCalls([
+        "do",
+        "please do something",
+        markdownFile,
+        "--mode",
+        "tui",
+      ], runTask, researchTask, planTask);
+
+      expect(result.exitCode).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid --mode value: tui"));
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Allowed: wait"));
+      expect(researchTask).not.toHaveBeenCalled();
+      expect(planTask).not.toHaveBeenCalled();
+      expect(runTask).not.toHaveBeenCalled();
+      expect(fs.existsSync(markdownFile)).toBe(false);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("do fails fast when bootstrap research fails and does not run execution phase", async () => {
+    const researchTask = vi.fn(async () => 2);
+    const planTask = vi.fn(async () => 0);
+    const runTask = vi.fn(async () => 0);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-do-bootstrap-fail-"));
+    const markdownFile = path.join(tempRoot, "8. Do something.md");
+
+    try {
+      const result = await invokeDoAndCaptureCalls([
+        "do",
+        "please do something",
+        markdownFile,
+        "--worker",
+        "opencode",
+        "run",
+      ], runTask, researchTask, planTask);
+
+      expect(result.exitCode).toBe(2);
+      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(planTask).not.toHaveBeenCalled();
+      expect(runTask).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("make writes seed text verbatim, including quotes, newlines, and shell characters", async () => {
     const seedText = [
       "He said, \"keep 'all' symbols\".",
@@ -3253,6 +3341,54 @@ async function invokeMakeAndCaptureCalls(
   vi.doMock("../../src/create-app.js", () => ({
     createApp: () => ({
       runTask: vi.fn(async () => 0),
+      discussTask: vi.fn(async () => 0),
+      reverifyTask: vi.fn(async () => 0),
+      revertTask: vi.fn(async () => 0),
+      nextTask: vi.fn(async () => 0),
+      listTasks: vi.fn(async () => 0),
+      planTask,
+      researchTask,
+      unlockTask: vi.fn(async () => 0),
+      initProject: vi.fn(async () => 0),
+      manageArtifacts: vi.fn(() => 0),
+    }),
+  }));
+
+  let exitCode = 0;
+  try {
+    const { parseCliArgs } = await import("../../src/presentation/cli.js");
+    await parseCliArgs(args);
+  } catch (error) {
+    const message = String(error);
+    const match = /CLI exited with code (\d+)/.exec(message);
+    if (match) {
+      exitCode = Number(match[1]);
+    } else if (/process\.exit unexpectedly called/.test(message)) {
+      exitCode = 1;
+    } else {
+      throw error;
+    }
+  } finally {
+    restoreEnv(previousEnv);
+  }
+
+  return { exitCode };
+}
+
+async function invokeDoAndCaptureCalls(
+  args: string[],
+  runTask: ReturnType<typeof vi.fn>,
+  researchTask: ReturnType<typeof vi.fn>,
+  planTask: ReturnType<typeof vi.fn>,
+): Promise<{ exitCode: number }> {
+  const previousEnv = captureEnv();
+
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
+
+  vi.doMock("../../src/create-app.js", () => ({
+    createApp: () => ({
+      runTask,
       discussTask: vi.fn(async () => 0),
       reverifyTask: vi.fn(async () => 0),
       revertTask: vi.fn(async () => 0),

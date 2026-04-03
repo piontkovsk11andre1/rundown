@@ -36,8 +36,6 @@ export interface WorkerRequirementInput {
   hasConfigWorker: boolean;
   // True when the selected task is represented by an inline CLI block.
   isInlineCli: boolean;
-  // True when invocation originates from a rundown-generated task.
-  isRundownTask: boolean;
   // Effective verification flag for this run.
   shouldVerify: boolean;
   // True when execution is skipped and only verification is requested.
@@ -84,11 +82,6 @@ export function requiresWorkerCommand(input: WorkerRequirementInput): boolean {
 
   // Config-defined workers also satisfy the requirement.
   if (input.hasConfigWorker) {
-    return false;
-  }
-
-  // Rundown-generated tasks can run without an explicit worker command.
-  if (input.isRundownTask) {
     return false;
   }
 

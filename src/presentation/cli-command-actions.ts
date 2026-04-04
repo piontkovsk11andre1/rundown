@@ -11,6 +11,7 @@ import {
   parseRevertMethod,
   parseRounds,
   parseRunnerMode,
+  parsePlanDeep,
   parseScanCount,
   parseSortMode,
   resolveSharedWorkerRuntimeOptions,
@@ -417,6 +418,7 @@ export function createPlanCommandAction({
     // Resolve planning input and execution controls from CLI options.
     const markdownFile = resolvePlanMarkdownFile(markdownFiles);
     const scanCount = parseScanCount(opts.scanCount as string | undefined);
+    const deep = parsePlanDeep(opts.deep as string | undefined);
     const mode = parseRunnerMode(opts.mode as string | undefined, plannerModes);
     const transport = parsePromptTransport(opts.transport as string | undefined);
     const dryRun = opts.dryRun as boolean;
@@ -435,6 +437,7 @@ export function createPlanCommandAction({
     return getApp().planTask({
       source: markdownFile,
       scanCount,
+      deep,
       mode,
       transport,
       showAgentOutput,

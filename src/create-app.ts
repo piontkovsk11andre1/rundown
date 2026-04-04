@@ -90,6 +90,7 @@ export type App = {
 export interface PlanTaskCommandOptions {
   source: string;
   scanCount?: number;
+  deep?: number;
   mode: PlanTaskUseCaseOptions["mode"];
   transport: PlanTaskUseCaseOptions["transport"];
   showAgentOutput: boolean;

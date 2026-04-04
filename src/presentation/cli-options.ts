@@ -27,6 +27,8 @@ const SORT_MODES: readonly SortMode[] = ["name-sort", "none", "old-first", "new-
 const REVERT_METHODS = ["revert", "reset"] as const;
 // Default number of plan files scanned when no explicit value is provided.
 const DEFAULT_PLAN_SCAN_COUNT = 3;
+// Default additional nested plan depth passes.
+const DEFAULT_PLAN_DEEP = 0;
 
 /**
  * Defines validation rules used to parse integer-valued CLI options.
@@ -181,6 +183,20 @@ export function parseScanCount(value: string | undefined): number {
     min: 1,
     integerLabel: "positive integer",
     safeIntegerLabel: "safe positive integer",
+  });
+}
+
+/**
+ * Parses the additional deep planning pass count with a non-negative minimum bound.
+ */
+export function parsePlanDeep(value: string | undefined): number {
+  return parseIntOption(value, {
+    optionName: "deep",
+    defaultValue: DEFAULT_PLAN_DEEP,
+    allowUndefined: false,
+    min: 0,
+    integerLabel: "non-negative integer",
+    safeIntegerLabel: "safe non-negative integer",
   });
 }
 

@@ -1,7 +1,14 @@
-import { getTraceInstructions } from "../domain/defaults.js";
+import {
+  DEFAULT_DEEP_PLAN_TEMPLATE,
+  getTraceInstructions,
+} from "../domain/defaults.js";
 import { expandCliBlocks, extractCliBlocks } from "../domain/cli-block.js";
 import { parseTasks } from "../domain/parser.js";
-import { insertPlannerTodos } from "../domain/planner.js";
+import {
+  insertPlannerTodos,
+  insertSubitems,
+  parsePlannerOutput,
+} from "../domain/planner.js";
 import {
   buildMemoryTemplateVars,
   renderTemplate,
@@ -96,6 +103,7 @@ export interface PlanTaskDependencies {
 export interface PlanTaskOptions {
   source: string;
   scanCount?: number;
+  deep?: number;
   mode: RunnerMode;
   transport: PromptTransport;
   showAgentOutput: boolean;
@@ -127,6 +135,7 @@ export function createPlanTask(
     const {
       source,
       scanCount = 3,
+      deep = 0,
       mode,
       transport,
       showAgentOutput,
@@ -257,6 +266,7 @@ export function createPlanTask(
         dependencies.templateLoader,
         dependencies.pathOperations,
       ).plan;
+      const deepPlanTemplate = DEFAULT_DEEP_PLAN_TEMPLATE;
 
       const vars: TemplateVars = {
         ...extraTemplateVars,
@@ -308,9 +318,39 @@ export function createPlanTask(
         }
       }
 
-      // Print mode returns the effective prompt without invoking the worker.
+      // Print mode returns rendered scan/deep prompts without invoking workers.
       if (printPrompt) {
         emit({ kind: "text", text: buildPlanScanPrompt(prompt, documentSource, 1, scanCount) });
+        if (deep > 0) {
+          const deepCandidates = collectDeepLeafCandidates(documentSource, source);
+          if (deepCandidates.length === 0) {
+            emit({
+              kind: "info",
+              message: "Deep prompt preview skipped: no leaf TODO items without children.",
+            });
+          } else {
+            emit({
+              kind: "info",
+              message: "Deep prompt preview (pass 1 of " + deep + ") for " + deepCandidates.length + " parent task" + (deepCandidates.length === 1 ? "" : "s") + ".",
+            });
+            for (const parentTask of deepCandidates) {
+              const deepPrompt = buildPlanDeepPrompt({
+                deepPlanTemplate,
+                latestDocumentSource: documentSource,
+                parentTask,
+                deepPass: 1,
+                deep,
+              });
+              emit({ kind: "text", text: deepPrompt });
+            }
+            if (deep > 1) {
+              emit({
+                kind: "info",
+                message: "Deep prompt preview includes pass 1 only. Later passes depend on worker output from earlier passes.",
+              });
+            }
+          }
+        }
         return 0;
       }
 
@@ -329,6 +369,35 @@ export function createPlanTask(
         emit({ kind: "info", message: "Dry run — would plan: " + resolvedWorkerCommand.join(" ") });
         emit({ kind: "info", message: "Scan count: " + scanCount });
         emit({ kind: "info", message: "Prompt length: " + buildPlanScanPrompt(prompt, documentSource, 1, scanCount).length + " chars" });
+        if (deep > 0) {
+          const deepCandidates = collectDeepLeafCandidates(documentSource, source);
+          emit({ kind: "info", message: "Deep count: " + deep });
+          if (deepCandidates.length === 0) {
+            emit({
+              kind: "info",
+              message: "Dry run — deep passes would converge immediately: no leaf TODO items without children.",
+            });
+          } else {
+            emit({
+              kind: "info",
+              message: "Dry run — would run deep pass 1 of " + deep + " for " + deepCandidates.length + " parent task" + (deepCandidates.length === 1 ? "" : "s") + ".",
+            });
+            const firstDeepPrompt = buildPlanDeepPrompt({
+              deepPlanTemplate,
+              latestDocumentSource: documentSource,
+              parentTask: deepCandidates[0]!,
+              deepPass: 1,
+              deep,
+            });
+            emit({ kind: "info", message: "Deep prompt length (first parent task): " + firstDeepPrompt.length + " chars" });
+            if (deep > 1) {
+              emit({
+                kind: "info",
+                message: "Dry run — passes 2.." + deep + " depend on child TODO additions from earlier deep passes.",
+              });
+            }
+          }
+        }
         return 0;
       }
 
@@ -579,6 +648,122 @@ export function createPlanTask(
           insertedTotal += applyResult.insertedCount;
         }
 
+        // Execute additional deep passes to generate nested child TODO items.
+        if (deep > 0) {
+          for (let deepPass = 1; deepPass <= deep; deepPass += 1) {
+            try {
+              latestDocumentSource = dependencies.fileSystem.readText(source);
+            } catch {
+              emit({
+                kind: "error",
+                message: "Unable to reload Markdown document before deep pass " + deepPass + ": " + source,
+              });
+              return finishPlan(3, "failed");
+            }
+
+            const deepCandidates = collectDeepLeafCandidates(latestDocumentSource, source);
+
+            if (deepCandidates.length === 0) {
+              emit({
+                kind: "info",
+                message: "Deep planning converged at pass " + deepPass + ": no leaf TODO items without children.",
+              });
+              break;
+            }
+
+            emit({
+              kind: "info",
+              message: "Running deep pass " + deepPass + " of " + deep + " for " + deepCandidates.length + " parent task" + (deepCandidates.length === 1 ? "" : "s") + ".",
+            });
+
+            let deepPassInsertedCount = 0;
+
+            for (let deepTaskIndex = 0; deepTaskIndex < deepCandidates.length; deepTaskIndex += 1) {
+              const parentTask = deepCandidates[deepTaskIndex]!;
+              const deepTaskLabel = buildPlanDeepTaskLabel(deepPass, deep, deepTaskIndex + 1, deepCandidates.length);
+              const deepPrompt = buildPlanDeepPrompt({
+                deepPlanTemplate,
+                latestDocumentSource,
+                parentTask,
+                deepPass,
+                deep,
+              });
+
+              emit({
+                kind: "info",
+                message: "Executing planner " + deepTaskLabel + " for parent line " + parentTask.line + "...",
+              });
+
+              const planPhaseTrace = beginPlanPhaseTrace(resolvedWorkerCommand);
+              const runResult = await dependencies.workerExecutor.runWorker({
+                command: [...resolvedWorkerCommand],
+                prompt: deepPrompt,
+                mode,
+                transport,
+                trace,
+                cwd,
+                configDir: dependencies.configDir?.configDir,
+                artifactContext,
+                artifactPhase: "plan",
+                artifactPhaseLabel: buildPlanDeepPhaseLabel(deepPass, deepTaskIndex + 1),
+                artifactExtra: {
+                  deepPass,
+                  deepCount: deep,
+                  deep,
+                  deepTaskIndex: deepTaskIndex + 1,
+                  deepTaskCount: deepCandidates.length,
+                  parentTaskLine: parentTask.line,
+                  parentTaskDepth: parentTask.depth,
+                  deepTaskLabel,
+                },
+              });
+              completePlanPhaseTrace(
+                planPhaseTrace,
+                runResult.exitCode,
+                runResult.stdout,
+                runResult.stderr,
+                mode === "wait",
+              );
+
+              if (mode === "wait" && showAgentOutput && runResult.stderr) {
+                emit({ kind: "stderr", text: runResult.stderr });
+              }
+
+              if (runResult.exitCode !== 0 && runResult.exitCode !== null) {
+                emit({
+                  kind: "error",
+                  message: "Planner worker exited with code " + runResult.exitCode + " during deep pass " + deepPass + ", task " + (deepTaskIndex + 1) + ".",
+                });
+                return finishPlan(1, "execution-failed");
+              }
+
+              const deepStdoutReason = validateDeepPlannerStdoutContract(runResult.stdout);
+              if (deepStdoutReason) {
+                emit({ kind: "error", message: deepStdoutReason });
+                return finishPlan(1, "failed");
+              }
+
+              const deepSubitems = parsePlannerOutput(runResult.stdout);
+              if (deepSubitems.length === 0) {
+                continue;
+              }
+
+              latestDocumentSource = insertSubitems(latestDocumentSource, parentTask, deepSubitems);
+              dependencies.fileSystem.writeText(source, latestDocumentSource);
+              insertedTotal += deepSubitems.length;
+              deepPassInsertedCount += deepSubitems.length;
+            }
+
+            if (deepPassInsertedCount === 0) {
+              emit({
+                kind: "info",
+                message: "Deep planning converged at pass " + deepPass + ": no child TODO items were added.",
+              });
+              break;
+            }
+          }
+        }
+
         // Hitting the scan cap without convergence is tracked explicitly.
         if (scansExecuted > 0 && convergenceOutcome === null) {
           convergenceOutcome = "scan-cap-reached";
@@ -722,11 +907,99 @@ function buildPlanScanPhaseLabel(scanIndex: number, scanCount: number): string {
 }
 
 /**
+ * Builds a stable deep-task label for per-parent nested planning runs.
+ */
+function buildPlanDeepTaskLabel(
+  deepPass: number,
+  deepCount: number,
+  taskIndex: number,
+  taskCount: number,
+): string {
+  const passWidth = Math.max(2, String(deepCount).length);
+  const taskWidth = Math.max(2, String(taskCount).length);
+  const passLabel = String(deepPass).padStart(passWidth, "0");
+  const countLabel = String(deepCount).padStart(passWidth, "0");
+  const taskLabel = String(taskIndex).padStart(taskWidth, "0");
+  const taskCountLabel = String(taskCount).padStart(taskWidth, "0");
+  return `plan-deep-${passLabel}-of-${countLabel}-task-${taskLabel}-of-${taskCountLabel}`;
+}
+
+/**
+ * Builds artifact phase labels for deep per-parent planning runs.
+ */
+function buildPlanDeepPhaseLabel(deepPass: number, taskIndex: number): string {
+  const passLabel = String(deepPass).padStart(2, "0");
+  const taskLabel = String(taskIndex).padStart(3, "0");
+  return `plan-deep-${passLabel}-task-${taskLabel}`;
+}
+
+/**
+ * Builds the per-parent deep planning prompt.
+ */
+function buildPlanDeepPrompt(options: {
+  deepPlanTemplate: string;
+  latestDocumentSource: string;
+  parentTask: ReturnType<typeof parseTasks>[number];
+  deepPass: number;
+  deep: number;
+}): string {
+  const stableDocumentSource = normalizeScanDocumentSource(options.latestDocumentSource);
+  const deepVars: TemplateVars = {
+    traceInstructions: "",
+    task: options.parentTask.text,
+    file: options.parentTask.file,
+    context: stableDocumentSource,
+    taskIndex: options.parentTask.index,
+    taskLine: options.parentTask.line,
+    source: stableDocumentSource,
+    parentTask: options.parentTask.text,
+    parentTaskLine: options.parentTask.line,
+    parentTaskDepth: options.parentTask.depth,
+  };
+
+  const renderedTemplate = renderTemplate(options.deepPlanTemplate, deepVars);
+  return `${renderedTemplate}\n\n## Deep Pass Context\n\nDeep pass ${options.deepPass} of ${options.deep}.\n\nTreat this deep pass as a clean standalone worker session. Do not rely on prior prompt history or prior deep-pass outputs beyond the current document state shown above.\n\nReturn only missing child TODO additions for the selected parent task.`;
+}
+
+/**
+ * Validates deep planner stdout against child TODO-only output rules.
+ */
+function validateDeepPlannerStdoutContract(plannerOutput: string): string | null {
+  if (plannerOutput.trim().length === 0) {
+    return null;
+  }
+
+  const lines = plannerOutput.split(/\r?\n/);
+  const uncheckedTodoPattern = /^\s*[-*+]\s+\[ \]\s+\S/;
+
+  for (const line of lines) {
+    if (line.trim().length === 0) {
+      continue;
+    }
+
+    if (!uncheckedTodoPattern.test(line)) {
+      return "Deep planner output violated stdout contract. Return only unchecked TODO lines using `- [ ]` syntax.";
+    }
+  }
+
+  return null;
+}
+
+/**
  * Normalizes source text to LF newlines and guarantees a trailing newline.
  */
 function normalizeScanDocumentSource(source: string): string {
   const normalized = source.replace(/\r\n?/g, "\n");
   return normalized.endsWith("\n") ? normalized : `${normalized}\n`;
+}
+
+/**
+ * Collects unchecked leaf tasks that can receive deep child TODO insertions.
+ */
+function collectDeepLeafCandidates(markdownSource: string, sourcePath: string): ReturnType<typeof parseTasks> {
+  return parseTasks(markdownSource, sourcePath)
+    .filter((task) => !task.checked && task.children.length === 0)
+    .sort((left, right) => right.line - left.line);
 }
 
 /**

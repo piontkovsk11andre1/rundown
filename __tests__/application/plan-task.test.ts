@@ -366,6 +366,49 @@ describe("plan-task", () => {
     expect(events.some((event) => event.kind === "info" && event.message.includes("Dry run — would plan:"))).toBe(true);
   });
 
+  it("prints deep prompts in --print-prompt mode without executing deep workers", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, events, workerExecutor, artifactStore } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\n- [ ] Parent with child\n  - [ ] Existing child\n- [ ] Leaf parent\n",
+    });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile, printPrompt: true, deep: 2 }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(workerExecutor.runWorker)).not.toHaveBeenCalled();
+    expect(vi.mocked(artifactStore.createContext)).not.toHaveBeenCalled();
+    const textEvents = events.filter((event): event is Extract<ApplicationOutputEvent, { kind: "text" }> => event.kind === "text");
+    expect(textEvents.some((event) => event.text.includes("## Scan Context"))).toBe(true);
+    expect(textEvents.some((event) => event.text.includes("## Parent task context"))).toBe(true);
+    expect(textEvents.some((event) => event.text.includes("Parent task: Leaf parent"))).toBe(true);
+    expect(events.some((event) => event.kind === "info" && event.message.includes("pass 1 only"))).toBe(true);
+  });
+
+  it("reports deep-pass dry-run plan without executing worker", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, events, workerExecutor, artifactStore } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\n- [ ] Leaf parent\n",
+    });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile, dryRun: true, deep: 2 }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(workerExecutor.runWorker)).not.toHaveBeenCalled();
+    expect(vi.mocked(artifactStore.createContext)).not.toHaveBeenCalled();
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Deep count: 2"))).toBe(true);
+    expect(events.some((event) => event.kind === "info" && event.message.includes("would run deep pass 1 of 2 for 1 parent task"))).toBe(true);
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Deep prompt length (first parent task):"))).toBe(true);
+    expect(events.some((event) => event.kind === "info" && event.message.includes("passes 2..2 depend on child TODO additions"))).toBe(true);
+  });
+
   it("detects existing TODO items before any worker invocation", async () => {
     const cwd = "/workspace";
     const markdownFile = path.join(cwd, "roadmap.md");
@@ -1124,6 +1167,238 @@ describe("plan-task", () => {
       expect.anything(),
       expect.objectContaining({ status: "failed", preserve: true }),
     );
+  });
+
+  it("runs deep passes after scan convergence and inserts child TODO items", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const content = "# Roadmap\n- [ ] Build release flow\n";
+    const { dependencies, workerExecutor, fileSystem } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: content,
+    });
+
+    vi.mocked(workerExecutor.runWorker)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "- [ ] Define release steps\n- [ ] Validate rollout\n",
+        stderr: "",
+      });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile, deep: 1 }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(workerExecutor.runWorker)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(workerExecutor.runWorker).mock.calls[1]?.[0]?.artifactPhaseLabel).toBe("plan-deep-01-task-001");
+    expect(vi.mocked(workerExecutor.runWorker).mock.calls[1]?.[0]?.artifactExtra).toEqual(
+      expect.objectContaining({
+        deepPass: 1,
+        deepCount: 1,
+      }),
+    );
+    const deepPrompt = vi.mocked(workerExecutor.runWorker).mock.calls[1]?.[0]?.prompt ?? "";
+    expect(deepPrompt).toContain("## Parent task context");
+    expect(deepPrompt).toContain("Build release flow");
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledTimes(1);
+    const updated = vi.mocked(fileSystem.writeText).mock.calls[0]?.[1] ?? "";
+    expect(updated).toContain("- [ ] Build release flow\n  - [ ] Define release steps\n  - [ ] Validate rollout\n");
+  });
+
+  it("re-parses between deep passes and expands deeper leaf tasks", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const content = "# Roadmap\n- [ ] Build release flow\n";
+    const { dependencies, workerExecutor, fileSystem } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: content,
+    });
+
+    vi.mocked(workerExecutor.runWorker)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "- [ ] Child A\n- [ ] Child B\n",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "- [ ] Grandchild A1\n",
+        stderr: "",
+      });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile, deep: 2 }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(workerExecutor.runWorker)).toHaveBeenCalledTimes(4);
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(workerExecutor.runWorker).mock.calls[1]?.[0]?.artifactExtra).toEqual(
+      expect.objectContaining({
+        deepPass: 1,
+        deepCount: 2,
+      }),
+    );
+    expect(vi.mocked(workerExecutor.runWorker).mock.calls[2]?.[0]?.artifactExtra).toEqual(
+      expect.objectContaining({
+        deepPass: 2,
+        deepCount: 2,
+      }),
+    );
+    const finalSource = vi.mocked(fileSystem.writeText).mock.calls[1]?.[1] ?? "";
+    expect(finalSource).toContain("- [ ] Build release flow\n  - [ ] Child A\n    - [ ] Grandchild A1\n  - [ ] Child B\n");
+
+    const deepPromptForChildB = vi.mocked(workerExecutor.runWorker).mock.calls[2]?.[0]?.prompt ?? "";
+    const deepPromptForChildA = vi.mocked(workerExecutor.runWorker).mock.calls[3]?.[0]?.prompt ?? "";
+    expect(deepPromptForChildB).toContain("Parent task: Child B");
+    expect(deepPromptForChildA).toContain("Parent task: Child A");
+  });
+
+  it("runs a single deep pass and inserts first-level child TODO items", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const content = "# Roadmap\n- [ ] Parent task\n";
+    const { dependencies, workerExecutor, fileSystem } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: content,
+    });
+
+    vi.mocked(workerExecutor.runWorker)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "- [ ] Child one\n- [ ] Child two\n",
+        stderr: "",
+      });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile, deep: 1 }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(workerExecutor.runWorker)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(workerExecutor.runWorker).mock.calls[1]?.[0]?.artifactPhaseLabel).toBe("plan-deep-01-task-001");
+    const updated = vi.mocked(fileSystem.writeText).mock.calls[0]?.[1] ?? "";
+    expect(updated).toContain("- [ ] Parent task\n  - [ ] Child one\n  - [ ] Child two\n");
+  });
+
+  it("runs multiple deep passes and inserts nested descendants", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const content = "# Roadmap\n- [ ] Parent task\n";
+    const { dependencies, workerExecutor, fileSystem } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: content,
+    });
+
+    vi.mocked(workerExecutor.runWorker)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "- [ ] Child\n",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "- [ ] Grandchild\n",
+        stderr: "",
+      });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile, deep: 2 }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(workerExecutor.runWorker)).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledTimes(2);
+    const finalSource = vi.mocked(fileSystem.writeText).mock.calls[1]?.[1] ?? "";
+    expect(finalSource).toContain("- [ ] Parent task\n  - [ ] Child\n    - [ ] Grandchild\n");
+  });
+
+  it("stops deep passes early when a pass adds no child TODO items", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const content = "# Roadmap\n- [ ] Parent task\n";
+    const { dependencies, workerExecutor, fileSystem, events } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: content,
+    });
+
+    vi.mocked(workerExecutor.runWorker)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "\n",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "- [ ] Should not run\n",
+        stderr: "",
+      });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile, deep: 3 }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(workerExecutor.runWorker)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(fileSystem.writeText)).not.toHaveBeenCalled();
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Deep planning converged at pass 1"))).toBe(true);
+    expect(events.some((event) => event.kind === "info" && event.message.includes("no child TODO items were added"))).toBe(true);
+  });
+
+  it("skips deep worker execution when there are no unchecked leaf tasks", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const content = "# Roadmap\n- [ ] Parent\n  - [x] Existing child\n";
+    const { dependencies, workerExecutor, fileSystem, events } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: content,
+    });
+
+    vi.mocked(workerExecutor.runWorker).mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile, deep: 2 }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(workerExecutor.runWorker)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(fileSystem.writeText)).not.toHaveBeenCalled();
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Deep planning converged at pass 1: no leaf TODO items without children."))).toBe(true);
   });
 });
 

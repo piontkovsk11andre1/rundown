@@ -53,6 +53,7 @@ const RESEARCH_MODES: readonly ProcessRunMode[] = ["wait", "tui"];
 const MAKE_MODES: readonly ProcessRunMode[] = ["wait"];
 const DO_MODES: readonly ProcessRunMode[] = ["wait"];
 const DEFAULT_PLAN_SCAN_COUNT = 3;
+const DEFAULT_PLAN_DEEP = 0;
 const DEFAULT_VARS_FILE_HELP = "Load extra template variables from a JSON file (default: <config-dir>/vars.json)";
 const STALE_CALL_CLI_CACHE_RELATIVE_PATH = path.join("cache", "cli-blocks");
 
@@ -239,6 +240,11 @@ program
     "--scan-count <n>",
     "Max clean-session TODO coverage scans (default: 3)",
     String(DEFAULT_PLAN_SCAN_COUNT),
+  )
+  .option(
+    "--deep <n>",
+    "Additional nested planning depth passes after top-level scans (default: 0)",
+    String(DEFAULT_PLAN_DEEP),
   )
   .option("--mode <mode>", "Planner mode: wait", "wait")
   .option("--transport <transport>", "Prompt transport: file, arg", "file")

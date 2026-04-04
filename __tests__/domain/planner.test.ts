@@ -132,6 +132,29 @@ describe("insertSubitems", () => {
     ].join("\n"));
   });
 
+  it("supports multi-level nesting from depth 0 to depth 2", () => {
+    const source = ["- [ ] Parent", "- [ ] Sibling"].join("\n");
+
+    const depth0Task = makeTask({ line: 1, depth: 0, text: "Parent" });
+    const withDepth1 = insertSubitems(source, depth0Task, ["- [ ] Child"]);
+
+    const depth1Task = makeTask({ line: 2, depth: 1, text: "Child" });
+    const withDepth2 = insertSubitems(withDepth1, depth1Task, ["- [ ] Grandchild"]);
+
+    expect(withDepth1).toBe([
+      "- [ ] Parent",
+      "  - [ ] Child",
+      "- [ ] Sibling",
+    ].join("\n"));
+
+    expect(withDepth2).toBe([
+      "- [ ] Parent",
+      "  - [ ] Child",
+      "    - [ ] Grandchild",
+      "- [ ] Sibling",
+    ].join("\n"));
+  });
+
   it("returns source unchanged when no subitems given", () => {
     const source = "- [ ] Task\n";
     const task = makeTask({ line: 1 });

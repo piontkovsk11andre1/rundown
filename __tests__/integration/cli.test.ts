@@ -4714,7 +4714,7 @@ describe.sequential("CLI integration", () => {
   });
 
 
-  it("plan --help shows --force-unlock and scan-count default", async () => {
+  it("plan --help shows --force-unlock, scan-count, and deep defaults", async () => {
     const workspace = makeTempWorkspace();
 
     const result = await runCli(["plan", "roadmap.md", "--help"], workspace);
@@ -4725,6 +4725,8 @@ describe.sequential("CLI integration", () => {
     expect(compactHelpOutput).toContain("--force-unlock");
     expect(compactHelpOutput).toContain("--scan-count <n>");
     expect(compactHelpOutput).toContain("Max clean-session TODO coverage scans (default: 3)");
+    expect(compactHelpOutput).toContain("--deep <n>");
+    expect(compactHelpOutput).toContain("Additional nested planning depth passes after top-level scans (default: 0)");
   });
 
   it("init --help explains --config-dir creation target", async () => {
@@ -5472,6 +5474,50 @@ describe.sequential("CLI integration", () => {
     expect(updated).toContain("- [ ] Existing task");
     expect(updated).toContain("- [ ] Add API checklist");
     expect(updated).toContain("- [ ] Add rollback checklist");
+  });
+
+  it("plan --deep 2 produces a two-level task hierarchy", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "plan-worker-deep-two-level.cjs");
+
+    fs.writeFileSync(
+      roadmapPath,
+      "# Roadmap\n\n- [ ] Build release flow\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        "const promptPath = process.argv[process.argv.length - 1];",
+        "const prompt = fs.readFileSync(promptPath, 'utf-8');",
+        "if (prompt.includes('Parent task: Build release flow')) {",
+        "  console.log('- [ ] Define release steps');",
+        "  console.log('- [ ] Validate rollout');",
+        "}",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "plan",
+      "roadmap.md",
+      "--scan-count",
+      "1",
+      "--deep",
+      "2",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Running deep pass 1 of 2"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Running deep pass 2 of 2"))).toBe(true);
+    const updated = fs.readFileSync(roadmapPath, "utf-8");
+    expect(updated).toContain("- [ ] Build release flow\n  - [ ] Define release steps\n  - [ ] Validate rollout\n");
+    expect(updated).not.toContain("    - [ ]");
   });
 
   it("plan uses markdown updated by earlier scans in later scan prompts", async () => {

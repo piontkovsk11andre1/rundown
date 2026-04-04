@@ -237,6 +237,49 @@ Example output format:
 `;
 
 /**
+ * Default deep-plan prompt template used to propose missing additive child TODO
+ * items for a single parent task.
+ */
+export const DEFAULT_DEEP_PLAN_TEMPLATE = `\
+${DEFAULT_TEMPLATE_SHARED_PREFIX}
+${DEFAULT_TEMPLATE_MEMORY_SECTION}
+
+## Parent task context
+
+- Parent task: {{parentTask}}
+- Parent line: {{parentTaskLine}}
+- Parent depth: {{parentTaskDepth}}
+
+## Current document state
+
+{{source}}
+
+## Phase
+
+Plan the next layer of child TODO items for the single parent task above.
+
+Return ONLY a Markdown list of unchecked child task items using \`- [ ]\` syntax,
+one per missing child TODO to add under the parent task.
+
+Rules:
+- Scope output strictly to child TODO items for the selected parent task.
+- Each child TODO should be a single clear action and specific enough to implement directly.
+- Only propose additive child TODO candidates that are not already present under the parent.
+- Do not include the parent task itself in output.
+- Do not include indentation; return plain \`- [ ]\` lines only.
+- Do not include any other text, headings, or explanation.
+- Do not rewrite, reorder, delete, or mark existing TODO items as complete.
+- Do not modify the source Markdown file.
+
+Example output format:
+
+- [ ] First concrete child step
+- [ ] Second concrete child step
+- [ ] Third concrete child step
+{{traceInstructions}}
+`;
+
+/**
  * Default research-phase prompt template used to enrich a source document with
  * implementation context before planning.
  */

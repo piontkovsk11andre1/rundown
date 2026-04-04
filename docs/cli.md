@@ -224,6 +224,8 @@ rundown plan docs/spec.md --scan-count 3 -- opencode run
 
 `plan` treats the full document as intent input. It creates actionable TODOs when none exist, then runs clean-session coverage scans that append only missing TODO items until convergence or the scan cap is reached.
 
+When `--deep <n>` is set, `plan` then runs `n` additional nested passes after top-level scan convergence. Each deep pass targets current leaf TODO items (parents with no checkbox children) and asks the planner for child `- [ ]` items only.
+
 Input rules:
 
 - Exactly one file path is required.
@@ -235,6 +237,7 @@ Options:
 | Option | Description | Default |
 |---|---|---|
 | `--scan-count <n>` | Maximum clean-session scan iterations. Must be a safe positive integer. | `3` |
+| `--deep <n>` | Additional nested planning passes after top-level scans. Must be a safe non-negative integer (`0` disables deep passes). | `0` |
 | `--mode <mode>` | Planner execution mode. Currently only `wait` is supported. | `wait` |
 | `--transport <file|arg>` | Prompt transport for planner invocations. | `file` |
 | `--force-unlock` | Remove stale source lockfile before acquiring the planner lock. Active locks held by live processes are not removed. | off |
@@ -265,6 +268,15 @@ Scan loop and convergence semantics:
   - worker output contains no valid new TODO additions after normalization/idempotency checks.
 - If no convergence signal occurs before the limit, planning stops at the configured scan cap.
 
+Deep pass semantics (`--deep`):
+
+- `--deep 0` (default): behavior is unchanged; only top-level scan coverage runs.
+- Deep passes run after top-level scans, from `1..deep`.
+- Before each deep pass, `plan` re-reads and re-parses the latest on-disk document.
+- Each deep pass runs clean worker sessions per parent task and only inserts child TODO lines beneath that parent.
+- Deep planning converges early when a pass has no candidate leaf tasks or when no child TODO lines are added.
+- `--print-prompt` and `--dry-run` include deep-pass behavior preview when `--deep > 0`.
+
 Artifacts and audit expectations:
 
 - Scan phases are recorded with deterministic labels (`plan-scan-01`, `plan-scan-02`, ...).
@@ -284,8 +296,17 @@ rundown plan docs/spec.md --scan-count 3 -- opencode run
 # Existing TODOs: append missing implementation items only
 rundown plan docs/migration.md --scan-count 2 -- opencode run
 
+# Add one nested layer of child TODOs after top-level scans
+rundown plan docs/spec.md --scan-count 3 --deep 1 -- opencode run
+
+# Add two nested layers (children, then grandchildren)
+rundown plan docs/spec.md --scan-count 3 --deep 2 -- opencode run
+
 # PowerShell-safe worker form
 rundown plan docs/spec.md --scan-count 2 --worker opencode run
+
+# PowerShell-safe deep planning
+rundown plan docs/spec.md --scan-count 2 --deep 2 --worker opencode run
 ```
 
 ### `rundown make <seed-text> <markdown-file>`
@@ -733,6 +754,7 @@ Direct `--var` entries override values loaded from `--vars-file`.
 ### Planning
 
 - `--scan-count <n>` — set max clean-session plan scans for `plan` (positive integer)
+- `--deep <n>` — add nested child-generation passes after top-level scans (non-negative integer)
 
 ### Listing
 

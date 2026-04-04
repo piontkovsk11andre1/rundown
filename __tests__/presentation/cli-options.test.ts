@@ -2248,6 +2248,8 @@ describe("CLI plan and utility command normalization", () => {
       "tasks.md",
       "--scan-count",
       "3",
+      "--deep",
+      "2",
       "--dry-run",
       "--print-prompt",
       "--keep-artifacts",
@@ -2262,6 +2264,7 @@ describe("CLI plan and utility command normalization", () => {
 
     expect(call.source).toBe("tasks.md");
     expect(call.scanCount).toBe(3);
+    expect(call.deep).toBe(2);
     expect(call.mode).toBe("wait");
     expect(call.transport).toBe("file");
     expect(call.showAgentOutput).toBe(false);
@@ -2464,6 +2467,55 @@ describe("CLI plan and utility command normalization", () => {
     ], planTask);
 
     expect(call.scanCount).toBe(3);
+  });
+
+  it("defaults plan deep to 0", async () => {
+    const planTask = vi.fn(async () => 0);
+    const call = await invokePlanAndCaptureCall([
+      "plan",
+      "tasks.md",
+      "--worker",
+      "opencode",
+      "run",
+    ], planTask);
+
+    expect(call.deep).toBe(0);
+  });
+
+  it("logs a CLI error and exits with code 1 on non-integer deep value", async () => {
+    const planTask = vi.fn(async () => 0);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await invokePlanAndExpectExit([
+      "plan",
+      "tasks.md",
+      "--deep",
+      "many",
+      "--worker",
+      "opencode",
+      "run",
+    ], planTask);
+
+    expect(planTask).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid --deep value: many"));
+  });
+
+  it("logs a CLI error and exits with code 1 on negative deep value", async () => {
+    const planTask = vi.fn(async () => 0);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await invokePlanAndExpectExit([
+      "plan",
+      "tasks.md",
+      "--deep",
+      "-1",
+      "--worker",
+      "opencode",
+      "run",
+    ], planTask);
+
+    expect(planTask).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid --deep value: -1"));
   });
 
   it("logs a CLI error and exits with code 1 on non-integer scan count", async () => {

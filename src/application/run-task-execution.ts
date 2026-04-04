@@ -21,6 +21,7 @@ import {
   isWorkingDirectoryClean,
 } from "./git-operations.js";
 import { runTaskIteration } from "./run-task-iteration.js";
+import { createCachedCommandExecutor } from "../infrastructure/cached-command-executor.js";
 import {
   getAutomationWorkerCommand,
   isOpenCodeWorkerCommand,
@@ -133,6 +134,7 @@ export interface RunTaskOptions {
   forceUnlock: boolean;
   cliBlockTimeoutMs?: number;
   ignoreCliBlock: boolean;
+  cacheCliBlocks?: boolean;
 }
 
 /**
@@ -144,7 +146,7 @@ export function createRunTaskExecution(
 ): (options: RunTaskOptions) => Promise<number> {
   const emit = dependencies.output.emit.bind(dependencies.output);
   // Provide a no-op CLI executor when none is injected by the caller.
-  const cliBlockExecutor = dependencies.cliBlockExecutor ?? {
+  const defaultCliBlockExecutor = dependencies.cliBlockExecutor ?? {
     async execute() {
       return {
         exitCode: 0,
@@ -186,7 +188,12 @@ export function createRunTaskExecution(
       forceUnlock,
       cliBlockTimeoutMs,
       ignoreCliBlock,
+      cacheCliBlocks,
     } = options;
+
+    const cliBlockExecutor = cacheCliBlocks
+      ? createCachedCommandExecutor(defaultCliBlockExecutor)
+      : defaultCliBlockExecutor;
 
     // Build optional timeout configuration for template CLI blocks.
     const cliExecutionOptions: CommandExecutionOptions | undefined = cliBlockTimeoutMs === undefined

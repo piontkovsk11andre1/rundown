@@ -3040,6 +3040,188 @@ describe.sequential("CLI integration", () => {
     expect(compactHelpOutput).toContain("--on-complete <command> Run a shell command after successful task completion");
   });
 
+  it("call is registered and enforces clean, all, and cache-cli-blocks semantics", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    fs.writeFileSync(roadmapPath, "- [x] cli: echo already done\n- [ ] cli: echo next\n", "utf-8");
+
+    const result = await runCli([
+      "call",
+      "roadmap.md",
+      "--no-verify",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.filter((line) => line.includes("Task checked:")).length).toBe(2);
+    expect(result.logs.some((line) => /Reset 1 checkbox(?:es)? in /.test(line) && line.includes("roadmap.md"))).toBe(true);
+    expect(result.logs.some((line) => /Reset 2 checkbox(?:es)? in /.test(line) && line.includes("roadmap.md"))).toBe(true);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe("- [ ] cli: echo already done\n- [ ] cli: echo next\n");
+  });
+
+  it("call --help includes run-style options", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli(["call", "roadmap.md", "--help"], workspace);
+
+    expect(result.code).toBe(0);
+    const helpOutput = result.stdoutWrites.join("\n");
+    const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("--clean Shorthand for --redo --reset-after");
+    expect(compactHelpOutput).toContain("--all Run all tasks sequentially instead of stopping after one (alias: all)");
+    expect(compactHelpOutput).toContain("--cache-cli-blocks Cache `cli` fenced block command output for the duration of this run");
+  });
+
+  it("call removes stale on-disk cli cache artifacts at startup", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const staleCacheDir = path.join(workspace, ".rundown", "cache", "cli-blocks");
+    fs.mkdirSync(staleCacheDir, { recursive: true });
+    fs.writeFileSync(path.join(staleCacheDir, "stale-cache.json"), "{\"stale\":true}\n", "utf-8");
+    fs.writeFileSync(roadmapPath, "- [ ] cli: echo cleanup cache\n", "utf-8");
+
+    const result = await runCli([
+      "call",
+      "roadmap.md",
+      "--no-verify",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(fs.existsSync(staleCacheDir)).toBe(false);
+  });
+
+  it("call tears down cli cache artifacts on success", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const cacheDir = path.join(workspace, ".rundown", "cache", "cli-blocks");
+    const workerScriptPath = path.join(workspace, "create-cache-success.cjs");
+
+    fs.writeFileSync(roadmapPath, "- [ ] complete task\n", "utf-8");
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        "const path = require('node:path');",
+        "const cacheDir = path.join(process.cwd(), '.rundown', 'cache', 'cli-blocks');",
+        "fs.mkdirSync(cacheDir, { recursive: true });",
+        "fs.writeFileSync(path.join(cacheDir, 'runtime-cache.json'), '{\"ok\":true}', 'utf-8');",
+        "console.log('OK');",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "call",
+      "roadmap.md",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+      "--no-verify",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(fs.existsSync(cacheDir)).toBe(false);
+  });
+
+  it("call tears down cli cache artifacts on failure", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const cacheDir = path.join(workspace, ".rundown", "cache", "cli-blocks");
+    const workerScriptPath = path.join(workspace, "create-cache-fail.cjs");
+
+    fs.writeFileSync(roadmapPath, "- [ ] fail task\n", "utf-8");
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        "const path = require('node:path');",
+        "const cacheDir = path.join(process.cwd(), '.rundown', 'cache', 'cli-blocks');",
+        "fs.mkdirSync(cacheDir, { recursive: true });",
+        "fs.writeFileSync(path.join(cacheDir, 'runtime-cache.json'), '{\"ok\":false}', 'utf-8');",
+        "process.exit(1);",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "call",
+      "roadmap.md",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+      "--no-verify",
+    ], workspace);
+
+    expect(result.code).toBe(1);
+    expect(fs.existsSync(cacheDir)).toBe(false);
+  });
+
+  it("run --cache-cli-blocks reuses cached CLI expansion results across reached expansion phases", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const cliHitCounterPath = path.join(workspace, "cli-block-hit-count.log");
+    const workerScriptPath = path.join(workspace, "verify-ok-worker.cjs");
+    const normalizedHitCounterPath = cliHitCounterPath.replace(/\\/g, "/");
+    const cliBlockCommand = `node -e \"const fs=require('node:fs');fs.appendFileSync('${normalizedHitCounterPath}','hit\\n','utf-8');console.log('cached-cli-block');\"`;
+
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(
+      path.join(workspace, ".rundown", "execute.md"),
+      [
+        "## Execute",
+        "",
+        "```cli",
+        cliBlockCommand,
+        "```",
+        "",
+        "{{task}}",
+      ].join("\n"),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(workspace, ".rundown", "verify.md"),
+      [
+        "## Verify",
+        "",
+        "```cli",
+        cliBlockCommand,
+        "```",
+        "",
+        "Return exactly OK when the task is complete.",
+      ].join("\n"),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      roadmapPath,
+      [
+        "# Roadmap",
+        "",
+        "```cli",
+        cliBlockCommand,
+        "```",
+        "",
+        "- [ ] Confirm cached CLI blocks",
+      ].join("\n"),
+      "utf-8",
+    );
+    fs.writeFileSync(workerScriptPath, "console.log('OK');\n", "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--cache-cli-blocks",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const hitLines = fs.readFileSync(cliHitCounterPath, "utf-8")
+      .trim()
+      .split("\n")
+      .filter((line) => line.length > 0);
+    expect(hitLines).toHaveLength(1);
+  });
+
   it("discuss --help lists mode, prompt, and lock options", async () => {
     const workspace = makeTempWorkspace();
 
@@ -5970,6 +6152,24 @@ describe.sequential("CLI integration", () => {
     expect(result.code).toBe(0);
     expect(result.logs.some((line) => line.includes("Parent"))).toBe(true);
     expect(fs.existsSync(lockPath)).toBe(true);
+  });
+
+  it("list does not initialize or clean up call CLI cache artifacts", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "notes.md";
+    const sourcePath = path.join(workspace, sourceName);
+    const cacheDir = path.join(workspace, ".rundown", "cache", "cli-blocks");
+    const cacheMarkerPath = path.join(cacheDir, "cache-marker.txt");
+    fs.writeFileSync(sourcePath, "- [ ] Parent\n", "utf-8");
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(cacheMarkerPath, "keep-me\n", "utf-8");
+
+    const result = await runCli(["list", sourceName], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Parent"))).toBe(true);
+    expect(fs.existsSync(cacheDir)).toBe(true);
+    expect(fs.readFileSync(cacheMarkerPath, "utf-8")).toBe("keep-me\n");
   });
 
   it("list keeps blocked-task label semantics", async () => {

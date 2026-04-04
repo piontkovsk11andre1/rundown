@@ -52,6 +52,20 @@ describe("CLI run option normalization", () => {
     expect(call.ignoreCliBlock).toBe(true);
   });
 
+  it("passes --cache-cli-blocks flag to run task", async () => {
+    const runTask = vi.fn(async () => 0);
+    const call = await invokeRunAndCaptureCall([
+      "run",
+      "tasks.md",
+      "--cache-cli-blocks",
+      "--worker",
+      "opencode",
+      "run",
+    ], runTask);
+
+    expect(call.cacheCliBlocks).toBe(true);
+  });
+
   it("passes show-agent-output option to run task", async () => {
     const runTask = vi.fn(async () => 0);
     const call = await invokeRunAndCaptureCall([
@@ -430,6 +444,24 @@ describe("CLI run option normalization", () => {
     expect(call.verify).toBe(true);
     expect(call.keepArtifacts).toBe(true);
     expect(call.runAll).toBe(true);
+  });
+
+  it("call enforces clean all-task execution with CLI block caching", async () => {
+    const runTask = vi.fn(async () => 0);
+    const call = await invokeRunAndCaptureCall([
+      "call",
+      "tasks.md",
+      "--worker",
+      "opencode",
+      "run",
+    ], runTask);
+
+    expect(call.source).toBe("tasks.md");
+    expect(call.clean).toBe(true);
+    expect(call.redo).toBe(true);
+    expect(call.resetAfter).toBe(true);
+    expect(call.runAll).toBe(true);
+    expect(call.cacheCliBlocks).toBe(true);
   });
 
   it("passes force-execute option to run task", async () => {

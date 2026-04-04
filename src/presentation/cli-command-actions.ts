@@ -46,6 +46,8 @@ interface RunActionDependencies extends WorkerActionDependencies {
   runnerModes: readonly ProcessRunMode[];
 }
 
+type CallActionDependencies = RunActionDependencies;
+
 interface DiscussActionDependencies extends WorkerActionDependencies {
   discussModes: readonly ProcessRunMode[];
 }
@@ -136,6 +138,7 @@ export function createRunCommandAction({
     const forceUnlock = Boolean(opts.forceUnlock as boolean | undefined);
     const ignoreCliBlock = resolveIgnoreCliBlockFlag(opts);
     const cliBlockTimeoutMs = parseCliBlockTimeout(opts.cliBlockTimeout as string | undefined);
+    const cacheCliBlocks = Boolean(opts.cacheCliBlocks as boolean | undefined);
 
     // Pass a normalized set of options to the domain application layer.
     return getApp().runTask({
@@ -169,8 +172,34 @@ export function createRunCommandAction({
       forceUnlock,
       cliBlockTimeoutMs,
       ignoreCliBlock,
+      cacheCliBlocks,
     });
   };
+}
+
+/**
+ * Creates the `call` command action handler.
+ *
+ * The returned action mirrors `run` options but enforces a clean all-task session
+ * with CLI block caching enabled.
+ */
+export function createCallCommandAction({
+  getApp,
+  getWorkerFromSeparator,
+  runnerModes,
+}: CallActionDependencies): (source: string, opts: CliOpts) => CliActionResult {
+  const runAction = createRunCommandAction({
+    getApp,
+    getWorkerFromSeparator,
+    runnerModes,
+  });
+
+  return (source: string, opts: CliOpts) => runAction(source, {
+    ...opts,
+    all: true,
+    clean: true,
+    cacheCliBlocks: true,
+  });
 }
 
 /**
@@ -573,6 +602,7 @@ export function createDoCommandAction({
     if (roundsArg !== undefined && !(clean || (redo && resetAfter))) {
       throw new Error("--rounds requires --clean or both --redo and --reset-after.");
     }
+    const cacheCliBlocks = Boolean(opts.cacheCliBlocks as boolean | undefined);
 
     const bootstrapCode = normalizeMakePhaseExitCode(await createMakeCommandAction({
       getApp,
@@ -615,6 +645,7 @@ export function createDoCommandAction({
       forceUnlock: sharedRuntimeOptions.forceUnlock,
       cliBlockTimeoutMs: sharedRuntimeOptions.cliBlockTimeoutMs,
       ignoreCliBlock: sharedRuntimeOptions.ignoreCliBlock,
+      cacheCliBlocks,
     });
   };
 }

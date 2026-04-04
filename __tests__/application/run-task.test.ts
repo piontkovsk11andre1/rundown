@@ -914,6 +914,53 @@ describe("run-task orchestration", () => {
     );
   });
 
+  it("reuses cached CLI block executor results across source, task template, and verify template expansion", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const cliBlockExecutor: CommandExecutor = {
+      execute: vi.fn(async () => ({ exitCode: 0, stdout: "cached", stderr: "" })),
+    };
+    const { dependencies } = createDependencies({
+      cwd,
+      task: {
+        ...createTask(taskFile, "build release"),
+        line: 5,
+      },
+      fileSystem: createInMemoryFileSystem({
+        [taskFile]: [
+          "```cli",
+          "echo same",
+          "```",
+          "",
+          "- [ ] build release",
+        ].join("\n"),
+      }),
+      gitClient: createGitClientMock(),
+      cliBlockExecutor,
+    });
+
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((filePath: string) => {
+      if (filePath.endsWith("execute.md") || filePath.endsWith("verify.md")) {
+        return "```cli\necho same\n```";
+      }
+      return null;
+    });
+
+    const code = await createRunTask(dependencies)(createOptions({
+      workerCommand: ["opencode", "run"],
+      verify: true,
+      cacheCliBlocks: true,
+    }));
+
+    expect(code).toBe(0);
+    expect(cliBlockExecutor.execute).toHaveBeenCalledTimes(1);
+    expect(cliBlockExecutor.execute).toHaveBeenCalledWith(
+      "echo same",
+      cwd,
+      expect.objectContaining({ onCommandExecuted: expect.any(Function) }),
+    );
+  });
+
   it("returns lock error as execution failure", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");

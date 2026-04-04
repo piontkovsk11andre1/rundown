@@ -1,6 +1,9 @@
 import { Command } from "commander";
+import fs from "node:fs";
+import path from "node:path";
 import type { ProcessRunMode } from "../domain/ports/index.js";
 import { DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS } from "../domain/ports/command-executor.js";
+import { CONFIG_DIR_NAME } from "../domain/ports/config-dir-port.js";
 import { collectOption } from "./cli-options.js";
 import { registerLockReleaseSignalHandlers } from "./cli-lock-handlers.js";
 import {
@@ -26,6 +29,7 @@ import {
 } from "./cli-argv.js";
 import {
   createArtifactsCommandAction,
+  createCallCommandAction,
   createDiscussCommandAction,
   createDoCommandAction,
   createInitCommandAction,
@@ -50,6 +54,7 @@ const MAKE_MODES: readonly ProcessRunMode[] = ["wait"];
 const DO_MODES: readonly ProcessRunMode[] = ["wait"];
 const DEFAULT_PLAN_SCAN_COUNT = 3;
 const DEFAULT_VARS_FILE_HELP = "Load extra template variables from a JSON file (default: <config-dir>/vars.json)";
+const STALE_CALL_CLI_CACHE_RELATIVE_PATH = path.join("cache", "cli-blocks");
 
 type CliActionResult = number | Promise<number>;
 
@@ -95,46 +100,29 @@ program
     "Explicit path to the .rundown configuration directory (bypasses upward discovery)",
   );
 
-program
+const runCommand = program
   .command("run")
   .description("Find the next unchecked TODO and execute it.")
   .argument("<source>", "File, directory, or glob to scan for Markdown tasks")
-  .option("--mode <mode>", "Runner execution mode: wait, tui, detached", "wait")
-  .option("--transport <transport>", "Prompt transport: file, arg", "file")
-  .option("--sort <sort>", "File sort mode: name-sort, none, old-first, new-first", "name-sort")
-  .option("--verify", "Run verification after task execution (default)")
-  .option("--no-verify", "Disable verification after task execution")
-  .option("--only-verify", "Skip execution and run verification directly", false)
-  .option("--force-execute", "Force execute phase even for verify-only task text", false)
-  .option("--repair-attempts <n>", "Max repair attempts on verification failure", "1")
-  .option("--no-repair", "Disable repair even when repair attempts are set")
-  .option("--dry-run", "Show what would be executed without running it", false)
-  .option("--print-prompt", "Print the rendered prompt and exit", false)
-  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
-  .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
-  .option("--trace-only", "Skip task execution and run only trace enrichment on the latest completed artifact run", false)
-  .option("--vars-file [path]", DEFAULT_VARS_FILE_HELP)
-  .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
-  .option("--commit", "Auto-commit checked task file after successful completion", false)
-  .option("--commit-message <template>", "Commit message template (supports {{task}} and {{file}})")
-  .option("--on-complete <command>", "Run a shell command after successful task completion")
-  .option("--on-fail <command>", "Run a shell command when a task fails (execution or verification failure)")
-  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
-  .option("--all", "Run all tasks sequentially instead of stopping after one (alias: all)", false)
-  .option("--redo", "Reset all checkboxes in the source file before running", false)
-  .option("--reset-after", "Reset all checkboxes in the source file after the run completes", false)
-  .option("--clean", "Shorthand for --redo --reset-after", false)
-  .option("--rounds <n>", "Repeat clean cycles N times (default: 1)")
-  .option("--force-unlock", "Break stale source lockfiles before acquiring run locks", false)
-  .option("--worker [command...]", "Optional worker command override (alternative to -- <command>)")
-  .option("--ignore-cli-block", "Disable execution of `cli` fenced blocks during prompt expansion")
-  .option(
-    "--cli-block-timeout <ms>",
-    "Timeout in milliseconds for executing `cli` fenced blocks (0 disables timeout)",
-    String(DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS),
-  )
+  .configureHelp({ showGlobalOptions: true });
+
+configureRunLikeCommandOptions(runCommand)
   .allowUnknownOption(false)
   .action(withCliAction(createRunCommandAction({
+    getApp,
+    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
+    runnerModes: RUNNER_MODES,
+  })));
+
+const callCommand = program
+  .command("call")
+  .description("Run a full clean pass across all tasks with CLI block caching enabled.")
+  .argument("<source>", "File, directory, or glob to scan for Markdown tasks")
+  .configureHelp({ showGlobalOptions: true });
+
+configureRunLikeCommandOptions(callCommand)
+  .allowUnknownOption(false)
+  .action(withCliAction(createCallCommandAction({
     getApp,
     getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
     runnerModes: RUNNER_MODES,
@@ -349,6 +337,7 @@ program
   .option("--rounds <n>", "Repeat clean cycles N times (default: 1)")
   .option("--worker [command...]", "Optional worker command override (alternative to -- <command>)")
   .option("--ignore-cli-block", "Disable execution of `cli` fenced blocks during prompt expansion")
+  .option("--cache-cli-blocks", "Cache `cli` fenced block command output for the duration of this run", false)
   .option(
     "--cli-block-timeout <ms>",
     "Timeout in milliseconds for executing `cli` fenced blocks (0 disables timeout)",
@@ -482,6 +471,8 @@ export async function parseCliArgs(argv: string[]): Promise<void> {
     resolveConfigDirForInvocation,
   });
 
+  cleanupCallCliCacheArtifactAtStartup(rewrittenArgv);
+
   // Pre-initialize the app only for the root command path where parse-time access is required.
   if (shouldInitializeAppBeforeParse(rundownArgs)) {
     const initResult = createAppForInvocation(rewrittenArgv, {
@@ -512,8 +503,66 @@ export async function parseCliArgs(argv: string[]): Promise<void> {
     return;
   }
 
-  // Delegate command dispatch and argument validation to commander.
-  await program.parseAsync(rundownArgs, { from: "user" });
+  try {
+    // Delegate command dispatch and argument validation to commander.
+    await program.parseAsync(rundownArgs, { from: "user" });
+  } finally {
+    cleanupCallCliCacheArtifactAtTeardown(rewrittenArgv, runtimeState.invocationLogState);
+  }
+}
+
+/**
+ * Removes stale call-session CLI cache artifacts from disk before command execution.
+ */
+function cleanupCallCliCacheArtifactAtStartup(argv: string[]): void {
+  if (resolveInvocationCommand(argv) !== "call") {
+    return;
+  }
+
+  const resolvedConfigDir = resolveConfigDirForInvocation(argv)?.configDir
+    ?? path.join(process.cwd(), CONFIG_DIR_NAME);
+  const cacheArtifactPath = path.join(resolvedConfigDir, STALE_CALL_CLI_CACHE_RELATIVE_PATH);
+
+  try {
+    fs.rmSync(cacheArtifactPath, { recursive: true, force: true });
+  } catch (error) {
+    throw new Error(
+      "Failed to clean stale CLI cache artifact before `call`: "
+      + cacheArtifactPath
+      + ". "
+      + String(error),
+    );
+  }
+}
+
+/**
+ * Removes call-session CLI cache artifacts from disk during command teardown.
+ */
+function cleanupCallCliCacheArtifactAtTeardown(
+  argv: string[],
+  logState: CliInvocationLogState | undefined,
+): void {
+  if (resolveInvocationCommand(argv) !== "call") {
+    return;
+  }
+
+  const resolvedConfigDir = resolveConfigDirForInvocation(argv)?.configDir
+    ?? path.join(process.cwd(), CONFIG_DIR_NAME);
+  const cacheArtifactPath = path.join(resolvedConfigDir, STALE_CALL_CLI_CACHE_RELATIVE_PATH);
+
+  try {
+    fs.rmSync(cacheArtifactPath, { recursive: true, force: true });
+  } catch (error) {
+    emitCliFatalError(
+      new Error(
+        "Failed to tear down CLI cache artifact after `call`: "
+        + cacheArtifactPath
+        + ". "
+        + String(error),
+      ),
+      logState,
+    );
+  }
 }
 
 /**
@@ -546,6 +595,48 @@ function validateUnsupportedMakeMode(argv: string[]): void {
   }
 
   throw new Error(`Invalid --mode value: ${mode}. Allowed: wait.`);
+}
+
+/**
+ * Registers the full run-style option set on commands that execute tasks.
+ */
+function configureRunLikeCommandOptions(command: Command): Command {
+  return command
+    .option("--mode <mode>", "Runner execution mode: wait, tui, detached", "wait")
+    .option("--transport <transport>", "Prompt transport: file, arg", "file")
+    .option("--sort <sort>", "File sort mode: name-sort, none, old-first, new-first", "name-sort")
+    .option("--verify", "Run verification after task execution (default)")
+    .option("--no-verify", "Disable verification after task execution")
+    .option("--only-verify", "Skip execution and run verification directly", false)
+    .option("--force-execute", "Force execute phase even for verify-only task text", false)
+    .option("--repair-attempts <n>", "Max repair attempts on verification failure", "1")
+    .option("--no-repair", "Disable repair even when repair attempts are set")
+    .option("--dry-run", "Show what would be executed without running it", false)
+    .option("--print-prompt", "Print the rendered prompt and exit", false)
+    .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
+    .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
+    .option("--trace-only", "Skip task execution and run only trace enrichment on the latest completed artifact run", false)
+    .option("--vars-file [path]", DEFAULT_VARS_FILE_HELP)
+    .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
+    .option("--commit", "Auto-commit checked task file after successful completion", false)
+    .option("--commit-message <template>", "Commit message template (supports {{task}} and {{file}})")
+    .option("--on-complete <command>", "Run a shell command after successful task completion")
+    .option("--on-fail <command>", "Run a shell command when a task fails (execution or verification failure)")
+    .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
+    .option("--all", "Run all tasks sequentially instead of stopping after one (alias: all)", false)
+    .option("--redo", "Reset all checkboxes in the source file before running", false)
+    .option("--reset-after", "Reset all checkboxes in the source file after the run completes", false)
+    .option("--clean", "Shorthand for --redo --reset-after", false)
+    .option("--rounds <n>", "Repeat clean cycles N times (default: 1)")
+    .option("--force-unlock", "Break stale source lockfiles before acquiring run locks", false)
+    .option("--worker [command...]", "Optional worker command override (alternative to -- <command>)")
+    .option("--ignore-cli-block", "Disable execution of `cli` fenced blocks during prompt expansion")
+    .option("--cache-cli-blocks", "Cache `cli` fenced block command output for the duration of this run", false)
+    .option(
+      "--cli-block-timeout <ms>",
+      "Timeout in milliseconds for executing `cli` fenced blocks (0 disables timeout)",
+      String(DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS),
+    );
 }
 
 /**

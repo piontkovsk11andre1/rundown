@@ -126,3 +126,7 @@ export { createWorkerConfigAdapter } from "./worker-config-adapter.js";
  * Creates the CLI block executor used by the worker runtime.
  */
 export { createCliBlockExecutor } from "../cli-block-executor.js";
+/**
+ * Creates an in-memory caching decorator for command execution.
+ */
+export { createCachedCommandExecutor } from "../cached-command-executor.js";

@@ -7,6 +7,7 @@ import {
   type WorkerConfigCommandName,
   type WorkerProfile,
 } from "../domain/worker-config.js";
+import type { TaskIntent } from "../domain/task-intent.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
 /**
@@ -16,20 +17,24 @@ interface ResolveWorkerForInvocationInput {
   commandName: WorkerConfigCommandName;
   workerConfig: WorkerConfig | undefined;
   source: string;
-  task?: Pick<Task, "directiveProfile" | "subItems">;
+  task?: Pick<Task, "directiveProfile" | "taskProfile" | "subItems">;
   cliWorkerCommand: string[];
   fallbackWorkerCommand?: string[];
   emit?: ApplicationOutputPort["emit"];
+  taskIntent?: TaskIntent;
+  toolName?: string;
 }
 
 interface ResolveWorkerPatternForInvocationInput {
   commandName: WorkerConfigCommandName;
   workerConfig: WorkerConfig | undefined;
   source: string;
-  task?: Pick<Task, "directiveProfile" | "subItems">;
+  task?: Pick<Task, "directiveProfile" | "taskProfile" | "subItems">;
   cliWorkerPattern?: ParsedWorkerPattern;
   fallbackWorkerCommand?: string[];
   emit?: ApplicationOutputPort["emit"];
+  taskIntent?: TaskIntent;
+  toolName?: string;
 }
 
 interface ResolvedWorkerInvocation {
@@ -105,12 +110,24 @@ export function resolveWorkerForInvocation(input: ResolveWorkerForInvocationInpu
   const ignoredProfileSubItem = input.task
     ? extractProfileFromSubItems(input.task.subItems)
     : undefined;
-  if (ignoredProfileSubItem && input.emit) {
+  const supportsInlineTaskProfile = input.taskIntent === "verify-only"
+    || input.taskIntent === "memory-capture"
+    || input.taskIntent === "tool-expansion";
+  if (ignoredProfileSubItem && input.emit && !supportsInlineTaskProfile) {
     input.emit({
       kind: "warn",
       message: buildIgnoredProfileSubItemWarning(ignoredProfileSubItem),
     });
   }
+
+  // Map task intent to the corresponding commands.{intent} config key, when applicable.
+  const intentCommandName: WorkerConfigCommandName | undefined = input.taskIntent === "verify-only"
+    ? "verify"
+    : input.taskIntent === "memory-capture"
+    ? "memory"
+    : input.taskIntent === "tool-expansion" && input.toolName
+    ? `tools.${input.toolName}`
+    : undefined;
 
   // Resolve worker/profile configuration with CLI override precedence.
   const resolvedWorker = resolveWorkerConfig(
@@ -118,7 +135,9 @@ export function resolveWorkerForInvocation(input: ResolveWorkerForInvocationInpu
     input.commandName,
     frontmatterProfile,
     input.task?.directiveProfile,
+    supportsInlineTaskProfile ? input.task?.taskProfile : undefined,
     hasCliWorkerCommand ? input.cliWorkerCommand : undefined,
+    intentCommandName,
   );
   const resolvedWorkerCommand = [...resolvedWorker.worker, ...resolvedWorker.workerArgs];
   if (resolvedWorkerCommand.length > 0) {
@@ -171,6 +190,8 @@ export function resolveWorkerPatternForInvocation(
     cliWorkerCommand,
     fallbackWorkerCommand: input.fallbackWorkerCommand,
     emit: input.emit,
+    taskIntent: input.taskIntent,
+    toolName: input.toolName,
   });
 
   if (resolvedWorkerCommand.length === 0) {

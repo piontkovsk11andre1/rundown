@@ -78,7 +78,7 @@ export type {
 } from "./worker-executor-port.js";
 
 /** Verification options and execution contract for task validation. */
-export type { TaskVerificationOptions, TaskVerificationPort } from "./task-verification-port.js";
+export type { TaskVerificationOptions, TaskVerificationPort, TaskVerificationResult } from "./task-verification-port.js";
 
 /** Repair flow options, result payload, and adapter contract. */
 export type {

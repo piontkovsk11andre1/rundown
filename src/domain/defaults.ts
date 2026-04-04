@@ -166,16 +166,19 @@ Verify whether the selected task is complete.
 
 Evaluate whether the task above has been completed.
 
+Your ENTIRE stdout output must be exactly one line containing only the verdict.
+Do not include any explanatory text, reasoning, or preamble before the verdict.
+
 Return your verification result on stdout as exactly one of the following:
 
 - \`OK\`
 - \`NOT_OK: <short explanation of what is still missing>\`
 
+Output ONLY the verdict line — nothing else. Any extra output degrades verification reliability.
+
 Do not create or modify validation files directly. rundown will persist your stdout result in run artifacts for use by subsequent repair and trace steps.
 
 Do not modify the source Markdown task file or change its checkbox state.
-
-Do not write anything else.
 {{traceInstructions}}
 `;
 

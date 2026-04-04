@@ -22,13 +22,46 @@ import { createCliBlockExecutor } from "./cli-block-executor.js";
 interface VerificationResult {
   ok: boolean;
   sidecarContent: string;
+  formatWarning?: string;
 }
+
+/**
+ * Strip surrounding backticks from a verdict line.
+ *
+ * Models frequently wrap their output in backticks when the prompt shows
+ * backtick-formatted examples, for example `` `OK` `` instead of `OK`.
+ */
+function stripBackticks(line: string): string {
+  return line.startsWith("`") && line.endsWith("`")
+    ? line.slice(1, -1)
+    : line;
+}
+
+/**
+ * Extract the last non-empty line from trimmed stdout, returning both the
+ * cleaned verdict line and whether preceding output (preamble) was present.
+ */
+function extractVerdictLine(stdout: string): { verdict: string; hasPreamble: boolean } {
+  const lines = stdout.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  if (lines.length === 0) {
+    return { verdict: "", hasPreamble: false };
+  }
+
+  return { verdict: stripBackticks(lines.at(-1)!), hasPreamble: lines.length > 1 };
+}
+
+const FORMAT_WARNING = "Verification worker produced extra output before the verdict. Only the last line was used. Reinforce output format in your verify prompt.";
 
 /**
  * Normalize worker output into the canonical verification result shape.
  *
  * Accepts explicit success output (`OK`) and various failure formats,
  * then returns a deterministic payload for sidecar persistence.
+ *
+ * The verdict is extracted from the **last non-empty line** of stdout so
+ * that models which emit preamble text before the final `OK` / `NOT_OK`
+ * line are handled gracefully.  When preamble is detected the result
+ * carries a `formatWarning` so callers can surface it.
  */
 function parseVerificationResult(output: { exitCode: number | null; stdout: string; stderr: string }): VerificationResult {
   // Trim streams once so later checks can treat empty output consistently.
@@ -41,14 +74,30 @@ function parseVerificationResult(output: { exitCode: number | null; stdout: stri
     return { ok: false, sidecarContent: reason };
   }
 
+  // Extract the last non-empty line as the verdict.
+  const { verdict, hasPreamble } = extractVerdictLine(stdout);
+  const formatWarning = hasPreamble ? FORMAT_WARNING : undefined;
+
   // `OK` is the only accepted success token.
-  if (stdout.toUpperCase() === "OK") {
-    return { ok: true, sidecarContent: "OK" };
+  if (verdict.toUpperCase() === "OK") {
+    return { ok: true, sidecarContent: "OK", formatWarning };
   }
 
-  // Any stdout content is treated as a human-readable failure reason.
+  // `NOT_OK: <reason>` is the canonical failure format.
+  const notOkPrefix = /^NOT_OK\s*:\s*/i;
+  if (notOkPrefix.test(verdict)) {
+    const normalizedReason = verdict.replace(notOkPrefix, "").trim();
+    return {
+      ok: false,
+      sidecarContent: normalizedReason === ""
+        ? "Verification failed (no details)."
+        : normalizedReason,
+      formatWarning,
+    };
+  }
+
+  // Any other non-empty stdout is treated as a human-readable failure reason.
   if (stdout !== "") {
-    const notOkPrefix = /^NOT_OK\s*:\s*/i;
     const normalizedReason = stdout.replace(notOkPrefix, "").trim();
     return {
       ok: false,
@@ -96,11 +145,19 @@ export interface VerifyOptions {
 }
 
 /**
+ * Result returned by the verification step.
+ */
+export interface VerifyResult {
+  valid: boolean;
+  formatWarning?: string;
+}
+
+/**
  * Run the verification step:
  * render the verify template, execute the verifier command,
  * parse worker output, and persist a deterministic sidecar result.
  */
-export async function verify(options: VerifyOptions): Promise<boolean> {
+export async function verify(options: VerifyOptions): Promise<VerifyResult> {
   // Build the template context from task metadata and optional custom variables.
   const vars: TemplateVars = {
     ...options.templateVars,
@@ -161,5 +218,5 @@ export async function verify(options: VerifyOptions): Promise<boolean> {
   // Persist the normalized sidecar output and return final pass/fail status.
   const result = parseVerificationResult(runResult);
   options.verificationStore.write(options.task, result.sidecarContent);
-  return result.ok;
+  return { valid: result.ok, formatWarning: result.formatWarning };
 }

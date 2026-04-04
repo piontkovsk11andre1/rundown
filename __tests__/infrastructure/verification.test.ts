@@ -52,7 +52,7 @@ describe("verify", () => {
 
     runWorkerMock.mockResolvedValue({ exitCode: 0, stdout: "NOT_OK: still missing tests", stderr: "" });
 
-    const valid = await verify({
+    const { valid } = await verify({
       task,
       source: file,
       contextBefore: "",
@@ -75,7 +75,7 @@ describe("verify", () => {
 
     runWorkerMock.mockResolvedValue({ exitCode: 2, stdout: "", stderr: "validation failed" });
 
-    const valid = await verify({
+    const { valid } = await verify({
       task,
       source: file,
       contextBefore: "",
@@ -97,7 +97,7 @@ describe("verify", () => {
 
     runWorkerMock.mockResolvedValue({ exitCode: 7, stdout: "", stderr: "" });
 
-    const valid = await verify({
+    const { valid } = await verify({
       task,
       source: file,
       contextBefore: "",
@@ -119,7 +119,7 @@ describe("verify", () => {
 
     runWorkerMock.mockResolvedValue({ exitCode: 0, stdout: "ok", stderr: "" });
 
-    const valid = await verify({
+    const { valid } = await verify({
       task,
       source: file,
       contextBefore: "",
@@ -141,7 +141,7 @@ describe("verify", () => {
 
     runWorkerMock.mockResolvedValue({ exitCode: 0, stdout: "NOT_OK:   ", stderr: "" });
 
-    const valid = await verify({
+    const { valid } = await verify({
       task,
       source: file,
       contextBefore: "",
@@ -161,7 +161,7 @@ describe("verify", () => {
 
     runWorkerMock.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "missing proof" });
 
-    const valid = await verify({
+    const { valid } = await verify({
       task,
       source: file,
       contextBefore: "",
@@ -181,7 +181,7 @@ describe("verify", () => {
 
     runWorkerMock.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
 
-    const valid = await verify({
+    const { valid } = await verify({
       task,
       source: file,
       contextBefore: "",
@@ -309,7 +309,7 @@ describe("verify", () => {
 
     runWorkerMock.mockResolvedValue({ exitCode: 0, stdout: "OK", stderr: "" });
 
-    const valid = await verify({
+    const { valid } = await verify({
       task,
       source: file,
       contextBefore: "",
@@ -326,5 +326,125 @@ describe("verify", () => {
     expect(runWorkerMock).toHaveBeenCalledWith(expect.objectContaining({
       prompt: "<command>echo Do the thing</command>\n<output>\ngenerated output\n</output>",
     }));
+  });
+
+  it("accepts OK on the last line when preamble is present and sets formatWarning", async () => {
+    const file = "Tasks.md";
+    const task = makeTask(file);
+    const verificationStore = createVerificationStore();
+
+    runWorkerMock.mockResolvedValue({
+      exitCode: 0,
+      stdout: "The task is complete. WorkerConfigCommandName already includes verify.\nOK",
+      stderr: "",
+    });
+
+    const result = await verify({
+      task,
+      source: file,
+      contextBefore: "",
+      template: "{{task}}",
+      command: ["worker"],
+      verificationStore,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.formatWarning).toBeDefined();
+    expect(verificationStore.write).toHaveBeenCalledWith(task, "OK");
+  });
+
+  it("accepts NOT_OK on the last line when preamble is present", async () => {
+    const file = "Tasks.md";
+    const task = makeTask(file);
+    const verificationStore = createVerificationStore();
+
+    runWorkerMock.mockResolvedValue({
+      exitCode: 0,
+      stdout: "I checked the code and found issues.\nNOT_OK: missing unit tests",
+      stderr: "",
+    });
+
+    const result = await verify({
+      task,
+      source: file,
+      contextBefore: "",
+      template: "{{task}}",
+      command: ["worker"],
+      verificationStore,
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.formatWarning).toBeDefined();
+    expect(verificationStore.write).toHaveBeenCalledWith(task, "missing unit tests");
+  });
+
+  it("accepts backtick-wrapped OK verdict", async () => {
+    const file = "Tasks.md";
+    const task = makeTask(file);
+    const verificationStore = createVerificationStore();
+
+    runWorkerMock.mockResolvedValue({
+      exitCode: 0,
+      stdout: "`OK`",
+      stderr: "",
+    });
+
+    const result = await verify({
+      task,
+      source: file,
+      contextBefore: "",
+      template: "{{task}}",
+      command: ["worker"],
+      verificationStore,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.formatWarning).toBeUndefined();
+    expect(verificationStore.write).toHaveBeenCalledWith(task, "OK");
+  });
+
+  it("accepts backtick-wrapped OK with preamble", async () => {
+    const file = "Tasks.md";
+    const task = makeTask(file);
+    const verificationStore = createVerificationStore();
+
+    runWorkerMock.mockResolvedValue({
+      exitCode: 0,
+      stdout: "Everything looks good.\n`OK`",
+      stderr: "",
+    });
+
+    const result = await verify({
+      task,
+      source: file,
+      contextBefore: "",
+      template: "{{task}}",
+      command: ["worker"],
+      verificationStore,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.formatWarning).toBeDefined();
+    expect(verificationStore.write).toHaveBeenCalledWith(task, "OK");
+  });
+
+  it("returns no formatWarning for clean single-line OK", async () => {
+    const file = "Tasks.md";
+    const task = makeTask(file);
+    const verificationStore = createVerificationStore();
+
+    runWorkerMock.mockResolvedValue({ exitCode: 0, stdout: "OK", stderr: "" });
+
+    const result = await verify({
+      task,
+      source: file,
+      contextBefore: "",
+      template: "{{task}}",
+      command: ["worker"],
+      verificationStore,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.formatWarning).toBeUndefined();
   });
 });

@@ -147,7 +147,7 @@ describe("infrastructure adapters", () => {
   });
 
   it("task verification adapter delegates to verify", async () => {
-    verifyMock.mockResolvedValue(true);
+    verifyMock.mockResolvedValue({ valid: true });
 
     const verificationStore = {
       write: vi.fn(),
@@ -203,7 +203,7 @@ describe("infrastructure adapters", () => {
       cliBlockExecutor,
       cliExecutionOptions,
     });
-    expect(result).toBe(true);
+    expect(result).toEqual({ valid: true });
   });
 
   it("task repair adapter delegates to repair", async () => {

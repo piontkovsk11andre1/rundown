@@ -5,7 +5,7 @@
 This lets you:
 
 - define a default worker so you do not need `--worker` on every command,
-- set per-command worker overrides (`run`, `plan`, `discuss`, `research`, `reverify`),
+- set per-command worker overrides (`run`, `plan`, `discuss`, `research`, `reverify`, `verify`, `memory`, `tools.<toolName>`),
 - define named profiles (for model or other worker args),
 - apply profiles from file frontmatter or directive parent list items,
 - override everything from the CLI when needed.
@@ -36,6 +36,18 @@ Example:
     "research": {
       "worker": ["opencode", "run"],
       "workerArgs": ["--model", "opus-4.6"]
+    },
+    "verify": {
+      "worker": ["opencode", "run"],
+      "workerArgs": ["--model", "gpt-5.3-codex"]
+    },
+    "memory": {
+      "worker": ["opencode", "run"],
+      "workerArgs": ["--model", "gpt-5.3-codex"]
+    },
+    "tools.post-on-gitea": {
+      "worker": ["opencode", "run"],
+      "workerArgs": ["--model", "gpt-5.3-codex", "--tools", "web-search"]
     }
   },
   "profiles": {
@@ -77,7 +89,8 @@ All command arrays and arg arrays must be JSON arrays of strings.
 Section behavior:
 
 - `defaults`: global baseline for all commands.
-- `commands.<name>`: override/extend defaults for one command (for example `plan` or `research`).
+- `commands.<name>`: override/extend defaults for one command (for example `plan`, `verify`, or `memory`).
+- `commands.tools.<toolName>`: override/extend defaults for one tool-expansion prefix task (for example `tools.post-on-gitea`).
 - `profiles.<name>`: named reusable profile values, selected from frontmatter or directives.
 
 ## Resolution cascade

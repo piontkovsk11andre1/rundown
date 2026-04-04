@@ -258,10 +258,10 @@ export async function dispatchTaskExecution(params: {
     } satisfies TemplateVars);
 
     emit({ kind: "info", message: "Running tool expansion: " + resolvedTool.name + " [template=" + resolvedTool.templatePath + "]" });
-    const executePhaseTrace = traceRunSession.beginPhase("execute", resolvedWorkerCommand);
+    const executePhaseTrace = traceRunSession.beginPhase("execute", selectedWorkerCommand);
     traceRunSession.emitPromptMetrics(renderedToolPrompt, expandedContextBefore, "execute.md");
     const runResult = await dependencies.workerExecutor.runWorker({
-      workerPattern: resolvedWorkerPattern,
+      workerPattern: selectedWorkerPattern,
       prompt: renderedToolPrompt,
       mode,
       trace,

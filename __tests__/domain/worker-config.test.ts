@@ -18,6 +18,7 @@ describe("resolveWorkerConfig", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
     );
 
     expect(resolved).toEqual({
@@ -41,6 +42,7 @@ describe("resolveWorkerConfig", () => {
         },
       },
       "plan",
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -70,6 +72,7 @@ describe("resolveWorkerConfig", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
     );
 
     expect(resolved).toEqual({
@@ -92,6 +95,7 @@ describe("resolveWorkerConfig", () => {
       },
       "run",
       "complex",
+      undefined,
       undefined,
       undefined,
     );
@@ -121,11 +125,43 @@ describe("resolveWorkerConfig", () => {
       "complex",
       "fast",
       undefined,
+      undefined,
     );
 
     expect(resolved).toEqual({
       worker: ["opencode", "run"],
       workerArgs: ["--model", "opus-4.6", "--model", "gpt-5.3-codex"],
+    });
+  });
+
+  it("applies task profile after directive profile", () => {
+    const resolved = resolveWorkerConfig(
+      {
+        defaults: {
+          worker: ["opencode", "run"],
+        },
+        profiles: {
+          complex: {
+            workerArgs: ["--model", "opus-4.6"],
+          },
+          slow: {
+            workerArgs: ["--model", "gpt-5.3-codex"],
+          },
+          fast: {
+            workerArgs: ["--model", "gpt-5.3-mini"],
+          },
+        },
+      },
+      "run",
+      "complex",
+      "slow",
+      "fast",
+      undefined,
+    );
+
+    expect(resolved).toEqual({
+      worker: ["opencode", "run"],
+      workerArgs: ["--model", "opus-4.6", "--model", "gpt-5.3-codex", "--model", "gpt-5.3-mini"],
     });
   });
 
@@ -151,6 +187,7 @@ describe("resolveWorkerConfig", () => {
       "run",
       "fast",
       "fast",
+      undefined,
       ["custom-worker", "execute"],
     );
 
@@ -177,12 +214,13 @@ describe("resolveWorkerConfig", () => {
         "missing",
         undefined,
         undefined,
+        undefined,
       ),
     ).toThrow("Unknown worker profile: missing");
   });
 
   it("returns empty worker and args for empty config", () => {
-    expect(resolveWorkerConfig(undefined, "run", undefined, undefined, undefined)).toEqual({
+    expect(resolveWorkerConfig(undefined, "run", undefined, undefined, undefined, undefined)).toEqual({
       worker: [],
       workerArgs: [],
     });
@@ -208,6 +246,7 @@ describe("resolveWorkerConfig", () => {
       },
       "run",
       "complex",
+      undefined,
       undefined,
       undefined,
     );
@@ -247,6 +286,7 @@ describe("resolveWorkerConfig", () => {
       "discuss",
       "complex",
       "fast",
+      undefined,
       undefined,
     );
 

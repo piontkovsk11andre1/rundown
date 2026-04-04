@@ -316,6 +316,45 @@ describe("parseTasks", () => {
     expect(tasks[1]!.directiveProfile).toBeUndefined();
   });
 
+  it("captures taskProfile from profile sub-item for verify prefix tasks", () => {
+    const md = [
+      "- [ ] verify: release checklist",
+      "  - profile: fast",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.text).toBe("verify: release checklist");
+    expect(tasks[0]!.taskProfile).toBe("fast");
+  });
+
+  it("captures taskProfile from profile sub-item for memory prefix tasks", () => {
+    const md = [
+      "- [ ] memory: capture deployment notes",
+      "  - profile: compact",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.text).toBe("memory: capture deployment notes");
+    expect(tasks[0]!.taskProfile).toBe("compact");
+  });
+
+  it("captures taskProfile from profile sub-item for tool-style prefix tasks", () => {
+    const md = [
+      "- [ ] post-on-gitea: release notes",
+      "  - profile: lightweight",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.text).toBe("post-on-gitea: release notes");
+    expect(tasks[0]!.taskProfile).toBe("lightweight");
+  });
+
   it("should ignore tasks inside fenced code blocks", () => {
     const md = [
       "# Real tasks",

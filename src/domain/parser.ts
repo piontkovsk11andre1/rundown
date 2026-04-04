@@ -48,6 +48,8 @@ export interface Task {
   intent?: TaskIntent;
   /** Profile inherited from directive parent list items. */
   directiveProfile?: string;
+  /** Profile declared as a task-level `profile:` sub-item for prefix-intent tasks. */
+  taskProfile?: string;
 }
 
 /** Represents a plain (non-checkbox) list item nested under a task. */
@@ -103,6 +105,10 @@ const FRONTMATTER_KEY_VALUE_PATTERN = /^\s*([^:#\s][^:]*)\s*:\s*(.*)$/;
 const PROFILE_DIRECTIVE_PATTERN = /^profile\s*:\s*(.+)$/i;
 // Detects directive list items that switch tasks to verify-only intent.
 const VERIFY_DIRECTIVE_PATTERN = /^(?:verify|confirm|check)\s*:\s*$/i;
+// Detects explicit verify-only task prefixes with payload text.
+const VERIFY_TASK_PREFIX_PATTERN = /^(?:verify|confirm|check)\s*:/i;
+// Detects memory-capture task prefixes with payload text.
+const MEMORY_TASK_PREFIX_PATTERN = /^(?:memory|memorize|remember|inventory)\s*:/i;
 
 /** Context inherited while walking nested directive list items. */
 interface DirectiveContext {
@@ -302,6 +308,15 @@ function walkForTasks(
       && depth === currentParentTask.depth + 1,
     );
 
+    if (
+      isDirectProfileSubItemOfTask
+      && currentParentTask
+      && isIntentClassifiedPrefixTaskText(currentParentTask.text)
+      && !currentParentTask.taskProfile
+    ) {
+      currentParentTask.taskProfile = directive.directiveProfile;
+    }
+
     if (directive.intent || (directive.directiveProfile && !isDirectProfileSubItemOfTask)) {
       nextDirectiveContext = {
         intent: directive.intent ?? directiveContext.intent,
@@ -318,6 +333,34 @@ function walkForTasks(
       walkForTasks(child, tasks, file, nextDepth, currentParentTask, nextDirectiveContext);
     }
   }
+}
+
+/**
+ * Returns true when task text uses a prefix that may be intent-classified.
+ *
+ * `cli:` items are excluded because they bypass worker profile resolution.
+ */
+function isIntentClassifiedPrefixTaskText(taskText: string): boolean {
+  const normalized = taskText.trim();
+  if (normalized.length === 0) {
+    return false;
+  }
+
+  if (CLI_PREFIX.test(normalized)) {
+    return false;
+  }
+
+  if (VERIFY_TASK_PREFIX_PATTERN.test(normalized) || MEMORY_TASK_PREFIX_PATTERN.test(normalized)) {
+    return true;
+  }
+
+  const separatorIndex = normalized.indexOf(":");
+  if (separatorIndex <= 0) {
+    return false;
+  }
+
+  const prefixName = normalized.slice(0, separatorIndex).trim();
+  return prefixName.length > 0;
 }
 
 /**

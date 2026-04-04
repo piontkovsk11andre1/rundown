@@ -76,6 +76,99 @@ describe("run-task orchestration", () => {
     expect(events.some((event) => event.kind === "info" && event.message.includes("Detached mode"))).toBe(true);
   });
 
+  it("passes intent-resolved verify worker to task verification for verify-only tasks", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const verifyOnlyTaskText = "verify: release docs are consistent";
+    const { dependencies } = createDependencies({
+      cwd,
+      task: createTask(taskFile, verifyOnlyTaskText),
+      fileSystem: createInMemoryFileSystem({ [taskFile]: `- [ ] ${verifyOnlyTaskText}\n` }),
+      gitClient: createGitClientMock(),
+      workerConfig: {
+        commands: {
+          run: {
+            worker: ["run-worker"],
+            workerArgs: ["--from-run"],
+          },
+          verify: {
+            worker: ["verify-worker"],
+            workerArgs: ["--from-verify"],
+          },
+        },
+      },
+    });
+
+    const code = await createRunTask(dependencies)(
+      createOptions({
+        workerPattern: {
+          command: [],
+          usesBootstrap: false,
+          usesFile: false,
+          appendFile: true,
+        },
+      }),
+    );
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+    expect(dependencies.taskVerification.verify).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(dependencies.taskVerification.verify).mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      workerPattern: expect.objectContaining({
+        command: ["verify-worker", "--from-run", "--from-verify"],
+      }),
+    }));
+  });
+
+  it("passes intent-resolved memory worker to execution for memory-capture tasks", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const memoryTaskText = "memory: capture release context";
+    const { dependencies } = createDependencies({
+      cwd,
+      task: createTask(taskFile, memoryTaskText),
+      fileSystem: createInMemoryFileSystem({ [taskFile]: `- [ ] ${memoryTaskText}\n` }),
+      gitClient: createGitClientMock(),
+      workerConfig: {
+        commands: {
+          run: {
+            worker: ["run-worker"],
+            workerArgs: ["--from-run"],
+          },
+          memory: {
+            worker: ["memory-worker"],
+            workerArgs: ["--from-memory"],
+          },
+        },
+      },
+    });
+    vi.mocked(dependencies.workerExecutor.runWorker).mockResolvedValue({
+      exitCode: 0,
+      stdout: "Captured release context",
+      stderr: "",
+    });
+
+    const code = await createRunTask(dependencies)(
+      createOptions({
+        verify: false,
+        workerPattern: {
+          command: [],
+          usesBootstrap: false,
+          usesFile: false,
+          appendFile: true,
+        },
+      }),
+    );
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(dependencies.workerExecutor.runWorker).mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      workerPattern: expect.objectContaining({
+        command: ["memory-worker", "--from-run", "--from-memory"],
+      }),
+    }));
+  });
+
   it("returns not-found when no task can be selected", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");
@@ -253,7 +346,7 @@ describe("run-task orchestration", () => {
       fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] build release\n" }),
       gitClient: createGitClientMock(),
     });
-    dependencies.taskVerification.verify = vi.fn(async () => false);
+    dependencies.taskVerification.verify = vi.fn(async () => ({ valid: false }));
     dependencies.verificationStore.read = vi.fn(() => "verification failed");
 
     const code = await createRunTask(dependencies)(createOptions({ verify: true, repairAttempts: 0, workerCommand: ["opencode", "run"] }));

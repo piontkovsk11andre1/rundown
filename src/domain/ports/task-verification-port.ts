@@ -43,11 +43,19 @@ export interface TaskVerificationOptions {
 }
 
 /**
+ * Result returned by the verification port.
+ */
+export interface TaskVerificationResult {
+  valid: boolean;
+  formatWarning?: string;
+}
+
+/**
  * Port abstraction responsible for validating task execution outcomes.
  */
 export interface TaskVerificationPort {
   /**
-   * Verifies the selected task and returns whether validation succeeded.
+   * Verifies the selected task and returns verification status.
    */
-  verify(options: TaskVerificationOptions): Promise<boolean>;
+  verify(options: TaskVerificationOptions): Promise<TaskVerificationResult>;
 }

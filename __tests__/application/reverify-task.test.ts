@@ -201,7 +201,7 @@ describe("reverify-task", () => {
       fileSystem,
       runs: [runNewest, runMiddle, runOldest],
     });
-    vi.mocked(taskVerification.verify).mockResolvedValue(true);
+    vi.mocked(taskVerification.verify).mockResolvedValue({ valid: true });
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({ all: true, workerCommand: ["opencode", "run"] }));
@@ -520,7 +520,7 @@ describe("reverify-task", () => {
       fileSystem,
       runs: [runNewest, runMiddle, runOldest],
     });
-    vi.mocked(taskVerification.verify).mockResolvedValue(true);
+    vi.mocked(taskVerification.verify).mockResolvedValue({ valid: true });
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({ last: 2, workerCommand: ["opencode", "run"] }));
@@ -581,7 +581,7 @@ describe("reverify-task", () => {
       fileSystem,
       runs: [runNewest, runMiddle, runOldest],
     });
-    vi.mocked(taskVerification.verify).mockResolvedValue(true);
+    vi.mocked(taskVerification.verify).mockResolvedValue({ valid: true });
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({
@@ -657,7 +657,7 @@ describe("reverify-task", () => {
       fileSystem,
       runs: [runNewest, runMiddle, runOldest, runVeryOldest],
     });
-    vi.mocked(taskVerification.verify).mockResolvedValue(true);
+    vi.mocked(taskVerification.verify).mockResolvedValue({ valid: true });
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({
@@ -722,7 +722,7 @@ describe("reverify-task", () => {
       fileSystem,
       runs: [runNewest, runMiddle, runOldest],
     });
-    vi.mocked(taskVerification.verify).mockResolvedValue(true);
+    vi.mocked(taskVerification.verify).mockResolvedValue({ valid: true });
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({
@@ -790,7 +790,7 @@ describe("reverify-task", () => {
       fileSystem,
       runs: [runNewest, runMiddle, runOldest],
     });
-    vi.mocked(taskVerification.verify).mockResolvedValue(true);
+    vi.mocked(taskVerification.verify).mockResolvedValue({ valid: true });
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({
@@ -855,8 +855,8 @@ describe("reverify-task", () => {
       runs: [runNewest, runMiddle, runOldest],
     });
     vi.mocked(taskVerification.verify)
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(false);
+      .mockResolvedValueOnce({ valid: true })
+      .mockResolvedValueOnce({ valid: false });
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({ all: true, noRepair: true, workerCommand: ["opencode", "run"] }));
@@ -929,7 +929,7 @@ describe("reverify-task", () => {
       fileSystem,
       runs: [runNewest, runFailed, runWithoutTask, runOldest],
     });
-    vi.mocked(taskVerification.verify).mockResolvedValue(true);
+    vi.mocked(taskVerification.verify).mockResolvedValue({ valid: true });
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({ all: true, workerCommand: ["opencode", "run"] }));
@@ -1187,7 +1187,7 @@ describe("reverify-task", () => {
         fileSystem,
         runs: [failedRun, completedRun],
       });
-    vi.mocked(taskVerification.verify).mockResolvedValue(true);
+    vi.mocked(taskVerification.verify).mockResolvedValue({ valid: true });
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({ runId: "latest", workerCommand: ["opencode", "run"] }));
@@ -1226,7 +1226,7 @@ describe("reverify-task", () => {
       fileSystem,
       runs: [completedRun],
     });
-    vi.mocked(taskVerification.verify).mockResolvedValue(false);
+    vi.mocked(taskVerification.verify).mockResolvedValue({ valid: false });
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({ runId: "latest", noRepair: true, repairAttempts: 2 }));
@@ -1313,7 +1313,7 @@ describe("reverify-task", () => {
       fileSystem,
       runs: [completedWithoutTask, completedWithTask],
     });
-    vi.mocked(taskVerification.verify).mockResolvedValue(true);
+    vi.mocked(taskVerification.verify).mockResolvedValue({ valid: true });
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({ runId: "latest", workerCommand: ["opencode", "run"] }));
@@ -1626,7 +1626,7 @@ describe("reverify-task", () => {
       fileSystem,
       runs: [completedRun],
     });
-    vi.mocked(taskVerification.verify).mockResolvedValue(true);
+    vi.mocked(taskVerification.verify).mockResolvedValue({ valid: true });
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({ runId: "run-completed", workerCommand: ["opencode", "run"] }));
@@ -1669,7 +1669,7 @@ describe("reverify-task", () => {
       }
       return null;
     });
-    vi.mocked(taskVerification.verify).mockResolvedValue(true);
+    vi.mocked(taskVerification.verify).mockResolvedValue({ valid: true });
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({
@@ -1991,7 +1991,7 @@ describe("reverify-task", () => {
       runs: [completedRun],
       cliBlockExecutor,
     });
-    vi.mocked(taskVerification.verify).mockResolvedValue(false);
+    vi.mocked(taskVerification.verify).mockResolvedValue({ valid: false });
     vi.mocked(taskRepair.repair).mockResolvedValue({
       valid: true,
       attempts: 1,
@@ -2179,7 +2179,7 @@ describe("reverify-task", () => {
       fileSystem,
       runs: [completedRun],
     });
-    vi.mocked(taskVerification.verify).mockResolvedValue(true);
+    vi.mocked(taskVerification.verify).mockResolvedValue({ valid: true });
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({ runId: "run-relative-path", workerCommand: ["opencode", "run"] }));
@@ -2216,7 +2216,7 @@ describe("reverify-task", () => {
       fileSystem,
       runs: [completedRun],
     });
-    vi.mocked(taskVerification.verify).mockResolvedValue(true);
+    vi.mocked(taskVerification.verify).mockResolvedValue({ valid: true });
 
     const reverifyTask = createReverifyTask(dependencies);
     const code = await reverifyTask(createOptions({
@@ -2285,7 +2285,7 @@ function createDependencies(options: {
   const events: ApplicationOutputEvent[] = [];
 
   const taskVerification = {
-    verify: vi.fn(async () => true),
+    verify: vi.fn(async () => ({ valid: true })),
   };
 
   const taskRepair = {

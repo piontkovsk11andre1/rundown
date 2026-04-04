@@ -19,17 +19,23 @@ export const WORKER_CONFIG_COMMAND_NAMES = [
   "discuss",
   "research",
   "reverify",
+  "verify",
+  "memory",
 ] as const;
 
 /**
  * Supported command names for `config.commands` worker overrides.
+ * Includes fixed intent-based keys and a dynamic `tools.{toolName}` pattern
+ * for per-tool worker configuration.
  */
-export type WorkerConfigCommandName = typeof WORKER_CONFIG_COMMAND_NAMES[number];
+export type WorkerConfigCommandName = typeof WORKER_CONFIG_COMMAND_NAMES[number] | `tools.${string}`;
 
 /**
  * Per-command worker profile overrides keyed by supported command name.
  */
-export type WorkerCommandProfiles = Partial<Record<WorkerConfigCommandName, WorkerProfile>>;
+export type WorkerCommandProfiles = {
+  [K in WorkerConfigCommandName]?: WorkerProfile;
+};
 
 /**
  * Worker configuration loaded from user or project settings.
@@ -135,14 +141,18 @@ function mergeWorkerProfile(base: ResolvedWorker, override: WorkerProfile): Reso
  * 1) CLI worker (if provided) short-circuits all config.
  * 2) Config defaults.
  * 3) Per-command override.
- * 4) File-level named profile.
- * 5) Directive-level named profile.
+ * 4) Per-intent override (e.g. "verify" for verify-only tasks), when provided.
+ * 5) File-level named profile.
+ * 6) Directive-level named profile.
+ * 7) Task-level named profile.
  *
  * @param config Optional worker configuration source.
  * @param commandName Command currently being executed.
  * @param fileProfile Profile name derived from file-level metadata.
  * @param directiveProfile Profile name derived from task/directive metadata.
+ * @param taskProfile Profile name derived from task-level inline metadata.
  * @param cliWorker Optional worker executable tokens passed via CLI.
+ * @param intentCommandName Optional intent-based command key (e.g. "verify") applied after the per-command override.
  * @returns Resolved worker executable and argument list.
  */
 export function resolveWorkerConfig(
@@ -150,7 +160,9 @@ export function resolveWorkerConfig(
   commandName: WorkerConfigCommandName,
   fileProfile: string | undefined,
   directiveProfile: string | undefined,
+  taskProfile: string | undefined,
   cliWorker: string[] | undefined,
+  intentCommandName?: WorkerConfigCommandName,
 ): ResolvedWorker {
   // CLI-provided worker executable takes absolute precedence.
   if (Array.isArray(cliWorker) && cliWorker.length > 0) {
@@ -176,6 +188,13 @@ export function resolveWorkerConfig(
     Object.assign(resolved, mergeWorkerProfile(resolved, commandOverrides));
   }
 
+  if (intentCommandName && intentCommandName !== commandName) {
+    const intentCommandOverrides = config?.commands?.[intentCommandName];
+    if (intentCommandOverrides) {
+      Object.assign(resolved, mergeWorkerProfile(resolved, intentCommandOverrides));
+    }
+  }
+
   const normalizedFileProfile = normalizeProfileName(fileProfile);
   if (normalizedFileProfile) {
     const profile = resolveNamedProfile(config ?? {}, normalizedFileProfile);
@@ -185,6 +204,12 @@ export function resolveWorkerConfig(
   const normalizedDirectiveProfile = normalizeProfileName(directiveProfile);
   if (normalizedDirectiveProfile) {
     const profile = resolveNamedProfile(config ?? {}, normalizedDirectiveProfile);
+    Object.assign(resolved, mergeWorkerProfile(resolved, profile));
+  }
+
+  const normalizedTaskProfile = normalizeProfileName(taskProfile);
+  if (normalizedTaskProfile) {
+    const profile = resolveNamedProfile(config ?? {}, normalizedTaskProfile);
     Object.assign(resolved, mergeWorkerProfile(resolved, profile));
   }
 

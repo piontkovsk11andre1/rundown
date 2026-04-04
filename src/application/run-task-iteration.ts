@@ -227,6 +227,8 @@ export async function runTaskIteration(params: {
     source: fileSource,
     task: taskForExecution,
     cliWorkerPattern: worker.workerPattern,
+    taskIntent: taskIntentDecision.intent,
+    toolName: taskIntentDecision.toolName,
     emit,
   });
   const resolvedWorkerCommand = resolvedWorker.workerCommand;

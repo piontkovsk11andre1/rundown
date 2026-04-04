@@ -73,7 +73,14 @@ function validateProfileMap(value: unknown, keyPath: string): Record<string, Wor
 }
 
 /**
- * Validates `commands` config and accepts only known command keys.
+ * Returns true when a config key matches the `tools.{toolName}` pattern.
+ */
+function isToolsKey(key: string): key is `tools.${string}` {
+  return key.startsWith("tools.") && key.length > "tools.".length;
+}
+
+/**
+ * Validates `commands` config and accepts known command keys and `tools.*` keys.
  */
 function validateCommandProfiles(value: unknown, keyPath: string): WorkerCommandProfiles {
   if (!isPlainObject(value)) {
@@ -84,9 +91,9 @@ function validateCommandProfiles(value: unknown, keyPath: string): WorkerCommand
   const result: WorkerCommandProfiles = {};
 
   for (const [key, profile] of Object.entries(value)) {
-    if (!allowedNames.has(key)) {
+    if (!allowedNames.has(key) && !isToolsKey(key)) {
       throw new Error(
-        `Invalid worker config at ${keyPath}.${key}: unknown command. Allowed: ${WORKER_CONFIG_COMMAND_NAMES.join(", ")}.`,
+        `Invalid worker config at ${keyPath}.${key}: unknown command. Allowed: ${WORKER_CONFIG_COMMAND_NAMES.join(", ")}, or tools.{toolName}.`,
       );
     }
 

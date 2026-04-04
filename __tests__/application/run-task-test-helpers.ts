@@ -86,7 +86,7 @@ export function createDependencies(options: {
       executeRundownTask: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
     },
     taskVerification: {
-      verify: vi.fn(async () => true),
+      verify: vi.fn(async () => ({ valid: true })),
     },
     taskRepair: {
       repair: vi.fn(async () => ({ valid: true, attempts: 0 })),

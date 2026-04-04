@@ -158,7 +158,7 @@ export async function runVerifyRepairLoop(
   emit({ kind: "info", message: "Running verification..." });
 
   const initialVerificationStartedAt = Date.now();
-  const valid = await dependencies.taskVerification.verify({
+  const { valid, formatWarning } = await dependencies.taskVerification.verify({
     task: input.task,
     source: input.source,
     contextBefore: input.contextBefore,
@@ -176,6 +176,10 @@ export async function runVerifyRepairLoop(
   });
   verificationDurationMs += Math.max(0, Date.now() - initialVerificationStartedAt);
   verifyAttempts += 1;
+
+  if (formatWarning) {
+    emit({ kind: "warn", message: formatWarning });
+  }
 
   const initialFailureReason = valid
     ? null

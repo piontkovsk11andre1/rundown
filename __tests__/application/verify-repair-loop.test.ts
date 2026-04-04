@@ -29,7 +29,7 @@ describe("verify-repair-loop trace metrics", () => {
 
     const result = await runVerifyRepairLoop({
       taskVerification: {
-        verify: vi.fn(async () => true),
+        verify: vi.fn(async () => ({ valid: true })),
       },
       taskRepair: {
         repair: vi.fn(async () => ({ valid: false, attempts: 0 })),
@@ -88,7 +88,7 @@ describe("verify-repair-loop trace metrics", () => {
 
     const result = await runVerifyRepairLoop({
       taskVerification: {
-        verify: vi.fn(async () => false),
+        verify: vi.fn(async () => ({ valid: false })),
       },
       taskRepair: {
         repair: vi.fn()
@@ -153,7 +153,7 @@ describe("verify-repair-loop output", () => {
 
     const result = await runVerifyRepairLoop({
       taskVerification: {
-        verify: vi.fn(async () => true),
+        verify: vi.fn(async () => ({ valid: true })),
       },
       taskRepair: {
         repair: vi.fn(async () => ({ valid: false, attempts: 0 })),
@@ -200,7 +200,7 @@ describe("verify-repair-loop output", () => {
 
     const result = await runVerifyRepairLoop({
       taskVerification: {
-        verify: vi.fn(async () => false),
+        verify: vi.fn(async () => ({ valid: false })),
       },
       taskRepair: {
         repair: vi.fn(async () => ({ valid: false, attempts: 0 })),
@@ -253,7 +253,7 @@ describe("verify-repair-loop output", () => {
 
     const result = await runVerifyRepairLoop({
       taskVerification: {
-        verify: vi.fn(async () => false),
+        verify: vi.fn(async () => ({ valid: false })),
       },
       taskRepair: {
         repair: vi.fn()
@@ -320,7 +320,7 @@ describe("verify-repair-loop output", () => {
 
     const result = await runVerifyRepairLoop({
       taskVerification: {
-        verify: vi.fn(async () => false),
+        verify: vi.fn(async () => ({ valid: false })),
       },
       taskRepair: {
         repair: vi.fn()
@@ -399,7 +399,7 @@ describe("verify-repair-loop output", () => {
       taskVerification: {
         verify: vi.fn(async () => {
           persistVerifyResult(artifactContext, task, verificationStore, "missing integration test", false);
-          return false;
+          return { valid: false };
         }),
       },
       taskRepair: {
@@ -472,7 +472,7 @@ describe("verify-repair-loop output", () => {
       taskVerification: {
         verify: vi.fn(async () => {
           persistVerifyResult(artifactContext, task, verificationStore, "OK", true);
-          return true;
+          return { valid: true };
         }),
       },
       taskRepair: {
@@ -525,7 +525,7 @@ describe("verify-repair-loop output", () => {
       taskVerification: {
         verify: vi.fn(async () => {
           verificationStore.write(task, "  missing migration rollback  ");
-          return false;
+          return { valid: false };
         }),
       },
       taskRepair: {

@@ -146,7 +146,7 @@ export async function repair(options: RepairOptions): Promise<RepairResult> {
     });
 
     // Re-run verification immediately after each repair attempt.
-    const valid = await verify({
+    const { valid } = await verify({
       task: options.task,
       source: options.source,
       contextBefore: options.contextBefore,

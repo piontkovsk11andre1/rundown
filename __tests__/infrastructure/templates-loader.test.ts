@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_DISCUSS_TEMPLATE,
+  DEFAULT_DISCUSS_FINISHED_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
@@ -42,6 +43,7 @@ describe("loadProjectTemplates", () => {
     const configDir = path.join(cwd, CONFIG_DIR_NAME);
     writeTemplate(configDir, "execute.md", "EXECUTE");
     writeTemplate(configDir, "discuss.md", "DISCUSS");
+    writeTemplate(configDir, "discuss-finished.md", "DISCUSS FINISHED");
     writeTemplate(configDir, "verify.md", "VERIFY");
     writeTemplate(configDir, "repair.md", "REPAIR");
     writeTemplate(configDir, "plan.md", "PLAN");
@@ -51,6 +53,7 @@ describe("loadProjectTemplates", () => {
 
     expect(templates.task).toBe("EXECUTE");
     expect(templates.discuss).toBe("DISCUSS");
+    expect(templates.discussFinished).toBe("DISCUSS FINISHED");
     expect(templates.verify).toBe("VERIFY");
     expect(templates.repair).toBe("REPAIR");
     expect(templates.plan).toBe("PLAN");
@@ -65,6 +68,7 @@ describe("loadProjectTemplates", () => {
 
     expect(templates.task).toBe(DEFAULT_TASK_TEMPLATE);
     expect(templates.discuss).toBe(DEFAULT_DISCUSS_TEMPLATE);
+    expect(templates.discussFinished).toBe(DEFAULT_DISCUSS_FINISHED_TEMPLATE);
     expect(templates.verify).toBe(DEFAULT_VERIFY_TEMPLATE);
     expect(templates.repair).toBe(DEFAULT_REPAIR_TEMPLATE);
     expect(templates.plan).toBe(DEFAULT_PLAN_TEMPLATE);
@@ -83,6 +87,7 @@ describe("loadProjectTemplates", () => {
 
     expect(templates.task).toBe("NEW EXECUTE");
     expect(templates.discuss).toBe(DEFAULT_DISCUSS_TEMPLATE);
+    expect(templates.discussFinished).toBe(DEFAULT_DISCUSS_FINISHED_TEMPLATE);
     expect(templates.verify).toBe("NEW VERIFY");
     expect(templates.repair).toBe("NEW REPAIR");
     expect(templates.plan).toBe(DEFAULT_PLAN_TEMPLATE);
@@ -108,6 +113,16 @@ describe("loadProjectTemplates", () => {
     const templates = loadProjectTemplates(configDir);
 
     expect(templates.discuss).toBe("DISCUSS");
+  });
+
+  it("loads discuss-finished.md when present", () => {
+    const cwd = makeTempDir();
+    const configDir = path.join(cwd, CONFIG_DIR_NAME);
+    writeTemplate(configDir, "discuss-finished.md", "DISCUSS FINISHED");
+
+    const templates = loadProjectTemplates(configDir);
+
+    expect(templates.discussFinished).toBe("DISCUSS FINISHED");
   });
 
   it("loads research.md when present", () => {

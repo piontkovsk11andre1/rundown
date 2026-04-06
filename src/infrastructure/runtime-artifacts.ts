@@ -24,6 +24,8 @@ export type RuntimeArtifactStatus =
   | "completed"
   | "discuss-completed"
   | "discuss-cancelled"
+  | "discuss-finished-completed"
+  | "discuss-finished-cancelled"
   | "failed"
   | "detached"
   | "execution-failed"
@@ -116,6 +118,32 @@ interface PhaseMetadata {
   completedAt?: string;
   notes?: string;
   extra?: Record<string, unknown>;
+}
+
+/**
+ * Describes a persisted phase discovered within a run directory.
+ */
+export interface ScannedRuntimePhase {
+  sequence: number;
+  phaseLabel: string;
+  phase: "execute" | "verify" | "repair";
+  dir: string;
+  metadataFile: string;
+  exitCode?: number | null;
+  verificationResult?: string;
+  stdoutPresent: boolean;
+  stderrPresent: boolean;
+  promptFilePath: string | null;
+}
+
+/**
+ * Groups scanned run phases by type while preserving timeline ordering.
+ */
+export interface ScannedRuntimePhases {
+  execute: ScannedRuntimePhase[];
+  verify: ScannedRuntimePhase[];
+  repair: ScannedRuntimePhase[];
+  all: ScannedRuntimePhase[];
 }
 
 /**
@@ -360,6 +388,63 @@ export function findSavedRuntimeArtifact(
   }
 
   return null;
+}
+
+/**
+ * Scans a run directory and returns categorized execute/verify/repair phases.
+ */
+export function scanRuntimeArtifactPhases(runDir: string): ScannedRuntimePhases {
+  const discovered: ScannedRuntimePhase[] = [];
+
+  if (!fs.existsSync(runDir)) {
+    return { execute: [], verify: [], repair: [], all: [] };
+  }
+
+  const phaseDirs = fs.readdirSync(runDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^\d+-/.test(entry.name))
+    .map((entry) => ({
+      name: entry.name,
+      sequence: Number.parseInt(entry.name.split("-", 1)[0] ?? "", 10),
+    }))
+    .filter((entry) => Number.isFinite(entry.sequence))
+    .sort((a, b) => a.sequence - b.sequence);
+
+  for (const phaseDir of phaseDirs) {
+    const absolutePhaseDir = path.join(runDir, phaseDir.name);
+    const metadataFile = path.join(absolutePhaseDir, "metadata.json");
+    const metadata = readJson<PhaseMetadata>(metadataFile);
+    if (!metadata) {
+      continue;
+    }
+
+    if (metadata.phase !== "execute" && metadata.phase !== "verify" && metadata.phase !== "repair") {
+      continue;
+    }
+
+    const stdoutPath = resolvePhaseArtifactPath(absolutePhaseDir, metadata.stdoutFile ?? null);
+    const stderrPath = resolvePhaseArtifactPath(absolutePhaseDir, metadata.stderrFile ?? null);
+    const promptPath = resolvePhaseArtifactPath(absolutePhaseDir, metadata.promptFile ?? null);
+
+    discovered.push({
+      sequence: metadata.sequence,
+      phaseLabel: metadata.phaseLabel ?? metadata.phase,
+      phase: metadata.phase,
+      dir: absolutePhaseDir,
+      metadataFile,
+      exitCode: metadata.exitCode,
+      verificationResult: metadata.verificationResult,
+      stdoutPresent: stdoutPath !== null,
+      stderrPresent: stderrPath !== null,
+      promptFilePath: promptPath,
+    });
+  }
+
+  return {
+    execute: discovered.filter((phase) => phase.phase === "execute"),
+    verify: discovered.filter((phase) => phase.phase === "verify"),
+    repair: discovered.filter((phase) => phase.phase === "repair"),
+    all: discovered,
+  };
 }
 
 /**
@@ -647,6 +732,18 @@ function isEnoentError(error: unknown): boolean {
 function ensureParentDir(filePath: string): void {
   const parentDir = path.dirname(filePath);
   fs.mkdirSync(parentDir, { recursive: true });
+}
+
+/**
+ * Resolves a phase artifact path and returns null when unavailable.
+ */
+function resolvePhaseArtifactPath(phaseDir: string, relativePath: string | null): string | null {
+  if (!relativePath) {
+    return null;
+  }
+
+  const resolved = path.join(phaseDir, relativePath);
+  return fs.existsSync(resolved) ? resolved : null;
 }
 
 /**

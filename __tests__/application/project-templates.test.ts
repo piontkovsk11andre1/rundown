@@ -2,6 +2,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_DISCUSS_TEMPLATE,
+  DEFAULT_DISCUSS_FINISHED_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
@@ -20,6 +21,7 @@ describe("project-templates", () => {
     expect(templates).toEqual({
       task: DEFAULT_TASK_TEMPLATE,
       discuss: DEFAULT_DISCUSS_TEMPLATE,
+      discussFinished: DEFAULT_DISCUSS_FINISHED_TEMPLATE,
       verify: DEFAULT_VERIFY_TEMPLATE,
       repair: DEFAULT_REPAIR_TEMPLATE,
       plan: DEFAULT_PLAN_TEMPLATE,
@@ -52,6 +54,7 @@ describe("project-templates", () => {
     expect(templates).toEqual({
       task: "TASK",
       discuss: DEFAULT_DISCUSS_TEMPLATE,
+      discussFinished: DEFAULT_DISCUSS_FINISHED_TEMPLATE,
       verify: "VERIFY",
       repair: DEFAULT_REPAIR_TEMPLATE,
       plan: DEFAULT_PLAN_TEMPLATE,

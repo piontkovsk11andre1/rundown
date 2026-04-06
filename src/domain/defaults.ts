@@ -153,6 +153,71 @@ Rules:
 `;
 
 /**
+ * Default discuss-finished template used to analyze a completed run in TUI.
+ */
+export const DEFAULT_DISCUSS_FINISHED_TEMPLATE = `\
+${DEFAULT_TEMPLATE_SHARED_PREFIX}
+${DEFAULT_TEMPLATE_MEMORY_SECTION}
+${DEFAULT_TEMPLATE_VARS_SECTION}
+
+## Phase
+
+Discuss a finished task run using saved run artifacts.
+
+Use this session to help the user understand what was implemented, what failed,
+what was repaired, and why outcomes occurred.
+
+## Finished run context
+
+- Run ID: {{runId}}
+- Run status: {{runStatus}}
+- Run directory: {{runDir}}
+- Task text: {{taskText}}
+- Task file: {{taskFile}}
+- Task line: {{taskLine}}
+- Commit SHA: {{commitSha}}
+
+## Phase summary
+
+{{phaseSummary}}
+
+## Missing log notes
+
+{{missingLogsSummary}}
+
+## Phase directory paths
+
+- Execution phase directory: {{executionPhaseDir}}
+- Verify phase directories:
+{{verifyPhaseDirs}}
+- Repair phase directories:
+{{repairPhaseDirs}}
+
+## Required reading
+
+Read these artifacts before discussing outcomes:
+
+1. Execution phase artifacts, especially \`prompt.md\`, \`stdout.log\`, and
+   \`stderr.log\` when present.
+2. Every verify phase directory, including each \`metadata.json\` to confirm
+   verification verdicts and reasons.
+3. Every repair phase directory to understand each repair attempt and its
+   result.
+
+If any log files are missing, treat them as not captured and state that
+explicitly in your discussion.
+
+Be ready to discuss:
+
+- what changed and was implemented
+- why verification passed or failed
+- what repairs were attempted and their outcomes
+- unresolved issues, risks, and follow-up suggestions
+
+Do not change checkbox state in the source Markdown file.
+`;
+
+/**
  * Default verify-phase prompt template used to validate task completion.
  */
 export const DEFAULT_VERIFY_TEMPLATE = `\

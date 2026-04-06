@@ -20,6 +20,8 @@ export type TraceEventType =
   | "round.completed"
   | "discussion.started"
   | "discussion.completed"
+  | "discussion.finished.started"
+  | "discussion.finished.completed"
   | "task.context"
   | "phase.started"
   | "phase.completed"
@@ -60,6 +62,8 @@ export type TraceRunStatus =
   | "completed"
   | "discuss-completed"
   | "discuss-cancelled"
+  | "discuss-finished-completed"
+  | "discuss-finished-cancelled"
   | "failed"
   | "detached"
   | "execution-failed"
@@ -130,6 +134,30 @@ export interface DiscussionCompletedPayload {
   task_text: string;
   task_file: string;
   task_line: number;
+  duration_ms: number;
+  exit_code: number | null;
+}
+
+/**
+ * Payload for `discussion.finished.started` events.
+ */
+export interface DiscussionFinishedStartedPayload {
+  task_text: string;
+  task_file: string;
+  task_line: number;
+  target_run_id: string;
+  target_run_status: TraceRunStatus;
+}
+
+/**
+ * Payload for `discussion.finished.completed` events.
+ */
+export interface DiscussionFinishedCompletedPayload {
+  task_text: string;
+  task_file: string;
+  task_line: number;
+  target_run_id: string;
+  target_run_status: TraceRunStatus;
   duration_ms: number;
   exit_code: number | null;
 }
@@ -385,6 +413,20 @@ export type DiscussionCompletedEvent = TraceEventBase<
   DiscussionCompletedPayload
 >;
 /**
+ * Strongly typed event shape for `discussion.finished.started`.
+ */
+export type DiscussionFinishedStartedEvent = TraceEventBase<
+  "discussion.finished.started",
+  DiscussionFinishedStartedPayload
+>;
+/**
+ * Strongly typed event shape for `discussion.finished.completed`.
+ */
+export type DiscussionFinishedCompletedEvent = TraceEventBase<
+  "discussion.finished.completed",
+  DiscussionFinishedCompletedPayload
+>;
+/**
  * Strongly typed event shape for `task.context`.
  */
 export type TaskContextEvent = TraceEventBase<"task.context", TaskContextPayload>;
@@ -466,6 +508,8 @@ export type TraceEvent =
   | RoundCompletedEvent
   | DiscussionStartedEvent
   | DiscussionCompletedEvent
+  | DiscussionFinishedStartedEvent
+  | DiscussionFinishedCompletedEvent
   | TaskContextEvent
   | PhaseStartedEvent
   | PhaseCompletedEvent
@@ -610,6 +654,44 @@ export function createDiscussionCompletedEvent(input: {
     timestamp: input.timestamp,
     run_id: input.run_id,
     event_type: "discussion.completed",
+    payload: input.payload,
+  });
+}
+
+/**
+ * Creates a `discussion.finished.started` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `discussion.finished.started` event.
+ */
+export function createDiscussionFinishedStartedEvent(input: {
+  timestamp: string;
+  run_id: string;
+  payload: DiscussionFinishedStartedPayload;
+}): DiscussionFinishedStartedEvent {
+  return createTraceEvent({
+    timestamp: input.timestamp,
+    run_id: input.run_id,
+    event_type: "discussion.finished.started",
+    payload: input.payload,
+  });
+}
+
+/**
+ * Creates a `discussion.finished.completed` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `discussion.finished.completed` event.
+ */
+export function createDiscussionFinishedCompletedEvent(input: {
+  timestamp: string;
+  run_id: string;
+  payload: DiscussionFinishedCompletedPayload;
+}): DiscussionFinishedCompletedEvent {
+  return createTraceEvent({
+    timestamp: input.timestamp,
+    run_id: input.run_id,
+    event_type: "discussion.finished.completed",
     payload: input.payload,
   });
 }

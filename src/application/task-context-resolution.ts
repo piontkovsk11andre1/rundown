@@ -203,5 +203,7 @@ function hasReverifiableTask(run: ArtifactRunMetadata): boolean {
 }
 
 function isCompletedArtifactRun(run: ArtifactRunMetadata): boolean {
-  return run.status === "completed" || run.status === "reverify-completed";
+  return run.status === "completed"
+    || run.status === "reverify-completed"
+    || run.status === "discuss-finished-completed";
 }

@@ -232,6 +232,1750 @@ describe("discuss-task", () => {
     expect(events).toContainEqual({ kind: "text", text: "Discuss prompt for: Refine rollout scope" });
   });
 
+  it("uses --run latest to render discuss-finished prompt from saved run artifacts", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const runDir = path.join(cwd, ".rundown", "runs", "run-finished");
+    const executeDir = path.join(runDir, "01-execute");
+    const verifyDir = path.join(runDir, "02-verify");
+    const repairDir = path.join(runDir, "03-repair");
+
+    const files = new Map<string, string>([
+      [taskFile, "- [x] Refine rollout scope\n"],
+      [path.join(executeDir, "metadata.json"), JSON.stringify({
+        sequence: 1,
+        phase: "execute",
+        promptFile: "prompt.md",
+        stdoutFile: "stdout.log",
+        stderrFile: null,
+        exitCode: 0,
+      })],
+      [path.join(verifyDir, "metadata.json"), JSON.stringify({
+        sequence: 2,
+        phase: "verify",
+        promptFile: "prompt.md",
+        stdoutFile: "stdout.log",
+        stderrFile: null,
+        exitCode: 0,
+        verificationResult: "OK",
+      })],
+      [path.join(repairDir, "metadata.json"), JSON.stringify({
+        sequence: 3,
+        phase: "repair",
+        promptFile: "prompt.md",
+        stdoutFile: null,
+        stderrFile: null,
+        exitCode: 0,
+      })],
+    ]);
+
+    const fileSystem: FileSystem = {
+      exists: (filePath) => {
+        if (filePath === runDir || filePath === executeDir || filePath === verifyDir || filePath === repairDir) {
+          return true;
+        }
+        return files.has(filePath);
+      },
+      readText: (filePath) => {
+        const content = files.get(filePath);
+        if (content === undefined) {
+          throw new Error("ENOENT: " + filePath);
+        }
+        return content;
+      },
+      writeText: vi.fn(),
+      mkdir: vi.fn(),
+      readdir: (dirPath) => {
+        if (dirPath !== runDir) {
+          return [];
+        }
+        return [
+          { name: "01-execute", isFile: false, isDirectory: true },
+          { name: "02-verify", isFile: false, isDirectory: true },
+          { name: "03-repair", isFile: false, isDirectory: true },
+        ];
+      },
+      stat: (filePath) => {
+        if (filePath === runDir || filePath === executeDir || filePath === verifyDir || filePath === repairDir) {
+          return { isFile: false, isDirectory: true };
+        }
+        if (files.has(filePath)) {
+          return { isFile: true, isDirectory: false };
+        }
+        return null;
+      },
+      unlink: vi.fn(),
+      rm: vi.fn(),
+    };
+
+    const task = createTask(taskFile, "Refine rollout scope");
+    task.checked = true;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [x] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.latest).mockReturnValue({
+      runId: "run-finished",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-finished",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "completed",
+      source: "tasks.md",
+      task: {
+        text: "Refine rollout scope",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "- [x] Refine rollout scope\n",
+      },
+      extra: {
+        commitSha: "abc123",
+      },
+    });
+
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "discuss-finished.md"))) {
+        return [
+          "run={{runId}}",
+          "status={{runStatus}}",
+          "exec={{executionPhaseDir}}",
+          "verify={{verifyPhaseDirs}}",
+          "repair={{repairPhaseDirs}}",
+          "phase={{phaseSummary}}",
+          "missing={{missingLogsSummary}}",
+        ].join("\n");
+      }
+      return null;
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "latest",
+      printPrompt: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.sourceResolver.resolveSources)).not.toHaveBeenCalled();
+    expect(vi.mocked(dependencies.taskSelector.selectNextTask)).not.toHaveBeenCalled();
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain("run=run-finished");
+    expect(prompt).toContain("status=completed");
+    expect(prompt).toContain("exec=" + executeDir);
+    expect(prompt).toContain("verify=- " + verifyDir);
+    expect(prompt).toContain("repair=- " + repairDir);
+    expect(prompt).toContain("[02] verify");
+    expect(prompt).toContain("[01] execute (01-execute): missing stdout.log and stderr.log");
+    expect(prompt).toContain("[02] verify (02-verify): missing stdout.log and stderr.log");
+    expect(prompt).toContain("[03] repair (03-repair): missing stdout.log and stderr.log");
+  });
+
+  it("assembles discuss-finished template vars from run metadata with missing optional values", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const runDir = path.join(cwd, ".rundown", "runs", "run-finished");
+
+    const fileSystem: FileSystem = {
+      exists: (filePath) => filePath === runDir || filePath === taskFile,
+      readText: (filePath) => {
+        if (filePath === taskFile) {
+          return [
+            "# Heading",
+            "",
+            "- [x] Refine rollout scope",
+          ].join("\n") + "\n";
+        }
+        throw new Error("ENOENT: " + filePath);
+      },
+      writeText: vi.fn(),
+      mkdir: vi.fn(),
+      readdir: (dirPath) => {
+        if (dirPath === runDir) {
+          return [];
+        }
+        return [];
+      },
+      stat: (filePath) => {
+        if (filePath === runDir) {
+          return { isFile: false, isDirectory: true };
+        }
+        if (filePath === taskFile) {
+          return { isFile: true, isDirectory: false };
+        }
+        return null;
+      },
+      unlink: vi.fn(),
+      rm: vi.fn(),
+    };
+
+    const task = createTask(taskFile, "Refine rollout scope");
+    task.checked = true;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [x] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-finished",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-finished",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "completed",
+      source: "tasks.md",
+      task: {
+        text: "Refine rollout scope",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "- [x] Refine rollout scope\n",
+      },
+      extra: {},
+    });
+
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "discuss-finished.md"))) {
+        return [
+          "run={{runId}}",
+          "status={{runStatus}}",
+          "runDir={{runDir}}",
+          "taskText={{taskText}}",
+          "taskFile={{taskFile}}",
+          "taskLine={{taskLine}}",
+          "taskLineFromRun={{taskLineFromRun}}",
+          "selectedTaskLine={{selectedTaskLine}}",
+          "commit={{commitSha}}",
+          "exec={{executionPhaseDir}}",
+          "verify={{verifyPhaseDirs}}",
+          "repair={{repairPhaseDirs}}",
+          "phase={{phaseSummary}}",
+          "missing={{missingLogsSummary}}",
+        ].join("\n");
+      }
+      return null;
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-finished",
+      printPrompt: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain("run=run-finished");
+    expect(prompt).toContain("status=completed");
+    expect(prompt).toContain("runDir=" + runDir);
+    expect(prompt).toContain("taskText=Refine rollout scope");
+    expect(prompt).toContain("taskFile=" + taskFile);
+    expect(prompt).toContain("taskLine=1");
+    expect(prompt).toContain("taskLineFromRun=1");
+    expect(prompt).toContain("selectedTaskLine=3");
+    expect(prompt).toContain("commit=(none)");
+    expect(prompt).toContain("exec=(missing)");
+    expect(prompt).toContain("verify=- (none)");
+    expect(prompt).toContain("repair=- (none)");
+    expect(prompt).toContain("phase=No execute/verify/repair phases were discovered in this run directory.");
+    expect(prompt).toContain("missing=No phase artifacts were discovered, so no stdout/stderr logs are available.");
+  });
+
+  it("assembles discuss-finished template vars for a complete run with execute/verify/repair phases", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const runDir = path.join(cwd, ".rundown", "runs", "run-complete");
+    const executeDir = path.join(runDir, "01-execute");
+    const verifyDir = path.join(runDir, "02-verify");
+    const repairDir = path.join(runDir, "03-repair");
+    const executeStdout = path.join(executeDir, "stdout.log");
+    const executeStderr = path.join(executeDir, "stderr.log");
+    const executePrompt = path.join(executeDir, "prompt.md");
+    const verifyStdout = path.join(verifyDir, "stdout.log");
+    const verifyStderr = path.join(verifyDir, "stderr.log");
+    const verifyPrompt = path.join(verifyDir, "prompt.md");
+    const repairStdout = path.join(repairDir, "stdout.log");
+    const repairStderr = path.join(repairDir, "stderr.log");
+    const repairPrompt = path.join(repairDir, "prompt.md");
+
+    const files = new Map<string, string>([
+      [taskFile, "- [x] Refine rollout scope\n"],
+      [path.join(executeDir, "metadata.json"), JSON.stringify({
+        sequence: 1,
+        phase: "execute",
+        promptFile: "prompt.md",
+        stdoutFile: "stdout.log",
+        stderrFile: "stderr.log",
+        exitCode: 0,
+      })],
+      [path.join(verifyDir, "metadata.json"), JSON.stringify({
+        sequence: 2,
+        phase: "verify",
+        promptFile: "prompt.md",
+        stdoutFile: "stdout.log",
+        stderrFile: "stderr.log",
+        exitCode: 0,
+        verificationResult: "OK",
+      })],
+      [path.join(repairDir, "metadata.json"), JSON.stringify({
+        sequence: 3,
+        phase: "repair",
+        promptFile: "prompt.md",
+        stdoutFile: "stdout.log",
+        stderrFile: "stderr.log",
+        exitCode: 0,
+      })],
+      [executeStdout, "execute out"],
+      [executeStderr, "execute err"],
+      [executePrompt, "execute prompt"],
+      [verifyStdout, "verify out"],
+      [verifyStderr, "verify err"],
+      [verifyPrompt, "verify prompt"],
+      [repairStdout, "repair out"],
+      [repairStderr, "repair err"],
+      [repairPrompt, "repair prompt"],
+    ]);
+
+    const fileSystem: FileSystem = {
+      exists: (filePath) => {
+        if (filePath === runDir || filePath === executeDir || filePath === verifyDir || filePath === repairDir) {
+          return true;
+        }
+        return files.has(filePath);
+      },
+      readText: (filePath) => {
+        const content = files.get(filePath);
+        if (content === undefined) {
+          throw new Error("ENOENT: " + filePath);
+        }
+        return content;
+      },
+      writeText: vi.fn(),
+      mkdir: vi.fn(),
+      readdir: (dirPath) => {
+        if (dirPath !== runDir) {
+          return [];
+        }
+        return [
+          { name: "01-execute", isFile: false, isDirectory: true },
+          { name: "02-verify", isFile: false, isDirectory: true },
+          { name: "03-repair", isFile: false, isDirectory: true },
+        ];
+      },
+      stat: (filePath) => {
+        if (filePath === runDir || filePath === executeDir || filePath === verifyDir || filePath === repairDir) {
+          return { isFile: false, isDirectory: true };
+        }
+        if (files.has(filePath)) {
+          return { isFile: true, isDirectory: false };
+        }
+        return null;
+      },
+      unlink: vi.fn(),
+      rm: vi.fn(),
+    };
+
+    const task = createTask(taskFile, "Refine rollout scope");
+    task.checked = true;
+    task.line = 10;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [x] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-complete",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-complete",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "completed",
+      source: "tasks.md",
+      task: {
+        text: "Refine rollout scope",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "- [x] Refine rollout scope\n",
+      },
+      extra: {
+        commitSha: "abc123",
+      },
+    });
+
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "discuss-finished.md"))) {
+        return [
+          "run={{runId}}",
+          "status={{runStatus}}",
+          "dir={{runDir}}",
+          "taskText={{taskText}}",
+          "taskFile={{taskFile}}",
+          "taskLine={{taskLine}}",
+          "taskLineFromRun={{taskLineFromRun}}",
+          "selectedTaskLine={{selectedTaskLine}}",
+          "commit={{commitSha}}",
+          "exec={{executionPhaseDir}}",
+          "verify={{verifyPhaseDirs}}",
+          "repair={{repairPhaseDirs}}",
+          "phase={{phaseSummary}}",
+          "missing={{missingLogsSummary}}",
+        ].join("\n");
+      }
+      return null;
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-complete",
+      printPrompt: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain("run=run-complete");
+    expect(prompt).toContain("status=completed");
+    expect(prompt).toContain("dir=" + runDir);
+    expect(prompt).toContain("taskText=Refine rollout scope");
+    expect(prompt).toContain("taskFile=" + taskFile);
+    expect(prompt).toContain("taskLine=1");
+    expect(prompt).toContain("taskLineFromRun=1");
+    expect(prompt).toContain("selectedTaskLine=1");
+    expect(prompt).toContain("commit=abc123");
+    expect(prompt).toContain("exec=" + executeDir);
+    expect(prompt).toContain("verify=- " + verifyDir);
+    expect(prompt).toContain("repair=- " + repairDir);
+    expect(prompt).toContain("[01] execute (01-execute): exit=0, verification=(n/a), prompt=present, stdout=present, stderr=present");
+    expect(prompt).toContain("[02] verify (02-verify): exit=0, verification=OK, prompt=present, stdout=present, stderr=present");
+    expect(prompt).toContain("[03] repair (03-repair): exit=0, verification=(n/a), prompt=present, stdout=present, stderr=present");
+    expect(prompt).toContain("missing=All discovered phases include stdout/stderr log files.");
+  });
+
+  it("sets commitSha template var to commit id when available and (none) when missing", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const runDir = path.join(cwd, ".rundown", "runs", "run-commit");
+
+    const fileSystem: FileSystem = {
+      exists: (filePath) => filePath === runDir || filePath === taskFile,
+      readText: (filePath) => {
+        if (filePath === taskFile) {
+          return "- [x] Refine rollout scope\n";
+        }
+        throw new Error("ENOENT: " + filePath);
+      },
+      writeText: vi.fn(),
+      mkdir: vi.fn(),
+      readdir: () => [],
+      stat: (filePath) => {
+        if (filePath === runDir) {
+          return { isFile: false, isDirectory: true };
+        }
+        if (filePath === taskFile) {
+          return { isFile: true, isDirectory: false };
+        }
+        return null;
+      },
+      unlink: vi.fn(),
+      rm: vi.fn(),
+    };
+
+    const task = createTask(taskFile, "Refine rollout scope");
+    task.checked = true;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [x] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "discuss-finished.md"))) {
+        return "commit={{commitSha}}";
+      }
+      return null;
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-commit",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-commit",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "completed",
+      source: "tasks.md",
+      task: {
+        text: "Refine rollout scope",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "- [x] Refine rollout scope\n",
+      },
+      extra: {
+        commitSha: "deadbeef",
+      },
+    });
+
+    const withCommit = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-commit",
+      printPrompt: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(withCommit).toBe(0);
+    expect(events.find((event) => event.kind === "text")?.text).toBe("commit=deadbeef");
+
+    events.length = 0;
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-commit",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-commit",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "completed",
+      source: "tasks.md",
+      task: {
+        text: "Refine rollout scope",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "- [x] Refine rollout scope\n",
+      },
+      extra: {},
+    });
+
+    const withoutCommit = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-commit",
+      printPrompt: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(withoutCommit).toBe(0);
+    expect(events.find((event) => event.kind === "text")?.text).toBe("commit=(none)");
+  });
+
+  it("reports missing stdout/stderr logs in discuss-finished template vars", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const runDir = path.join(cwd, ".rundown", "runs", "run-missing-logs");
+    const executeDir = path.join(runDir, "01-execute");
+    const verifyDir = path.join(runDir, "02-verify");
+
+    const files = new Map<string, string>([
+      [taskFile, "- [x] Refine rollout scope\n"],
+      [path.join(executeDir, "metadata.json"), JSON.stringify({
+        sequence: 1,
+        phase: "execute",
+        promptFile: "prompt.md",
+        stdoutFile: "stdout.log",
+        stderrFile: null,
+        exitCode: 0,
+      })],
+      [path.join(verifyDir, "metadata.json"), JSON.stringify({
+        sequence: 2,
+        phase: "verify",
+        promptFile: "prompt.md",
+        stdoutFile: null,
+        stderrFile: null,
+        exitCode: 1,
+        verificationResult: "NOT_OK: test failures",
+      })],
+      [path.join(executeDir, "prompt.md"), "execute prompt"],
+      [path.join(verifyDir, "prompt.md"), "verify prompt"],
+    ]);
+
+    const fileSystem: FileSystem = {
+      exists: (filePath) => {
+        if (filePath === runDir || filePath === executeDir || filePath === verifyDir) {
+          return true;
+        }
+        return files.has(filePath);
+      },
+      readText: (filePath) => {
+        const content = files.get(filePath);
+        if (content === undefined) {
+          throw new Error("ENOENT: " + filePath);
+        }
+        return content;
+      },
+      writeText: vi.fn(),
+      mkdir: vi.fn(),
+      readdir: (dirPath) => {
+        if (dirPath !== runDir) {
+          return [];
+        }
+        return [
+          { name: "01-execute", isFile: false, isDirectory: true },
+          { name: "02-verify", isFile: false, isDirectory: true },
+        ];
+      },
+      stat: (filePath) => {
+        if (filePath === runDir || filePath === executeDir || filePath === verifyDir) {
+          return { isFile: false, isDirectory: true };
+        }
+        if (files.has(filePath)) {
+          return { isFile: true, isDirectory: false };
+        }
+        return null;
+      },
+      unlink: vi.fn(),
+      rm: vi.fn(),
+    };
+
+    const task = createTask(taskFile, "Refine rollout scope");
+    task.checked = true;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [x] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-missing-logs",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-missing-logs",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "failed",
+      source: "tasks.md",
+      task: {
+        text: "Refine rollout scope",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "- [x] Refine rollout scope\n",
+      },
+      extra: {},
+    });
+
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "discuss-finished.md"))) {
+        return "missing={{missingLogsSummary}}";
+      }
+      return null;
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-missing-logs",
+      printPrompt: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain("[01] execute (01-execute): missing stdout.log and stderr.log");
+    expect(prompt).toContain("[02] verify (02-verify): missing stdout.log and stderr.log");
+    expect(prompt).toContain("Output may not have been captured");
+  });
+
+  it("includes all repair attempts in phaseSummary for discuss-finished template vars", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const runDir = path.join(cwd, ".rundown", "runs", "run-multi-repair");
+    const executeDir = path.join(runDir, "01-execute");
+    const verifyDir = path.join(runDir, "02-verify");
+    const repairAttemptOneDir = path.join(runDir, "03-repair");
+    const repairAttemptTwoDir = path.join(runDir, "05-repair");
+
+    const files = new Map<string, string>([
+      [taskFile, "- [x] Refine rollout scope\n"],
+      [path.join(executeDir, "metadata.json"), JSON.stringify({
+        sequence: 1,
+        phase: "execute",
+        promptFile: null,
+        stdoutFile: null,
+        stderrFile: null,
+        exitCode: 0,
+      })],
+      [path.join(verifyDir, "metadata.json"), JSON.stringify({
+        sequence: 2,
+        phase: "verify",
+        promptFile: null,
+        stdoutFile: null,
+        stderrFile: null,
+        exitCode: 1,
+        verificationResult: "NOT_OK: lint",
+      })],
+      [path.join(repairAttemptOneDir, "metadata.json"), JSON.stringify({
+        sequence: 3,
+        phase: "repair",
+        promptFile: null,
+        stdoutFile: null,
+        stderrFile: null,
+        exitCode: 0,
+      })],
+      [path.join(repairAttemptTwoDir, "metadata.json"), JSON.stringify({
+        sequence: 5,
+        phase: "repair",
+        promptFile: null,
+        stdoutFile: null,
+        stderrFile: null,
+        exitCode: 0,
+      })],
+    ]);
+
+    const fileSystem: FileSystem = {
+      exists: (filePath) => {
+        if (
+          filePath === runDir
+          || filePath === executeDir
+          || filePath === verifyDir
+          || filePath === repairAttemptOneDir
+          || filePath === repairAttemptTwoDir
+        ) {
+          return true;
+        }
+        return files.has(filePath);
+      },
+      readText: (filePath) => {
+        const content = files.get(filePath);
+        if (content === undefined) {
+          throw new Error("ENOENT: " + filePath);
+        }
+        return content;
+      },
+      writeText: vi.fn(),
+      mkdir: vi.fn(),
+      readdir: (dirPath) => {
+        if (dirPath !== runDir) {
+          return [];
+        }
+        return [
+          { name: "01-execute", isFile: false, isDirectory: true },
+          { name: "02-verify", isFile: false, isDirectory: true },
+          { name: "03-repair", isFile: false, isDirectory: true },
+          { name: "05-repair", isFile: false, isDirectory: true },
+        ];
+      },
+      stat: (filePath) => {
+        if (
+          filePath === runDir
+          || filePath === executeDir
+          || filePath === verifyDir
+          || filePath === repairAttemptOneDir
+          || filePath === repairAttemptTwoDir
+        ) {
+          return { isFile: false, isDirectory: true };
+        }
+        if (files.has(filePath)) {
+          return { isFile: true, isDirectory: false };
+        }
+        return null;
+      },
+      unlink: vi.fn(),
+      rm: vi.fn(),
+    };
+
+    const task = createTask(taskFile, "Refine rollout scope");
+    task.checked = true;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [x] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-multi-repair",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-multi-repair",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "completed",
+      source: "tasks.md",
+      task: {
+        text: "Refine rollout scope",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "- [x] Refine rollout scope\n",
+      },
+      extra: {},
+    });
+
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "discuss-finished.md"))) {
+        return "phase={{phaseSummary}}";
+      }
+      return null;
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-multi-repair",
+      printPrompt: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain("[03] repair (03-repair): exit=0");
+    expect(prompt).toContain("[05] repair (05-repair): exit=0");
+    expect(prompt).toContain("[02] verify (02-verify): exit=1, verification=NOT_OK: lint");
+  });
+
+  it("uses run.json task text in discuss-finished template vars when task source file is deleted", async () => {
+    const cwd = "/workspace";
+    const runDir = path.join(cwd, ".rundown", "runs", "run-fallback-task-text");
+    const deletedTaskFile = path.join(cwd, "deleted-task-file.md");
+    const selectedTaskFile = path.join(cwd, "tasks.md");
+
+    const fileSystem: FileSystem = {
+      exists: (filePath) => filePath === runDir,
+      readText: () => {
+        throw new Error("ENOENT");
+      },
+      writeText: vi.fn(),
+      mkdir: vi.fn(),
+      readdir: () => [],
+      stat: (filePath) => {
+        if (filePath === runDir) {
+          return { isFile: false, isDirectory: true };
+        }
+        return null;
+      },
+      unlink: vi.fn(),
+      rm: vi.fn(),
+    };
+
+    const task = createTask(selectedTaskFile, "Ignored selected task text");
+    task.checked = true;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [x] Ignored selected task text\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-fallback-task-text",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-fallback-task-text",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "completed",
+      source: "tasks.md",
+      task: {
+        text: "Text from run metadata",
+        file: deletedTaskFile,
+        line: 9,
+        index: 3,
+        source: "# Old file\n\n- [x] Text from run metadata\n",
+      },
+      extra: {},
+    });
+
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "discuss-finished.md"))) {
+        return [
+          "task={{task}}",
+          "taskText={{taskText}}",
+          "taskFile={{taskFile}}",
+          "selectedFile={{file}}",
+        ].join("\n");
+      }
+      return null;
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-fallback-task-text",
+      printPrompt: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain("task=Text from run metadata");
+    expect(prompt).toContain("taskText=Text from run metadata");
+    expect(prompt).toContain("taskFile=" + deletedTaskFile);
+    expect(prompt).toContain("selectedFile=" + deletedTaskFile);
+  });
+
+  it("falls back to run.json task metadata when the source task file was moved or deleted", async () => {
+    const cwd = "/workspace";
+    const runDir = path.join(cwd, ".rundown", "runs", "run-finished");
+    const missingTaskFile = path.join(cwd, "tasks-moved.md");
+
+    const fileSystem: FileSystem = {
+      exists: (filePath) => filePath === runDir,
+      readText: (filePath) => {
+        throw new Error("ENOENT: " + filePath);
+      },
+      writeText: vi.fn(),
+      mkdir: vi.fn(),
+      readdir: (dirPath) => {
+        if (dirPath === runDir) {
+          return [];
+        }
+        return [];
+      },
+      stat: (filePath) => {
+        if (filePath === runDir) {
+          return { isFile: false, isDirectory: true };
+        }
+        return null;
+      },
+      unlink: vi.fn(),
+      rm: vi.fn(),
+    };
+
+    const task = createTask(path.join(cwd, "tasks.md"), "Refine rollout scope");
+    task.checked = true;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [x] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-finished",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-finished",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "completed",
+      source: "tasks.md",
+      task: {
+        text: "Refine rollout scope",
+        file: missingTaskFile,
+        line: 1,
+        index: 0,
+        source: "- [x] Refine rollout scope\n",
+      },
+      extra: {},
+    });
+
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "discuss-finished.md"))) {
+        return [
+          "task={{task}}",
+          "taskFile={{taskFile}}",
+          "selectedFile={{file}}",
+        ].join("\n");
+      }
+      return null;
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-finished",
+      printPrompt: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(events.some((event) => event.kind === "info"
+      && event.message.includes("using saved run metadata from run.json"))).toBe(true);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain("task=Refine rollout scope");
+    expect(prompt).toContain("taskFile=" + missingTaskFile);
+    expect(prompt).toContain("selectedFile=" + missingTaskFile);
+  });
+
+  it("finalizes discuss-finished sessions with discuss-finished-completed status on success", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const runDir = path.join(cwd, ".rundown", "runs", "run-finished");
+    const executeDir = path.join(runDir, "01-execute");
+
+    const files = new Map<string, string>([
+      [taskFile, "- [x] Refine rollout scope\n"],
+      [path.join(executeDir, "metadata.json"), JSON.stringify({
+        sequence: 1,
+        phase: "execute",
+        promptFile: "prompt.md",
+        stdoutFile: "stdout.log",
+        stderrFile: null,
+        exitCode: 0,
+      })],
+    ]);
+
+    const fileSystem: FileSystem = {
+      exists: (filePath) => {
+        if (filePath === runDir || filePath === executeDir) {
+          return true;
+        }
+        return files.has(filePath);
+      },
+      readText: (filePath) => {
+        const content = files.get(filePath);
+        if (content === undefined) {
+          throw new Error("ENOENT: " + filePath);
+        }
+        return content;
+      },
+      writeText: vi.fn(),
+      mkdir: vi.fn(),
+      readdir: (dirPath) => {
+        if (dirPath !== runDir) {
+          return [];
+        }
+        return [{ name: "01-execute", isFile: false, isDirectory: true }];
+      },
+      stat: (filePath) => {
+        if (filePath === runDir || filePath === executeDir) {
+          return { isFile: false, isDirectory: true };
+        }
+        if (files.has(filePath)) {
+          return { isFile: true, isDirectory: false };
+        }
+        return null;
+      },
+      unlink: vi.fn(),
+      rm: vi.fn(),
+    };
+
+    const task = createTask(taskFile, "Refine rollout scope");
+    task.checked = true;
+    const { dependencies } = createDependencies({
+      cwd,
+      task,
+      source: "- [x] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-finished",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-finished",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "completed",
+      source: "tasks.md",
+      task: {
+        text: "Refine rollout scope",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "- [x] Refine rollout scope\n",
+      },
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-finished",
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.artifactStore.createContext)).toHaveBeenCalledWith(expect.objectContaining({
+      commandName: "discuss-finished",
+    }));
+    expect(vi.mocked(dependencies.artifactStore.finalize)).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      status: "discuss-finished-completed",
+    }));
+  });
+
+  it("emits finished-discussion trace events for --run discussions", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const runDir = path.join(cwd, ".rundown", "runs", "run-finished");
+    const executeDir = path.join(runDir, "01-execute");
+
+    const files = new Map<string, string>([
+      [taskFile, "- [x] Refine rollout scope\n"],
+      [path.join(executeDir, "metadata.json"), JSON.stringify({
+        sequence: 1,
+        phase: "execute",
+        promptFile: "prompt.md",
+        stdoutFile: "stdout.log",
+        stderrFile: null,
+        exitCode: 0,
+      })],
+    ]);
+
+    const fileSystem: FileSystem = {
+      exists: (filePath) => {
+        if (filePath === runDir || filePath === executeDir) {
+          return true;
+        }
+        return files.has(filePath);
+      },
+      readText: (filePath) => {
+        const content = files.get(filePath);
+        if (content === undefined) {
+          throw new Error("ENOENT: " + filePath);
+        }
+        return content;
+      },
+      writeText: vi.fn(),
+      mkdir: vi.fn(),
+      readdir: (dirPath) => {
+        if (dirPath !== runDir) {
+          return [];
+        }
+        return [{ name: "01-execute", isFile: false, isDirectory: true }];
+      },
+      stat: (filePath) => {
+        if (filePath === runDir || filePath === executeDir) {
+          return { isFile: false, isDirectory: true };
+        }
+        if (files.has(filePath)) {
+          return { isFile: true, isDirectory: false };
+        }
+        return null;
+      },
+      unlink: vi.fn(),
+      rm: vi.fn(),
+    };
+
+    const task = createTask(taskFile, "Refine rollout scope");
+    task.checked = true;
+    task.line = 42;
+    const { dependencies } = createDependencies({
+      cwd,
+      task,
+      source: "- [x] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-finished",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-finished",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "completed",
+      source: "tasks.md",
+      task: {
+        text: "Refine rollout scope",
+        file: taskFile,
+        line: 42,
+        index: 0,
+        source: "- [x] Refine rollout scope\n",
+      },
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-finished",
+      trace: true,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    const eventTypes = vi.mocked(dependencies.traceWriter.write).mock.calls
+      .map((call) => call[0]?.event_type);
+    expect(eventTypes).toEqual([
+      "discussion.started",
+      "discussion.finished.started",
+      "discussion.completed",
+      "discussion.finished.completed",
+    ]);
+    expect(vi.mocked(dependencies.traceWriter.write)).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      event_type: "discussion.finished.started",
+      payload: expect.objectContaining({
+        target_run_id: "run-finished",
+        target_run_status: "completed",
+      }),
+    }));
+    expect(vi.mocked(dependencies.traceWriter.write)).toHaveBeenNthCalledWith(4, expect.objectContaining({
+      event_type: "discussion.finished.completed",
+      payload: expect.objectContaining({
+        target_run_id: "run-finished",
+        target_run_status: "completed",
+        exit_code: 0,
+      }),
+    }));
+  });
+
+  it("acquires source lock for --run discussions before worker invocation and releases it afterward", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const runDir = path.join(cwd, ".rundown", "runs", "run-finished");
+    const executeDir = path.join(runDir, "01-execute");
+
+    const files = new Map<string, string>([
+      [taskFile, "- [x] Refine rollout scope\n"],
+      [path.join(executeDir, "metadata.json"), JSON.stringify({
+        sequence: 1,
+        phase: "execute",
+        promptFile: "prompt.md",
+        stdoutFile: "stdout.log",
+        stderrFile: null,
+        exitCode: 0,
+      })],
+    ]);
+
+    const fileSystem: FileSystem = {
+      exists: (filePath) => {
+        if (filePath === runDir || filePath === executeDir) {
+          return true;
+        }
+        return files.has(filePath);
+      },
+      readText: (filePath) => {
+        const content = files.get(filePath);
+        if (content === undefined) {
+          throw new Error("ENOENT: " + filePath);
+        }
+        return content;
+      },
+      writeText: vi.fn(),
+      mkdir: vi.fn(),
+      readdir: (dirPath) => {
+        if (dirPath !== runDir) {
+          return [];
+        }
+        return [{ name: "01-execute", isFile: false, isDirectory: true }];
+      },
+      stat: (filePath) => {
+        if (filePath === runDir || filePath === executeDir) {
+          return { isFile: false, isDirectory: true };
+        }
+        if (files.has(filePath)) {
+          return { isFile: true, isDirectory: false };
+        }
+        return null;
+      },
+      unlink: vi.fn(),
+      rm: vi.fn(),
+    };
+
+    const task = createTask(taskFile, "Refine rollout scope");
+    task.checked = true;
+    const { dependencies } = createDependencies({
+      cwd,
+      task,
+      source: "- [x] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-finished",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-finished",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "completed",
+      source: "tasks.md",
+      task: {
+        text: "Refine rollout scope",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "- [x] Refine rollout scope\n",
+      },
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-finished",
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.fileLock.acquire)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(dependencies.fileLock.acquire)).toHaveBeenCalledWith(taskFile, { command: "discuss" });
+    expect(vi.mocked(dependencies.fileLock.releaseAll)).toHaveBeenCalledTimes(1);
+
+    const lockAcquireOrder = vi.mocked(dependencies.fileLock.acquire).mock.invocationCallOrder[0];
+    const workerOrder = vi.mocked(dependencies.workerExecutor.runWorker).mock.invocationCallOrder[0];
+    const releaseOrder = vi.mocked(dependencies.fileLock.releaseAll).mock.invocationCallOrder[0];
+
+    expect(lockAcquireOrder).toBeLessThan(workerOrder);
+    expect(workerOrder).toBeLessThan(releaseOrder);
+  });
+
+  it("finalizes discuss-finished sessions with discuss-finished-cancelled status on failure", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const runDir = path.join(cwd, ".rundown", "runs", "run-finished");
+    const executeDir = path.join(runDir, "01-execute");
+
+    const files = new Map<string, string>([
+      [taskFile, "- [x] Refine rollout scope\n"],
+      [path.join(executeDir, "metadata.json"), JSON.stringify({
+        sequence: 1,
+        phase: "execute",
+        promptFile: "prompt.md",
+        stdoutFile: "stdout.log",
+        stderrFile: null,
+        exitCode: 0,
+      })],
+    ]);
+
+    const fileSystem: FileSystem = {
+      exists: (filePath) => {
+        if (filePath === runDir || filePath === executeDir) {
+          return true;
+        }
+        return files.has(filePath);
+      },
+      readText: (filePath) => {
+        const content = files.get(filePath);
+        if (content === undefined) {
+          throw new Error("ENOENT: " + filePath);
+        }
+        return content;
+      },
+      writeText: vi.fn(),
+      mkdir: vi.fn(),
+      readdir: (dirPath) => {
+        if (dirPath !== runDir) {
+          return [];
+        }
+        return [{ name: "01-execute", isFile: false, isDirectory: true }];
+      },
+      stat: (filePath) => {
+        if (filePath === runDir || filePath === executeDir) {
+          return { isFile: false, isDirectory: true };
+        }
+        if (files.has(filePath)) {
+          return { isFile: true, isDirectory: false };
+        }
+        return null;
+      },
+      unlink: vi.fn(),
+      rm: vi.fn(),
+    };
+
+    const task = createTask(taskFile, "Refine rollout scope");
+    task.checked = true;
+    const { dependencies } = createDependencies({
+      cwd,
+      task,
+      source: "- [x] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-finished",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-finished",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "completed",
+      source: "tasks.md",
+      task: {
+        text: "Refine rollout scope",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "- [x] Refine rollout scope\n",
+      },
+    });
+    vi.mocked(dependencies.workerExecutor.runWorker).mockResolvedValue({
+      exitCode: 9,
+      stdout: "",
+      stderr: "",
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-finished",
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(9);
+    expect(vi.mocked(dependencies.artifactStore.finalize)).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      status: "discuss-finished-cancelled",
+    }));
+  });
+
+  it("restores checkbox state and cancels discuss-finished when worker toggles checkboxes", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const runDir = path.join(cwd, ".rundown", "runs", "run-finished");
+    const executeDir = path.join(runDir, "01-execute");
+
+    const files = new Map<string, string>([
+      [taskFile, "- [x] Refine rollout scope\n"],
+      [path.join(executeDir, "metadata.json"), JSON.stringify({
+        sequence: 1,
+        phase: "execute",
+        promptFile: "prompt.md",
+        stdoutFile: "stdout.log",
+        stderrFile: null,
+        exitCode: 0,
+      })],
+    ]);
+
+    const fileSystem: FileSystem = {
+      exists: (filePath) => {
+        if (filePath === runDir || filePath === executeDir) {
+          return true;
+        }
+        return files.has(filePath);
+      },
+      readText: (filePath) => {
+        const content = files.get(filePath);
+        if (content === undefined) {
+          throw new Error("ENOENT: " + filePath);
+        }
+        return content;
+      },
+      writeText: (filePath, content) => {
+        files.set(filePath, content);
+      },
+      mkdir: vi.fn(),
+      readdir: (dirPath) => {
+        if (dirPath !== runDir) {
+          return [];
+        }
+        return [{ name: "01-execute", isFile: false, isDirectory: true }];
+      },
+      stat: (filePath) => {
+        if (filePath === runDir || filePath === executeDir) {
+          return { isFile: false, isDirectory: true };
+        }
+        if (files.has(filePath)) {
+          return { isFile: true, isDirectory: false };
+        }
+        return null;
+      },
+      unlink: vi.fn(),
+      rm: vi.fn(),
+    };
+
+    const task = createTask(taskFile, "Refine rollout scope");
+    task.checked = true;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [x] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-finished",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-finished",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "completed",
+      source: "tasks.md",
+      task: {
+        text: "Refine rollout scope",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "- [x] Refine rollout scope\n",
+      },
+    });
+    vi.mocked(dependencies.workerExecutor.runWorker).mockImplementation(async () => {
+      files.set(taskFile, "- [ ] Refine rollout scope\n");
+      return { exitCode: 0, stdout: "", stderr: "" };
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-finished",
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(1);
+    expect(events.some((event) => event.kind === "error"
+      && event.message.includes("Discussion changed checkbox state"))).toBe(true);
+    expect(vi.mocked(dependencies.artifactStore.finalize)).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      status: "discuss-finished-cancelled",
+    }));
+    expect(files.get(taskFile)).toBe("- [x] Refine rollout scope\n");
+  });
+
+  it("returns 3 when --run latest cannot resolve a saved run", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Refine rollout scope");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Refine rollout scope\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [ ] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.latest).mockReturnValue(null);
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "latest",
+    }));
+
+    expect(code).toBe(3);
+    expect(events.some((event) => event.kind === "error"
+      && event.message.includes("No saved runtime artifact run found for: latest"))).toBe(true);
+    expect(vi.mocked(dependencies.sourceResolver.resolveSources)).not.toHaveBeenCalled();
+    expect(vi.mocked(dependencies.workerExecutor.runWorker)).not.toHaveBeenCalled();
+  });
+
+  it("returns 3 when explicit --run id cannot resolve a saved run", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Refine rollout scope");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Refine rollout scope\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [ ] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue(null);
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-does-not-exist",
+    }));
+
+    expect(code).toBe(3);
+    expect(events.some((event) => event.kind === "error"
+      && event.message.includes("No saved runtime artifact run found for: run-does-not-exist"))).toBe(true);
+    expect(vi.mocked(dependencies.artifactStore.find)).toHaveBeenCalledWith(
+      "run-does-not-exist",
+      path.join(cwd, ".rundown"),
+    );
+    expect(vi.mocked(dependencies.workerExecutor.runWorker)).not.toHaveBeenCalled();
+  });
+
+  it("returns 3 when --run prefix is ambiguous and does not resolve to a unique run", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Refine rollout scope");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Refine rollout scope\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [ ] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue(null);
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-",
+    }));
+
+    expect(code).toBe(3);
+    expect(events.some((event) => event.kind === "error"
+      && event.message.includes("No saved runtime artifact run found for: run-"))).toBe(true);
+    expect(vi.mocked(dependencies.artifactStore.find)).toHaveBeenCalledWith(
+      "run-",
+      path.join(cwd, ".rundown"),
+    );
+    expect(vi.mocked(dependencies.workerExecutor.runWorker)).not.toHaveBeenCalled();
+  });
+
+  it("returns 3 when selected run is not in supported terminal status set", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const runDir = path.join(cwd, ".rundown", "runs", "run-finished");
+    const task = createTask(taskFile, "Refine rollout scope");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Refine rollout scope\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [ ] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-finished",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-finished",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "reverify-completed",
+      source: "tasks.md",
+      task: {
+        text: "Refine rollout scope",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "- [x] Refine rollout scope\n",
+      },
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-finished",
+    }));
+
+    expect(code).toBe(3);
+    expect(events.some((event) => event.kind === "error"
+      && event.message.includes("Selected run is not in a terminal state"))).toBe(true);
+    expect(vi.mocked(dependencies.workerExecutor.runWorker)).not.toHaveBeenCalled();
+  });
+
+  it("returns 3 when selected run is missing task metadata", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const runDir = path.join(cwd, ".rundown", "runs", "run-finished");
+    const task = createTask(taskFile, "Refine rollout scope");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Refine rollout scope\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [ ] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-finished",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-finished",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "completed",
+      source: "tasks.md",
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-finished",
+    }));
+
+    expect(code).toBe(3);
+    expect(events.some((event) => event.kind === "error"
+      && event.message.includes("Selected run has no task metadata to discuss"))).toBe(true);
+    expect(vi.mocked(dependencies.workerExecutor.runWorker)).not.toHaveBeenCalled();
+  });
+
+  it("returns 3 when selected run artifact directory was purged", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const runDir = path.join(cwd, ".rundown", "runs", "run-finished");
+    const task = createTask(taskFile, "Refine rollout scope");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Refine rollout scope\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [ ] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-finished",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-finished",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "completed",
+      source: "tasks.md",
+      task: {
+        text: "Refine rollout scope",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "- [x] Refine rollout scope\n",
+      },
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-finished",
+    }));
+
+    expect(code).toBe(3);
+    expect(events.some((event) => event.kind === "error"
+      && event.message.includes("Selected run has no saved artifact directory"))).toBe(true);
+    expect(events.some((event) => event.kind === "error"
+      && event.message.includes("No saved artifacts are available on disk"))).toBe(true);
+    expect(events.some((event) => event.kind === "error"
+      && event.message.includes("purged"))).toBe(true);
+    expect(vi.mocked(dependencies.workerExecutor.runWorker)).not.toHaveBeenCalled();
+  });
+
   it("expands cli blocks in rendered discuss prompt before printing", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");
@@ -401,6 +2145,119 @@ describe("discuss-task", () => {
     expect(events).toContainEqual(expect.objectContaining({
       kind: "error",
       message: "`cli` fenced command failed in discuss template (exit 9): echo hello. Aborting run.",
+    }));
+    expect(vi.mocked(dependencies.workerExecutor.runWorker)).not.toHaveBeenCalled();
+  });
+
+  it("emits a discuss-finished template error when --run prompt cli block fails", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const runDir = path.join(cwd, ".rundown", "runs", "run-finished");
+    const executeDir = path.join(runDir, "01-execute");
+
+    const files = new Map<string, string>([
+      [taskFile, "- [x] Refine rollout scope\n"],
+      [path.join(executeDir, "metadata.json"), JSON.stringify({
+        sequence: 1,
+        phase: "execute",
+        promptFile: "prompt.md",
+        stdoutFile: null,
+        stderrFile: null,
+        exitCode: 0,
+      })],
+    ]);
+
+    const fileSystem: FileSystem = {
+      exists: (filePath) => {
+        if (filePath === runDir || filePath === executeDir) {
+          return true;
+        }
+        return files.has(filePath);
+      },
+      readText: (filePath) => {
+        const content = files.get(filePath);
+        if (content === undefined) {
+          throw new Error("ENOENT: " + filePath);
+        }
+        return content;
+      },
+      writeText: vi.fn(),
+      mkdir: vi.fn(),
+      readdir: (dirPath) => {
+        if (dirPath !== runDir) {
+          return [];
+        }
+        return [{ name: "01-execute", isFile: false, isDirectory: true }];
+      },
+      stat: (filePath) => {
+        if (filePath === runDir || filePath === executeDir) {
+          return { isFile: false, isDirectory: true };
+        }
+        if (files.has(filePath)) {
+          return { isFile: true, isDirectory: false };
+        }
+        return null;
+      },
+      unlink: vi.fn(),
+      rm: vi.fn(),
+    };
+
+    const cliBlockExecutor: CommandExecutor = {
+      execute: vi.fn(async () => ({
+        exitCode: 5,
+        stdout: "",
+        stderr: "template failed",
+      })),
+    };
+
+    const task = createTask(taskFile, "Refine rollout scope");
+    task.checked = true;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [x] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+      cliBlockExecutor,
+    });
+
+    vi.mocked(dependencies.artifactStore.find).mockReturnValue({
+      runId: "run-finished",
+      rootDir: runDir,
+      relativePath: ".rundown/runs/run-finished",
+      commandName: "run",
+      keepArtifacts: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:01:00.000Z",
+      status: "completed",
+      source: "tasks.md",
+      task: {
+        text: "Refine rollout scope",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "- [x] Refine rollout scope\n",
+      },
+    });
+
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "discuss-finished.md"))) {
+        return "```cli\necho hello\n```";
+      }
+      return null;
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      runId: "run-finished",
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(1);
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "error",
+      message: "`cli` fenced command failed in discuss-finished template (exit 5): echo hello. Aborting run.",
     }));
     expect(vi.mocked(dependencies.workerExecutor.runWorker)).not.toHaveBeenCalled();
   });

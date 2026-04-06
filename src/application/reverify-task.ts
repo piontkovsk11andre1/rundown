@@ -611,7 +611,9 @@ function hasReverifiableTask(run: ArtifactRunMetadata): boolean {
  */
 function isCompletedRun(run: ArtifactRunMetadata): boolean {
   const status = run.status;
-  return status === "completed" || status === "reverify-completed";
+  return status === "completed"
+    || status === "reverify-completed"
+    || status === "discuss-finished-completed";
 }
 
 /**

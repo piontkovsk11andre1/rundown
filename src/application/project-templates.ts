@@ -1,5 +1,6 @@
 import {
   DEFAULT_DISCUSS_TEMPLATE,
+  DEFAULT_DISCUSS_FINISHED_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
@@ -22,6 +23,7 @@ import type {
 export interface ProjectTemplates {
   task: string;
   discuss: string;
+  discussFinished: string;
   verify: string;
   repair: string;
   plan: string;
@@ -45,6 +47,7 @@ export function loadProjectTemplatesFromPorts(
     return {
       task: DEFAULT_TASK_TEMPLATE,
       discuss: DEFAULT_DISCUSS_TEMPLATE,
+      discussFinished: DEFAULT_DISCUSS_FINISHED_TEMPLATE,
       verify: DEFAULT_VERIFY_TEMPLATE,
       repair: DEFAULT_REPAIR_TEMPLATE,
       plan: DEFAULT_PLAN_TEMPLATE,
@@ -59,6 +62,9 @@ export function loadProjectTemplatesFromPorts(
     // Prefer project overrides, then fall back to bundled default templates.
     task: templateLoader.load(pathOperations.join(dir, "execute.md")) ?? DEFAULT_TASK_TEMPLATE,
     discuss: templateLoader.load(pathOperations.join(dir, "discuss.md")) ?? DEFAULT_DISCUSS_TEMPLATE,
+    discussFinished:
+      templateLoader.load(pathOperations.join(dir, "discuss-finished.md")) ??
+      DEFAULT_DISCUSS_FINISHED_TEMPLATE,
     verify: templateLoader.load(pathOperations.join(dir, "verify.md")) ?? DEFAULT_VERIFY_TEMPLATE,
     repair: templateLoader.load(pathOperations.join(dir, "repair.md")) ?? DEFAULT_REPAIR_TEMPLATE,
     plan: templateLoader.load(pathOperations.join(dir, "plan.md")) ?? DEFAULT_PLAN_TEMPLATE,

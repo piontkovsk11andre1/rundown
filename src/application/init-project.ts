@@ -1,5 +1,6 @@
 import {
   DEFAULT_CONFIG_CONTENT,
+  DEFAULT_DISCUSS_FINISHED_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
   DEFAULT_TRACE_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
@@ -95,6 +96,7 @@ export function createInitProject(
 
     // Seed default workflow templates and project configuration files.
     write("execute.md", DEFAULT_TASK_TEMPLATE);
+    write("discuss-finished.md", DEFAULT_DISCUSS_FINISHED_TEMPLATE);
     write("verify.md", DEFAULT_VERIFY_TEMPLATE);
     write("repair.md", DEFAULT_REPAIR_TEMPLATE);
     write("plan.md", DEFAULT_PLAN_TEMPLATE);

@@ -2984,6 +2984,7 @@ describe.sequential("CLI integration", () => {
     const discoveredConfigDir = path.join(repoRoot, ".rundown");
     fs.mkdirSync(projectDir, { recursive: true });
     fs.mkdirSync(discoveredConfigDir, { recursive: true });
+    fs.writeFileSync(path.join(discoveredConfigDir, "config.json"), "{}\n", "utf-8");
     fs.writeFileSync(path.join(projectDir, "tasks.md"), "- [ ] Ship release notes\n", "utf-8");
 
     const result = await runCli(["next", "tasks.md"], projectDir);
@@ -3873,10 +3874,51 @@ describe.sequential("CLI integration", () => {
     expect(result.code).toBe(0);
     const helpOutput = result.stdoutWrites.join("\n");
     const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("discuss [options] [source]");
+    expect(compactHelpOutput).toContain("interactive discussion session for the next unchecked task or a finished run");
     expect(compactHelpOutput).toContain("--mode <mode> Discuss execution mode: wait, tui");
     expect(compactHelpOutput).toContain("--print-prompt Print the rendered discuss prompt and exit");
     expect(compactHelpOutput).toContain("--trace Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl");
     expect(compactHelpOutput).toContain("--force-unlock Break stale source lockfiles before acquiring discuss locks");
+  });
+
+  it("discuss supports --run without requiring <source>", async () => {
+    const workspace = makeTempWorkspace();
+    const discussTaskMock = vi.fn(async () => 0);
+
+    vi.doMock("../../src/create-app.js", () => ({
+      createApp: () => ({
+        runTask: vi.fn(async () => 0),
+        discussTask: discussTaskMock,
+        reverifyTask: vi.fn(async () => 0),
+        revertTask: vi.fn(async () => 0),
+        nextTask: vi.fn(async () => 0),
+        listTasks: vi.fn(async () => 0),
+        planTask: vi.fn(async () => 0),
+        unlockTask: vi.fn(async () => 0),
+        initProject: vi.fn(async () => 0),
+        manageArtifacts: vi.fn(() => 0),
+      }),
+    }));
+
+    const result = await runCli([
+      "discuss",
+      "--run",
+      "latest",
+      "--worker",
+      "opencode",
+      "run",
+    ], workspace);
+
+    vi.doUnmock("../../src/create-app.js");
+
+    expect(result.code).toBe(0);
+    expect(discussTaskMock).toHaveBeenCalledTimes(1);
+    expect(discussTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      source: "",
+      runId: "latest",
+      workerPattern: inferWorkerPatternFromCommand(["opencode", "run"]),
+    }));
   });
 
   it("discuss rejects unknown options", async () => {
@@ -7612,6 +7654,7 @@ describe.sequential("CLI integration", () => {
 
     expect(result.code).toBe(0);
     expect(fs.existsSync(path.join(workspace, ".rundown", "execute.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, ".rundown", "discuss-finished.md"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, ".rundown", "verify.md"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, ".rundown", "repair.md"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, ".rundown", "plan.md"))).toBe(true);
@@ -7633,6 +7676,7 @@ describe.sequential("CLI integration", () => {
 
     expect(result.code).toBe(0);
     expect(fs.existsSync(path.join(customConfigDir, "execute.md"))).toBe(true);
+    expect(fs.existsSync(path.join(customConfigDir, "discuss-finished.md"))).toBe(true);
     expect(fs.existsSync(path.join(customConfigDir, "verify.md"))).toBe(true);
     expect(fs.existsSync(path.join(customConfigDir, "repair.md"))).toBe(true);
     expect(fs.existsSync(path.join(customConfigDir, "plan.md"))).toBe(true);

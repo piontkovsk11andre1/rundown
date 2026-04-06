@@ -136,8 +136,9 @@ configureRunLikeCommandOptions(callCommand)
 
 program
   .command("discuss")
-  .description("Start an interactive discussion session for the next unchecked task.")
-  .argument("<source>", "File, directory, or glob to scan for Markdown tasks")
+  .description("Start an interactive discussion session for the next unchecked task or a finished run.")
+  .argument("[source]", "File, directory, or glob to scan for Markdown tasks")
+  .option("--run <id|prefix|latest>", "Discuss a finished run by artifact run id, unique prefix, or 'latest'")
   .option("--mode <mode>", "Discuss execution mode: wait, tui", "tui")
   .option("--sort <sort>", "File sort mode: name-sort, none, old-first, new-first", "name-sort")
   .option("--dry-run", "Show what would be executed without running it", false)

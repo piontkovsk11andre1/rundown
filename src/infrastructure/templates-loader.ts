@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   DEFAULT_DISCUSS_TEMPLATE,
+  DEFAULT_DISCUSS_FINISHED_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
   DEFAULT_TRACE_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
@@ -21,6 +22,8 @@ export interface ProjectTemplates {
   task: string;
   // Template used by the discuss phase.
   discuss: string;
+  // Template used by discuss-finished phase.
+  discussFinished: string;
   // Template used by the verify phase.
   verify: string;
   // Template used by the repair phase.
@@ -44,6 +47,7 @@ export interface ProjectTemplates {
  * Expected template files:
  * - `.rundown/execute.md`
  * - `.rundown/discuss.md`
+ * - `.rundown/discuss-finished.md`
  * - `.rundown/verify.md`
  * - `.rundown/repair.md`
  * - `.rundown/plan.md`
@@ -59,6 +63,7 @@ export function loadProjectTemplates(configDir?: string): ProjectTemplates {
     return {
       task: DEFAULT_TASK_TEMPLATE,
       discuss: DEFAULT_DISCUSS_TEMPLATE,
+      discussFinished: DEFAULT_DISCUSS_FINISHED_TEMPLATE,
       verify: DEFAULT_VERIFY_TEMPLATE,
       repair: DEFAULT_REPAIR_TEMPLATE,
       plan: DEFAULT_PLAN_TEMPLATE,
@@ -71,6 +76,9 @@ export function loadProjectTemplates(configDir?: string): ProjectTemplates {
     // Resolve each template independently so one missing file does not block others.
     task: loadFile(path.join(configDir, "execute.md")) ?? DEFAULT_TASK_TEMPLATE,
     discuss: loadFile(path.join(configDir, "discuss.md")) ?? DEFAULT_DISCUSS_TEMPLATE,
+    discussFinished:
+      loadFile(path.join(configDir, "discuss-finished.md")) ??
+      DEFAULT_DISCUSS_FINISHED_TEMPLATE,
     verify: loadFile(path.join(configDir, "verify.md")) ?? DEFAULT_VERIFY_TEMPLATE,
     repair: loadFile(path.join(configDir, "repair.md")) ?? DEFAULT_REPAIR_TEMPLATE,
     plan: loadFile(path.join(configDir, "plan.md")) ?? DEFAULT_PLAN_TEMPLATE,

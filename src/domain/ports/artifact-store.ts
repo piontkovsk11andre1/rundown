@@ -14,7 +14,9 @@ export type ArtifactStoreStatus =
   | "revert-failed"
   | "metadata-missing"
   | "discuss-completed"
-  | "discuss-cancelled";
+  | "discuss-cancelled"
+  | "discuss-finished-completed"
+  | "discuss-finished-cancelled";
 
 /**
  * Identifies logical execution phases that can emit artifacts.

@@ -220,14 +220,15 @@ export function createDiscussCommandAction({
   getApp,
   getWorkerFromSeparator,
   discussModes,
-}: DiscussActionDependencies): (source: string, opts: CliOpts) => CliActionResult {
-  return (source: string, opts: CliOpts) => {
+}: DiscussActionDependencies): (source: string | undefined, opts: CliOpts) => CliActionResult {
+  return (source: string | undefined, opts: CliOpts) => {
     // Parse and normalize discuss-specific option values.
     const mode = parseRunnerMode(opts.mode as string | undefined, discussModes);
     const sortMode = parseSortMode(opts.sort as string | undefined);
     const dryRun = opts.dryRun as boolean;
     const printPrompt = opts.printPrompt as boolean;
     const keepArtifacts = opts.keepArtifacts as boolean;
+    const runId = normalizeOptionalString(opts.run);
     const varsFileOption = opts.varsFile as string | boolean | undefined;
     const cliTemplateVarArgs = (opts.var as string[] | undefined) ?? [];
     const showAgentOutput = resolveShowAgentOutputOption(opts);
@@ -236,10 +237,18 @@ export function createDiscussCommandAction({
     const ignoreCliBlock = resolveIgnoreCliBlockFlag(opts);
     const cliBlockTimeoutMs = parseCliBlockTimeout(opts.cliBlockTimeout as string | undefined);
     const workerPattern = resolveWorkerPattern(opts.worker, getWorkerFromSeparator);
+    const normalizedSource = typeof source === "string" && source.trim().length > 0
+      ? source
+      : "";
+
+    if (runId === undefined && normalizedSource === "") {
+      throw new Error("Missing required argument: <source>. Provide a Markdown source, or pass --run <id|prefix|latest> to discuss a finished run.");
+    }
 
     // Delegate to the discuss application flow with normalized arguments.
     return getApp().discussTask({
-      source,
+      source: normalizedSource,
+      runId,
       mode,
       workerPattern,
       sortMode,

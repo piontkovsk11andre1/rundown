@@ -16,6 +16,7 @@ import {
   removeFailedRuntimeArtifacts,
   removeSavedRuntimeArtifacts,
   runtimeArtifactsRootDir,
+  scanRuntimeArtifactPhases,
 } from "../../src/infrastructure/runtime-artifacts.js";
 
 const tempDirs: string[] = [];
@@ -315,6 +316,284 @@ describe("runtime-artifacts", () => {
     const context = createRuntimeArtifactsContext({ cwd, commandName: "run", keepArtifacts: true });
 
     expect(displayArtifactsPath({ ...context, cwd: context.rootDir })).toBe(path.basename(context.rootDir));
+  });
+
+  it("scans and categorizes execute/verify/repair phases with artifact presence", () => {
+    const cwd = createWorkspace();
+    const context = createRuntimeArtifactsContext({ cwd, commandName: "run", keepArtifacts: true });
+
+    const executePhase = beginRuntimePhase(context, {
+      phase: "execute",
+      phaseLabel: "execute-main",
+      prompt: "execute prompt",
+    });
+    completeRuntimePhase(executePhase, {
+      exitCode: 0,
+      stdout: "execution output",
+      outputCaptured: true,
+    });
+
+    const verifyPhase = beginRuntimePhase(context, {
+      phase: "verify",
+      phaseLabel: "verify-01",
+      prompt: "verify prompt",
+    });
+    completeRuntimePhase(verifyPhase, {
+      exitCode: 1,
+      stderr: "verification failed",
+      verificationResult: "NOT_OK: mismatch",
+      outputCaptured: true,
+    });
+
+    const repairPhase = beginRuntimePhase(context, {
+      phase: "repair",
+      phaseLabel: "repair-01",
+    });
+    completeRuntimePhase(repairPhase, {
+      exitCode: 0,
+      outputCaptured: false,
+    });
+
+    const scanned = scanRuntimeArtifactPhases(context.rootDir);
+
+    expect(scanned.execute).toHaveLength(1);
+    expect(scanned.verify).toHaveLength(1);
+    expect(scanned.repair).toHaveLength(1);
+    expect(scanned.all.map((phase) => phase.phase)).toEqual(["execute", "verify", "repair"]);
+
+    expect(scanned.execute[0]).toMatchObject({
+      phase: "execute",
+      phaseLabel: "execute-main",
+      exitCode: 0,
+      stdoutPresent: true,
+      stderrPresent: false,
+    });
+    expect(scanned.execute[0]?.promptFilePath).toBe(path.join(executePhase.dir, "prompt.md"));
+
+    expect(scanned.verify[0]).toMatchObject({
+      phase: "verify",
+      phaseLabel: "verify-01",
+      exitCode: 1,
+      verificationResult: "NOT_OK: mismatch",
+      stdoutPresent: false,
+      stderrPresent: true,
+    });
+    expect(scanned.verify[0]?.promptFilePath).toBe(path.join(verifyPhase.dir, "prompt.md"));
+
+    expect(scanned.repair[0]).toMatchObject({
+      phase: "repair",
+      phaseLabel: "repair-01",
+      exitCode: 0,
+      verificationResult: undefined,
+      stdoutPresent: false,
+      stderrPresent: false,
+      promptFilePath: null,
+    });
+  });
+
+  it("scans a run with only a single execute phase", () => {
+    const cwd = createWorkspace();
+    const context = createRuntimeArtifactsContext({ cwd, commandName: "run", keepArtifacts: true });
+
+    const executePhase = beginRuntimePhase(context, {
+      phase: "execute",
+      phaseLabel: "execute-only",
+      prompt: "execute prompt",
+    });
+    completeRuntimePhase(executePhase, {
+      exitCode: 0,
+      stdout: "done",
+      outputCaptured: true,
+    });
+
+    const scanned = scanRuntimeArtifactPhases(context.rootDir);
+
+    expect(scanned.execute).toHaveLength(1);
+    expect(scanned.verify).toHaveLength(0);
+    expect(scanned.repair).toHaveLength(0);
+    expect(scanned.all).toHaveLength(1);
+    expect(scanned.execute[0]).toMatchObject({
+      phase: "execute",
+      phaseLabel: "execute-only",
+      sequence: 1,
+      exitCode: 0,
+      stdoutPresent: true,
+      stderrPresent: false,
+    });
+  });
+
+  it("scans multiple verify/repair cycles in sequence order", () => {
+    const cwd = createWorkspace();
+    const context = createRuntimeArtifactsContext({ cwd, commandName: "run", keepArtifacts: true });
+
+    const executePhase = beginRuntimePhase(context, {
+      phase: "execute",
+      phaseLabel: "execute-main",
+      prompt: "execute prompt",
+    });
+    completeRuntimePhase(executePhase, {
+      exitCode: 0,
+      outputCaptured: false,
+    });
+
+    const verify1 = beginRuntimePhase(context, {
+      phase: "verify",
+      phaseLabel: "verify-01",
+      prompt: "verify 1",
+    });
+    completeRuntimePhase(verify1, {
+      exitCode: 1,
+      verificationResult: "NOT_OK: first failure",
+      outputCaptured: false,
+    });
+
+    const repair1 = beginRuntimePhase(context, {
+      phase: "repair",
+      phaseLabel: "repair-01",
+      prompt: "repair 1",
+    });
+    completeRuntimePhase(repair1, {
+      exitCode: 0,
+      outputCaptured: false,
+    });
+
+    const verify2 = beginRuntimePhase(context, {
+      phase: "verify",
+      phaseLabel: "verify-02",
+      prompt: "verify 2",
+    });
+    completeRuntimePhase(verify2, {
+      exitCode: 1,
+      verificationResult: "NOT_OK: second failure",
+      outputCaptured: false,
+    });
+
+    const repair2 = beginRuntimePhase(context, {
+      phase: "repair",
+      phaseLabel: "repair-02",
+      prompt: "repair 2",
+    });
+    completeRuntimePhase(repair2, {
+      exitCode: 0,
+      outputCaptured: false,
+    });
+
+    const verify3 = beginRuntimePhase(context, {
+      phase: "verify",
+      phaseLabel: "verify-03",
+      prompt: "verify 3",
+    });
+    completeRuntimePhase(verify3, {
+      exitCode: 0,
+      verificationResult: "OK",
+      outputCaptured: false,
+    });
+
+    const scanned = scanRuntimeArtifactPhases(context.rootDir);
+
+    expect(scanned.execute).toHaveLength(1);
+    expect(scanned.verify).toHaveLength(3);
+    expect(scanned.repair).toHaveLength(2);
+    expect(scanned.all.map((phase) => phase.phaseLabel)).toEqual([
+      "execute-main",
+      "verify-01",
+      "repair-01",
+      "verify-02",
+      "repair-02",
+      "verify-03",
+    ]);
+    expect(scanned.verify.map((phase) => phase.verificationResult)).toEqual([
+      "NOT_OK: first failure",
+      "NOT_OK: second failure",
+      "OK",
+    ]);
+  });
+
+  it("marks stdout/stderr as absent when metadata references missing files", () => {
+    const cwd = createWorkspace();
+    const context = createRuntimeArtifactsContext({ cwd, commandName: "run", keepArtifacts: true });
+
+    const executePhase = beginRuntimePhase(context, {
+      phase: "execute",
+      phaseLabel: "execute-missing-streams",
+      prompt: "execute prompt",
+    });
+    completeRuntimePhase(executePhase, {
+      exitCode: 0,
+      stdout: "temporary output",
+      stderr: "temporary error",
+      outputCaptured: true,
+    });
+
+    fs.rmSync(path.join(executePhase.dir, "stdout.log"));
+    fs.rmSync(path.join(executePhase.dir, "stderr.log"));
+
+    const scanned = scanRuntimeArtifactPhases(context.rootDir);
+
+    expect(scanned.execute).toHaveLength(1);
+    expect(scanned.execute[0]).toMatchObject({
+      phase: "execute",
+      stdoutPresent: false,
+      stderrPresent: false,
+    });
+  });
+
+  it("ignores non-target phases and missing metadata when scanning", () => {
+    const cwd = createWorkspace();
+    const context = createRuntimeArtifactsContext({ cwd, commandName: "run", keepArtifacts: true });
+
+    const workerPhase = beginRuntimePhase(context, {
+      phase: "worker",
+      prompt: "worker prompt",
+    });
+    completeRuntimePhase(workerPhase, {
+      exitCode: 0,
+      outputCaptured: false,
+    });
+
+    const executePhase = beginRuntimePhase(context, {
+      phase: "execute",
+      prompt: "execute prompt",
+    });
+    completeRuntimePhase(executePhase, {
+      exitCode: 0,
+      outputCaptured: false,
+    });
+
+    const orphanPhaseDir = path.join(context.rootDir, "99-repair-orphan");
+    fs.mkdirSync(orphanPhaseDir, { recursive: true });
+
+    const scanned = scanRuntimeArtifactPhases(context.rootDir);
+    expect(scanned.execute).toHaveLength(1);
+    expect(scanned.verify).toHaveLength(0);
+    expect(scanned.repair).toHaveLength(0);
+    expect(scanned.all).toHaveLength(1);
+    expect(scanned.all[0]?.phase).toBe("execute");
+  });
+
+  it("returns empty phase groups for missing run directories", () => {
+    const cwd = createWorkspace();
+    const missingRunDir = path.join(cwd, "does-not-exist");
+
+    expect(scanRuntimeArtifactPhases(missingRunDir)).toEqual({
+      execute: [],
+      verify: [],
+      repair: [],
+      all: [],
+    });
+  });
+
+  it("returns empty phase groups for an empty run directory", () => {
+    const cwd = createWorkspace();
+    const emptyRunDir = path.join(cwd, "empty-run");
+    fs.mkdirSync(emptyRunDir, { recursive: true });
+
+    expect(scanRuntimeArtifactPhases(emptyRunDir)).toEqual({
+      execute: [],
+      verify: [],
+      repair: [],
+      all: [],
+    });
   });
 });
 

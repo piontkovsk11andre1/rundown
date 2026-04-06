@@ -706,6 +706,7 @@ describe("CLI run option normalization", () => {
     ], discussTask);
 
     expect(call.source).toBe("tasks.md");
+    expect(call.runId).toBeUndefined();
     expect(call.mode).toBe("tui");
     expect(call.sortMode).toBe("name-sort");
     expect(call.dryRun).toBe(false);
@@ -719,6 +720,106 @@ describe("CLI run option normalization", () => {
     expect(call.forceUnlock).toBe(false);
     expect(call.ignoreCliBlock).toBe(false);
     expect(call.cliBlockTimeoutMs).toBe(30_000);
+  });
+
+  it("passes --run option to discuss task", async () => {
+    const discussTask = vi.fn(async () => 0);
+    const call = await invokeDiscussAndCaptureCall([
+      "discuss",
+      "tasks.md",
+      "--run",
+      "latest",
+      "--worker",
+      "opencode",
+      "run",
+    ], discussTask);
+
+    expect(call.runId).toBe("latest");
+  });
+
+  it("parses --run with a full run id for discuss", async () => {
+    const discussTask = vi.fn(async () => 0);
+    const call = await invokeDiscussAndCaptureCall([
+      "discuss",
+      "tasks.md",
+      "--run",
+      "run-20260406T221109164Z-42f68dae",
+      "--worker",
+      "opencode",
+      "run",
+    ], discussTask);
+
+    expect(call.source).toBe("tasks.md");
+    expect(call.runId).toBe("run-20260406T221109164Z-42f68dae");
+  });
+
+  it("parses --run with a prefix for discuss", async () => {
+    const discussTask = vi.fn(async () => 0);
+    const call = await invokeDiscussAndCaptureCall([
+      "discuss",
+      "tasks.md",
+      "--run",
+      "run-20260406T2211",
+      "--worker",
+      "opencode",
+      "run",
+    ], discussTask);
+
+    expect(call.source).toBe("tasks.md");
+    expect(call.runId).toBe("run-20260406T2211");
+  });
+
+  it("keeps <source> when discuss is combined with --run", async () => {
+    const discussTask = vi.fn(async () => 0);
+    const call = await invokeDiscussAndCaptureCall([
+      "discuss",
+      "tasks.md",
+      "--run",
+      "latest",
+      "--worker",
+      "opencode",
+      "run",
+    ], discussTask);
+
+    expect(call.source).toBe("tasks.md");
+    expect(call.runId).toBe("latest");
+  });
+
+  it("allows discuss without <source> when --run is provided", async () => {
+    const discussTask = vi.fn(async () => 0);
+    const call = await invokeDiscussAndCaptureCall([
+      "discuss",
+      "--run",
+      "latest",
+      "--worker",
+      "opencode",
+      "run",
+    ], discussTask);
+
+    expect(call.source).toBe("");
+    expect(call.runId).toBe("latest");
+  });
+
+  it("logs a CLI error and exits when discuss --run is provided without a value", async () => {
+    const discussTask = vi.fn(async () => 0);
+    let stderr = "";
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(((chunk: string | Uint8Array) => {
+      stderr += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+      return true;
+    }) as never);
+
+    try {
+      await invokeDiscussAndExpectExit([
+        "discuss",
+        "tasks.md",
+        "--run",
+      ], discussTask);
+    } finally {
+      stderrSpy.mockRestore();
+    }
+
+    expect(discussTask).not.toHaveBeenCalled();
+    expect(stderr).toContain("option '--run <id|prefix|latest>' argument missing");
   });
 
   it("passes explicit --cli-block-timeout to discuss task", async () => {
@@ -3024,6 +3125,44 @@ async function invokeDiscussAndCaptureCall(
 
   expect(discussTask).toHaveBeenCalledTimes(1);
   return withLegacyWorkerCommand(discussTask.mock.calls[0][0] as RunTaskCall);
+}
+
+async function invokeDiscussAndExpectExit(args: string[], discussTask: ReturnType<typeof vi.fn>): Promise<void> {
+  const previousEnv = captureEnv();
+
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
+
+  vi.doMock("../../src/create-app.js", () => ({
+    createApp: () => ({
+      runTask: vi.fn(async () => 0),
+      discussTask,
+      reverifyTask: vi.fn(async () => 0),
+      nextTask: vi.fn(async () => 0),
+      listTasks: vi.fn(async () => 0),
+      planTask: vi.fn(async () => 0),
+      initProject: vi.fn(async () => 0),
+      manageArtifacts: vi.fn(() => 0),
+    }),
+  }));
+
+  try {
+    const { parseCliArgs } = await import("../../src/presentation/cli.js");
+    await parseCliArgs(normalizeLegacyWorkerPatternArgs(args));
+  } catch (error) {
+    const message = String(error);
+    if (/CLI exited with code \d+/.test(message)) {
+      return;
+    }
+    if (/process\.exit unexpectedly called/.test(message)) {
+      return;
+    }
+    throw error;
+  } finally {
+    restoreEnv(previousEnv);
+  }
+
+  throw new Error("Expected CLI exit");
 }
 
 async function invokeRunAndExpectExit(args: string[], runTask: ReturnType<typeof vi.fn>): Promise<void> {

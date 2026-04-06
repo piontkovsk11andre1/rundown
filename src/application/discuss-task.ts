@@ -9,6 +9,8 @@ import {
 } from "../domain/template.js";
 import {
   createDiscussionCompletedEvent,
+  createDiscussionFinishedCompletedEvent,
+  createDiscussionFinishedStartedEvent,
   createDiscussionStartedEvent,
 } from "../domain/trace.js";
 import {
@@ -31,10 +33,16 @@ import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import { loadProjectTemplatesFromPorts } from "./project-templates.js";
 import { resolveWorkerPatternForInvocation } from "./resolve-worker.js";
 import { formatTaskLabel } from "./run-task-utils.js";
+import {
+  resolveTaskContextFromRuntimeMetadata,
+  validateRuntimeTaskMetadata,
+  type RuntimeTaskMetadata,
+} from "./task-context-resolution.js";
 import { FileLockError } from "../domain/ports/file-lock.js";
 import type { FileLock } from "../domain/ports/file-lock.js";
 import type {
   ArtifactRunContext,
+  ArtifactRunMetadata,
   ArtifactStore,
   CommandExecutor,
   ConfigDirResult,
@@ -70,6 +78,32 @@ interface ResolvedTaskContext {
   contextBefore: string;
 }
 
+interface FinishedRunScannedPhase {
+  sequence: number;
+  name: string;
+  phase: "execute" | "verify" | "repair";
+  dir: string;
+  metadataFile: string;
+  promptFile: string | null;
+  stdoutFile: string | null;
+  stderrFile: string | null;
+  exitCode: number | null;
+  verificationResult: string;
+}
+
+interface FinishedRunPhaseScan {
+  execute: FinishedRunScannedPhase[];
+  verify: FinishedRunScannedPhase[];
+  repair: FinishedRunScannedPhase[];
+  all: FinishedRunScannedPhase[];
+}
+
+interface FinishedRunPromptContext {
+  run: ArtifactRunMetadata;
+  taskMetadata: RuntimeTaskMetadata;
+  phases: FinishedRunPhaseScan;
+}
+
 /**
  * Task selection payload returned by the task selector port.
  */
@@ -103,6 +137,7 @@ export interface DiscussTaskDependencies {
  */
 export interface DiscussTaskOptions {
   source: string;
+  runId?: string;
   mode: RunnerMode;
   workerPattern: ParsedWorkerPattern;
   sortMode: SortMode;
@@ -131,6 +166,7 @@ export function createDiscussTask(
   return async function discussTask(options: DiscussTaskOptions): Promise<number> {
     const {
       source,
+      runId,
       sortMode,
       dryRun,
       printPrompt,
@@ -164,20 +200,79 @@ export function createDiscussTask(
     const cliExecutionOptions = cliBlockTimeoutMs === undefined
       ? { env: rundownVarEnv }
       : { timeoutMs: cliBlockTimeoutMs, env: rundownVarEnv };
-    const cliExecutionOptionsWithTemplateFailureAbort = withTemplateCliFailureAbort(
-      cliExecutionOptions,
-      "discuss template",
-    );
 
-    // Resolve markdown sources up front so locking and selection operate on the same set.
-    const files = await dependencies.sourceResolver.resolveSources(source);
-    if (files.length === 0) {
-      emit({ kind: "warn", message: "No Markdown files found matching: " + source });
-      return 3;
+    const artifactBaseDir = dependencies.configDir?.configDir;
+    let selectedRun: ArtifactRunMetadata | null = null;
+    let selectedRuntimeTaskMetadata: RuntimeTaskMetadata | null = null;
+    let files: string[] = [];
+    let lockTargets: string[] = [];
+
+    if (runId) {
+      selectedRun = runId === "latest"
+        ? dependencies.artifactStore.latest(artifactBaseDir)
+        : dependencies.artifactStore.find(runId, artifactBaseDir);
+
+      if (!selectedRun) {
+        const target = runId === "latest" ? "latest" : runId;
+        emit({ kind: "error", message: "No saved runtime artifact run found for: " + target });
+        return 3;
+      }
+
+      if (selectedRun.status === "metadata-missing") {
+        emit({
+          kind: "error",
+          message: "Selected run is missing run metadata (run.json). Re-run the original task with --keep-artifacts, then retry discuss --run.",
+        });
+        return 3;
+      }
+
+      if (!isTerminalRunStatus(selectedRun.status)) {
+        emit({
+          kind: "error",
+          message: "Selected run is not in a terminal state (status="
+            + (selectedRun.status ?? "unknown")
+            + "). Use `rundown artifacts` to choose a completed run.",
+        });
+        return 3;
+      }
+
+      if (!selectedRun.task) {
+        emit({
+          kind: "error",
+          message: "Selected run has no task metadata to discuss. Choose a different run or execute tasks again to refresh artifacts.",
+        });
+        return 3;
+      }
+
+      const metadataError = validateRuntimeTaskMetadata(selectedRun.task);
+      if (metadataError) {
+        emit({
+          kind: "error",
+          message: "Selected run has invalid task metadata: " + metadataError
+            + " Re-run the task to regenerate runtime artifacts.",
+        });
+        return 3;
+      }
+
+      selectedRuntimeTaskMetadata = selectedRun.task;
+      const resolvedTaskFilePath = dependencies.pathOperations.isAbsolute(selectedRun.task.file)
+        ? selectedRun.task.file
+        : dependencies.pathOperations.resolve(cwd, selectedRun.task.file);
+
+      if (dependencies.fileSystem.exists(resolvedTaskFilePath)) {
+        lockTargets = [resolvedTaskFilePath];
+      }
+    } else {
+      // Resolve markdown sources up front so locking and selection operate on the same set.
+      files = await dependencies.sourceResolver.resolveSources(source);
+      if (files.length === 0) {
+        emit({ kind: "warn", message: "No Markdown files found matching: " + source });
+        return 3;
+      }
+
+      // Deduplicate lock targets in case globbing or resolver behavior returns repeated paths.
+      lockTargets = Array.from(new Set(files));
     }
-
-    // Deduplicate lock targets in case globbing or resolver behavior returns repeated paths.
-    const lockTargets = Array.from(new Set(files));
     // Optionally clear stale lock files before acquiring fresh locks for this run.
     if (options.forceUnlock) {
       for (const filePath of lockTargets) {
@@ -217,14 +312,54 @@ export function createDiscussTask(
 
     try {
 
-      // Select a single unchecked task according to configured sort behavior.
-      const selectedTask = dependencies.taskSelector.selectNextTask(files, sortMode);
-      if (!selectedTask) {
-        emit({ kind: "info", message: "No unchecked tasks found." });
-        return 3;
+      let taskContext: ResolvedTaskContext;
+      let finishedRunPromptContext: FinishedRunPromptContext | null = null;
+
+      if (selectedRun && selectedRuntimeTaskMetadata) {
+        const runRootExists = dependencies.fileSystem.exists(selectedRun.rootDir);
+        const runRootStat = dependencies.fileSystem.stat(selectedRun.rootDir);
+        if (!runRootExists || runRootStat?.isDirectory !== true) {
+          emit({
+            kind: "error",
+            message: "Selected run has no saved artifact directory: " + selectedRun.rootDir
+              + ". No saved artifacts are available on disk; they may have been purged (run without --keep-artifacts).",
+          });
+          return 3;
+        }
+
+        const runtimeTaskContext = resolveTaskContextFromRuntimeMetadata(
+          selectedRuntimeTaskMetadata,
+          cwd,
+          dependencies.fileSystem,
+          dependencies.pathOperations,
+        );
+        if (runtimeTaskContext) {
+          taskContext = runtimeTaskContext;
+        } else {
+          emit({
+            kind: "info",
+            message: "Could not resolve task in the current source file state; using saved run metadata from run.json.",
+          });
+          taskContext = createFallbackTaskContext(selectedRuntimeTaskMetadata, cwd, dependencies.pathOperations);
+        }
+
+        const phases = scanRunPhases(selectedRun.rootDir, dependencies.fileSystem, dependencies.pathOperations);
+        finishedRunPromptContext = {
+          run: selectedRun,
+          taskMetadata: selectedRuntimeTaskMetadata,
+          phases,
+        };
+      } else {
+        // Select a single unchecked task according to configured sort behavior.
+        const selectedTask = dependencies.taskSelector.selectNextTask(files, sortMode);
+        if (!selectedTask) {
+          emit({ kind: "info", message: "No unchecked tasks found." });
+          return 3;
+        }
+
+        taskContext = resolveTaskContext(selectedTask);
       }
 
-      const taskContext = resolveTaskContext(selectedTask);
       // Resolve worker command and prompt template for the selected task.
       const loadedWorkerConfig = dependencies.configDir?.configDir
         ? dependencies.workerConfigPort.load(dependencies.configDir.configDir)
@@ -250,22 +385,35 @@ export function createDiscussTask(
           memoryMetadata: dependencies.memoryResolver?.resolve(taskContext.task.file) ?? null,
         }),
       };
-      const renderedPrompt = renderDiscussPrompt(templates.discuss, taskContext, {
-        ...templateVarsWithUserVariables,
-        ...templateVarsWithMemory,
-      });
+      const renderedPrompt = finishedRunPromptContext
+        ? renderDiscussFinishedPrompt(
+          templates.discussFinished,
+          taskContext,
+          finishedRunPromptContext,
+          {
+            ...templateVarsWithUserVariables,
+            ...templateVarsWithMemory,
+          },
+        )
+        : renderDiscussPrompt(templates.discuss, taskContext, {
+          ...templateVarsWithUserVariables,
+          ...templateVarsWithMemory,
+        });
       const promptCliBlockCount = extractCliBlocks(renderedPrompt).length;
       const dryRunSuppressesCliExpansion = dryRun && !printPrompt;
       let prompt = renderedPrompt;
 
       // Expand `cli` fenced blocks unless expansion is suppressed for this run mode.
       if (!options.ignoreCliBlock && !dryRunSuppressesCliExpansion) {
+        const templateLabel = finishedRunPromptContext
+          ? "discuss-finished template"
+          : "discuss template";
         try {
           prompt = await expandCliBlocks(
             renderedPrompt,
             cliBlockExecutor,
             cwd,
-            cliExecutionOptionsWithTemplateFailureAbort,
+            withTemplateCliFailureAbort(cliExecutionOptions, templateLabel),
           );
         } catch (error) {
           if (error instanceof TemplateCliBlockExecutionError) {
@@ -286,7 +434,17 @@ export function createDiscussTask(
         }
       }
 
-      emit({ kind: "info", message: "Next task: " + formatTaskLabel(taskContext.task) });
+      if (finishedRunPromptContext) {
+        emit({
+          kind: "info",
+          message: "Finished task: " + formatTaskLabel(taskContext.task)
+            + " (run "
+            + finishedRunPromptContext.run.runId
+            + ")",
+        });
+      } else {
+        emit({ kind: "info", message: "Next task: " + formatTaskLabel(taskContext.task) });
+      }
 
       if (printPrompt) {
         emit({ kind: "text", text: prompt });
@@ -331,7 +489,7 @@ export function createDiscussTask(
       const artifactContext = dependencies.artifactStore.createContext({
         cwd,
         configDir: dependencies.configDir?.configDir,
-        commandName: "discuss",
+        commandName: finishedRunPromptContext ? "discuss-finished" : "discuss",
         workerCommand: resolvedWorkerCommand,
         mode: "tui",
         source,
@@ -358,6 +516,20 @@ export function createDiscussTask(
           task_line: taskContext.task.line,
         },
       }));
+
+      if (finishedRunPromptContext) {
+        traceWriter.write(createDiscussionFinishedStartedEvent({
+          timestamp: discussionStartedAt,
+          run_id: artifactContext.runId,
+          payload: {
+            task_text: taskContext.task.text,
+            task_file: taskContext.task.file,
+            task_line: taskContext.task.line,
+            target_run_id: finishedRunPromptContext.run.runId,
+            target_run_status: finishedRunPromptContext.run.status ?? "metadata-missing",
+          },
+        }));
+      }
 
       // Invoke worker in TUI mode to collect discussion output.
       emit({
@@ -410,10 +582,26 @@ export function createDiscussTask(
         },
       }));
 
+      if (finishedRunPromptContext) {
+        traceWriter.write(createDiscussionFinishedCompletedEvent({
+          timestamp: new Date().toISOString(),
+          run_id: artifactContext.runId,
+          payload: {
+            task_text: taskContext.task.text,
+            task_file: taskContext.task.file,
+            task_line: taskContext.task.line,
+            target_run_id: finishedRunPromptContext.run.runId,
+            target_run_status: finishedRunPromptContext.run.status ?? "metadata-missing",
+            duration_ms: Math.max(0, Date.now() - discussionStartedAtMs),
+            exit_code: result.exitCode,
+          },
+        }));
+      }
+
       // Mark artifact status as cancelled when worker fails or checkbox state mutates.
       const status = result.exitCode === 0 && checkboxMutations.length === 0
-        ? "discuss-completed"
-        : "discuss-cancelled";
+        ? (finishedRunPromptContext ? "discuss-finished-completed" : "discuss-completed")
+        : (finishedRunPromptContext ? "discuss-finished-cancelled" : "discuss-cancelled");
       dependencies.artifactStore.finalize(artifactContext, {
         status,
         preserve: options.keepArtifacts,
@@ -491,4 +679,267 @@ function resolveTaskContext(selection: TaskSelectionResult): ResolvedTaskContext
     source: selection.source,
     contextBefore: selection.contextBefore,
   };
+}
+
+function renderDiscussFinishedPrompt(
+  template: string,
+  taskContext: ResolvedTaskContext,
+  finishedRunContext: FinishedRunPromptContext,
+  extraTemplateVars: ExtraTemplateVars,
+): string {
+  return renderTemplate(
+    template,
+    buildDiscussFinishedTemplateVars(taskContext, finishedRunContext, extraTemplateVars),
+  );
+}
+
+function buildDiscussFinishedTemplateVars(
+  taskContext: ResolvedTaskContext,
+  finishedRunContext: FinishedRunPromptContext,
+  extraTemplateVars: ExtraTemplateVars,
+): TemplateVars {
+  const executionPhaseDir = finishedRunContext.phases.execute[0]?.dir ?? "(missing)";
+  const taskLineFromRun = finishedRunContext.taskMetadata.line;
+
+  return {
+    ...extraTemplateVars,
+    task: taskContext.task.text,
+    file: taskContext.task.file,
+    context: taskContext.contextBefore,
+    taskIndex: taskContext.task.index,
+    taskLine: taskLineFromRun,
+    source: taskContext.source,
+    runId: finishedRunContext.run.runId,
+    runStatus: finishedRunContext.run.status ?? "unknown",
+    runDir: finishedRunContext.run.rootDir,
+    taskText: finishedRunContext.taskMetadata.text,
+    taskFile: finishedRunContext.taskMetadata.file,
+    taskLineFromRun,
+    selectedTaskLine: taskContext.task.line,
+    commitSha: extractCommitSha(finishedRunContext.run.extra),
+    phaseSummary: formatPhaseSummary(finishedRunContext.phases.all),
+    missingLogsSummary: formatMissingLogsSummary(finishedRunContext.phases.all),
+    executionPhaseDir,
+    verifyPhaseDirs: formatPhaseDirList(finishedRunContext.phases.verify),
+    repairPhaseDirs: formatPhaseDirList(finishedRunContext.phases.repair),
+    ...buildTaskHierarchyTemplateVars(taskContext.task),
+  };
+}
+
+function createFallbackTaskContext(
+  metadata: RuntimeTaskMetadata,
+  cwd: string,
+  pathOperations: PathOperationsPort,
+): ResolvedTaskContext {
+  const taskFilePath = pathOperations.isAbsolute(metadata.file)
+    ? metadata.file
+    : pathOperations.resolve(cwd, metadata.file);
+  const source = metadata.source;
+  const lines = source.split("\n");
+  const contextBefore = lines.slice(0, Math.max(0, metadata.line - 1)).join("\n");
+
+  return {
+    task: {
+      text: metadata.text,
+      checked: true,
+      index: metadata.index,
+      line: metadata.line,
+      column: 1,
+      offsetStart: 0,
+      offsetEnd: metadata.text.length,
+      file: taskFilePath,
+      isInlineCli: false,
+      depth: 0,
+      children: [],
+      subItems: [],
+    },
+    source,
+    contextBefore,
+  };
+}
+
+function isTerminalRunStatus(status: ArtifactRunMetadata["status"]): boolean {
+  return status === "completed"
+    || status === "failed"
+    || status === "execution-failed"
+    || status === "discuss-finished-completed"
+    || status === "discuss-finished-cancelled";
+}
+
+function scanRunPhases(
+  runDir: string,
+  fileSystem: FileSystem,
+  pathOperations: PathOperationsPort,
+): FinishedRunPhaseScan {
+  const scanned: FinishedRunScannedPhase[] = [];
+  const entries = fileSystem.readdir(runDir)
+    .filter((entry) => entry.isDirectory && /^\d+-/.test(entry.name))
+    .map((entry) => ({
+      name: entry.name,
+      sequence: Number.parseInt(entry.name.split("-", 1)[0] ?? "", 10),
+    }))
+    .filter((entry) => Number.isFinite(entry.sequence))
+    .sort((left, right) => left.sequence - right.sequence);
+
+  for (const entry of entries) {
+    const phaseDir = pathOperations.join(runDir, entry.name);
+    const metadataFile = pathOperations.join(phaseDir, "metadata.json");
+    if (!fileSystem.exists(metadataFile)) {
+      continue;
+    }
+
+    let metadata: {
+      sequence?: number;
+      phase?: unknown;
+      promptFile?: unknown;
+      stdoutFile?: unknown;
+      stderrFile?: unknown;
+      exitCode?: unknown;
+      verificationResult?: unknown;
+    };
+    try {
+      metadata = JSON.parse(fileSystem.readText(metadataFile)) as {
+        sequence?: number;
+        phase?: unknown;
+        promptFile?: unknown;
+        stdoutFile?: unknown;
+        stderrFile?: unknown;
+        exitCode?: unknown;
+        verificationResult?: unknown;
+      };
+    } catch {
+      continue;
+    }
+
+    const phase = metadata.phase;
+    if (phase !== "execute" && phase !== "verify" && phase !== "repair") {
+      continue;
+    }
+
+    const promptFile = resolveOptionalArtifactPath(phaseDir, metadata.promptFile, fileSystem, pathOperations);
+    const stdoutFile = resolveOptionalArtifactPath(phaseDir, metadata.stdoutFile, fileSystem, pathOperations);
+    const stderrFile = resolveOptionalArtifactPath(phaseDir, metadata.stderrFile, fileSystem, pathOperations);
+
+    scanned.push({
+      sequence: typeof metadata.sequence === "number" && Number.isInteger(metadata.sequence)
+        ? metadata.sequence
+        : entry.sequence,
+      name: entry.name,
+      phase,
+      dir: phaseDir,
+      metadataFile,
+      promptFile,
+      stdoutFile,
+      stderrFile,
+      exitCode: typeof metadata.exitCode === "number" || metadata.exitCode === null
+        ? metadata.exitCode
+        : null,
+      verificationResult: typeof metadata.verificationResult === "string"
+        ? metadata.verificationResult
+        : "",
+    });
+  }
+
+  return {
+    execute: scanned.filter((phase) => phase.phase === "execute"),
+    verify: scanned.filter((phase) => phase.phase === "verify"),
+    repair: scanned.filter((phase) => phase.phase === "repair"),
+    all: scanned,
+  };
+}
+
+function resolveOptionalArtifactPath(
+  phaseDir: string,
+  artifactName: unknown,
+  fileSystem: FileSystem,
+  pathOperations: PathOperationsPort,
+): string | null {
+  if (typeof artifactName !== "string" || artifactName.trim() === "") {
+    return null;
+  }
+
+  const artifactPath = pathOperations.join(phaseDir, artifactName);
+  return fileSystem.exists(artifactPath) ? artifactPath : null;
+}
+
+function formatPhaseSummary(phases: FinishedRunScannedPhase[]): string {
+  if (phases.length === 0) {
+    return "No execute/verify/repair phases were discovered in this run directory.";
+  }
+
+  return phases.map((phase) => {
+    const exitCodeLabel = phase.exitCode === null ? "null" : String(phase.exitCode);
+    const verificationLabel = phase.verificationResult || "(n/a)";
+    return "- [" + String(phase.sequence).padStart(2, "0")
+      + "] "
+      + phase.phase
+      + " ("
+      + phase.name
+      + "): exit="
+      + exitCodeLabel
+      + ", verification="
+      + verificationLabel
+      + ", prompt="
+      + (phase.promptFile ? "present" : "missing")
+      + ", stdout="
+      + (phase.stdoutFile ? "present" : "missing")
+      + ", stderr="
+      + (phase.stderrFile ? "present" : "missing");
+  }).join("\n");
+}
+
+function formatPhaseDirList(phases: FinishedRunScannedPhase[]): string {
+  if (phases.length === 0) {
+    return "- (none)";
+  }
+
+  return phases
+    .map((phase) => "- " + phase.dir)
+    .join("\n");
+}
+
+function formatMissingLogsSummary(phases: FinishedRunScannedPhase[]): string {
+  if (phases.length === 0) {
+    return "No phase artifacts were discovered, so no stdout/stderr logs are available.";
+  }
+
+  const lines: string[] = [];
+  for (const phase of phases) {
+    const missingStreams: string[] = [];
+    if (!phase.stdoutFile) {
+      missingStreams.push("stdout.log");
+    }
+    if (!phase.stderrFile) {
+      missingStreams.push("stderr.log");
+    }
+
+    if (missingStreams.length === 0) {
+      continue;
+    }
+
+    lines.push(
+      "- ["
+        + String(phase.sequence).padStart(2, "0")
+        + "] "
+        + phase.phase
+        + " ("
+        + phase.name
+        + "): missing "
+        + missingStreams.join(" and ")
+        + ". Output may not have been captured (for example, a TUI run without --keep-artifacts) or the files were removed.",
+    );
+  }
+
+  if (lines.length === 0) {
+    return "All discovered phases include stdout/stderr log files.";
+  }
+
+  return lines.join("\n");
+}
+
+function extractCommitSha(extra: Record<string, unknown> | undefined): string {
+  const commitSha = extra?.commitSha;
+  return typeof commitSha === "string" && commitSha.trim() !== ""
+    ? commitSha
+    : "(none)";
 }

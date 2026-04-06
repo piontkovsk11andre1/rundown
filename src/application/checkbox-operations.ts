@@ -71,10 +71,30 @@ export interface CheckboxStateSnapshot {
 export function captureCheckboxState(source: string): CheckboxStateSnapshot {
   // Match markdown list items that contain a checkbox marker and task text.
   const checkboxPattern = /^(\s*[-*+]\s+)\[([ xX])\](\s+\S.*)$/;
+  const fencePattern = /^\s*(`{3,}|~{3,})/;
   const lines = source.split(/\r?\n/);
   const orderedStates: boolean[] = [];
+  let openFence: { char: "`" | "~"; length: number } | null = null;
 
   for (const line of lines) {
+    const fenceMatch = line.match(fencePattern);
+    if (fenceMatch) {
+      const marker = fenceMatch[1] ?? "";
+      const char = marker[0] as "`" | "~";
+      const length = marker.length;
+
+      if (openFence === null) {
+        openFence = { char, length };
+      } else if (openFence.char === char && length >= openFence.length) {
+        openFence = null;
+      }
+      continue;
+    }
+
+    if (openFence !== null) {
+      continue;
+    }
+
     const match = line.match(checkboxPattern);
     if (!match) {
       continue;

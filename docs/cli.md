@@ -16,7 +16,7 @@ cd packages/api
 rundown --config-dir ../../.rundown run TODO.md -- opencode run
 
 # CI: use a workspace-mounted config outside the repo checkout
-rundown --config-dir /workspace/rundown-config run docs/todos.md --worker "opencode run --file $file"
+rundown --config-dir /workspace/rundown-config run docs/todos.md --worker "opencode run --file $file $bootstrap"
 ```
 
 ## Main commands
@@ -40,16 +40,16 @@ rundown run roadmap.md --redo -- opencode run
 rundown run roadmap.md --reset-after -- opencode run
 rundown run roadmap.md --clean -- opencode run
 rundown all roadmap.md -- opencode run
-rundown run tasks.md --show-agent-output --worker "opencode run --file $file"
+rundown run tasks.md --show-agent-output --worker "opencode run --file $file $bootstrap"
 ```
 
 PowerShell-safe form:
 
 ```powershell
-rundown run docs/ --worker "opencode run --file $file"
-rundown run docs/ --all --worker "opencode run --file $file"
-rundown all docs/ --worker "opencode run --file $file"
-rundown run docs/ --show-agent-output --worker "opencode run --file $file"
+rundown run docs/ --worker "opencode run --file $file $bootstrap"
+rundown run docs/ --all --worker "opencode run --file $file $bootstrap"
+rundown all docs/ --worker "opencode run --file $file $bootstrap"
+rundown run docs/ --show-agent-output --worker "opencode run --file $file $bootstrap"
 ```
 
 Agent output notes (`run --show-agent-output`):
@@ -101,8 +101,8 @@ Examples:
 ```bash
 rundown discuss roadmap.md -- opencode
 rundown discuss docs/ --worker "opencode"
-rundown discuss tasks.md --mode wait --worker "opencode run --file $file"
-rundown discuss roadmap.md --print-prompt --worker "opencode run --file $file"
+rundown discuss tasks.md --mode wait --worker "opencode run --file $file $bootstrap"
+rundown discuss roadmap.md --print-prompt --worker "opencode run --file $file $bootstrap"
 rundown discuss roadmap.md --dry-run --worker "opencode --prompt=$bootstrap"
 ```
 
@@ -146,9 +146,9 @@ rundown reverify --last 3 -- opencode run
 rundown reverify --last 3 --oldest-first -- opencode run
 rundown reverify --run latest -- opencode run
 rundown reverify --run run-20260319T222645632Z-04e84d73 --repair-attempts 2 -- opencode run
-rundown reverify --run latest --no-repair --worker "opencode run --file $file"
+rundown reverify --run latest --no-repair --worker "opencode run --file $file $bootstrap"
 rundown reverify --run run-20260319T222645632Z-04e84d73 --no-repair -- opencode run
-rundown reverify --print-prompt --worker "opencode run --file $file"
+rundown reverify --print-prompt --worker "opencode run --file $file $bootstrap"
 rundown reverify --dry-run --worker "claude -p $bootstrap"
 ```
 
@@ -210,7 +210,7 @@ rundown revert -- opencode run
 rundown revert --run latest -- opencode run
 rundown revert --run run-20260319T222645632Z-04e84d73 -- opencode run
 rundown revert --last 3 --method revert -- opencode run
-rundown revert --all --dry-run --worker "opencode run --file $file"
+rundown revert --all --dry-run --worker "opencode run --file $file $bootstrap"
 rundown revert --last 2 --method reset -- opencode run
 ```
 
@@ -305,7 +305,7 @@ rundown plan docs/spec.md --scan-count 3 --deep 1 -- opencode run
 rundown plan docs/spec.md --scan-count 3 --deep 2 -- opencode run
 
 # PowerShell-safe worker form
-rundown plan docs/spec.md --scan-count 2 --worker "opencode run --file $file"
+rundown plan docs/spec.md --scan-count 2 --worker "opencode run --file $file $bootstrap"
 
 # PowerShell-safe deep planning
 rundown plan docs/spec.md --scan-count 2 --deep 2 --worker "claude -p $bootstrap"
@@ -373,7 +373,7 @@ Examples:
 rundown make "please do something" "8. Do something.md" -- opencode run
 
 # Use .markdown extension
-rundown make "Draft migration plan" "docs/migration.markdown" --worker "opencode run --file $file"
+rundown make "Draft migration plan" "docs/migration.markdown" --worker "opencode run --file $file $bootstrap"
 
 # Preview prompts without running workers
 rundown make "Release prep" "docs/release-prep.md" --print-prompt --worker "opencode --prompt=$bootstrap"
@@ -746,18 +746,20 @@ If the worker does not provide details, rundown prints fallback reasons (for exa
 
 Rundown always writes the rendered task prompt to a runtime file and supports worker pattern placeholders:
 
-- `$file` — prompt file path on disk
-- `$bootstrap` — short instruction telling the worker to read `$file`
+- `$file` — replaced with the prompt file path on disk
+- `$bootstrap` — replaced with a short instruction telling the worker to read the prompt file
 
 If neither `$file` nor `$bootstrap` appears in the worker pattern, rundown appends `$file` as the final argument (backward-compatible default).
+
+Important: `$file` and `$bootstrap` are pure string substitutions inside the command line. They do not imply any particular CLI semantics for the target worker. For example, `--file $file` passes the prompt file path via the worker's `--file` flag, but if that worker also requires a separate message or prompt argument, you must supply one (for example, by adding `$bootstrap` as a positional argument).
 
 Examples:
 
 ```bash
-# Worker reads prompt file directly
-rundown run roadmap.md --worker "opencode run --file $file"
+# Attach prompt file and provide a bootstrap message for the worker
+rundown run roadmap.md --worker "opencode run --file $file $bootstrap"
 
-# Worker receives bootstrap text, then reads prompt file path from it
+# Worker receives bootstrap text as its prompt flag
 rundown run roadmap.md --worker "claude -p $bootstrap"
 
 # No placeholder used -> rundown appends $file automatically
@@ -818,7 +820,7 @@ Examples:
 rundown research docs/spec.md -- opencode run
 
 # Inspect research prompt only
-rundown research docs/spec.md --print-prompt --worker "opencode run --file $file"
+rundown research docs/spec.md --print-prompt --worker "opencode run --file $file $bootstrap"
 
 # Dry-run with explicit vars
 rundown research docs/spec.md --dry-run --vars-file --var ticket=ENG-42 --worker "claude -p $bootstrap"
@@ -968,13 +970,13 @@ Examples:
 
 ```bash
 # Re-run from the top of every checked task in the resolved source set
-rundown run docs/todos.md --redo --worker "opencode run --file $file"
+rundown run docs/todos.md --redo --worker "opencode run --file $file $bootstrap"
 
 # Run tasks, then always leave files unchecked
-rundown run "docs/**/*.md" --all --reset-after --worker "opencode run --file $file"
+rundown run "docs/**/*.md" --all --reset-after --worker "opencode run --file $file $bootstrap"
 
 # Canonical reusable runbook flow: clean before and after
-rundown run runbook.md --clean --worker "opencode run --file $file"
+rundown run runbook.md --clean --worker "opencode run --file $file $bootstrap"
 ```
 
 ### Inspection and dry runs
@@ -1072,7 +1074,7 @@ Prefer `--worker` because it avoids argument splitting issues around `--`.
 Example:
 
 ```powershell
-rundown run docs/ --worker "opencode run --file $file"
+rundown run docs/ --worker "opencode run --file $file $bootstrap"
 ```
 
 ### Large prompts on Windows
@@ -1080,7 +1082,7 @@ rundown run docs/ --worker "opencode run --file $file"
 Use a `$file` worker pattern for robust prompt delivery:
 
 ```powershell
-rundown run docs/ --worker "opencode run --file $file"
+rundown run docs/ --worker "opencode run --file $file $bootstrap"
 ```
 
 ## Practical default for OpenCode
@@ -1089,7 +1091,7 @@ A clean setup is:
 
 - `wait` mode with `opencode run`
 - `tui` mode with `opencode`
-- worker pattern with `$file` for staged prompt files
+- worker pattern with `$file` and `$bootstrap` for staged prompt files
 
 Examples:
 

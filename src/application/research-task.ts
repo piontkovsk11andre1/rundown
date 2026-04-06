@@ -527,23 +527,30 @@ export function createResearchTask(
         return finishResearch(1, "execution-failed");
       }
 
-      const introducedUncheckedTodos = listIntroducedUncheckedTodos(sourceDocument, updatedDocument);
-      if (introducedUncheckedTodos.length > 0) {
-        const violationMessage = "Research introduced new unchecked TODO items in "
-          + source
-          + ". Research may enrich prose, but must not add `- [ ]` tasks.";
-        emit({ kind: "error", message: violationMessage });
-        restoreOriginalDocumentAfterViolation(
-          dependencies.fileSystem,
-          source,
-          sourceDocument,
-          emit,
-        );
+      const strippedTodos = stripIntroducedUncheckedTodos(sourceDocument, updatedDocument);
+      if (strippedTodos.removed.length > 0) {
+        try {
+          dependencies.fileSystem.writeText(source, strippedTodos.cleaned);
+        } catch {
+          emit({
+            kind: "error",
+            message: "Research produced output, but failed to update Markdown document: " + source,
+          });
+          return finishResearch(1, "execution-failed");
+        }
+
         emit({
-          kind: "error",
-          message: "Research update rejected due to constraint violation.",
+          kind: "warn",
+          message: "Research introduced new unchecked TODO items in "
+            + source
+            + ". Removed "
+            + strippedTodos.removed.length
+            + " introduced item"
+            + (strippedTodos.removed.length === 1 ? "" : "s")
+            + ": "
+            + strippedTodos.removed.join("; ")
+            + "; continuing with cleaned output.",
         });
-        return finishResearch(1, "execution-failed");
       }
 
       emit({ kind: "success", message: "Research worker completed." });
@@ -629,28 +636,63 @@ function hasCheckboxStateMutation(beforeSource: string, afterSource: string): bo
   return false;
 }
 
-/**
- * Returns unchecked TODO identities that exist after research but not before.
- */
-function listIntroducedUncheckedTodos(beforeSource: string, afterSource: string): string[] {
+export function stripIntroducedUncheckedTodos(
+  beforeSource: string,
+  afterSource: string,
+): { cleaned: string; removed: string[] } {
   const beforeCounts = new Map<string, number>();
-  const after = parseUncheckedTodoLines(afterSource).map(normalizeUncheckedTodoIdentity);
-  const introduced: string[] = [];
+  const taskPattern = /^\s*[-*+]\s+\[ \]\s+\S/;
+  const fencePattern = /^\s*(`{3,}|~{3,})/;
+  let openFence: { char: "`" | "~"; length: number } | null = null;
+  const lines = afterSource.split(/\r?\n/);
+  const cleanedLines: string[] = [];
+  const removed: string[] = [];
 
   for (const line of parseUncheckedTodoLines(beforeSource).map(normalizeUncheckedTodoIdentity)) {
     beforeCounts.set(line, (beforeCounts.get(line) ?? 0) + 1);
   }
 
-  for (const line of after) {
-    const availableBeforeCount = beforeCounts.get(line) ?? 0;
-    if (availableBeforeCount > 0) {
-      beforeCounts.set(line, availableBeforeCount - 1);
+  for (const line of lines) {
+    const fenceMatch = line.match(fencePattern);
+    if (fenceMatch) {
+      const marker = fenceMatch[1] ?? "";
+      const char = marker[0] as "`" | "~";
+      const length = marker.length;
+
+      if (openFence === null) {
+        openFence = { char, length };
+      } else if (openFence.char === char && length >= openFence.length) {
+        openFence = null;
+      }
+
+      cleanedLines.push(line);
       continue;
     }
-    introduced.push(line);
+
+    if (openFence !== null || !taskPattern.test(line)) {
+      cleanedLines.push(line);
+      continue;
+    }
+
+    const identity = normalizeUncheckedTodoIdentity(line);
+    const availableBeforeCount = beforeCounts.get(identity) ?? 0;
+    if (availableBeforeCount > 0) {
+      beforeCounts.set(identity, availableBeforeCount - 1);
+      cleanedLines.push(line);
+      continue;
+    }
+
+    removed.push(identity);
   }
 
-  return introduced;
+  if (removed.length === 0) {
+    return { cleaned: afterSource, removed };
+  }
+
+  return {
+    cleaned: cleanedLines.join(afterSource.includes("\r\n") ? "\r\n" : "\n"),
+    removed,
+  };
 }
 
 /**

@@ -2,6 +2,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   createResearchTask,
+  stripIntroducedUncheckedTodos,
   type ResearchTaskDependencies,
   type ResearchTaskOptions,
 } from "../../src/application/research-task.js";
@@ -543,7 +544,7 @@ describe("research-task", () => {
     );
   });
 
-  it("rejects research output that introduces unchecked TODO items and restores original source", async () => {
+  it("strips introduced unchecked TODO items and keeps cleaned research output", async () => {
     const cwd = "/workspace";
     const markdownFile = path.join(cwd, "roadmap.md");
     const sourceBefore = "# Roadmap\nBuild a new release process.\n";
@@ -562,17 +563,14 @@ describe("research-task", () => {
     const researchTask = createResearchTask(dependencies);
     const code = await researchTask(createOptions({ source: markdownFile }));
 
-    expect(code).toBe(1);
+    expect(code).toBe(0);
     expect(events).toContainEqual({
-      kind: "error",
+      kind: "warn",
       message: "Research introduced new unchecked TODO items in "
         + markdownFile
-        + ". Research may enrich prose, but must not add `- [ ]` tasks.",
+        + ". Removed 1 introduced item: - [ ] Add rollout checklist; continuing with cleaned output.",
     });
-    expect(events).toContainEqual({
-      kind: "error",
-      message: "Research update rejected due to constraint violation.",
-    });
+    expect(events).toContainEqual({ kind: "success", message: "Research worker completed." });
     expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenNthCalledWith(
       1,
       markdownFile,
@@ -581,18 +579,18 @@ describe("research-task", () => {
     expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenNthCalledWith(
       2,
       markdownFile,
-      sourceBefore,
+      "# Roadmap\nBuild a new release process.\n\n",
     );
     expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
       expect.objectContaining({ runId: "run-research" }),
       expect.objectContaining({
-        status: "execution-failed",
-        preserve: true,
+        status: "completed",
+        preserve: false,
       }),
     );
   });
 
-  it("rejects research output that duplicates an existing unchecked TODO item", async () => {
+  it("strips duplicated introduced unchecked TODO items while preserving existing ones", async () => {
     const cwd = "/workspace";
     const markdownFile = path.join(cwd, "roadmap.md");
     const sourceBefore = "# Roadmap\n\n- [ ] Add rollout checklist\n";
@@ -611,17 +609,14 @@ describe("research-task", () => {
     const researchTask = createResearchTask(dependencies);
     const code = await researchTask(createOptions({ source: markdownFile }));
 
-    expect(code).toBe(1);
+    expect(code).toBe(0);
     expect(events).toContainEqual({
-      kind: "error",
+      kind: "warn",
       message: "Research introduced new unchecked TODO items in "
         + markdownFile
-        + ". Research may enrich prose, but must not add `- [ ]` tasks.",
+        + ". Removed 1 introduced item: - [ ] Add rollout checklist; continuing with cleaned output.",
     });
-    expect(events).toContainEqual({
-      kind: "error",
-      message: "Research update rejected due to constraint violation.",
-    });
+    expect(events).toContainEqual({ kind: "success", message: "Research worker completed." });
     expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenNthCalledWith(
       1,
       markdownFile,
@@ -635,8 +630,43 @@ describe("research-task", () => {
     expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
       expect.objectContaining({ runId: "run-research" }),
       expect.objectContaining({
-        status: "execution-failed",
-        preserve: true,
+        status: "completed",
+        preserve: false,
+      }),
+    );
+  });
+
+  it("does not strip unchecked TODO lines inside fenced code blocks", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const sourceBefore = "# Roadmap\n\nThin note.\n";
+    const { dependencies, events, artifactStore } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: sourceBefore,
+    });
+
+    vi.mocked(dependencies.workerExecutor.runWorker).mockResolvedValue({
+      exitCode: 0,
+      stdout: "# Roadmap\n\nThin note.\n\n```md\n- [ ] Example task in code block\n```\n",
+      stderr: "",
+    });
+
+    const researchTask = createResearchTask(dependencies);
+    const code = await researchTask(createOptions({ source: markdownFile }));
+
+    expect(code).toBe(0);
+    expect(events.some((event) => event.kind === "warn" && event.message.includes("introduced new unchecked TODO items"))).toBe(false);
+    expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenCalledWith(
+      markdownFile,
+      "# Roadmap\n\nThin note.\n\n```md\n- [ ] Example task in code block\n```\n",
+    );
+    expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: "run-research" }),
+      expect.objectContaining({
+        status: "completed",
+        preserve: false,
       }),
     );
   });
@@ -764,6 +794,71 @@ describe("research-task", () => {
       }),
     );
     expect(events.some((event) => event.kind === "info" && event.message.includes("Runtime artifacts saved at"))).toBe(true);
+  });
+});
+
+describe("stripIntroducedUncheckedTodos", () => {
+  it("removes plain introduced unchecked TODO lines", () => {
+    const before = "# Notes\nIntro\n";
+    const after = "# Notes\nIntro\n- [ ] Add follow-up\n";
+
+    const result = stripIntroducedUncheckedTodos(before, after);
+
+    expect(result).toEqual({
+      cleaned: "# Notes\nIntro\n",
+      removed: ["- [ ] Add follow-up"],
+    });
+  });
+
+  it("keeps pre-existing TODO lines while removing newly introduced duplicates", () => {
+    const before = "# Notes\n- [ ] Keep existing\n";
+    const after = "# Notes\n- [ ] Keep existing\n- [ ] Keep existing\n";
+
+    const result = stripIntroducedUncheckedTodos(before, after);
+
+    expect(result).toEqual({
+      cleaned: "# Notes\n- [ ] Keep existing\n",
+      removed: ["- [ ] Keep existing"],
+    });
+  });
+
+  it("keeps TODO-like lines inside fenced code blocks", () => {
+    const before = "# Notes\nIntro\n";
+    const after = "# Notes\nIntro\n```md\n- [ ] Example in code\n```\n";
+
+    const result = stripIntroducedUncheckedTodos(before, after);
+
+    expect(result).toEqual({
+      cleaned: after,
+      removed: [],
+    });
+  });
+
+  it("handles mixed scenarios of introduced, existing, and fenced TODO lines", () => {
+    const before = "# Notes\n- [ ] Existing task\n";
+    const after = [
+      "# Notes",
+      "- [ ] Existing task",
+      "- [ ] New task",
+      "```md",
+      "- [ ] Example in code",
+      "```",
+      "",
+    ].join("\n");
+
+    const result = stripIntroducedUncheckedTodos(before, after);
+
+    expect(result).toEqual({
+      cleaned: [
+        "# Notes",
+        "- [ ] Existing task",
+        "```md",
+        "- [ ] Example in code",
+        "```",
+        "",
+      ].join("\n"),
+      removed: ["- [ ] New task"],
+    });
   });
 });
 

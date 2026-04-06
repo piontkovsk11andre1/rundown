@@ -7130,7 +7130,7 @@ describe.sequential("CLI integration", () => {
     expect(fs.readFileSync(sourcePath, "utf-8")).toBe(original);
   });
 
-  it("research rejects new unchecked TODO output and restores original source", async () => {
+  it("research strips new unchecked TODO output and keeps cleaned source", async () => {
     const workspace = makeTempWorkspace();
     const sourcePath = path.join(workspace, "roadmap.md");
     const workerScriptPath = path.join(workspace, "research-worker-todo-violation.cjs");
@@ -7149,10 +7149,45 @@ describe.sequential("CLI integration", () => {
       workerScriptPath.replace(/\\/g, "/"),
     ], workspace);
 
-    expect(result.code).toBe(1);
-    expect(result.errors.some((line) => line.includes("Research introduced new unchecked TODO items in"))).toBe(true);
-    expect(result.errors.some((line) => line.includes("Research update rejected due to constraint violation."))).toBe(true);
-    expect(fs.readFileSync(sourcePath, "utf-8")).toBe(original);
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Research introduced new unchecked TODO items in"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Removed 1 introduced item: - [ ] New task from research; continuing with cleaned output."))).toBe(true);
+    expect(fs.readFileSync(sourcePath, "utf-8")).toBe("# Roadmap\n\nThin note.\n\n");
+  });
+
+  it("research removes only real introduced TODO items and preserves fenced TODO lines", async () => {
+    const workspace = makeTempWorkspace();
+    const sourcePath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "research-worker-mixed-todo-output.cjs");
+    const original = "# Roadmap\n\nThin note.\n";
+
+    fs.writeFileSync(sourcePath, original, "utf-8");
+    fs.writeFileSync(workerScriptPath, [
+      "console.log('# Roadmap\\n\\nThin note.\\n\\n- [ ] Real task to remove\\n\\n```md\\n- [ ] Example task in fenced block\\n```');",
+    ].join("\n"), "utf-8");
+
+    const result = await runCli([
+      "research",
+      "roadmap.md",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Research introduced new unchecked TODO items in"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Removed 1 introduced item: - [ ] Real task to remove; continuing with cleaned output."))).toBe(true);
+    expect(fs.readFileSync(sourcePath, "utf-8")).toBe([
+      "# Roadmap",
+      "",
+      "Thin note.",
+      "",
+      "",
+      "```md",
+      "- [ ] Example task in fenced block",
+      "```",
+      "",
+    ].join("\n"));
   });
 
   it("research --dry-run does not execute worker and does not modify source", async () => {

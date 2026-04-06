@@ -30,7 +30,7 @@ What happens:
 ## 2. PowerShell-safe worker usage
 
 ```powershell
-rundown run docs/ --worker 'opencode run --file $file'
+rundown run docs/ --worker 'opencode run --file $file $bootstrap'
 ```
 
 This form avoids common PowerShell argument-splitting friction around `--`.
@@ -257,7 +257,7 @@ Markdown:
 Command:
 
 ```bash
-rundown run TODO.md --worker 'opencode run --file $file' --verify --retries 2
+rundown run TODO.md --worker 'opencode run --file $file $bootstrap' --verify --retries 2
 ```
 
 What happens:

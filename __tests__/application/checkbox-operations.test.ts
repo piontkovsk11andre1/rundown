@@ -3,6 +3,7 @@ import type { Task } from "../../src/domain/parser.js";
 import type { FileSystem } from "../../src/domain/ports/index.js";
 
 import {
+  captureCheckboxState,
   checkTaskUsingFileSystem,
   countCheckedTasks,
   maybeResetFileCheckboxes,
@@ -118,5 +119,34 @@ describe("checkbox-operations", () => {
       kind: "info",
       message: "Reset 1 checkbox in todo.md.",
     });
+  });
+
+  it("ignores checkboxes inside fenced code blocks", () => {
+    const source = [
+      "- [ ] Real task",
+      "```markdown",
+      "- [ ] Example inside fence",
+      "- [x] Checked example inside fence",
+      "```",
+      "- [x] Another real task",
+    ].join("\n");
+
+    const snapshot = captureCheckboxState(source);
+
+    expect(snapshot.orderedStates).toEqual([false, true]);
+  });
+
+  it("ignores checkboxes inside tilde fenced code blocks", () => {
+    const source = [
+      "- [ ] Real",
+      "~~~",
+      "- [x] Fenced",
+      "~~~",
+      "- [x] Also real",
+    ].join("\n");
+
+    const snapshot = captureCheckboxState(source);
+
+    expect(snapshot.orderedStates).toEqual([false, true]);
   });
 });

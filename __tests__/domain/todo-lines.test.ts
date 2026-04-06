@@ -49,4 +49,41 @@ describe("parseUncheckedTodoLines", () => {
     expect(parseUncheckedTodoLines("No tasks here.")).toEqual([]);
     expect(parseUncheckedTodoLines("")).toEqual([]);
   });
+
+  it("skips unchecked task lines inside fenced code blocks", () => {
+    const output = [
+      "- [ ] Real task",
+      "```md",
+      "- [ ] Not a real task",
+      "```",
+      "- [ ] Another real task",
+    ].join("\n");
+
+    const items = parseUncheckedTodoLines(output);
+    expect(items).toEqual(["- [ ] Real task", "- [ ] Another real task"]);
+  });
+
+  it("skips unchecked task lines inside tilde fences", () => {
+    const output = [
+      "~~~",
+      "- [ ] In code sample",
+      "~~~",
+      "- [ ] Outside code sample",
+    ].join("\n");
+
+    const items = parseUncheckedTodoLines(output);
+    expect(items).toEqual(["- [ ] Outside code sample"]);
+  });
+
+  it("supports fence closes with longer marker runs", () => {
+    const output = [
+      "````",
+      "- [ ] In fenced block",
+      "`````",
+      "- [ ] Outside fenced block",
+    ].join("\n");
+
+    const items = parseUncheckedTodoLines(output);
+    expect(items).toEqual(["- [ ] Outside fenced block"]);
+  });
 });

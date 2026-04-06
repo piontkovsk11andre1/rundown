@@ -31,8 +31,14 @@ export function createConfigDirAdapter(): ConfigDirPort {
 
       while (true) {
         // Check for the expected config directory in the current traversal level.
+        // Only accept directories that contain config.json — bare artifact-only
+        // directories (logs/, runs/) created by previous runs must not shadow a
+        // properly configured parent.
         const configDir = path.join(currentDir, CONFIG_DIR_NAME);
-        if (fs.existsSync(configDir)) {
+        if (
+          fs.existsSync(configDir) &&
+          fs.existsSync(path.join(configDir, "config.json"))
+        ) {
           // Return the discovered directory and mark it as implicitly resolved.
           const result: ConfigDirResult = {
             configDir,

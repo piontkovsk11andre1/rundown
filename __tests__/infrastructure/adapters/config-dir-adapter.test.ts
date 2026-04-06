@@ -31,18 +31,15 @@ describe("createConfigDirAdapter", () => {
     tempDirs.push(tempDir);
     const configDir = path.join(tempDir, CONFIG_DIR_NAME);
     fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(path.join(configDir, "config.json"), "{}");
 
     const adapter = createConfigDirAdapter();
-    const existsSyncSpy = vi.spyOn(fs, "existsSync");
     const result = adapter.resolve(tempDir);
 
     expect(result).toEqual({
       configDir,
       isExplicit: false,
     });
-    expect(existsSyncSpy.mock.calls.map(([checkedPath]) => checkedPath)).toEqual([
-      configDir,
-    ]);
   });
 
   it("finds .rundown two levels up", () => {
@@ -51,6 +48,7 @@ describe("createConfigDirAdapter", () => {
     const configDir = path.join(tempDir, CONFIG_DIR_NAME);
     const deepDir = path.join(tempDir, "one", "two");
     fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(path.join(configDir, "config.json"), "{}");
     fs.mkdirSync(deepDir, { recursive: true });
 
     const adapter = createConfigDirAdapter();
@@ -71,6 +69,7 @@ describe("createConfigDirAdapter", () => {
     const deepDir = path.join(tempDir, "nested", "project");
 
     fs.mkdirSync(actualConfigDir, { recursive: true });
+    fs.writeFileSync(path.join(actualConfigDir, "config.json"), "{}");
     fs.symlinkSync(
       actualConfigDir,
       symlinkedConfigDir,
@@ -83,6 +82,30 @@ describe("createConfigDirAdapter", () => {
 
     expect(result).toEqual({
       configDir: symlinkedConfigDir,
+      isExplicit: false,
+    });
+  });
+
+  it("skips .rundown without config.json and finds parent with config.json", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-config-dir-"));
+    tempDirs.push(tempDir);
+
+    // Root has a proper .rundown with config.json
+    const rootConfigDir = path.join(tempDir, CONFIG_DIR_NAME);
+    fs.mkdirSync(rootConfigDir, { recursive: true });
+    fs.writeFileSync(path.join(rootConfigDir, "config.json"), "{}");
+
+    // Subdirectory has an artifact-only .rundown (no config.json)
+    const subDir = path.join(tempDir, "sub");
+    const subConfigDir = path.join(subDir, CONFIG_DIR_NAME);
+    fs.mkdirSync(subConfigDir, { recursive: true });
+    fs.mkdirSync(path.join(subConfigDir, "runs"), { recursive: true });
+
+    const adapter = createConfigDirAdapter();
+    const result = adapter.resolve(subDir);
+
+    expect(result).toEqual({
+      configDir: rootConfigDir,
       isExplicit: false,
     });
   });

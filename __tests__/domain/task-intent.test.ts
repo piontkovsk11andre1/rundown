@@ -199,6 +199,37 @@ describe("classifyTaskIntent", () => {
     expect(decision.reason).toBe("default");
   });
 
+  it("classifies end control-flow prefixes through generic tool resolution", () => {
+    const toolResolver: ToolResolverPort = {
+      resolve: (toolName) => ["end", "return", "skip", "quit"].includes(toolName)
+        ? {
+          name: toolName,
+          kind: "handler",
+          templatePath: `/workspace/.rundown/tools/${toolName}.md`,
+          template: "{{payload}}",
+        }
+        : undefined,
+      listKnownToolNames: () => ["end", "return", "skip", "quit"],
+    };
+
+    const canonicalEnd = classifyTaskIntent("end: no more output to process", toolResolver);
+    expect(canonicalEnd.intent).toBe("tool-expansion");
+    expect(canonicalEnd.toolName).toBe("end");
+    expect(canonicalEnd.toolPayload).toBe("no more output to process");
+
+    const aliasReturn = classifyTaskIntent("return: stop sibling execution", toolResolver);
+    expect(aliasReturn.intent).toBe("tool-expansion");
+    expect(aliasReturn.toolName).toBe("return");
+
+    const aliasSkip = classifyTaskIntent("skip: branch already satisfied", toolResolver);
+    expect(aliasSkip.intent).toBe("tool-expansion");
+    expect(aliasSkip.toolName).toBe("skip");
+
+    const aliasQuit = classifyTaskIntent("quit: condition reached", toolResolver);
+    expect(aliasQuit.intent).toBe("tool-expansion");
+    expect(aliasQuit.toolName).toBe("quit");
+  });
+
   it("keeps built-in verify prefix precedence over tool resolver", () => {
     const toolResolver: ToolResolverPort = {
       resolve: () => ({

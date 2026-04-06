@@ -230,3 +230,33 @@ describe("executeToolChain modifier-only chains", () => {
       .toBe(2);
   });
 });
+
+describe("executeToolChain handler signals", () => {
+  it("propagates skipRemainingSiblings from handler result", async () => {
+    const rootDir = makeTempDir();
+    const tool: ToolDefinition = {
+      name: "end",
+      kind: "handler",
+      handler: async () => ({
+        skipExecution: true,
+        skipRemainingSiblings: {
+          reason: "no output to process",
+        },
+      }),
+    };
+
+    const result = await executeToolChain(makeChain(tool, "no output to process"), makeContext(rootDir), () => undefined);
+
+    expect(result).toEqual({
+      kind: "tool-handled",
+      skipExecution: true,
+      shouldVerify: false,
+      skipRemainingSiblings: {
+        reason: "no output to process",
+      },
+      childFile: undefined,
+      childTaskCount: 0,
+      modifierProfile: undefined,
+    });
+  });
+});

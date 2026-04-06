@@ -3180,6 +3180,107 @@ describe("complete-task-iteration", () => {
     expect(finishRun).not.toHaveBeenCalled();
     expect(resetArtifacts).toHaveBeenCalledTimes(1);
   });
+
+  it("skips remaining siblings when completion receives skipRemainingSiblings reason", async () => {
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: [
+        "- [ ] end: no output to process",
+        "- [ ] Do this and that",
+      ].join("\n"),
+    });
+    const endTask = {
+      ...task,
+      text: "end: no output to process",
+      line: 1,
+      index: 0,
+    };
+    const { dependencies } = createDependencies({
+      cwd,
+      task: endTask,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    const state = {
+      traceWriter: dependencies.traceWriter,
+      deferredCommitContext: null,
+      tasksCompleted: 0,
+      runCompleted: false,
+    };
+
+    const emit = vi.fn();
+    const finishRun = vi.fn(async () => 0);
+    const resetArtifacts = vi.fn();
+
+    const result = await completeTaskIteration({
+      dependencies,
+      emit,
+      state,
+      traceRunSession: createCompletionSession(),
+      failRun: vi.fn(async () => 1),
+      finishRun,
+      resetArtifacts,
+      keepArtifacts: true,
+      effectiveRunAll: false,
+      commitAfterComplete: false,
+      deferCommitUntilPostRun: false,
+      commitMessageTemplate: undefined,
+      onCompleteCommand: undefined,
+      onFailCommand: undefined,
+      hideHookOutput: false,
+      maxRepairAttempts: 1,
+      allowRepair: true,
+      transport: "file",
+      trace: false,
+      cliBlockExecutor: dependencies.cliBlockExecutor!,
+      cliExpansionEnabled: true,
+      task: endTask,
+      sourceText: fileSystem.readText(task.file),
+      expandedSource: fileSystem.readText(task.file),
+      expandedContextBefore: "",
+      templates: {
+        task: "",
+        discuss: "",
+        research: "",
+        verify: "",
+        repair: "",
+        plan: "",
+        trace: "",
+      },
+      templateVarsWithTrace: {},
+      automationCommand: ["opencode", "run"],
+      shouldVerify: false,
+      verificationPrompt: "",
+      artifactContext: {
+        runId: "run-complete",
+        rootDir: path.join(cwd, ".rundown", "runs", "run-complete"),
+        cwd,
+        keepArtifacts: true,
+        commandName: "run",
+      },
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      verificationFailureMessage: "unused",
+      verificationFailureRunReason: "unused",
+      skipRemainingSiblingsReason: "no output to process",
+      extraTemplateVars: {},
+    });
+
+    expect(result).toEqual({ continueLoop: false, exitCode: 0 });
+    expect(fileSystem.readText(task.file)).toBe([
+      "- [x] end: no output to process",
+      "- [x] Do this and that",
+      "  - skipped: no output to process",
+    ].join("\n"));
+    expect(emit).toHaveBeenCalledWith({
+      kind: "info",
+      message: "Skipped 1 sibling task because end condition was met.",
+    });
+    expect(emit).toHaveBeenCalledWith({
+      kind: "info",
+      message: "Skipped sibling: Do this and that",
+    });
+    expect(finishRun).toHaveBeenCalledWith(0, "completed", true, undefined, {});
+    expect(resetArtifacts).not.toHaveBeenCalled();
+  });
 });
 
 describe("trace-enrichment", () => {

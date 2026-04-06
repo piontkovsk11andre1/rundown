@@ -261,6 +261,10 @@ describe("createToolResolverAdapter", () => {
     const knownToolNames = resolver.listKnownToolNames();
     expect(knownToolNames).toContain("verify");
     expect(knownToolNames).toContain("memory");
+    expect(knownToolNames).toContain("end");
+    expect(knownToolNames).toContain("return");
+    expect(knownToolNames).toContain("skip");
+    expect(knownToolNames).toContain("quit");
     expect(knownToolNames).toContain("custom-handler");
     expect(knownToolNames).toContain("custom-template");
   });

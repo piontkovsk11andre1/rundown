@@ -42,6 +42,9 @@ export interface ToolContextModifications {
 export interface ToolHandlerResult {
   skipExecution?: boolean;
   shouldVerify?: boolean;
+  skipRemainingSiblings?: {
+    reason: string;
+  };
   childTasks?: string[];
   contextModifications?: ToolContextModifications;
   childFile?: string;

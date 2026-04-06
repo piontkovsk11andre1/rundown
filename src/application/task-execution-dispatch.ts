@@ -38,6 +38,7 @@ export type TaskExecutionDispatchResult =
     verificationFailureMessage: string;
     verificationFailureRunReason: string;
     cliExecutionOptionsForVerification: CommandExecutionOptions | undefined;
+    skipRemainingSiblingsReason?: string;
     toolExpansionInsertedChildCount?: number;
   }
   | {
@@ -259,6 +260,7 @@ export async function dispatchTaskExecution(params: {
         cliExecutionOptionsForVerification: cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace,
         verificationFailureMessage: "Verification failed after all repair attempts. Task not checked.",
         verificationFailureRunReason: "Verification failed after all repair attempts.",
+        skipRemainingSiblingsReason: chainResult.skipRemainingSiblings?.reason,
         toolExpansionInsertedChildCount: chainResult.childTaskCount > 0 ? chainResult.childTaskCount : undefined,
       };
     }

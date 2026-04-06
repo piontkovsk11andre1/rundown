@@ -609,6 +609,7 @@ Built-in handler aliases:
 - Verify-only: `verify:`, `confirm:`, `check:`
 - Memory capture: `memory:`, `memorize:`, `remember:`, `inventory:`
 - Fast execution (skip verification): `fast:`, `raw:`
+- End control flow (skip remaining siblings when condition is true): `end:`, `return:`, `skip:`, `quit:`
 - Include markdown file execution: `include:`
 
 Built-in modifier:
@@ -700,7 +701,7 @@ Execution behavior for `.md` tools:
 Resolution rules:
 
 - Project `.js` tools are resolved first and can override built-ins.
-- Built-in tools are resolved next (`verify:`/`confirm:`/`check:`, memory aliases, fast/raw aliases, `include:`, `profile:`).
+- Built-in tools are resolved next (`verify:`/`confirm:`/`check:`, memory aliases, fast/raw aliases, end aliases, `include:`, `profile:`).
 - Project `.md` tools are resolved after built-ins (for non-built-in names).
 - Tool matching is case-insensitive and checks the text before the first `:`.
 - Unknown prefixes fall back to normal `execute-and-verify` behavior.

@@ -1,5 +1,7 @@
 import { markChecked, resetAllCheckboxes } from "../domain/checkbox.js";
+import { insertSubitems } from "../domain/planner.js";
 import { parseTasks, type Task } from "../domain/parser.js";
+import { findRemainingSiblings, findUncheckedDescendants } from "../domain/task-selection.js";
 import type { FileSystem } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
@@ -10,6 +12,59 @@ export function checkTaskUsingFileSystem(task: Task, fileSystem: FileSystem): vo
   const source = fileSystem.readText(task.file);
   const updated = markChecked(source, task);
   fileSystem.writeText(task.file, updated);
+}
+
+/**
+ * Marks remaining unchecked siblings (and their unchecked descendants) as checked,
+ * and inserts skip-annotation sub-items for each skipped task.
+ */
+export function skipRemainingSiblingsUsingFileSystem(
+  task: Task,
+  reason: string,
+  fileSystem: FileSystem,
+): {
+  skippedSiblingCount: number;
+  skippedDescendantCount: number;
+  skippedTaskTexts: string[];
+} {
+  let source = fileSystem.readText(task.file);
+  const allTasks = parseTasks(source, task.file);
+  const currentTask = allTasks.find((candidate) => candidate.line === task.line && candidate.index === task.index)
+    ?? allTasks.find((candidate) => candidate.line === task.line)
+    ?? task;
+
+  const remainingSiblings = findRemainingSiblings(currentTask, allTasks);
+  if (remainingSiblings.length === 0) {
+    return {
+      skippedSiblingCount: 0,
+      skippedDescendantCount: 0,
+      skippedTaskTexts: [],
+    };
+  }
+
+  const tasksToSkip = new Map<number, Task>();
+  for (const sibling of remainingSiblings) {
+    tasksToSkip.set(sibling.line, sibling);
+    for (const descendant of findUncheckedDescendants(sibling, allTasks)) {
+      tasksToSkip.set(descendant.line, descendant);
+    }
+  }
+
+  const orderedTasksToSkip = [...tasksToSkip.values()].sort((left, right) => right.line - left.line);
+  const annotation = reason.trim().length > 0 ? reason.trim() : "condition met";
+
+  for (const skippedTask of orderedTasksToSkip) {
+    source = markChecked(source, skippedTask);
+    source = insertSubitems(source, skippedTask, [`skipped: ${annotation}`]);
+  }
+
+  fileSystem.writeText(task.file, source);
+
+  return {
+    skippedSiblingCount: remainingSiblings.length,
+    skippedDescendantCount: Math.max(0, orderedTasksToSkip.length - remainingSiblings.length),
+    skippedTaskTexts: remainingSiblings.map((sibling) => sibling.text),
+  };
 }
 
 /**

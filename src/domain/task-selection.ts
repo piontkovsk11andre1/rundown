@@ -74,3 +74,52 @@ function hasUncheckedInTree(children: Task[]): boolean {
 export function filterRunnable(tasks: Task[]): Task[] {
   return tasks.filter((task) => !task.checked && !hasUncheckedDescendants(task, tasks));
 }
+
+/**
+ * Returns unchecked sibling tasks that appear after the given task.
+ *
+ * Siblings are tasks at the same depth until the first task at a shallower
+ * depth ends the current parent scope.
+ */
+export function findRemainingSiblings(task: Task, allTasks: Task[]): Task[] {
+  const startIndex = allTasks.indexOf(task);
+  if (startIndex < 0) {
+    return [];
+  }
+
+  const siblings: Task[] = [];
+  for (let index = startIndex + 1; index < allTasks.length; index += 1) {
+    const candidate = allTasks[index]!;
+    if (candidate.depth < task.depth) {
+      break;
+    }
+    if (candidate.depth === task.depth && !candidate.checked) {
+      siblings.push(candidate);
+    }
+  }
+
+  return siblings;
+}
+
+/**
+ * Returns unchecked descendants that belong to the given ancestor task.
+ */
+export function findUncheckedDescendants(task: Task, allTasks: Task[]): Task[] {
+  const startIndex = allTasks.indexOf(task);
+  if (startIndex < 0) {
+    return [];
+  }
+
+  const descendants: Task[] = [];
+  for (let index = startIndex + 1; index < allTasks.length; index += 1) {
+    const candidate = allTasks[index]!;
+    if (candidate.depth <= task.depth) {
+      break;
+    }
+    if (!candidate.checked) {
+      descendants.push(candidate);
+    }
+  }
+
+  return descendants;
+}

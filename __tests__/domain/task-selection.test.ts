@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { filterRunnable, hasUncheckedDescendants } from "../../src/domain/task-selection.js";
+import {
+  filterRunnable,
+  findRemainingSiblings,
+  findUncheckedDescendants,
+  hasUncheckedDescendants,
+} from "../../src/domain/task-selection.js";
 import type { Task } from "../../src/domain/parser.js";
 
 function makeTask(overrides: Partial<Task> = {}): Task {
@@ -115,5 +120,38 @@ describe("filterRunnable", () => {
     });
 
     expect(filterRunnable([parent, child])).toEqual([child]);
+  });
+});
+
+describe("findRemainingSiblings", () => {
+  it("returns unchecked siblings that appear after the current task", () => {
+    const first = makeTask({ text: "First", depth: 0, index: 0, line: 1, checked: false });
+    const second = makeTask({ text: "Second", depth: 0, index: 1, line: 2, checked: false });
+    const thirdChecked = makeTask({ text: "Third", depth: 0, index: 2, line: 3, checked: true });
+    const fourth = makeTask({ text: "Fourth", depth: 0, index: 3, line: 4, checked: false });
+
+    expect(findRemainingSiblings(first, [first, second, thirdChecked, fourth])).toEqual([second, fourth]);
+  });
+
+  it("returns no siblings when the task is the last at its depth", () => {
+    const first = makeTask({ text: "First", depth: 0, index: 0, line: 1, checked: false });
+    const second = makeTask({ text: "Second", depth: 0, index: 1, line: 2, checked: false });
+
+    expect(findRemainingSiblings(second, [first, second])).toEqual([]);
+  });
+});
+
+describe("findUncheckedDescendants", () => {
+  it("returns unchecked descendants inside the parent subtree", () => {
+    const parent = makeTask({ text: "Parent", depth: 0, index: 0, line: 1, checked: false });
+    const child = makeTask({ text: "Child", depth: 1, index: 1, line: 2, checked: false });
+    const checkedChild = makeTask({ text: "Checked", depth: 1, index: 2, line: 3, checked: true });
+    const grandchild = makeTask({ text: "Grandchild", depth: 2, index: 3, line: 4, checked: false });
+    const sibling = makeTask({ text: "Sibling", depth: 0, index: 4, line: 5, checked: false });
+
+    expect(findUncheckedDescendants(parent, [parent, child, checkedChild, grandchild, sibling])).toEqual([
+      child,
+      grandchild,
+    ]);
   });
 });

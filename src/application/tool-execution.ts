@@ -127,6 +127,7 @@ export async function executeToolChain(
       kind: "tool-handled",
       skipExecution: result.skipExecution ?? false,
       shouldVerify: result.shouldVerify ?? false,
+      ...(result.skipRemainingSiblings ? { skipRemainingSiblings: result.skipRemainingSiblings } : {}),
       childFile: result.childFile,
       childTaskCount: result.childTasks?.length ?? 0,
       modifierProfile: (context as ToolHandlerContext & { modifierProfile?: string }).modifierProfile,
@@ -266,6 +267,9 @@ export type ToolChainResult =
     kind: "tool-handled";
     skipExecution: boolean;
     shouldVerify: boolean;
+    skipRemainingSiblings?: {
+      reason: string;
+    };
     childFile?: string;
     childTaskCount: number;
     modifierProfile?: string;

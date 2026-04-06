@@ -555,6 +555,7 @@ export async function runTaskIteration(params: {
       dispatchResult.cliExecutionOptionsForVerification,
     verificationFailureMessage: dispatchResult.verificationFailureMessage,
     verificationFailureRunReason: dispatchResult.verificationFailureRunReason,
+    skipRemainingSiblingsReason: dispatchResult.skipRemainingSiblingsReason,
     toolExpansionInsertedChildCount: dispatchResult.toolExpansionInsertedChildCount,
   });
 

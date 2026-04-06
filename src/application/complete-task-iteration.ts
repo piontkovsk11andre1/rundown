@@ -2,7 +2,10 @@ import { type Task } from "../domain/parser.js";
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import { runVerifyRepairLoop } from "./verify-repair-loop.js";
 import { handleTemplateCliFailure } from "./cli-block-handlers.js";
-import { checkTaskUsingFileSystem } from "./checkbox-operations.js";
+import {
+  checkTaskUsingFileSystem,
+  skipRemainingSiblingsUsingFileSystem,
+} from "./checkbox-operations.js";
 import {
   afterTaskComplete,
   afterTaskFailed,
@@ -93,6 +96,7 @@ export async function completeTaskIteration(params: {
   cliExecutionOptionsWithVerificationTemplateFailureAbort: CommandExecutionOptions | undefined;
   verificationFailureMessage: string;
   verificationFailureRunReason: string;
+  skipRemainingSiblingsReason?: string;
   toolExpansionInsertedChildCount?: number;
 }): Promise<{ continueLoop: boolean; exitCode?: number }> {
   const {
@@ -133,6 +137,7 @@ export async function completeTaskIteration(params: {
     cliExecutionOptionsWithVerificationTemplateFailureAbort,
     verificationFailureMessage,
     verificationFailureRunReason,
+    skipRemainingSiblingsReason,
     toolExpansionInsertedChildCount,
   } = params;
 
@@ -212,6 +217,24 @@ export async function completeTaskIteration(params: {
 
   // Mark the task checkbox in the markdown source once iteration checks pass.
   checkTaskUsingFileSystem(task, dependencies.fileSystem);
+
+  if (skipRemainingSiblingsReason) {
+    const skipResult = skipRemainingSiblingsUsingFileSystem(task, skipRemainingSiblingsReason, dependencies.fileSystem);
+    emit({
+      kind: "info",
+      message: "Skipped " + skipResult.skippedSiblingCount + " sibling task"
+        + (skipResult.skippedSiblingCount === 1 ? "" : "s")
+        + (skipResult.skippedDescendantCount > 0
+          ? " and " + skipResult.skippedDescendantCount + " descendant task"
+            + (skipResult.skippedDescendantCount === 1 ? "" : "s")
+          : "")
+        + " because end condition was met.",
+    });
+    for (const skippedTaskText of skipResult.skippedTaskTexts) {
+      emit({ kind: "info", message: "Skipped sibling: " + skippedTaskText });
+    }
+  }
+
   emit({ kind: "success", message: "Task checked: " + task.text });
   emit({ kind: "group-end", status: "success" });
 

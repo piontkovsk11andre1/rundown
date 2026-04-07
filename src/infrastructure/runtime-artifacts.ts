@@ -26,6 +26,8 @@ export type RuntimeArtifactStatus =
   | "discuss-cancelled"
   | "discuss-finished-completed"
   | "discuss-finished-cancelled"
+  | "help-completed"
+  | "help-cancelled"
   | "failed"
   | "detached"
   | "execution-failed"

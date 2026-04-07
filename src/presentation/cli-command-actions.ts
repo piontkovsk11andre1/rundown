@@ -1,6 +1,7 @@
 import type { ProcessRunMode } from "../domain/ports/index.js";
 import fs from "node:fs";
 import path from "node:path";
+import { EXIT_CODE_NO_WORK, EXIT_CODE_SUCCESS } from "../domain/exit-codes.js";
 import {
   normalizeOptionalString,
   parseCliBlockTimeout,
@@ -28,6 +29,7 @@ import {
   resolveVerifyFlag,
 } from "./cli-options.js";
 import { cancellableSleep } from "../infrastructure/cancellable-sleep.js";
+import { resolveInvocationCommand } from "./cli-argv.js";
 import {
   inferWorkerPatternFromCommand,
   parseWorkerPattern,
@@ -53,8 +55,80 @@ interface WorkerActionDependencies {
   getWorkerFromSeparator: () => string[] | undefined;
 }
 
+interface HelpActionDependencies extends WorkerActionDependencies {
+  outputHelp: () => void;
+  cliVersion: string;
+  isInteractiveTerminal?: () => boolean;
+  getInvocationArgv?: () => string[];
+}
+
 function emitCliInfo(app: CliApp, message: string): void {
   app.emitOutput?.({ kind: "info", message });
+}
+
+function isInteractiveTerminal(): boolean {
+  return Boolean(process.stdout.isTTY) && Boolean(process.stderr.isTTY);
+}
+
+/**
+ * Creates the root no-args action handler.
+ *
+ * The returned action starts interactive help when the terminal supports TTY and
+ * a help worker is available; otherwise it falls back to static Commander help.
+ */
+export function createHelpCommandAction({
+  getApp,
+  getWorkerFromSeparator,
+  outputHelp,
+  cliVersion,
+  isInteractiveTerminal: isInteractiveTerminalOverride,
+  getInvocationArgv,
+}: HelpActionDependencies): () => CliActionResult {
+  return async () => {
+    const invocationArgv = getInvocationArgv?.() ?? process.argv.slice(2);
+    if (resolveInvocationCommand(invocationArgv) !== "rundown") {
+      outputHelp();
+      return EXIT_CODE_SUCCESS;
+    }
+
+    if (!(isInteractiveTerminalOverride ?? isInteractiveTerminal)()) {
+      outputHelp();
+      return EXIT_CODE_SUCCESS;
+    }
+
+    try {
+      const exitCode = await getApp().helpTask({
+        workerPattern: resolveWorkerPattern(undefined, getWorkerFromSeparator),
+        keepArtifacts: false,
+        trace: hasTraceFlag(invocationArgv),
+        cliVersion,
+      });
+
+      if (exitCode === EXIT_CODE_NO_WORK) {
+        outputHelp();
+        return EXIT_CODE_SUCCESS;
+      }
+
+      return exitCode;
+    } catch {
+      outputHelp();
+      return EXIT_CODE_SUCCESS;
+    }
+  };
+}
+
+function hasTraceFlag(argv: string[]): boolean {
+  for (const token of argv) {
+    if (token === "--") {
+      break;
+    }
+
+    if (token === "--trace") {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 interface RunActionDependencies extends WorkerActionDependencies {

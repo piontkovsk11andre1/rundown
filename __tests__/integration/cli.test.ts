@@ -179,6 +179,36 @@ async function runCli(args: string[], cwd: string): Promise<{
   }
 }
 
+async function withTerminalTty<T>(isTTY: boolean, callback: () => Promise<T>): Promise<T> {
+  const stdoutDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+  const stderrDescriptor = Object.getOwnPropertyDescriptor(process.stderr, "isTTY");
+
+  Object.defineProperty(process.stdout, "isTTY", {
+    configurable: true,
+    get: () => isTTY,
+  });
+  Object.defineProperty(process.stderr, "isTTY", {
+    configurable: true,
+    get: () => isTTY,
+  });
+
+  try {
+    return await callback();
+  } finally {
+    if (stdoutDescriptor) {
+      Object.defineProperty(process.stdout, "isTTY", stdoutDescriptor);
+    } else {
+      Reflect.deleteProperty(process.stdout, "isTTY");
+    }
+
+    if (stderrDescriptor) {
+      Object.defineProperty(process.stderr, "isTTY", stderrDescriptor);
+    } else {
+      Reflect.deleteProperty(process.stderr, "isTTY");
+    }
+  }
+}
+
 describe.sequential("CLI integration", () => {
   it("next exits with 0 when an unchecked task exists", async () => {
     const workspace = makeTempWorkspace();
@@ -6649,6 +6679,192 @@ describe.sequential("CLI integration", () => {
     expect(compactHelpOutput).toContain("--all");
     expect(compactHelpOutput).toContain("--on-fail <command>");
     expect(compactHelpOutput).toContain("--force-unlock");
+  });
+
+  it("root invocation falls back to static help in non-interactive terminals", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await withTerminalTty(false, () => runCli([], workspace));
+
+    expect(result.code).toBe(0);
+    const compactHelpOutput = [...result.logs, ...result.stdoutWrites].join("\n").replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("Usage: rundown");
+    expect(compactHelpOutput).toContain("Find the next unchecked TODO and execute it");
+  });
+
+  it("root invocation launches live help session in interactive terminals when a help worker is configured", async () => {
+    const workspace = makeTempWorkspace();
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, ".rundown", "config.json"), JSON.stringify({
+      workers: {
+        tui: ["node", "-e", "process.exit(0)"],
+      },
+    }, null, 2), "utf-8");
+
+    const spawnMock = vi.fn().mockImplementation(() => {
+      const child = new EventEmitter() as EventEmitter & { unref: () => void };
+      child.unref = vi.fn();
+      process.nextTick(() => {
+        child.emit("close", 0);
+      });
+      return child;
+    });
+
+    vi.doMock("cross-spawn", () => ({
+      default: spawnMock,
+    }));
+
+    const result = await withTerminalTty(true, () => runCli([], workspace));
+
+    vi.doUnmock("cross-spawn");
+
+    expect(result.code).toBe(0);
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    const [cmd, args, options] = spawnMock.mock.calls[0] as [string, string[], { stdio?: string }];
+    expect(cmd).toBe("node");
+    expect(options.stdio).toBe("inherit");
+    expect(args.some((arg) => arg.endsWith(".md"))).toBe(true);
+    expect(result.stdoutWrites.join("\n").includes("Usage: rundown")).toBe(false);
+  });
+
+  it("root invocation honors --config-dir for help worker config and help template discovery", async () => {
+    const workspace = makeTempWorkspace();
+    const customConfigDir = path.join(workspace, "custom-config");
+    const workspaceConfigDir = path.join(workspace, ".rundown");
+    const workerScriptPath = path.join(workspace, "capture-help-prompt.cjs");
+    const promptCapturePath = path.join(workspace, "captured-help-prompt.txt");
+
+    fs.mkdirSync(customConfigDir, { recursive: true });
+    fs.writeFileSync(path.join(customConfigDir, "config.json"), JSON.stringify({
+      workers: {
+        tui: ["node", workerScriptPath.replace(/\\/g, "/")],
+      },
+    }, null, 2), "utf-8");
+    fs.writeFileSync(path.join(customConfigDir, "help.md"), [
+      "# Custom Help Template",
+      "",
+      "marker: CONFIG_DIR_OVERRIDE_MARKER",
+      "cwd={{workingDirectory}}",
+    ].join("\n"), "utf-8");
+
+    fs.mkdirSync(workspaceConfigDir, { recursive: true });
+    fs.writeFileSync(path.join(workspaceConfigDir, "config.json"), JSON.stringify({
+      workers: {
+        tui: ["node", "-e", "process.exit(12)"],
+      },
+    }, null, 2), "utf-8");
+    fs.writeFileSync(path.join(workspaceConfigDir, "help.md"), "marker: WORKSPACE_CONFIG_MARKER\n", "utf-8");
+
+    fs.writeFileSync(workerScriptPath, [
+      "const fs = require('node:fs');",
+      "const promptPath = process.argv[process.argv.length - 1];",
+      `const capturePath = ${JSON.stringify(promptCapturePath.replace(/\\/g, "/"))};`,
+      "const prompt = fs.readFileSync(promptPath, 'utf-8');",
+      "fs.writeFileSync(capturePath, prompt, 'utf-8');",
+      "process.exit(0);",
+      "",
+    ].join("\n"), "utf-8");
+
+    const result = await withTerminalTty(true, () => runCli([
+      "--config-dir",
+      customConfigDir,
+    ], workspace));
+
+    expect(result.code).toBe(0);
+    expect(fs.existsSync(promptCapturePath)).toBe(true);
+    const capturedPrompt = fs.readFileSync(promptCapturePath, "utf-8");
+    expect(capturedPrompt).toContain("CONFIG_DIR_OVERRIDE_MARKER");
+    expect(capturedPrompt).not.toContain("WORKSPACE_CONFIG_MARKER");
+    expect(result.stdoutWrites.join("\n").includes("Usage: rundown")).toBe(false);
+  });
+
+  it("root invocation falls back to static help when no interactive worker is configured", async () => {
+    const workspace = makeTempWorkspace();
+    const spawnMock = createWaitModeSpawnMock({ exitCode: 0 });
+    vi.doMock("cross-spawn", () => ({
+      default: spawnMock,
+    }));
+
+    const result = await withTerminalTty(true, () => runCli([], workspace));
+
+    vi.doUnmock("cross-spawn");
+
+    expect(result.code).toBe(0);
+    expect(spawnMock).not.toHaveBeenCalled();
+    const compactHelpOutput = [...result.logs, ...result.stdoutWrites].join("\n").replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("Usage: rundown");
+  });
+
+  it("root invocation does not fail when .rundown exists without config.json", async () => {
+    const workspace = makeTempWorkspace();
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+
+    const spawnMock = createWaitModeSpawnMock({ exitCode: 0 });
+    vi.doMock("cross-spawn", () => ({
+      default: spawnMock,
+    }));
+
+    const result = await withTerminalTty(true, () => runCli([], workspace));
+
+    vi.doUnmock("cross-spawn");
+
+    expect(result.code).toBe(0);
+    expect(spawnMock).not.toHaveBeenCalled();
+    const compactHelpOutput = [...result.logs, ...result.stdoutWrites].join("\n").replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("Usage: rundown");
+  });
+
+  it("root --help remains static and non-interactive", async () => {
+    const workspace = makeTempWorkspace();
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, ".rundown", "config.json"), JSON.stringify({
+      workers: {
+        tui: ["node", "-e", "process.exit(0)"],
+      },
+    }, null, 2), "utf-8");
+
+    const spawnMock = createWaitModeSpawnMock({ exitCode: 0 });
+    vi.doMock("cross-spawn", () => ({
+      default: spawnMock,
+    }));
+
+    const result = await withTerminalTty(true, () => runCli(["--help"], workspace));
+
+    vi.doUnmock("cross-spawn");
+
+    expect(result.code).toBe(0);
+    expect(spawnMock).not.toHaveBeenCalled();
+    const compactHelpOutput = [...result.logs, ...result.stdoutWrites].join("\n").replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("Usage: rundown");
+  });
+
+  it("invalid command keeps Commander root-argument error semantics", async () => {
+    const workspace = makeTempWorkspace();
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, ".rundown", "config.json"), JSON.stringify({
+      workers: {
+        tui: ["node", "-e", "process.exit(0)"],
+      },
+    }, null, 2), "utf-8");
+
+    const spawnMock = createWaitModeSpawnMock({ exitCode: 0 });
+    vi.doMock("cross-spawn", () => ({
+      default: spawnMock,
+    }));
+
+    const result = await withTerminalTty(true, () => runCli(["not-a-real-command"], workspace));
+
+    vi.doUnmock("cross-spawn");
+
+    expect(result.code).toBe(1);
+    expect(spawnMock).not.toHaveBeenCalled();
+    const combinedOutput = [
+      ...result.errors,
+      ...result.logs,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n").toLowerCase();
+    expect(combinedOutput).toContain("error: too many arguments. expected 0 arguments but got 1.");
   });
 
   it("all --help works and includes --all option", async () => {

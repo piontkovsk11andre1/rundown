@@ -10,6 +10,7 @@ Store templates in `.rundown/`:
 
 ```text
 .rundown/
+  help.md
   execute.md
   verify.md
   repair.md
@@ -22,11 +23,26 @@ Store templates in `.rundown/`:
 
 | File | Role |
 | --- | --- |
+| `.rundown/help.md` | Instructions for no-argument live help sessions |
 | `.rundown/execute.md` | Instructions for doing the task |
 | `.rundown/verify.md` | Instructions for deciding whether the task is truly complete |
 | `.rundown/repair.md` | Instructions for fixing a failed attempt |
 | `.rundown/plan.md` | Instructions for breaking a task into nested subtasks |
 | `.rundown/discuss.md` | Instructions for interactive task refinement before execution |
+
+### Live help placeholders
+
+When `rundown` launches with no subcommand and opens live help, `.rundown/help.md`
+can use these placeholders:
+
+| Placeholder | Description |
+| --- | --- |
+| `{{cliVersion}}` | Current rundown CLI version. |
+| `{{workingDirectory}}` | Current invocation working directory. |
+| `{{commandIndex}}` | Concise command reference list (run, call, plan, research, make, do, discuss, reverify, revert, etc.). |
+| `{{docsContext}}` | Markdown bullet list of `docs/*.md` files in the current repository, or a fallback status message when unavailable. |
+
+These are additive to standard template placeholders; unresolved placeholders are left as-is.
 
 ## Why templates matter
 

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveWorkerForInvocation } from "../../src/application/resolve-worker.js";
+import {
+  resolveWorkerForInvocation,
+  resolveWorkerPatternForInvocation,
+} from "../../src/application/resolve-worker.js";
 import type { ApplicationOutputEvent } from "../../src/domain/ports/output-port.js";
 
 describe("resolve-worker", () => {
@@ -454,5 +457,26 @@ describe("resolve-worker", () => {
 
     expect(events.some((event) => event.kind === "info"
       && event.message === "opencode $bootstrap (from config workers.tui)")).toBe(true);
+  });
+
+  it("resolves help worker pattern with no source or task", () => {
+    const resolved = resolveWorkerPatternForInvocation({
+      commandName: "help",
+      workerConfig: {
+        workers: {
+          default: ["opencode", "run"],
+          tui: ["opencode", "$bootstrap"],
+        },
+      },
+      mode: "tui",
+    });
+
+    expect(resolved.workerCommand).toEqual(["opencode", "$bootstrap"]);
+    expect(resolved.workerPattern).toEqual({
+      command: ["opencode", "$bootstrap"],
+      usesBootstrap: true,
+      usesFile: false,
+      appendFile: false,
+    });
   });
 });

@@ -5,7 +5,7 @@
 This lets you:
 
 - define a default worker so you do not need `--worker` on every command,
-- set per-command worker overrides (`run`, `plan`, `discuss`, `research`, `reverify`, `verify`, `memory`, `tools.<toolName>`),
+- set per-command worker overrides (`run`, `plan`, `discuss`, `help`, `research`, `reverify`, `verify`, `memory`, `tools.<toolName>`),
 - define named profiles (for model or other worker args),
 - apply profiles from file frontmatter, directive parent list items, or `profile:` prefix modifiers,
 - override everything from the CLI when needed.

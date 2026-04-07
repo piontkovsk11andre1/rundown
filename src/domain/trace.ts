@@ -21,6 +21,8 @@ export type TraceEventType =
   | "round.completed"
   | "discussion.started"
   | "discussion.completed"
+  | "help.started"
+  | "help.completed"
   | "discussion.finished.started"
   | "discussion.finished.completed"
   | "task.context"
@@ -65,6 +67,8 @@ export type TraceRunStatus =
   | "discuss-cancelled"
   | "discuss-finished-completed"
   | "discuss-finished-cancelled"
+  | "help-completed"
+  | "help-cancelled"
   | "failed"
   | "detached"
   | "execution-failed"
@@ -142,6 +146,26 @@ export interface DiscussionStartedPayload {
  * Payload for `discussion.completed` events.
  */
 export interface DiscussionCompletedPayload {
+  task_text: string;
+  task_file: string;
+  task_line: number;
+  duration_ms: number;
+  exit_code: number | null;
+}
+
+/**
+ * Payload for `help.started` events.
+ */
+export interface HelpStartedPayload {
+  task_text: string;
+  task_file: string;
+  task_line: number;
+}
+
+/**
+ * Payload for `help.completed` events.
+ */
+export interface HelpCompletedPayload {
   task_text: string;
   task_file: string;
   task_line: number;
@@ -428,6 +452,14 @@ export type DiscussionCompletedEvent = TraceEventBase<
   DiscussionCompletedPayload
 >;
 /**
+ * Strongly typed event shape for `help.started`.
+ */
+export type HelpStartedEvent = TraceEventBase<"help.started", HelpStartedPayload>;
+/**
+ * Strongly typed event shape for `help.completed`.
+ */
+export type HelpCompletedEvent = TraceEventBase<"help.completed", HelpCompletedPayload>;
+/**
  * Strongly typed event shape for `discussion.finished.started`.
  */
 export type DiscussionFinishedStartedEvent = TraceEventBase<
@@ -524,6 +556,8 @@ export type TraceEvent =
   | RoundCompletedEvent
   | DiscussionStartedEvent
   | DiscussionCompletedEvent
+  | HelpStartedEvent
+  | HelpCompletedEvent
   | DiscussionFinishedStartedEvent
   | DiscussionFinishedCompletedEvent
   | TaskContextEvent
@@ -689,6 +723,44 @@ export function createDiscussionCompletedEvent(input: {
     timestamp: input.timestamp,
     run_id: input.run_id,
     event_type: "discussion.completed",
+    payload: input.payload,
+  });
+}
+
+/**
+ * Creates a `help.started` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `help.started` event.
+ */
+export function createHelpStartedEvent(input: {
+  timestamp: string;
+  run_id: string;
+  payload: HelpStartedPayload;
+}): HelpStartedEvent {
+  return createTraceEvent({
+    timestamp: input.timestamp,
+    run_id: input.run_id,
+    event_type: "help.started",
+    payload: input.payload,
+  });
+}
+
+/**
+ * Creates a `help.completed` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `help.completed` event.
+ */
+export function createHelpCompletedEvent(input: {
+  timestamp: string;
+  run_id: string;
+  payload: HelpCompletedPayload;
+}): HelpCompletedEvent {
+  return createTraceEvent({
+    timestamp: input.timestamp,
+    run_id: input.run_id,
+    event_type: "help.completed",
     payload: input.payload,
   });
 }

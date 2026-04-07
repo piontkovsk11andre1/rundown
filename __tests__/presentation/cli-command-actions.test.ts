@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { EXIT_CODE_NO_WORK, EXIT_CODE_SUCCESS } from "../../src/domain/exit-codes.js";
 import type { ApplicationOutputEvent } from "../../src/domain/ports/output-port.js";
-import { createLoopCommandAction } from "../../src/presentation/cli-command-actions.js";
+import {
+  createHelpCommandAction,
+  createLoopCommandAction,
+} from "../../src/presentation/cli-command-actions.js";
 import type { CliApp } from "../../src/presentation/cli-app-init.js";
 import * as sleepModule from "../../src/infrastructure/cancellable-sleep.js";
 
@@ -177,5 +181,97 @@ describe("createLoopCommandAction", () => {
     expect(runTask).toHaveBeenCalledTimes(1);
     expect(setLoopSignalExitCode).toHaveBeenCalledWith(0);
     expect(sleepSpy).toHaveBeenCalled();
+  });
+});
+
+describe("createHelpCommandAction", () => {
+  it("forwards --trace to helpTask on root interactive invocation", async () => {
+    const helpTask = vi.fn(async () => 0);
+    const app = { helpTask } as unknown as CliApp;
+    const outputHelp = vi.fn();
+
+    const action = createHelpCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      outputHelp,
+      cliVersion: "1.2.3",
+      isInteractiveTerminal: () => true,
+      getInvocationArgv: () => ["--trace"],
+    });
+
+    const exitCode = await action();
+
+    expect(exitCode).toBe(0);
+    expect(helpTask).toHaveBeenCalledTimes(1);
+    expect(helpTask).toHaveBeenCalledWith(expect.objectContaining({
+      trace: true,
+      cliVersion: "1.2.3",
+    }));
+    expect(outputHelp).not.toHaveBeenCalled();
+  });
+
+  it("falls back to static help when terminal is non-interactive", async () => {
+    const helpTask = vi.fn(async () => 0);
+    const app = { helpTask } as unknown as CliApp;
+    const outputHelp = vi.fn();
+
+    const action = createHelpCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      outputHelp,
+      cliVersion: "1.2.3",
+      isInteractiveTerminal: () => false,
+      getInvocationArgv: () => [],
+    });
+
+    const exitCode = await action();
+
+    expect(exitCode).toBe(EXIT_CODE_SUCCESS);
+    expect(helpTask).not.toHaveBeenCalled();
+    expect(outputHelp).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to static help when no worker is available", async () => {
+    const helpTask = vi.fn(async () => EXIT_CODE_NO_WORK);
+    const app = { helpTask } as unknown as CliApp;
+    const outputHelp = vi.fn();
+
+    const action = createHelpCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      outputHelp,
+      cliVersion: "1.2.3",
+      isInteractiveTerminal: () => true,
+      getInvocationArgv: () => [],
+    });
+
+    const exitCode = await action();
+
+    expect(exitCode).toBe(EXIT_CODE_SUCCESS);
+    expect(helpTask).toHaveBeenCalledTimes(1);
+    expect(outputHelp).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to static help when helpTask throws", async () => {
+    const helpTask = vi.fn(async () => {
+      throw new Error("worker failed");
+    });
+    const app = { helpTask } as unknown as CliApp;
+    const outputHelp = vi.fn();
+
+    const action = createHelpCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      outputHelp,
+      cliVersion: "1.2.3",
+      isInteractiveTerminal: () => true,
+      getInvocationArgv: () => [],
+    });
+
+    const exitCode = await action();
+
+    expect(exitCode).toBe(EXIT_CODE_SUCCESS);
+    expect(helpTask).toHaveBeenCalledTimes(1);
+    expect(outputHelp).toHaveBeenCalledTimes(1);
   });
 });

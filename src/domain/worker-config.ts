@@ -23,6 +23,7 @@ export interface WorkersConfig {
  * Known command names that support worker configuration overrides.
  */
 export const WORKER_CONFIG_COMMAND_NAMES = [
+  "help",
   "run",
   "plan",
   "discuss",

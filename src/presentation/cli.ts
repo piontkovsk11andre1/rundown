@@ -35,6 +35,7 @@ import {
   createLoopCommandAction,
   createDiscussCommandAction,
   createDoCommandAction,
+  createHelpCommandAction,
   createInitCommandAction,
   createIntroCommandAction,
   createListCommandAction,
@@ -122,7 +123,16 @@ program
   .option(
     "--config-dir <path>",
     "Explicit path to the .rundown configuration directory (bypasses upward discovery)",
-  );
+  )
+  .action(withCliAction(createHelpCommandAction({
+    getApp,
+    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
+    getInvocationArgv: () => runtimeState.invocationArgv ?? process.argv.slice(2),
+    outputHelp: () => {
+      program.outputHelp();
+    },
+    cliVersion,
+  })));
 
 program.addHelpText("afterAll", EXIT_CODES_HELP_TEXT);
 

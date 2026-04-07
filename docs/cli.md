@@ -19,6 +19,36 @@ rundown --config-dir ../../.rundown run TODO.md -- opencode run
 rundown --config-dir /workspace/rundown-config run docs/todos.md --worker "opencode run --file $file $bootstrap"
 ```
 
+## Help mode (no args)
+
+### `rundown`
+
+Running `rundown` with no subcommand and no positional arguments starts an interactive live-help session when possible.
+
+Behavior:
+
+- In an interactive terminal (`stdout` and `stderr` are TTY), rundown attempts to launch a TUI help session.
+- The help session uses the configured `help` worker resolution path (or falls back through command/default worker config as configured).
+- The prompt is template-backed (`help.md`) and includes CLI usage and repository context so you can ask follow-up questions immediately.
+- If TTY is unavailable (for example CI/piped output) or no worker can be resolved, rundown falls back to static Commander help and exits `0`.
+- Worker/config launch errors for this no-arg path also degrade to static help instead of failing hard.
+
+Compatibility notes:
+
+- `rundown --help` remains deterministic and non-interactive.
+- `rundown <invalid-command>` keeps normal Commander error/help behavior.
+- Explicit subcommands (`rundown run ...`, `rundown plan ...`, etc.) are unchanged.
+
+Examples:
+
+```bash
+# Interactive terminal: opens live help TUI (when worker is configured)
+rundown
+
+# Deterministic static help output
+rundown --help
+```
+
 ## Main commands
 
 ### `rundown run <source>`
@@ -636,7 +666,7 @@ With a freshly initialized empty config (`{}`), no worker is resolved by default
 Worker resolution cascade (lowest to highest priority):
 
 - `defaults` in `.rundown/config.json`
-- `commands.<command>` in `.rundown/config.json` (`run`, `plan`, `make`, `discuss`, `research`, `reverify`)
+- `commands.<command>` in `.rundown/config.json` (`run`, `plan`, `make`, `discuss`, `research`, `reverify`, `help`)
 - Markdown frontmatter `profile: <name>`
 - Parent directive item `- profile: <name>` for child checkbox tasks
 - Prefix modifier `profile: <name>` on the selected checkbox task

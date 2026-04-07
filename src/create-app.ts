@@ -1,5 +1,6 @@
 import { createRunTask, type RunTaskOptions } from "./application/run-task.js";
 import { createDiscussTask, type DiscussTaskOptions } from "./application/discuss-task.js";
+import { createHelpTask, type HelpTaskOptions } from "./application/help-task.js";
 import {
   createViewMemory,
   type ViewMemoryOptions,
@@ -94,6 +95,7 @@ type ReverifyTaskCommandOptions = Omit<ReverifyTaskOptions, "varsFileOption" | "
 };
 
 export type App = {
+  helpTask: (options: HelpTaskOptions) => Promise<number>;
   runTask: (options: RunTaskOptions) => Promise<number>;
   discussTask: (options: DiscussTaskOptions) => Promise<number>;
   viewMemory: (options: ViewMemoryOptions) => Promise<number>;
@@ -305,6 +307,25 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
   });
 
   return {
+    helpTask: (ports) => createHelpTask({
+      workerExecutor: ports.workerExecutor,
+      workingDirectory: ports.workingDirectory,
+      fileSystem: ports.fileSystem,
+      pathOperations: ports.pathOperations,
+      templateLoader: ports.templateLoader,
+      artifactStore: ports.artifactStore,
+      workerConfigPort: ports.workerConfigPort,
+      traceWriter: ports.traceWriter,
+      configDir: ports.configDir,
+      createTraceWriter: (trace, artifactContext) => {
+        if (!trace) {
+          return ports.traceWriter;
+        }
+
+        return createArtifactTraceWriter(ports, artifactContext);
+      },
+      output: ports.output,
+    }),
     runTask: (ports) => createRunTask({
       sourceResolver: ports.sourceResolver,
       taskSelector: ports.taskSelector,
@@ -481,6 +502,7 @@ function createAppFromFactories(
   };
 
   return {
+    helpTask: factories.helpTask(ports),
     runTask: factories.runTask(ports),
     discussTask: factories.discussTask(ports),
     viewMemory: factories.viewMemory(ports),

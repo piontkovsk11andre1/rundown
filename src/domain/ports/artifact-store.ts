@@ -16,7 +16,9 @@ export type ArtifactStoreStatus =
   | "discuss-completed"
   | "discuss-cancelled"
   | "discuss-finished-completed"
-  | "discuss-finished-cancelled";
+  | "discuss-finished-cancelled"
+  | "help-completed"
+  | "help-cancelled";
 
 /**
  * Identifies logical execution phases that can emit artifacts.
@@ -27,6 +29,7 @@ export type ArtifactStorePhase =
   | "repair"
   | "plan"
   | "discuss"
+  | "help"
   | "inline-cli"
   | "rundown-delegate"
   | "worker";

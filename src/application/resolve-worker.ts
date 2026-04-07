@@ -17,7 +17,7 @@ import type { ProcessRunMode } from "../domain/ports/process-runner.js";
 interface ResolveWorkerForInvocationInput {
   commandName: WorkerConfigCommandName;
   workerConfig: WorkerConfig | undefined;
-  source: string;
+  source?: string;
   task?: Pick<Task, "directiveProfile" | "taskProfile" | "subItems">;
   modifierProfile?: string;
   cliWorkerCommand: string[];
@@ -32,7 +32,7 @@ interface ResolveWorkerForInvocationInput {
 interface ResolveWorkerPatternForInvocationInput {
   commandName: WorkerConfigCommandName;
   workerConfig: WorkerConfig | undefined;
-  source: string;
+  source?: string;
   task?: Pick<Task, "directiveProfile" | "taskProfile" | "subItems">;
   modifierProfile?: string;
   cliWorkerPattern?: ParsedWorkerPattern;
@@ -116,7 +116,8 @@ function describeConfigResolutionSource(input: ResolveWorkerForInvocationInput, 
  * then optional fallback command from previously saved runtime metadata.
  */
 export function resolveWorkerForInvocation(input: ResolveWorkerForInvocationInput): string[] {
-  const frontmatterProfile = extractFrontmatter(input.source).profile;
+  const source = typeof input.source === "string" ? input.source : "";
+  const frontmatterProfile = extractFrontmatter(source).profile;
   const hasCliWorkerCommand = input.cliWorkerCommand.length > 0;
   // Detect unsupported profile declarations inside task sub-items and warn once.
   const ignoredProfileSubItem = input.task

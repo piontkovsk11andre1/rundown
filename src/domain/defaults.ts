@@ -218,6 +218,30 @@ Do not change checkbox state in the source Markdown file.
 `;
 
 /**
+ * Default help-session prompt template used for no-argument CLI live help.
+ */
+export const DEFAULT_HELP_TEMPLATE = `\
+## Rundown live help
+
+- CLI version: {{cliVersion}}
+- Working directory: {{workingDirectory}}
+
+## Command index
+
+{{commandIndex}}
+
+## Repository docs context
+
+{{docsContext}}
+
+## Guidance
+
+- Help the user choose the right command and flags for their goal.
+- Ask follow-up questions before suggesting risky or destructive actions.
+- Keep answers grounded in this repository context and available commands.
+`;
+
+/**
  * Default verify-phase prompt template used to validate task completion.
  */
 export const DEFAULT_VERIFY_TEMPLATE = `\

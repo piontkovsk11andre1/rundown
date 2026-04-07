@@ -46,7 +46,7 @@ type LogCommandHandler = (options: LogCommandOptions) => CliActionResult;
 
 interface WorkerActionDependencies {
   getApp: () => CliApp;
-  getWorkerFromSeparator: () => string | undefined;
+  getWorkerFromSeparator: () => string[] | undefined;
 }
 
 function emitCliInfo(app: CliApp, message: string): void {
@@ -81,7 +81,7 @@ interface DoActionDependencies extends WorkerActionDependencies {
 
 function resolveWorkerPattern(
   worker: string | string[] | boolean | undefined,
-  getWorkerFromSeparator: () => string | undefined,
+  getWorkerFromSeparator: () => string[] | undefined,
 ): ParsedWorkerPattern {
   if (typeof worker === "string") {
     return parseWorkerPattern(worker);
@@ -92,8 +92,8 @@ function resolveWorkerPattern(
   }
 
   const workerFromSeparator = getWorkerFromSeparator();
-  if (typeof workerFromSeparator === "string") {
-    return parseWorkerPattern(workerFromSeparator);
+  if (Array.isArray(workerFromSeparator)) {
+    return inferWorkerPatternFromCommand(workerFromSeparator);
   }
 
   return inferWorkerPatternFromCommand([]);

@@ -106,7 +106,7 @@ export function collectOption(value: string, previous: string[]): string[] {
  */
 export function resolveWorkerCommand(
   worker: string | string[] | boolean | undefined,
-  getWorkerFromSeparator: () => string | undefined,
+  getWorkerFromSeparator: () => string[] | undefined,
 ): ParsedWorkerPattern {
   if (Array.isArray(worker)) {
     return inferWorkerPatternFromCommand(worker);
@@ -117,8 +117,8 @@ export function resolveWorkerCommand(
   }
 
   const workerFromSeparator = getWorkerFromSeparator();
-  if (typeof workerFromSeparator === "string") {
-    return parseWorkerPattern(workerFromSeparator);
+  if (Array.isArray(workerFromSeparator)) {
+    return inferWorkerPatternFromCommand(workerFromSeparator);
   }
 
   return inferWorkerPatternFromCommand([]);
@@ -129,7 +129,7 @@ export function resolveWorkerCommand(
  */
 export function resolveSharedWorkerRuntimeOptions(
   opts: CliOptionMap,
-  getWorkerFromSeparator: () => string | undefined,
+  getWorkerFromSeparator: () => string[] | undefined,
 ): SharedWorkerRuntimeOptions {
   return {
     keepArtifacts: Boolean(opts.keepArtifacts as boolean | undefined),

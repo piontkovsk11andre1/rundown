@@ -65,7 +65,7 @@ const STALE_CALL_CLI_CACHE_RELATIVE_PATH = path.join("cache", "cli-blocks");
 type CliActionResult = number | Promise<number>;
 
 interface CliRuntimeState {
-  workerFromSeparator: string | undefined;
+  workerFromSeparator: string[] | undefined;
   invocationLogState: CliInvocationLogState | undefined;
   invocationArgv: string[] | undefined;
   app: CliApp | undefined;

@@ -47,37 +47,16 @@ export function createSessionId(): string {
  *
  * The `--` separator marks where downstream worker arguments begin.
  */
-export function splitWorkerFromSeparator(argv: string[]): { rundownArgs: string[]; workerFromSeparator: string | undefined } {
+export function splitWorkerFromSeparator(argv: string[]): { rundownArgs: string[]; workerFromSeparator: string[] | undefined } {
   const sepIndex = argv.indexOf("--");
 
-  const workerFromSeparator = sepIndex !== -1
-    ? buildWorkerPatternFromSeparatorTokens(argv.slice(sepIndex + 1))
-    : undefined;
+  const afterSep = sepIndex !== -1 ? argv.slice(sepIndex + 1) : undefined;
+  const workerFromSeparator = afterSep && afterSep.length > 0 ? afterSep : undefined;
 
   return {
     rundownArgs: sepIndex !== -1 ? argv.slice(0, sepIndex) : argv,
     workerFromSeparator,
   };
-}
-
-function buildWorkerPatternFromSeparatorTokens(tokens: string[]): string | undefined {
-  if (tokens.length === 0) {
-    return undefined;
-  }
-
-  return tokens.map(quotePatternToken).join(" ");
-}
-
-function quotePatternToken(token: string): string {
-  if (token.length === 0) {
-    return '""';
-  }
-
-  if (!/[\s"'\\]/.test(token)) {
-    return token;
-  }
-
-  return `"${token.replace(/\\/g, "\\\\").replace(/\"/g, "\\\"")}"`;
 }
 
 /**

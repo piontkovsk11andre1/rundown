@@ -478,7 +478,7 @@ export function createRunTaskExecution(
       files: string[],
       emitCompletionMessage: boolean,
     ): Promise<number> => {
-      const totalTasks = files.reduce((count, file) => {
+      const countUncheckedTasks = (): number => files.reduce((count, file) => {
         if (!dependencies.fileSystem.exists(file)) {
           return count;
         }
@@ -487,6 +487,8 @@ export function createRunTaskExecution(
         const uncheckedTasks = parseTasks(source, file).filter((task) => !task.checked).length;
         return count + uncheckedTasks;
       }, 0);
+
+      let totalTasks = countUncheckedTasks();
       let currentTaskIndex = 0;
 
       // eslint-disable-next-line no-constant-condition
@@ -536,6 +538,7 @@ export function createRunTaskExecution(
             const isFinalAttempt = attempt >= maxTaskAttempts;
 
             if (attempt > 1 && initialForceExtraction.isForce) {
+              totalTasks = countUncheckedTasks();
               const refreshedSelection = dependencies.taskSelector.selectTaskByLocation(
                 forceTaskIdentity.filePath,
                 forceTaskIdentity.line,

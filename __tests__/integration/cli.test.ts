@@ -5726,6 +5726,284 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("Committed:"))).toBe(false);
   });
 
+  it("run force-prefixed task succeeds on first attempt without retry", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "force-first-attempt-worker.cjs");
+    const runLogPath = path.join(workspace, "force-first-attempt-worker.log");
+
+    fs.writeFileSync(roadmapPath, "- [ ] force: implement release docs\n", "utf-8");
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        `fs.appendFileSync(${JSON.stringify(runLogPath.replace(/\\/g, "/"))}, 'execute\\n', 'utf-8');`,
+        "process.exit(0);",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Force retry"))).toBe(false);
+    expect(result.logs.some((line) => line.includes("Task checked: force: implement release docs"))).toBe(true);
+    expect(fs.readFileSync(runLogPath, "utf-8").trim().split("\n").filter(Boolean)).toHaveLength(1);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe("- [x] force: implement release docs\n");
+  });
+
+  it("run force-prefixed task fails then succeeds with retry", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "force-fail-then-succeed-worker.cjs");
+    const runLogPath = path.join(workspace, "force-fail-then-succeed-worker.log");
+    const attemptsPath = path.join(workspace, "force-fail-then-succeed-worker.attempt");
+
+    fs.writeFileSync(roadmapPath, "- [ ] force: implement release docs\n", "utf-8");
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        `const runLogPath = ${JSON.stringify(runLogPath.replace(/\\/g, "/"))};`,
+        `const attemptsPath = ${JSON.stringify(attemptsPath.replace(/\\/g, "/"))};`,
+        "const attempts = fs.existsSync(attemptsPath) ? Number.parseInt(fs.readFileSync(attemptsPath, 'utf-8'), 10) : 0;",
+        "const nextAttempt = Number.isFinite(attempts) ? attempts + 1 : 1;",
+        "fs.writeFileSync(attemptsPath, String(nextAttempt), 'utf-8');",
+        "fs.appendFileSync(runLogPath, `execute:${nextAttempt}\\n`, 'utf-8');",
+        "process.exit(nextAttempt === 1 ? 1 : 0);",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Force retry 2 of 2"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Task checked: force: implement release docs"))).toBe(true);
+    expect(fs.readFileSync(runLogPath, "utf-8").trim().split("\n").filter(Boolean)).toHaveLength(2);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe("- [x] force: implement release docs\n");
+  });
+
+  it("run force: with inline cli task retries failed inline execution", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const inlineScriptPath = path.join(workspace, "force-inline-retry.cjs");
+    const attemptsPath = path.join(workspace, "force-inline-retry.attempt");
+
+    fs.writeFileSync(
+      roadmapPath,
+      `- [ ] force: cli: node ${path.basename(inlineScriptPath)}\n`,
+      "utf-8",
+    );
+    fs.writeFileSync(
+      inlineScriptPath,
+      [
+        "const fs = require('node:fs');",
+        `const attemptsPath = ${JSON.stringify(attemptsPath.replace(/\\/g, "/"))};`,
+        "const attempts = fs.existsSync(attemptsPath) ? Number.parseInt(fs.readFileSync(attemptsPath, 'utf-8'), 10) : 0;",
+        "const nextAttempt = Number.isFinite(attempts) ? attempts + 1 : 1;",
+        "fs.writeFileSync(attemptsPath, String(nextAttempt), 'utf-8');",
+        "process.exit(nextAttempt === 1 ? 1 : 0);",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Force retry 2 of 2"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Task checked: force: cli: node force-inline-retry.cjs"))).toBe(true);
+    expect(fs.readFileSync(attemptsPath, "utf-8")).toBe("2");
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe("- [x] force: cli: node force-inline-retry.cjs\n");
+  });
+
+  it("run force: verify: task retries verify-only iteration after verification failure", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const verifyAttemptsPath = path.join(workspace, "force-verify.attempt");
+    fs.writeFileSync(roadmapPath, "- [ ] force: verify: tests pass\n", "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-repair",
+      "--",
+      "node",
+      "-e",
+      `const fs=require('node:fs');const attemptsPath=${JSON.stringify(verifyAttemptsPath.replace(/\\/g, "/"))};const p=process.argv[process.argv.length-1];const prompt=fs.readFileSync(p,'utf-8');if(prompt.includes('Verify whether the selected task is complete.')){const attempts=fs.existsSync(attemptsPath)?Number.parseInt(fs.readFileSync(attemptsPath,'utf-8'),10):0;const nextAttempt=Number.isFinite(attempts)?attempts+1:1;fs.writeFileSync(attemptsPath,String(nextAttempt),'utf-8');console.log(nextAttempt===1?'NOT_OK: tests still failing':'OK');process.exit(0);}process.exit(0);`,
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Execution phase skipped; entering verification phase."))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Force retry 2 of 2"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Task checked: force: verify: tests pass"))).toBe(true);
+    expect(fs.readFileSync(verifyAttemptsPath, "utf-8")).toBe("2");
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe("- [x] force: verify: tests pass\n");
+  });
+
+  it("run force retry restarts iteration after inner repair loop exhaustion", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const verifyAttemptsPath = path.join(workspace, "force-verify-repair-exhausted.verify");
+    const repairAttemptsPath = path.join(workspace, "force-verify-repair-exhausted.repair");
+    fs.writeFileSync(roadmapPath, "- [ ] force: verify: tests pass\n", "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--repair-attempts",
+      "1",
+      "--",
+      "node",
+      "-e",
+      `const fs=require('node:fs');const verifyAttemptsPath=${JSON.stringify(verifyAttemptsPath.replace(/\\/g, "/"))};const repairAttemptsPath=${JSON.stringify(repairAttemptsPath.replace(/\\/g, "/"))};const p=process.argv[process.argv.length-1];const prompt=fs.readFileSync(p,'utf-8');if(prompt.includes('Repair the selected task')){const attempts=fs.existsSync(repairAttemptsPath)?Number.parseInt(fs.readFileSync(repairAttemptsPath,'utf-8'),10):0;const nextAttempt=Number.isFinite(attempts)?attempts+1:1;fs.writeFileSync(repairAttemptsPath,String(nextAttempt),'utf-8');process.exit(0);}if(prompt.includes('Verify whether the selected task is complete.')){const attempts=fs.existsSync(verifyAttemptsPath)?Number.parseInt(fs.readFileSync(verifyAttemptsPath,'utf-8'),10):0;const nextAttempt=Number.isFinite(attempts)?attempts+1:1;fs.writeFileSync(verifyAttemptsPath,String(nextAttempt),'utf-8');console.log(nextAttempt<=2?'NOT_OK: tests still failing':'OK');process.exit(0);}process.exit(0);`,
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Execution phase skipped; entering verification phase."))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Force retry 2 of 2"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Task checked: force: verify: tests pass"))).toBe(true);
+    expect(fs.readFileSync(verifyAttemptsPath, "utf-8")).toBe("3");
+    expect(fs.readFileSync(repairAttemptsPath, "utf-8")).toBe("1");
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe("- [x] force: verify: tests pass\n");
+  });
+
+  it("run trace events correctly distinguish force retries from repair attempts", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const verifyAttemptsPath = path.join(workspace, "force-trace.verify");
+    const repairAttemptsPath = path.join(workspace, "force-trace.repair");
+    fs.writeFileSync(roadmapPath, "- [ ] force: verify: tests pass\n", "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--repair-attempts",
+      "1",
+      "--trace",
+      "--keep-artifacts",
+      "--",
+      "node",
+      "-e",
+      `const fs=require('node:fs');const verifyAttemptsPath=${JSON.stringify(verifyAttemptsPath.replace(/\\/g, "/"))};const repairAttemptsPath=${JSON.stringify(repairAttemptsPath.replace(/\\/g, "/"))};const p=process.argv[process.argv.length-1];const prompt=fs.readFileSync(p,'utf-8');if(prompt.includes('Repair the selected task')){const attempts=fs.existsSync(repairAttemptsPath)?Number.parseInt(fs.readFileSync(repairAttemptsPath,'utf-8'),10):0;const nextAttempt=Number.isFinite(attempts)?attempts+1:1;fs.writeFileSync(repairAttemptsPath,String(nextAttempt),'utf-8');process.exit(0);}if(prompt.includes('Verify whether the selected task is complete.')){const attempts=fs.existsSync(verifyAttemptsPath)?Number.parseInt(fs.readFileSync(verifyAttemptsPath,'utf-8'),10):0;const nextAttempt=Number.isFinite(attempts)?attempts+1:1;fs.writeFileSync(verifyAttemptsPath,String(nextAttempt),'utf-8');console.log(nextAttempt<=2?'NOT_OK: tests still failing':'OK');process.exit(0);}process.exit(0);`,
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const traceEvents = listTraceFiles(workspace)
+      .flatMap((tracePath) => fs.readFileSync(tracePath, "utf-8")
+        .trim()
+        .split(/\r?\n/)
+        .filter((line) => line.trim().length > 0)
+        .map((line) => JSON.parse(line) as {
+          run_id?: string;
+          event_type?: string;
+          payload?: Record<string, unknown>;
+        }));
+
+    const repairAttemptEvents = traceEvents.filter((event) => event.event_type === "repair.attempt");
+    const forceRetryEvents = traceEvents.filter((event) => event.event_type === "force.retry");
+    expect(repairAttemptEvents).toHaveLength(1);
+    expect(forceRetryEvents).toHaveLength(1);
+
+    const forceRetryEvent = forceRetryEvents[0];
+    expect(forceRetryEvent?.payload).toEqual(expect.objectContaining({
+      attempt_number: 2,
+      max_attempts: 2,
+      previous_exit_code: 2,
+    }));
+    expect(typeof forceRetryEvent?.payload?.previous_run_id).toBe("string");
+    expect(forceRetryEvent?.payload?.previous_run_id).not.toBe(forceRetryEvent?.run_id);
+  });
+
+  it("run --dry-run with force: logs retries and avoids execution side effects", async () => {
+    const workspace = makeTempWorkspace();
+    const projectDir = path.join(workspace, "project");
+    const sharedConfigDir = path.join(workspace, "shared", ".rundown");
+    const templateCliPath = path.join(workspace, "force-dry-run-template-cli.cjs");
+    const templateCliAttemptsPath = path.join(workspace, "force-dry-run-template-cli.attempt");
+    const workerScriptPath = path.join(workspace, "force-dry-run-worker.cjs");
+    const markerPath = path.join(workspace, "force-dry-run-worker-executed.txt");
+
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.mkdirSync(sharedConfigDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(projectDir, "roadmap.md"),
+      "- [ ] force: implement release docs\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(sharedConfigDir, "execute.md"),
+      [
+        "```cli",
+        `node ${templateCliPath.replace(/\\/g, "/")}`,
+        "```",
+        "",
+        "{{task}}",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      templateCliPath,
+      [
+        "const fs = require('node:fs');",
+        `const attemptsPath = ${JSON.stringify(templateCliAttemptsPath.replace(/\\/g, "/"))};`,
+        "const attempts = fs.existsSync(attemptsPath) ? Number.parseInt(fs.readFileSync(attemptsPath, 'utf-8'), 10) : 0;",
+        "const nextAttempt = Number.isFinite(attempts) ? attempts + 1 : 1;",
+        "fs.writeFileSync(attemptsPath, String(nextAttempt), 'utf-8');",
+        "process.exit(1);",
+      ].join("\n"),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        `fs.writeFileSync(${JSON.stringify(markerPath.replace(/\\/g, "/"))}, 'ran', 'utf-8');`,
+        "process.exit(0);",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--config-dir",
+      "../shared/.rundown",
+      "--dry-run",
+      "--print-prompt",
+      "--no-verify",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], projectDir);
+
+    expect(result.code).toBe(1);
+    expect(result.logs.some((line) => line.includes("Force retry 2 of 2"))).toBe(true);
+    expect(fs.readFileSync(templateCliAttemptsPath, "utf-8")).toBe("2");
+    expect(fs.existsSync(markerPath)).toBe(false);
+    expect(fs.readFileSync(path.join(projectDir, "roadmap.md"), "utf-8")).toBe("- [ ] force: implement release docs\n");
+  });
+
   it("run returns 1 on execution failure and skips completion side effects", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");

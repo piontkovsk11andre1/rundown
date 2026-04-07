@@ -101,6 +101,17 @@ describe("extractForceModifier", () => {
 });
 
 describe("parsePrefixChain", () => {
+  it("identifies registered force prefix as a modifier", () => {
+    const chain = parsePrefixChain("force: verify: tests pass", builtinToolResolver);
+
+    expect(chain.modifiers).toHaveLength(1);
+    expect(chain.modifiers[0]?.tool.name).toBe("force");
+    expect(chain.modifiers[0]?.tool.kind).toBe("modifier");
+    expect(chain.modifiers[0]?.payload).toBe("verify: tests pass");
+    expect(chain.handler).toBeUndefined();
+    expect(chain.remainingText).toBe("");
+  });
+
   it("parses force as a modifier segment with a handler after comma boundary", () => {
     const chain = parsePrefixChain("force: 3, verify: tests pass", builtinToolResolver);
 

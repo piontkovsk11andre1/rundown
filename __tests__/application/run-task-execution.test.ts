@@ -312,6 +312,62 @@ describe("run-task-execution helpers", () => {
     }));
   });
 
+  it("increments --all task index only after force retry loop finishes", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] force: 2, task one\n- [ ] task two\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "force: 2, task one"),
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      const source = fileSystem.readText(taskFile);
+      const next = parseTasks(source, taskFile).find((task) => !task.checked);
+      if (!next) {
+        return null;
+      }
+      return {
+        task: next,
+        source: "tasks.md",
+        contextBefore: "",
+      };
+    });
+
+    const executedPrompts: string[] = [];
+    dependencies.workerExecutor.runWorker = vi
+      .fn()
+      .mockImplementation(async ({ prompt }: { prompt: string }) => {
+        executedPrompts.push(prompt);
+        if (prompt.includes("task one") && executedPrompts.length === 1) {
+          return { exitCode: 1, stdout: "", stderr: "boom" };
+        }
+        return { exitCode: 0, stdout: "ok", stderr: "" };
+      });
+
+    dependencies.templateLoader.load = (templatePath: string) => {
+      if (templatePath.endsWith("execute.md")) {
+        return "{{task}}";
+      }
+      return null;
+    };
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({ verify: false, runAll: true }));
+
+    expect(code).toBe(0);
+    expect(executedPrompts).toEqual(["task one", "task one", "task two"]);
+    const groupStartCounters = events
+      .filter((event): event is Extract<typeof event, { kind: "group-start" }> => event.kind === "group-start")
+      .map((event) => event.counter?.current)
+      .filter((counter): counter is number => typeof counter === "number");
+    expect(groupStartCounters).toEqual([1, 1, 2]);
+  });
+
   it("refreshes force task text from source before retrying same task identity", async () => {
     const cwd = "/workspace";
     const taskFile = `${cwd}/tasks.md`;
@@ -366,6 +422,69 @@ describe("run-task-execution helpers", () => {
       "implement feature v2",
     ]);
     expect(dependencies.taskSelector.selectTaskByLocation).toHaveBeenCalledWith(taskFile, 1);
+  });
+
+  it("recalculates group counter total before each force retry attempt", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] force: 2, task one\n- [ ] task two\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "force: 2, task one"),
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      const source = fileSystem.readText(taskFile);
+      const next = parseTasks(source, taskFile).find((task) => !task.checked);
+      if (!next) {
+        return null;
+      }
+      return {
+        task: next,
+        source: "tasks.md",
+        contextBefore: "",
+      };
+    });
+
+    let attempts = 0;
+    dependencies.workerExecutor.runWorker = vi.fn(async ({ prompt }: { prompt: string }) => {
+      if (!prompt.includes("task one")) {
+        return { exitCode: 0, stdout: "ok", stderr: "" };
+      }
+
+      attempts += 1;
+      if (attempts === 1) {
+        fileSystem.writeText(taskFile, "- [ ] force: 2, task one\n");
+        return { exitCode: 1, stdout: "", stderr: "boom" };
+      }
+      return { exitCode: 0, stdout: "ok", stderr: "" };
+    });
+
+    dependencies.templateLoader.load = (templatePath: string) => {
+      if (templatePath.endsWith("execute.md")) {
+        return "{{task}}";
+      }
+      return null;
+    };
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({ verify: false, runAll: true }));
+
+    expect(code).toBe(0);
+    const groupStartEvents = events.filter((event) => event.kind === "group-start");
+    expect(groupStartEvents).toHaveLength(2);
+    expect(groupStartEvents[0]).toEqual(expect.objectContaining({
+      kind: "group-start",
+      counter: expect.objectContaining({ total: 2 }),
+    }));
+    expect(groupStartEvents[1]).toEqual(expect.objectContaining({
+      kind: "group-start",
+      counter: expect.objectContaining({ total: 1 }),
+    }));
   });
 
   it("treats a force task as completed when it is already checked before retry", async () => {
@@ -531,6 +650,35 @@ describe("run-task-execution helpers", () => {
     }));
   });
 
+  it("runs all force attempts on repeated failure and returns final failRun exit code", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "force: 3, implement feature"),
+      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] force: 3, implement feature\n" }),
+      gitClient: createGitClientMock(),
+    });
+
+    dependencies.workerExecutor.runWorker = vi
+      .fn()
+      .mockResolvedValue({ exitCode: 1, stdout: "", stderr: "boom" });
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({ verify: false }));
+
+    expect(code).toBe(1);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(3);
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "warn",
+      message: "Force retry 2 of 3 — restarting task iteration from scratch",
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "warn",
+      message: "Force retry 3 of 3 — restarting task iteration from scratch",
+    }));
+  });
+
   it("passes stripped force payload into iteration prefix parsing", async () => {
     const cwd = "/workspace";
     const taskFile = `${cwd}/tasks.md`;
@@ -619,6 +767,47 @@ describe("run-task-execution helpers", () => {
     }));
   });
 
+  it("clears verificationStore between force retries so stale failures do not leak", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "force: 2, implement feature"),
+      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] force: 2, implement feature\n" }),
+      gitClient: createGitClientMock(),
+    });
+
+    let storedVerificationFailure: string | null = "first attempt stale verification failure";
+    const verificationSnapshots: Array<string | null> = [];
+    dependencies.verificationStore.read = vi.fn(() => storedVerificationFailure);
+    dependencies.verificationStore.remove = vi.fn(() => {
+      storedVerificationFailure = null;
+    });
+
+    dependencies.workerExecutor.runWorker = vi
+      .fn()
+      .mockResolvedValue({ exitCode: 0, stdout: "ok", stderr: "" });
+    dependencies.taskVerification.verify = vi.fn(async () => {
+      verificationSnapshots.push(storedVerificationFailure);
+      return { valid: false, formatWarning: undefined };
+    });
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({ verify: true, noRepair: true }));
+
+    expect(code).toBe(2);
+    expect(dependencies.taskVerification.verify).toHaveBeenCalledTimes(2);
+    expect(dependencies.verificationStore.remove).toHaveBeenCalledTimes(1);
+    expect(verificationSnapshots).toEqual([
+      "first attempt stale verification failure",
+      null,
+    ]);
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "warn",
+      message: "Force retry 2 of 2 — restarting task iteration from scratch",
+    }));
+  });
+
   it("runs full --repair-attempts budget on each force retry", async () => {
     const cwd = "/workspace";
     const taskFile = `${cwd}/tasks.md`;
@@ -653,6 +842,42 @@ describe("run-task-execution helpers", () => {
       && event.message === "  Repair attempt 1 of 2: starting...")).toHaveLength(2);
     expect(events.filter((event) => event.kind === "info"
       && event.message === "  Repair attempt 2 of 2: starting...")).toHaveLength(2);
+  });
+
+  it("retries outer force loop after inner repair exhaustion", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "force: verify: tests pass"),
+      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] force: verify: tests pass\n" }),
+      gitClient: createGitClientMock(),
+    });
+
+    dependencies.taskVerification.verify = vi
+      .fn()
+      .mockResolvedValueOnce({ valid: false, failureReason: "tests still failing" })
+      .mockResolvedValueOnce({ valid: true });
+    dependencies.taskRepair.repair = vi
+      .fn()
+      .mockResolvedValueOnce({ valid: false, attempts: 1 })
+      .mockResolvedValueOnce({ valid: false, attempts: 1 });
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({ verify: false, repairAttempts: 2 }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+    expect(dependencies.taskVerification.verify).toHaveBeenCalledTimes(2);
+    expect(dependencies.taskRepair.repair).toHaveBeenCalledTimes(2);
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "warn",
+      message: "Repair phase complete: all repair attempts exhausted.",
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "warn",
+      message: "Force retry 2 of 2 — restarting task iteration from scratch",
+    }));
   });
 
   it("retries verify-only iteration for force: verify: tasks", async () => {
@@ -1013,7 +1238,7 @@ describe("run-task-execution helpers", () => {
     }));
   });
 
-  it("does not retry force-prefixed task for early validation failures", async () => {
+  it("does not retry force-prefixed task for empty-payload validation failures", async () => {
     const cwd = "/workspace";
     const taskFile = `${cwd}/tasks.md`;
     const { dependencies, events } = createDependencies({
@@ -1028,6 +1253,30 @@ describe("run-task-execution helpers", () => {
 
     expect(code).toBe(1);
     expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+    expect(dependencies.taskSelector.selectTaskByLocation).not.toHaveBeenCalled();
+    expect(events.some((event) => event.kind === "warn" && event.message.includes("Force retry"))).toBe(false);
+  });
+
+  it("does not retry force-prefixed task for missing-worker-command validation failures", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "force: implement feature"),
+      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] force: implement feature\n" }),
+      gitClient: createGitClientMock(),
+    });
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({ verify: false, workerCommand: [] }));
+
+    expect(code).toBe(1);
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+    expect(dependencies.taskSelector.selectTaskByLocation).not.toHaveBeenCalled();
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "error",
+      message: "No worker command available: .rundown/config.json has no configured worker, and no CLI worker was provided. Use --worker <pattern> or -- <command>.",
+    }));
     expect(events.some((event) => event.kind === "warn" && event.message.includes("Force retry"))).toBe(false);
   });
 

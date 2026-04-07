@@ -34,6 +34,7 @@ import type { RunTaskDependencies } from "./run-task-execution.js";
 
 type EmitFn = (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
 type ArtifactContext = ArtifactRunContext;
+const INLINE_CLI_PREFIX = /^cli:\s*/i;
 
 /**
  * Tracks mutable execution state that must survive within a single run loop iteration.
@@ -220,12 +221,19 @@ export async function runTaskIteration(params: {
   const { dependencies, emit, state, context, execution, worker, verifyConfig, completion, prompts, traceConfig, lifecycle } = params;
   const { source, fileSource, files, task } = context;
   const taskTextForExecution = execution.forceStrippedTaskText ?? task.text;
-  const taskForIntent = taskTextForExecution === task.text
+  const initialTaskForIntent = taskTextForExecution === task.text
     ? task
     : {
       ...task,
       text: taskTextForExecution,
     };
+  const taskForIntent = !initialTaskForIntent.isInlineCli && INLINE_CLI_PREFIX.test(taskTextForExecution)
+    ? {
+      ...initialTaskForIntent,
+      isInlineCli: true,
+      cliCommand: taskTextForExecution.replace(INLINE_CLI_PREFIX, "").trim(),
+    }
+    : initialTaskForIntent;
 
   // Decide whether this iteration should execute, verify, or do both.
   const { onlyVerify, shouldVerify, taskIntentDecision, prefixChain } = resolveIterationVerificationMode({

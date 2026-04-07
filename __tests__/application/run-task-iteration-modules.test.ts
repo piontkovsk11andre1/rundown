@@ -1388,6 +1388,7 @@ describe("task-execution-dispatch", () => {
       executionFailureMessage: "Inline CLI exited with code 3",
       executionFailureRunReason: "Inline CLI exited with a non-zero code.",
       executionFailureExitCode: 3,
+      forceRetryableFailure: true,
     });
     expect(events).toContainEqual({ kind: "text", text: "inline out" });
     expect(events).toContainEqual({ kind: "stderr", text: "inline err" });
@@ -2173,6 +2174,7 @@ describe("task-execution-dispatch", () => {
       executionFailureMessage: "Inline CLI exited with code 5",
       executionFailureRunReason: "Inline CLI exited with a non-zero code.",
       executionFailureExitCode: 5,
+      forceRetryableFailure: true,
     });
 
   });
@@ -2380,6 +2382,7 @@ describe("task-execution-dispatch", () => {
       executionFailureMessage: "Memory capture worker returned empty output; nothing to persist.",
       executionFailureRunReason: "Memory capture worker returned empty output.",
       executionFailureExitCode: 1,
+      forceRetryableFailure: true,
     });
   });
 
@@ -2449,6 +2452,7 @@ describe("task-execution-dispatch", () => {
         "Memory body was written to /workspace/.rundown/tasks.md.memory.md but updating memory index failed at /workspace/.rundown/memory-index.json: Error: rename failed",
       executionFailureRunReason: "Memory index update failed after writing memory body.",
       executionFailureExitCode: 1,
+      forceRetryableFailure: true,
     });
     expect(events).toContainEqual({
       kind: "warn",
@@ -3146,7 +3150,7 @@ describe("complete-task-iteration", () => {
       extraTemplateVars: {},
     });
 
-    expect(result).toEqual({ continueLoop: false, exitCode: 2, forceRetryableFailure: true });
+    expect(result).toEqual({ continueLoop: false, exitCode: 2, forceRetryableFailure: true, groupEnded: false });
     expect(emit).toHaveBeenCalledWith({
       kind: "error",
       message: "Verification failed. Task not checked.\nmissing tests",
@@ -3227,7 +3231,7 @@ describe("complete-task-iteration", () => {
       extraTemplateVars: {},
     });
 
-    expect(result).toEqual({ continueLoop: false, exitCode: 0 });
+    expect(result).toEqual({ continueLoop: false, exitCode: 0, groupEnded: true });
     expect(state.deferredCommitContext).toBeNull();
     expect(afterTaskCompleteSpy).toHaveBeenCalledWith(
       dependencies,
@@ -3238,6 +3242,7 @@ describe("complete-task-iteration", () => {
       undefined,
       false,
       {},
+      false,
     );
     expect(finishRun).toHaveBeenCalledWith(0, "completed", true, undefined, { commit: "ok" });
   });
@@ -3314,7 +3319,7 @@ describe("complete-task-iteration", () => {
       extraTemplateVars: {},
     });
 
-    expect(result).toEqual({ continueLoop: true });
+    expect(result).toEqual({ continueLoop: true, groupEnded: true });
     expect(state.deferredCommitContext).toBeNull();
     expect(afterTaskCompleteSpy).toHaveBeenCalledWith(
       dependencies,
@@ -3325,6 +3330,7 @@ describe("complete-task-iteration", () => {
       undefined,
       false,
       {},
+      false,
     );
   });
 
@@ -3402,7 +3408,7 @@ describe("complete-task-iteration", () => {
       extraTemplateVars: {},
     });
 
-    expect(result).toEqual({ continueLoop: true });
+    expect(result).toEqual({ continueLoop: true, groupEnded: true });
     expect(state.tasksCompleted).toBe(1);
     expect(state.deferredCommitContext).toEqual({
       task,
@@ -3424,6 +3430,7 @@ describe("complete-task-iteration", () => {
       undefined,
       false,
       {},
+      false,
     );
     expect(finishRun).toHaveBeenCalledWith(0, "completed", true, undefined, { commit: "ok" });
     expect(resetArtifacts).toHaveBeenCalledTimes(1);
@@ -3504,7 +3511,7 @@ describe("complete-task-iteration", () => {
       extraTemplateVars: {},
     });
 
-    expect(result).toEqual({ continueLoop: true });
+    expect(result).toEqual({ continueLoop: true, groupEnded: true });
     expect(state.tasksCompleted).toBe(1);
     expect(checkTaskSpy).toHaveBeenCalledTimes(1);
     expect(afterTaskCompleteSpy).not.toHaveBeenCalled();
@@ -3595,7 +3602,7 @@ describe("complete-task-iteration", () => {
       extraTemplateVars: {},
     });
 
-    expect(result).toEqual({ continueLoop: false, exitCode: 0 });
+    expect(result).toEqual({ continueLoop: false, exitCode: 0, groupEnded: true });
     expect(fileSystem.readText(task.file)).toBe([
       "- [x] end: no output to process",
       "- [x] Do this and that",

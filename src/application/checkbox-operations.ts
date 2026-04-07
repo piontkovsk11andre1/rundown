@@ -1,4 +1,4 @@
-import { markChecked, resetAllCheckboxes } from "../domain/checkbox.js";
+import { markChecked, markTasksChecked, resetAllCheckboxes } from "../domain/checkbox.js";
 import { insertSubitems } from "../domain/planner.js";
 import { parseTasks, type Task } from "../domain/parser.js";
 import { findRemainingSiblings, findUncheckedDescendants } from "../domain/task-selection.js";
@@ -42,19 +42,28 @@ export function skipRemainingSiblingsUsingFileSystem(
     };
   }
 
+  const siblingsDescending = [...remainingSiblings].sort((left, right) => right.line - left.line);
   const tasksToSkip = new Map<number, Task>();
-  for (const sibling of remainingSiblings) {
-    tasksToSkip.set(sibling.line, sibling);
-    for (const descendant of findUncheckedDescendants(sibling, allTasks)) {
+
+  // Process siblings from bottom to top so sub-item insertion does not shift
+  // yet-to-be-processed task line numbers.
+  for (const sibling of siblingsDescending) {
+    const descendantsDescending = findUncheckedDescendants(sibling, allTasks)
+      .sort((left, right) => right.line - left.line);
+
+    for (const descendant of descendantsDescending) {
       tasksToSkip.set(descendant.line, descendant);
     }
+
+    tasksToSkip.set(sibling.line, sibling);
   }
 
   const orderedTasksToSkip = [...tasksToSkip.values()].sort((left, right) => right.line - left.line);
   const annotation = reason.trim().length > 0 ? reason.trim() : "condition met";
 
+  source = markTasksChecked(source, orderedTasksToSkip);
+
   for (const skippedTask of orderedTasksToSkip) {
-    source = markChecked(source, skippedTask);
     source = insertSubitems(source, skippedTask, [`skipped: ${annotation}`]);
   }
 

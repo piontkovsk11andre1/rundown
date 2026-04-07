@@ -231,7 +231,10 @@ export async function completeTaskIteration(params: {
         + " because end condition was met.",
     });
     for (const skippedTaskText of skipResult.skippedTaskTexts) {
-      emit({ kind: "info", message: "Skipped sibling: " + skippedTaskText });
+      emit({
+        kind: "info",
+        message: "Skipped sibling: " + skippedTaskText + " (reason: " + skipRemainingSiblingsReason + ")",
+      });
     }
   }
 

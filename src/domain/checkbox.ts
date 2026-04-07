@@ -63,6 +63,40 @@ export function markUnchecked(source: string, task: Task): string {
 }
 
 /**
+ * Marks multiple tasks as checked in a single source rewrite.
+ *
+ * Tasks are applied from bottom to top so later line insertions in callers do
+ * not invalidate line references for earlier tasks.
+ */
+export function markTasksChecked(source: string, tasks: Task[]): string {
+  if (tasks.length === 0) {
+    return source;
+  }
+
+  const eol = source.includes("\r\n") ? "\r\n" : "\n";
+  const lines = source.split(/\r?\n/);
+  const uniqueLinesDescending = [...new Set(tasks.map((task) => task.line))].sort((left, right) => right - left);
+
+  for (const lineNumber of uniqueLinesDescending) {
+    const lineIndex = lineNumber - 1;
+    if (lineIndex < 0 || lineIndex >= lines.length) {
+      throw new Error(`Task line ${lineNumber} is out of range in ${tasks[0]!.file}`);
+    }
+
+    const line = lines[lineIndex]!;
+    const updated = line.replace(/\[ \]/, "[x]");
+
+    if (updated === line) {
+      throw new Error(`Could not find unchecked checkbox on line ${lineNumber} in ${tasks[0]!.file}`);
+    }
+
+    lines[lineIndex] = updated;
+  }
+
+  return lines.join(eol);
+}
+
+/**
  * Reset all checked task checkboxes in a Markdown source back to unchecked.
  *
  * Parses tasks from the original source and applies unchecked updates one by one

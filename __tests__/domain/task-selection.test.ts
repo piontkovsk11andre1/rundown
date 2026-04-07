@@ -124,20 +124,42 @@ describe("filterRunnable", () => {
 });
 
 describe("findRemainingSiblings", () => {
-  it("returns unchecked siblings that appear after the current task", () => {
-    const first = makeTask({ text: "First", depth: 0, index: 0, line: 1, checked: false });
-    const second = makeTask({ text: "Second", depth: 0, index: 1, line: 2, checked: false });
-    const thirdChecked = makeTask({ text: "Third", depth: 0, index: 2, line: 3, checked: true });
-    const fourth = makeTask({ text: "Fourth", depth: 0, index: 3, line: 4, checked: false });
+  it("returns unchecked tasks from the same sibling group", () => {
+    const parent = makeTask({ text: "Parent", depth: 0, index: 0, line: 1, checked: false });
+    const first = makeTask({ text: "First", depth: 1, index: 1, line: 2, checked: false });
+    const nestedChild = makeTask({ text: "Nested", depth: 2, index: 2, line: 3, checked: false });
+    const second = makeTask({ text: "Second", depth: 1, index: 3, line: 4, checked: false });
+    const thirdChecked = makeTask({ text: "Third", depth: 1, index: 4, line: 5, checked: true });
+    const fourth = makeTask({ text: "Fourth", depth: 1, index: 5, line: 6, checked: false });
 
-    expect(findRemainingSiblings(first, [first, second, thirdChecked, fourth])).toEqual([second, fourth]);
+    expect(findRemainingSiblings(first, [parent, first, nestedChild, second, thirdChecked, fourth])).toEqual([
+      second,
+      fourth,
+    ]);
   });
 
-  it("returns no siblings when the task is the last at its depth", () => {
+  it("returns no remaining siblings when there are none after the task", () => {
     const first = makeTask({ text: "First", depth: 0, index: 0, line: 1, checked: false });
     const second = makeTask({ text: "Second", depth: 0, index: 1, line: 2, checked: false });
 
     expect(findRemainingSiblings(second, [first, second])).toEqual([]);
+  });
+
+  it("returns no siblings when the end task is last in its sibling group", () => {
+    const root = makeTask({ text: "Root", depth: 0, index: 0, line: 1, checked: false });
+    const first = makeTask({ text: "First", depth: 1, index: 1, line: 2, checked: false });
+    const endTask = makeTask({ text: "end: done", depth: 1, index: 2, line: 3, checked: false });
+    const nextRoot = makeTask({ text: "Next root", depth: 0, index: 3, line: 4, checked: false });
+
+    expect(findRemainingSiblings(endTask, [root, first, endTask, nextRoot])).toEqual([]);
+  });
+
+  it("returns no siblings when all later siblings are already checked", () => {
+    const first = makeTask({ text: "First", depth: 0, index: 0, line: 1, checked: false });
+    const secondChecked = makeTask({ text: "Second", depth: 0, index: 1, line: 2, checked: true });
+    const thirdChecked = makeTask({ text: "Third", depth: 0, index: 2, line: 3, checked: true });
+
+    expect(findRemainingSiblings(first, [first, secondChecked, thirdChecked])).toEqual([]);
   });
 });
 

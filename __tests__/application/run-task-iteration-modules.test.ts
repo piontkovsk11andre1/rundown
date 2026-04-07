@@ -623,6 +623,133 @@ describe("run-task-iteration", () => {
     expect(events[taskCheckedEventIndex + 1]).toEqual({ kind: "group-end", status: "success" });
   });
 
+  it("forwards skipRemainingSiblingsReason from dispatch to completion", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "end: no output to process");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] end: no output to process\n- [ ] Do this and that\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    const emit = (event: Parameters<typeof runTaskIteration>[0]["emit"] extends (arg: infer T) => void ? T : never) => {
+      events.push(event);
+    };
+
+    vi.spyOn(taskExecutionDispatchModule, "dispatchTaskExecution").mockResolvedValue({
+      kind: "ready-for-completion",
+      shouldVerify: false,
+      cliExecutionOptionsForVerification: undefined,
+      verificationFailureMessage: "Verification failed after all repair attempts. Task not checked.",
+      verificationFailureRunReason: "Verification failed after all repair attempts.",
+      skipRemainingSiblingsReason: "no output to process",
+    });
+
+    const completeSpy = vi.spyOn(completeTaskIterationModule, "completeTaskIteration").mockResolvedValue({
+      continueLoop: false,
+      exitCode: 0,
+    });
+
+    const traceRunSession = createTraceRunSession({
+      getTraceWriter: () => dependencies.traceWriter,
+      source: "tasks.md",
+      mode: "wait",
+      transport: "file",
+      traceEnabled: false,
+    });
+
+    await runTaskIteration({
+      dependencies,
+      emit,
+      state: {
+        traceWriter: dependencies.traceWriter,
+        deferredCommitContext: null,
+        tasksCompleted: 0,
+        runCompleted: false,
+        artifactContext: null,
+        traceEnrichmentContext: null,
+      },
+      context: {
+        source: "- [ ] end: no output to process\n- [ ] Do this and that\n",
+        fileSource: "- [ ] end: no output to process\n- [ ] Do this and that\n",
+        taskIndex: 0,
+        totalTasks: 2,
+        files: [taskFile],
+        task,
+      },
+      execution: {
+        mode: "wait",
+        verbose: false,
+        taskIndex: 0,
+        totalTasks: 2,
+        keepArtifacts: true,
+        printPrompt: false,
+        dryRun: false,
+        dryRunSuppressesCliExpansion: false,
+        cliExpansionEnabled: true,
+        ignoreCliBlock: false,
+        verify: true,
+        noRepair: false,
+        repairAttempts: 0,
+        forceExecute: false,
+        showAgentOutput: false,
+        hideHookOutput: false,
+        trace: false,
+      },
+      worker: {
+        workerPattern: inferWorkerPatternFromCommand(["opencode", "run"]),
+        loadedWorkerConfig: undefined,
+      },
+      verifyConfig: {
+        configuredOnlyVerify: false,
+        configuredShouldVerify: true,
+        maxRepairAttempts: 0,
+        allowRepair: false,
+      },
+      completion: {
+        effectiveRunAll: false,
+        commitAfterComplete: false,
+        deferCommitUntilPostRun: false,
+        commitMessageTemplate: undefined,
+        onCompleteCommand: undefined,
+        onFailCommand: undefined,
+        extraTemplateVars: {},
+      },
+      prompts: {
+        extraTemplateVars: {},
+        cliExecutionOptions: undefined,
+        cliBlockExecutor: {
+          execute: vi.fn(async () => ({
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          })),
+        },
+        nowIso: () => "2026-01-01T00:00:00.000Z",
+      },
+      traceConfig: {
+        traceRunSession,
+        pendingPreRunResetTraceEvents: [],
+        roundContext: {
+          currentRound: 1,
+          totalRounds: 1,
+        },
+      },
+      lifecycle: {
+        failRun: vi.fn(async () => 1),
+        finishRun: vi.fn(async () => 0),
+        resetArtifacts: vi.fn(),
+      },
+    });
+
+    expect(completeSpy).toHaveBeenCalledTimes(1);
+    expect(completeSpy.mock.calls[0]?.[0]?.skipRemainingSiblingsReason).toBe("no output to process");
+  });
+
   it("emits group-end failure when task execution fails", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");
@@ -1614,6 +1741,91 @@ describe("task-execution-dispatch", () => {
       expect(result.executionFailureExitCode).toBe(1);
     }
     expect(dependencies.workerExecutor.executeRundownTask).not.toHaveBeenCalled();
+  });
+
+  it("maps tool handler skipRemainingSiblings into dispatch completion result", async () => {
+    const task = createTask(path.join(cwd, "tasks.md"), "end: no output to process");
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] end: no output to process\n- [ ] Do this and that\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    const result = await dispatchTaskExecution({
+      dependencies,
+      emit: (event) => events.push(event),
+      files: [task.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      selectedWorkerPattern: {
+        command: ["opencode", "run"],
+        usesBootstrap: false,
+        usesFile: false,
+        appendFile: true,
+      },
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "wait",
+      keepArtifacts: true,
+      showAgentOutput: false,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "execute-and-verify",
+      prefixChain: {
+        modifiers: [],
+        handler: {
+          tool: {
+            name: "end",
+            kind: "handler",
+            frontmatter: { skipExecution: true, shouldVerify: false },
+            handler: async () => ({
+              skipExecution: true,
+              shouldVerify: true,
+              skipRemainingSiblings: { reason: "no output to process" },
+            }),
+          },
+          payload: "no output to process",
+        },
+        remainingText: "no output to process",
+      },
+      task,
+      prompt: "unused",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      resolvedWorkerPattern: {
+        command: ["opencode", "run"],
+        usesBootstrap: false,
+        usesFile: false,
+        appendFile: true,
+      },
+      trace: false,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+    });
+
+    expect(result).toEqual({
+      kind: "ready-for-completion",
+      shouldVerify: false,
+      cliExecutionOptionsForVerification: undefined,
+      verificationFailureMessage: "Verification failed after all repair attempts. Task not checked.",
+      verificationFailureRunReason: "Verification failed after all repair attempts.",
+      skipRemainingSiblingsReason: "no output to process",
+      toolExpansionInsertedChildCount: undefined,
+    });
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
   });
 
   it("keeps default worker stdout/stderr hidden when show-agent-output is disabled while preserving lifecycle status", async () => {
@@ -3276,9 +3488,9 @@ describe("complete-task-iteration", () => {
     });
     expect(emit).toHaveBeenCalledWith({
       kind: "info",
-      message: "Skipped sibling: Do this and that",
+      message: "Skipped sibling: Do this and that (reason: no output to process)",
     });
-    expect(finishRun).toHaveBeenCalledWith(0, "completed", true, undefined, {});
+    expect(finishRun).toHaveBeenCalledWith(0, "completed", true, undefined, undefined);
     expect(resetArtifacts).not.toHaveBeenCalled();
   });
 });

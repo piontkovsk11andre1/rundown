@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   markChecked,
+  markTasksChecked,
   markUnchecked,
   resetAllCheckboxes,
 } from "../../src/domain/checkbox.js";
@@ -124,6 +125,55 @@ describe("markUnchecked", () => {
     const result = markUnchecked(source, task);
 
     expect(result).toBe("# Title\r\n\r\n- [ ] First task\r\n- [x] Second task\r\n");
+  });
+});
+
+describe("markTasksChecked", () => {
+  it("marks multiple tasks in one pass", () => {
+    const source = "- [ ] One\n- [ ] Two\n- [ ] Three\n";
+    const tasks = [
+      { line: 1, file: "test.md" },
+      { line: 3, file: "test.md" },
+    ] as any;
+
+    const result = markTasksChecked(source, tasks);
+
+    expect(result).toBe("- [x] One\n- [ ] Two\n- [x] Three\n");
+  });
+
+  it("deduplicates duplicate line entries", () => {
+    const source = "- [ ] One\n- [ ] Two\n";
+    const tasks = [
+      { line: 2, file: "test.md" },
+      { line: 2, file: "test.md" },
+    ] as any;
+
+    const result = markTasksChecked(source, tasks);
+
+    expect(result).toBe("- [ ] One\n- [x] Two\n");
+  });
+
+  it("preserves CRLF line endings", () => {
+    const source = "- [ ] One\r\n- [ ] Two\r\n";
+    const tasks = [{ line: 2, file: "test.md" }] as any;
+
+    const result = markTasksChecked(source, tasks);
+
+    expect(result).toBe("- [ ] One\r\n- [x] Two\r\n");
+  });
+
+  it("throws when a target line is out of range", () => {
+    const source = "- [ ] Only\n";
+    const tasks = [{ line: 99, file: "test.md" }] as any;
+
+    expect(() => markTasksChecked(source, tasks)).toThrow("out of range");
+  });
+
+  it("throws when a target line has no unchecked checkbox", () => {
+    const source = "- [x] Done\n";
+    const tasks = [{ line: 1, file: "test.md" }] as any;
+
+    expect(() => markTasksChecked(source, tasks)).toThrow("Could not find unchecked checkbox");
   });
 });
 

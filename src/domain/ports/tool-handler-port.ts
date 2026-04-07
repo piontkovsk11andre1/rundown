@@ -58,6 +58,7 @@ export interface ToolHandlerResult {
  */
 export interface ToolHandlerContext {
   task: Task;
+  allTasks?: Task[];
   payload: string;
   source: string;
   contextBefore: string;

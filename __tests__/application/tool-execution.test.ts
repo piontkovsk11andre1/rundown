@@ -63,6 +63,7 @@ function makeContext(rootDir: string) {
       children: [],
       subItems: [],
     },
+    allTasks: undefined,
     payload: "run",
     source: "- [ ] tool: run",
     contextBefore: "",

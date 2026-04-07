@@ -1208,6 +1208,59 @@ describe.sequential("CLI integration", () => {
     expect(fs.readFileSync(memoryFilePath, "utf-8")).toContain("- [ ] cli: node child-task.cjs");
   });
 
+  it("run end tool skips remaining siblings when condition evaluates to true", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "end-condition-worker.cjs");
+    const workerProbePath = path.join(workspace, "end-worker-probe.log");
+
+    fs.writeFileSync(roadmapPath, [
+      "- [ ] end: there is no output to process",
+      "- [ ] Ship release notes",
+      "  - [ ] Verify links",
+      "- [ ] Publish changelog",
+      "",
+    ].join("\n"), "utf-8");
+
+    fs.writeFileSync(workerScriptPath, [
+      "const fs = require('node:fs');",
+      "const promptPath = process.argv[process.argv.length - 1];",
+      "const prompt = fs.readFileSync(promptPath, 'utf-8');",
+      `const probePath = ${JSON.stringify(workerProbePath.replace(/\\/g, "/"))};`,
+      "if (prompt.includes('You are evaluating an end-condition for a Markdown task runner.')) {",
+      "  fs.appendFileSync(probePath, 'evaluate\\n', 'utf-8');",
+      "  console.log('{\"decision\":\"yes\"}');",
+      "  process.exit(0);",
+      "}",
+      "fs.appendFileSync(probePath, 'execute\\n', 'utf-8');",
+      "process.exit(0);",
+      "",
+    ].join("\n"), "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--all",
+      "--no-verify",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(fs.readFileSync(workerProbePath, "utf-8")).toBe("evaluate\n");
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+      "- [x] end: there is no output to process",
+      "- [x] Ship release notes",
+      "  - skipped: there is no output to process",
+      "  - [x] Verify links",
+      "    - skipped: there is no output to process",
+      "- [x] Publish changelog",
+      "  - skipped: there is no output to process",
+      "",
+    ].join("\n"));
+  });
+
   it("run returns execution error for memory prefix with empty payload and does not write memory files", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");

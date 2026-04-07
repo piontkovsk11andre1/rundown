@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { classifyTaskIntent } from "../../src/domain/task-intent.js";
+import { listBuiltinToolNames, resolveBuiltinTool } from "../../src/domain/builtin-tools/index.js";
 import type { ToolResolverPort } from "../../src/domain/ports/tool-resolver-port.js";
 
 const noToolResolver: ToolResolverPort = {
   resolve: () => undefined,
   listKnownToolNames: () => [],
+};
+
+const builtinToolResolver: ToolResolverPort = {
+  resolve: (toolName) => resolveBuiltinTool(toolName),
+  listKnownToolNames: () => listBuiltinToolNames(),
 };
 
 describe("classifyTaskIntent", () => {
@@ -197,6 +203,15 @@ describe("classifyTaskIntent", () => {
     const decision = classifyTaskIntent("unknown-tool: payload", noToolResolver);
     expect(decision.intent).toBe("execute-and-verify");
     expect(decision.reason).toBe("default");
+  });
+
+  it("classifies end: prefix as tool-expansion via built-in tool resolver", () => {
+    const decision = classifyTaskIntent("end: no more output to process", builtinToolResolver);
+    expect(decision.intent).toBe("tool-expansion");
+    expect(decision.toolName).toBe("end");
+    expect(decision.toolPayload).toBe("no more output to process");
+    expect(decision.normalizedTaskText).toBe("no more output to process");
+    expect(decision.hasEmptyPayload).toBe(false);
   });
 
   it("classifies end control-flow prefixes through generic tool resolution", () => {

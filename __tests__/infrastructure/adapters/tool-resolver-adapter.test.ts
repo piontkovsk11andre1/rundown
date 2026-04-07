@@ -328,6 +328,7 @@ describe("createToolResolverAdapter", () => {
     });
 
     const knownToolNames = resolver.listKnownToolNames();
+    expect(knownToolNames).toContain("end");
     expect(knownToolNames).toContain("alpha");
     expect(knownToolNames).toContain("beta");
   });

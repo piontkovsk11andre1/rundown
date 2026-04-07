@@ -2,6 +2,7 @@ import { type Task } from "../domain/parser.js";
 import type { TaskIntent } from "../domain/task-intent.js";
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import { insertSubitems } from "../domain/planner.js";
+import { parseTasks } from "../domain/parser.js";
 import { parseUncheckedTodoLines } from "../domain/todo-lines.js";
 import { buildTaskHierarchyTemplateVars, renderTemplate, type TemplateVars } from "../domain/template.js";
 import type {
@@ -185,8 +186,10 @@ export async function dispatchTaskExecution(params: {
     }
 
     const source = dependencies.fileSystem.readText(task.file);
+    const allTasks = parseTasks(source, task.file);
     const toolContext: import("../domain/ports/tool-handler-port.js").ToolHandlerContext = {
       task,
+      allTasks,
       payload: prefixChain.remainingText,
       source,
       contextBefore: expandedContextBefore,
@@ -254,13 +257,16 @@ export async function dispatchTaskExecution(params: {
       }
 
       traceRunSession.completePhase(executePhaseTrace, 0, "", "", true);
+      const skipRemainingSiblingsReason = chainResult.skipRemainingSiblings?.reason;
       return {
         kind: "ready-for-completion",
-        shouldVerify: chainResult.shouldVerify && shouldVerify,
+        // Sibling-skip control-flow uses skip annotations as the audit trail,
+        // so skipped siblings should not trigger any verification phase.
+        shouldVerify: skipRemainingSiblingsReason ? false : chainResult.shouldVerify && shouldVerify,
         cliExecutionOptionsForVerification: cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace,
         verificationFailureMessage: "Verification failed after all repair attempts. Task not checked.",
         verificationFailureRunReason: "Verification failed after all repair attempts.",
-        skipRemainingSiblingsReason: chainResult.skipRemainingSiblings?.reason,
+        skipRemainingSiblingsReason,
         toolExpansionInsertedChildCount: chainResult.childTaskCount > 0 ? chainResult.childTaskCount : undefined,
       };
     }

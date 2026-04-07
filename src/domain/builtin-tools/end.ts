@@ -1,6 +1,19 @@
 import type { ToolHandlerFn } from "../ports/tool-handler-port.js";
 import type { ProcessRunMode } from "../ports/process-runner.js";
 
+function tryParseJson(raw: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 function normalizeYesNo(raw: string): "yes" | "no" | null {
   const normalized = raw.trim().toLowerCase();
   if (normalized.length === 0) {
@@ -15,6 +28,37 @@ function normalizeYesNo(raw: string): "yes" | "no" | null {
     return "no";
   }
   return null;
+}
+
+function buildEndConditionPrompt(condition: string): string {
+  return [
+    "You are evaluating an end-condition for a Markdown task runner.",
+    "Decide whether the condition is true right now.",
+    "Answer the yes/no question based only on the condition text.",
+    "If the condition is ambiguous or cannot be determined, choose no.",
+    "Return JSON only: {\"decision\":\"yes\"} or {\"decision\":\"no\"}.",
+    "",
+    "Question: Is this condition true right now?",
+    "Condition:",
+    condition,
+  ].join("\n");
+}
+
+function parseEndConditionDecision(raw: string): "yes" | "no" | null {
+  const parsed = tryParseJson(raw);
+  if (parsed && typeof parsed === "object") {
+    const candidate = ["decision", "answer", "verdict"]
+      .map((key) => parsed[key])
+      .find((value): value is string => typeof value === "string");
+    if (candidate) {
+      const normalized = normalizeYesNo(candidate);
+      if (normalized) {
+        return normalized;
+      }
+    }
+  }
+
+  return normalizeYesNo(raw);
 }
 
 /**
@@ -36,14 +80,7 @@ export const endHandler: ToolHandlerFn = async (context) => {
 
   context.emit({ kind: "info", message: "Evaluating end condition." });
 
-  const evaluationPrompt = [
-    "You are evaluating an end-condition for a Markdown task runner.",
-    "Decide if the condition is currently true based on the provided condition text.",
-    "Return exactly one word: yes or no.",
-    "",
-    "Condition:",
-    condition,
-  ].join("\n");
+  const evaluationPrompt = buildEndConditionPrompt(condition);
 
   let runResult: Awaited<ReturnType<typeof context.workerExecutor.runWorker>>;
   try {
@@ -87,7 +124,7 @@ export const endHandler: ToolHandlerFn = async (context) => {
     };
   }
 
-  const decision = normalizeYesNo(runResult.stdout);
+  const decision = parseEndConditionDecision(runResult.stdout);
   if (decision === "yes") {
     context.emit({ kind: "info", message: "End condition met; skipping remaining sibling tasks." });
     return {
@@ -105,7 +142,10 @@ export const endHandler: ToolHandlerFn = async (context) => {
     };
   }
 
-  context.emit({ kind: "warn", message: "End condition response was not recognized; continuing execution." });
+  context.emit({
+    kind: "warn",
+    message: "End condition response was ambiguous; defaulting to no and continuing execution.",
+  });
   return {
     skipExecution: true,
   };

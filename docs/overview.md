@@ -218,7 +218,11 @@ Built-in handler aliases:
 - verify-only: `verify:`, `confirm:`, `check:`
 - memory capture: `memory:`, `memorize:`, `remember:`, `inventory:`
 - fast execution (skip verification): `fast:`, `raw:`
+- end control flow (skip remaining siblings when condition is true): `end:`, `return:`, `skip:`, `quit:`
 - file composition: `include:`
+
+Decision: `return:`, `skip:`, and `quit:` are aliases of `end:` in v1.
+All four prefixes resolve to the same control-flow handler and share identical semantics.
 
 Built-in modifier:
 

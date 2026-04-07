@@ -183,6 +183,37 @@ describe("checkbox-operations", () => {
     ].join("\n"));
   });
 
+  it("marks a single remaining sibling as checked and inserts skipped annotation", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [x] end: no output",
+        "- [x] Already done",
+        "- [ ] Last task",
+      ].join("\n"),
+    });
+    const task = createTask({
+      text: "end: no output",
+      line: 1,
+      index: 0,
+      file: "todo.md",
+      checked: true,
+    });
+
+    const result = skipRemainingSiblingsUsingFileSystem(task, "no output", fileSystem);
+
+    expect(result).toEqual({
+      skippedSiblingCount: 1,
+      skippedDescendantCount: 0,
+      skippedTaskTexts: ["Last task"],
+    });
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [x] end: no output",
+      "- [x] Already done",
+      "- [x] Last task",
+      "  - skipped: no output",
+    ].join("\n"));
+  });
+
   it("cascades skip checks and annotations to unchecked descendants", () => {
     const fileSystem = createFileSystem({
       "todo.md": [
@@ -217,6 +248,44 @@ describe("checkbox-operations", () => {
       "    - [x] Grandchild",
       "      - skipped: no output",
       "  - [x] Already checked child",
+    ].join("\n"));
+  });
+
+  it("keeps line references stable while inserting annotations for multiple sibling trees", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [x] end: no output",
+        "- [ ] Sibling one",
+        "  - [ ] Child one",
+        "- [ ] Sibling two",
+        "  - [ ] Child two",
+      ].join("\n"),
+    });
+    const task = createTask({
+      text: "end: no output",
+      line: 1,
+      index: 0,
+      file: "todo.md",
+      checked: true,
+    });
+
+    const result = skipRemainingSiblingsUsingFileSystem(task, "no output", fileSystem);
+
+    expect(result).toEqual({
+      skippedSiblingCount: 2,
+      skippedDescendantCount: 2,
+      skippedTaskTexts: ["Sibling one", "Sibling two"],
+    });
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [x] end: no output",
+      "- [x] Sibling one",
+      "  - skipped: no output",
+      "  - [x] Child one",
+      "    - skipped: no output",
+      "- [x] Sibling two",
+      "  - skipped: no output",
+      "  - [x] Child two",
+      "    - skipped: no output",
     ].join("\n"));
   });
 });

@@ -8,6 +8,7 @@ describe("endHandler", () => {
     const emit = vi.fn();
 
     const context = {
+      allTasks: [],
       payload: "   ",
       workerExecutor: { runWorker },
       workerPattern: {
@@ -55,6 +56,7 @@ describe("endHandler", () => {
     const emit = vi.fn();
 
     const context = {
+      allTasks: [],
       payload: "  there is no output to process  ",
       workerExecutor: { runWorker },
       workerPattern: {
@@ -104,6 +106,7 @@ describe("endHandler", () => {
     const emit = vi.fn();
 
     const context = {
+      allTasks: [],
       payload: "there is still output to process",
       workerExecutor: { runWorker },
       workerPattern: {
@@ -143,6 +146,137 @@ describe("endHandler", () => {
     });
   });
 
+  it("uses the JSON yes/no prompt format for evaluation", async () => {
+    const runWorker = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "{\"decision\":\"no\"}",
+      stderr: "",
+    }));
+    const emit = vi.fn();
+
+    const context = {
+      allTasks: [],
+      payload: "there is no output to process",
+      workerExecutor: { runWorker },
+      workerPattern: {
+        command: ["opencode", "run"],
+        usesBootstrap: false,
+        usesFile: false,
+        appendFile: true,
+      },
+      mode: "wait",
+      trace: false,
+      cwd: "C:/workspace",
+      executionEnv: undefined,
+      configDir: undefined,
+      artifactContext: {
+        runId: "run-1",
+        rootDir: "C:/workspace/.rundown/runs/run-1",
+        cwd: "C:/workspace",
+        keepArtifacts: false,
+        commandName: "run",
+      },
+      showAgentOutput: false,
+      emit,
+    } as unknown as ToolHandlerContext;
+
+    await endHandler(context);
+
+    expect(runWorker).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: expect.stringContaining("Return JSON only: {\"decision\":\"yes\"} or {\"decision\":\"no\"}."),
+    }));
+    expect(runWorker).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: expect.stringContaining("Question: Is this condition true right now?"),
+    }));
+  });
+
+  it("parses JSON decision responses", async () => {
+    const runWorker = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "{\"decision\":\"yes\"}",
+      stderr: "",
+    }));
+    const emit = vi.fn();
+
+    const context = {
+      allTasks: [],
+      payload: "there is no output to process",
+      workerExecutor: { runWorker },
+      workerPattern: {
+        command: ["opencode", "run"],
+        usesBootstrap: false,
+        usesFile: false,
+        appendFile: true,
+      },
+      mode: "wait",
+      trace: false,
+      cwd: "C:/workspace",
+      executionEnv: undefined,
+      configDir: undefined,
+      artifactContext: {
+        runId: "run-1",
+        rootDir: "C:/workspace/.rundown/runs/run-1",
+        cwd: "C:/workspace",
+        keepArtifacts: false,
+        commandName: "run",
+      },
+      showAgentOutput: false,
+      emit,
+    } as unknown as ToolHandlerContext;
+
+    const result = await endHandler(context);
+
+    expect(result).toEqual({
+      skipExecution: true,
+      skipRemainingSiblings: {
+        reason: "there is no output to process",
+      },
+    });
+  });
+
+  it("defaults to no when worker response is ambiguous", async () => {
+    const runWorker = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "maybe",
+      stderr: "",
+    }));
+    const emit = vi.fn();
+
+    const context = {
+      allTasks: [],
+      payload: "there is no output to process",
+      workerExecutor: { runWorker },
+      workerPattern: {
+        command: ["opencode", "run"],
+        usesBootstrap: false,
+        usesFile: false,
+        appendFile: true,
+      },
+      mode: "wait",
+      trace: false,
+      cwd: "C:/workspace",
+      executionEnv: undefined,
+      configDir: undefined,
+      artifactContext: {
+        runId: "run-1",
+        rootDir: "C:/workspace/.rundown/runs/run-1",
+        cwd: "C:/workspace",
+        keepArtifacts: false,
+        commandName: "run",
+      },
+      showAgentOutput: false,
+      emit,
+    } as unknown as ToolHandlerContext;
+
+    const result = await endHandler(context);
+
+    expect(result).toEqual({ skipExecution: true });
+    expect(emit).toHaveBeenCalledWith({
+      kind: "warn",
+      message: "End condition response was ambiguous; defaulting to no and continuing execution.",
+    });
+  });
+
   it("returns error when worker invocation fails", async () => {
     const runWorker = vi.fn(async () => {
       throw new Error("worker unavailable");
@@ -150,6 +284,7 @@ describe("endHandler", () => {
     const emit = vi.fn();
 
     const context = {
+      allTasks: [],
       payload: "there is no output to process",
       workerExecutor: { runWorker },
       workerPattern: {

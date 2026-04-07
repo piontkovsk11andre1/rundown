@@ -8,6 +8,7 @@ import type {
   MemoryResolverPort,
   SourceResolverPort,
 } from "../domain/ports/index.js";
+import { formatNoItemsFound, formatNoItemsFoundMatching } from "./run-task-utils.js";
 
 const MEMORY_INDEX_FILE_NAME = "memory-index.json";
 
@@ -63,7 +64,7 @@ export function createCleanMemory(
 
     const resolvedSources = await dependencies.sourceResolver.resolveSources(options.source);
     if (resolvedSources.length === 0) {
-      emit({ kind: "warn", message: "No Markdown files found matching: " + options.source });
+      emit({ kind: "warn", message: formatNoItemsFoundMatching("Markdown files", options.source) });
       return 3;
     }
 
@@ -72,7 +73,7 @@ export function createCleanMemory(
     const selectedCandidates = selectCandidates(candidates, options, olderThanMs, Date.now());
 
     if (selectedCandidates.length === 0) {
-      emit({ kind: "info", message: "No memory artifacts found for cleanup filters." });
+      emit({ kind: "info", message: formatNoItemsFound("memory artifacts for cleanup filters") });
       return 0;
     }
 

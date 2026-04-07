@@ -7,6 +7,7 @@ import type {
 } from "../domain/ports/index.js";
 import { formatRelativeTimestamp } from "../domain/relative-time.js";
 import { toCompactRunId } from "../domain/run-id.js";
+import { formatNoItemsFound } from "./run-task-utils.js";
 
 /**
  * Dependencies required to list and render previously completed runs.
@@ -78,7 +79,7 @@ export function createLogRuns(
 
     if (runs.length === 0) {
       // Mirror CLI behavior by reporting a friendly empty-state message.
-      emit({ kind: "info", message: "No matching completed runs found." });
+      emit({ kind: "info", message: formatNoItemsFound("matching completed runs") });
       return 0;
     }
 

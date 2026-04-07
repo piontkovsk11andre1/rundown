@@ -40,7 +40,7 @@ import {
 } from "./task-context-resolution.js";
 import { runVerifyRepairLoop } from "./verify-repair-loop.js";
 import { resolveWorkerPatternForInvocation } from "./resolve-worker.js";
-import { pluralize } from "./run-task-utils.js";
+import { formatNoItemsFound, formatNoItemsFoundFor, pluralize } from "./run-task-utils.js";
 import type {
   ArtifactStoreStatus,
   ArtifactRunMetadata,
@@ -500,14 +500,14 @@ export function createReverifyTask(
     });
     if (targetRuns.length === 0) {
       if (hasMultiRunSelection) {
-        emit({ kind: "error", message: "No completed runs found." });
+        emit({ kind: "error", message: formatNoItemsFound("completed runs") });
         return 3;
       }
 
       const target = runId === "latest"
         ? "latest completed"
         : runId;
-      emit({ kind: "error", message: "No saved runtime artifact run found for: " + target });
+      emit({ kind: "error", message: formatNoItemsFoundFor("saved runtime artifact run", target) });
       return 3;
     }
 

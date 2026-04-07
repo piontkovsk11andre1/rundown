@@ -5,6 +5,7 @@ import type {
   SourceResolverPort,
 } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
+import { formatNoItemsFound, formatNoItemsFoundMatching } from "./run-task-utils.js";
 
 /**
  * Dependencies required to resolve and render source-local memory.
@@ -47,7 +48,7 @@ export function createViewMemory(
   return async function viewMemory(options: ViewMemoryOptions): Promise<number> {
     const resolvedSources = await dependencies.sourceResolver.resolveSources(options.source);
     if (resolvedSources.length === 0) {
-      emit({ kind: "warn", message: "No Markdown files found matching: " + options.source });
+      emit({ kind: "warn", message: formatNoItemsFoundMatching("Markdown files", options.source) });
       return 3;
     }
 
@@ -71,7 +72,7 @@ export function createViewMemory(
     }
 
     if (memoryEntries.length === 0) {
-      emit({ kind: "info", message: "No memory entries found." });
+      emit({ kind: "info", message: formatNoItemsFound("memory entries") });
       return 1;
     }
 

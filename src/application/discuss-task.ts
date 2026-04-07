@@ -32,7 +32,7 @@ import {
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import { loadProjectTemplatesFromPorts } from "./project-templates.js";
 import { resolveWorkerPatternForInvocation } from "./resolve-worker.js";
-import { formatTaskLabel, pluralize } from "./run-task-utils.js";
+import { formatNoItemsFound, formatNoItemsFoundFor, formatNoItemsFoundMatching, formatTaskLabel, pluralize } from "./run-task-utils.js";
 import {
   resolveTaskContextFromRuntimeMetadata,
   validateRuntimeTaskMetadata,
@@ -235,7 +235,7 @@ export function createDiscussTask(
 
       if (!selectedRun) {
         const target = runId === "latest" ? "latest" : runId;
-        emit({ kind: "error", message: "No saved runtime artifact run found for: " + target });
+        emit({ kind: "error", message: formatNoItemsFoundFor("saved runtime artifact run", target) });
         return 3;
       }
 
@@ -287,7 +287,7 @@ export function createDiscussTask(
       // Resolve markdown sources up front so locking and selection operate on the same set.
       files = await dependencies.sourceResolver.resolveSources(source);
       if (files.length === 0) {
-        emit({ kind: "warn", message: "No Markdown files found matching: " + source });
+        emit({ kind: "warn", message: formatNoItemsFoundMatching("Markdown files", source) });
         return 3;
       }
 
@@ -374,7 +374,7 @@ export function createDiscussTask(
         // Select a single unchecked task according to configured sort behavior.
         const selectedTask = dependencies.taskSelector.selectNextTask(files, sortMode);
         if (!selectedTask) {
-          emit({ kind: "info", message: "No unchecked tasks found." });
+          emit({ kind: "info", message: formatNoItemsFound("unchecked tasks") });
           return 3;
         }
 
@@ -909,7 +909,7 @@ function resolveOptionalArtifactPath(
 
 function formatPhaseSummary(phases: FinishedRunScannedPhase[]): string {
   if (phases.length === 0) {
-    return "No execute/verify/repair phases were discovered in this run directory.";
+    return formatNoItemsFound("execute/verify/repair phases");
   }
 
   return phases.map((phase) => {
@@ -945,7 +945,7 @@ function formatPhaseDirList(phases: FinishedRunScannedPhase[]): string {
 
 function formatMissingLogsSummary(phases: FinishedRunScannedPhase[]): string {
   if (phases.length === 0) {
-    return "No phase artifacts were discovered, so no stdout/stderr logs are available.";
+    return formatNoItemsFound("phase artifacts");
   }
 
   const lines: string[] = [];

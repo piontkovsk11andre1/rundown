@@ -6,7 +6,7 @@ import {
   isWorkingDirectoryClean,
   resolveGitArtifactAndLockExcludes,
 } from "./git-operations.js";
-import { formatTaskLabel, pluralize } from "./run-task-utils.js";
+import { formatNoItemsFound, formatNoItemsFoundFor, formatTaskLabel, pluralize } from "./run-task-utils.js";
 import type {
   ArtifactRunMetadata,
   ArtifactStore,
@@ -130,14 +130,14 @@ export function createRevertTask(
       }
 
       if (hasMultiRunSelection) {
-        emit({ kind: "error", message: "No completed runs found." });
+        emit({ kind: "error", message: formatNoItemsFound("completed runs") });
         return 3;
       }
 
       const target = runId === "latest"
         ? "latest completed"
         : runId;
-      emit({ kind: "error", message: "No saved runtime artifact run found for: " + target });
+      emit({ kind: "error", message: formatNoItemsFoundFor("saved runtime artifact run", target) });
       return 3;
     }
 

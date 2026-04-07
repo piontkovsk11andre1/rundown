@@ -25,6 +25,7 @@ import {
 } from "./git-operations.js";
 import { runTaskIteration } from "./run-task-iteration.js";
 import { createCachedCommandExecutor } from "./cached-command-executor.js";
+import { formatNoItemsFound, formatNoItemsFoundMatching, pluralize } from "./run-task-utils.js";
 import {
   getAutomationWorkerCommand,
   isOpenCodeWorkerCommand,
@@ -401,7 +402,7 @@ export function createRunTaskExecution(
       const files = await dependencies.sourceResolver.resolveSources(source);
       resolvedFiles = files;
       if (files.length === 0) {
-        emit({ kind: "warn", message: "No Markdown files found matching: " + source });
+        emit({ kind: "warn", message: formatNoItemsFoundMatching("Markdown files", source) });
         return 3;
       }
 
@@ -487,11 +488,18 @@ export function createRunTaskExecution(
             state.runCompleted = true;
             if (state.tasksCompleted > 0) {
               if (emitCompletionMessage) {
-                emit({ kind: "success", message: "All tasks completed (" + state.tasksCompleted + " total)." });
+                emit({
+                  kind: "success",
+                  message: "All tasks completed ("
+                    + state.tasksCompleted
+                    + " "
+                    + pluralize(state.tasksCompleted, "task", "tasks")
+                    + " total).",
+                });
               }
               return 0;
             }
-            emit({ kind: "info", message: "No unchecked tasks found." });
+            emit({ kind: "info", message: formatNoItemsFound("unchecked tasks") });
             return 3;
           }
 

@@ -5,6 +5,7 @@ import type {
   PathOperationsPort,
 } from "../domain/ports/index.js";
 import { CONFIG_DIR_NAME } from "../domain/ports/config-dir-port.js";
+import { formatNoItemsFoundFor } from "./run-task-utils.js";
 
 /**
  * Dependencies required to resolve paths, inspect lock state, and emit user-facing messages
@@ -47,7 +48,7 @@ export function createUnlockTask(
 
     // Nothing to unlock when no lockfile exists for this source.
     if (!dependencies.fileSystem.exists(lockPath)) {
-      emit({ kind: "info", message: "No source lock found for: " + sourcePath });
+      emit({ kind: "info", message: formatNoItemsFoundFor("source lock", sourcePath) });
       return 3;
     }
 

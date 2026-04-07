@@ -25,6 +25,7 @@ import {
   resolveTaskContextFromRuntimeMetadata,
   validateRuntimeTaskMetadata,
 } from "./task-context-resolution.js";
+import { formatNoItemsFoundFor } from "./run-task-utils.js";
 import {
   collectTracePhaseArtifacts,
   formatAgentSignalsForTrace,
@@ -71,7 +72,7 @@ export async function runTraceOnlyEnrichment(
   const artifactBaseDir = dependencies.configDir?.configDir;
   const selectedRun = resolveLatestCompletedRun(dependencies.artifactStore, artifactBaseDir);
   if (!selectedRun) {
-    dependencies.emit({ kind: "error", message: "No saved runtime artifact run found for: latest completed" });
+    dependencies.emit({ kind: "error", message: formatNoItemsFoundFor("saved runtime artifact run", "latest completed") });
     return 3;
   }
 

@@ -7,6 +7,7 @@ import type {
   TaskSelectorPort,
 } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
+import { formatNoItemsFound, formatNoItemsFoundMatching } from "./run-task-utils.js";
 
 /**
  * Re-export of the domain-level task selection result for application consumers.
@@ -55,14 +56,14 @@ export function createNextTask(
     // Resolve all Markdown files that match the caller-provided source value.
     const files = await dependencies.sourceResolver.resolveSources(source);
     if (files.length === 0) {
-      emit({ kind: "warn", message: "No Markdown files found matching: " + source });
+      emit({ kind: "warn", message: formatNoItemsFoundMatching("Markdown files", source) });
       return 3;
     }
 
     // Select the next unchecked task according to the requested ordering mode.
     const result = dependencies.taskSelector.selectNextTask(files, sortMode);
     if (!result) {
-      emit({ kind: "info", message: "No unchecked tasks found." });
+      emit({ kind: "info", message: formatNoItemsFound("unchecked tasks") });
       return 3;
     }
 

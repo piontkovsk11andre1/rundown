@@ -4,7 +4,7 @@ import type {
   ConfigDirResult,
   DirectoryOpenerPort,
 } from "../domain/ports/index.js";
-import { pluralize } from "./run-task-utils.js";
+import { formatNoItemsFound, formatNoItemsFoundFor, pluralize } from "./run-task-utils.js";
 
 /**
  * Represents a saved runtime artifact run persisted by the artifact store.
@@ -87,7 +87,7 @@ export function createManageArtifacts(
         ? dependencies.artifactStore.latest(artifactBaseDir)
         : dependencies.artifactStore.find(runToOpen, artifactBaseDir);
       if (!run) {
-        emit({ kind: "error", message: "No saved runtime artifact run found for: " + runToOpen });
+        emit({ kind: "error", message: formatNoItemsFoundFor("saved runtime artifact run", runToOpen) });
         return 3;
       }
 
@@ -102,7 +102,7 @@ export function createManageArtifacts(
         ? dependencies.artifactStore.removeFailed(artifactBaseDir)
         : dependencies.artifactStore.removeSaved(artifactBaseDir);
       if (removed === 0) {
-        emit({ kind: "info", message: onlyFailed ? "No failed runtime artifacts found." : "No saved runtime artifacts found." });
+        emit({ kind: "info", message: onlyFailed ? formatNoItemsFound("failed runtime artifacts") : formatNoItemsFound("saved runtime artifacts") });
         return 0;
       }
 
@@ -122,7 +122,7 @@ export function createManageArtifacts(
       : dependencies.artifactStore.listSaved(artifactBaseDir);
 
     if (runs.length === 0) {
-      emit({ kind: "info", message: onlyFailed ? "No failed runtime artifacts found." : "No saved runtime artifacts found." });
+      emit({ kind: "info", message: onlyFailed ? formatNoItemsFound("failed runtime artifacts") : formatNoItemsFound("saved runtime artifacts") });
       return 0;
     }
 

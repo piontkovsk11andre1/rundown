@@ -11,6 +11,7 @@ import type {
   SourceResolverPort,
 } from "../domain/ports/index.js";
 import type { MemoryIndexEntry, MemoryIndexOrigin } from "../domain/ports/memory-writer-port.js";
+import { formatNoItemsFoundMatching } from "./run-task-utils.js";
 
 const MEMORY_INDEX_FILE_NAME = "memory-index.json";
 const MEMORY_FILE_SUFFIX = ".memory.md";
@@ -62,7 +63,7 @@ export function createValidateMemory(
   return async function validateMemory(options: ValidateMemoryOptions): Promise<number> {
     const resolvedSources = await dependencies.sourceResolver.resolveSources(options.source);
     if (resolvedSources.length === 0) {
-      emit({ kind: "warn", message: "No Markdown files found matching: " + options.source });
+      emit({ kind: "warn", message: formatNoItemsFoundMatching("Markdown files", options.source) });
       return 3;
     }
 

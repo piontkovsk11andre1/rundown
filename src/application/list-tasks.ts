@@ -5,7 +5,7 @@ import { sortFiles } from "../domain/sorting.js";
 import type { FileSystem } from "../domain/ports/file-system.js";
 import type { SourceResolverPort } from "../domain/ports/source-resolver-port.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
-import { pluralize } from "./run-task-utils.js";
+import { formatNoItemsFound, formatNoItemsFoundMatching, pluralize } from "./run-task-utils.js";
 
 /**
  * Dependencies required to list tasks from Markdown sources.
@@ -42,7 +42,7 @@ export function createListTasks(
 
     const files = await dependencies.sourceResolver.resolveSources(source);
     if (files.length === 0) {
-      emit({ kind: "warn", message: "No Markdown files found matching: " + source });
+      emit({ kind: "warn", message: formatNoItemsFoundMatching("Markdown files", source) });
       return 3;
     }
 
@@ -101,7 +101,7 @@ export function createListTasks(
     }
 
     if (count === 0) {
-      emit({ kind: "info", message: "No tasks found." });
+      emit({ kind: "info", message: formatNoItemsFound("tasks") });
     } else {
       emit({
         kind: "info",

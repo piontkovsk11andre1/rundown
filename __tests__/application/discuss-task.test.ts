@@ -490,8 +490,8 @@ describe("discuss-task", () => {
     expect(prompt).toContain("exec=(missing)");
     expect(prompt).toContain("verify=- (none)");
     expect(prompt).toContain("repair=- (none)");
-    expect(prompt).toContain("phase=No execute/verify/repair phases were discovered in this run directory.");
-    expect(prompt).toContain("missing=No phase artifacts were discovered, so no stdout/stderr logs are available.");
+    expect(prompt).toContain("phase=No execute/verify/repair phases found.");
+    expect(prompt).toContain("missing=No phase artifacts found.");
   });
 
   it("assembles discuss-finished template vars for a complete run with execute/verify/repair phases", async () => {

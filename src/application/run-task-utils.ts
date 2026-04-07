@@ -134,3 +134,24 @@ export function hasLongOptionVariant(args: string[], options: string[]): boolean
 export function pluralize(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : plural;
 }
+
+/**
+ * Returns a standardized empty-state message.
+ */
+export function formatNoItemsFound(label: string): string {
+  return "No " + label + " found.";
+}
+
+/**
+ * Returns a standardized empty-state message scoped to a selector value.
+ */
+export function formatNoItemsFoundFor(label: string, selector: string): string {
+  return "No " + label + " found for: " + selector;
+}
+
+/**
+ * Returns a standardized empty-state message scoped to a matching expression.
+ */
+export function formatNoItemsFoundMatching(label: string, expression: string): string {
+  return "No " + label + " found matching: " + expression;
+}

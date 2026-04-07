@@ -133,6 +133,7 @@ export interface VerifyOptions {
   workerPattern: ParsedWorkerPattern;
   verificationStore: VerificationStore;
   mode?: RunnerMode;
+  onWorkerOutput?: (stdout: string, stderr: string) => void;
   trace?: boolean;
   cwd?: string;
   configDir?: string;
@@ -216,6 +217,7 @@ export async function verify(options: VerifyOptions): Promise<VerifyResult> {
   });
 
   // Persist the normalized sidecar output and return final pass/fail status.
+  options.onWorkerOutput?.(runResult.stdout, runResult.stderr);
   const result = parseVerificationResult(runResult);
   options.verificationStore.write(options.task, result.sidecarContent);
   return { valid: result.ok, formatWarning: result.formatWarning };

@@ -128,6 +128,7 @@ export interface PlanTaskCommandOptions {
   forceUnlock: boolean;
   ignoreCliBlock: boolean;
   cliBlockTimeoutMs?: number;
+  verbose?: boolean;
 }
 
 export interface ResearchTaskCommandOptions {
@@ -145,6 +146,7 @@ export interface ResearchTaskCommandOptions {
   ignoreCliBlock: boolean;
   cliBlockTimeoutMs?: number;
   configDirOption?: string;
+  verbose?: boolean;
 }
 
 export type AppUseCaseFactories = {

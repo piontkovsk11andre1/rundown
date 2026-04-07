@@ -295,6 +295,7 @@ export function createReverifyCommandAction({
     const varsFileOption = opts.varsFile as string | boolean | undefined;
     const cliTemplateVarArgs = (opts.var as string[] | undefined) ?? [];
     const workerPattern = resolveWorkerPattern(opts.worker, getWorkerFromSeparator);
+    const showAgentOutput = resolveShowAgentOutputOption(opts);
     const verbose = resolveVerboseOption(opts);
 
     // Execute the re-verification workflow in the application layer.
@@ -309,6 +310,7 @@ export function createReverifyCommandAction({
       dryRun,
       printPrompt,
       keepArtifacts,
+      showAgentOutput,
       varsFileOption,
       cliTemplateVarArgs,
       trace,

@@ -26,6 +26,8 @@ export interface TaskRepairOptions {
   maxRetries: number;
   /** Optional execution mode for the spawned process. */
   mode?: ProcessRunMode;
+  /** Optional callback invoked with raw worker stdout/stderr after each repair attempt. */
+  onWorkerOutput?: (stdout: string, stderr: string) => void;
   /** Enables verbose trace output for debugging repair behavior. */
   trace?: boolean;
   /** Working directory used when executing repair and verification steps. */

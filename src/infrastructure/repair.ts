@@ -39,6 +39,8 @@ export interface RepairOptions {
   verificationStore: VerificationStore;
   /** Optional worker run mode override. */
   mode?: RunnerMode;
+  /** Optional callback invoked with raw worker stdout/stderr after each repair run. */
+  onWorkerOutput?: (stdout: string, stderr: string) => void;
   /** Enables verbose worker diagnostics when true. */
   trace?: boolean;
   /** Working directory for worker and CLI block execution. */
@@ -132,7 +134,7 @@ export async function repair(options: RepairOptions): Promise<RepairResult> {
       );
 
     // Execute one repair attempt with the prepared prompt.
-    await runWorker({
+    const runResult = await runWorker({
       workerPattern: options.workerPattern,
       prompt,
       mode: options.mode ?? "wait",
@@ -144,6 +146,7 @@ export async function repair(options: RepairOptions): Promise<RepairResult> {
       artifactPhase: "repair",
       artifactExtra: { attempt: attempts },
     });
+    options.onWorkerOutput?.(runResult.stdout, runResult.stderr);
 
     // Re-run verification immediately after each repair attempt.
     const { valid } = await verify({

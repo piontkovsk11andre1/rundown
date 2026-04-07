@@ -1249,6 +1249,19 @@ describe("CLI reverify option normalization", () => {
     expect(call.trace).toBe(true);
   });
 
+  it("passes --show-agent-output option to reverify task", async () => {
+    const reverifyTask = vi.fn(async () => 0);
+    const call = await invokeReverifyAndCaptureCall([
+      "reverify",
+      "--show-agent-output",
+      "--worker",
+      "opencode",
+      "run",
+    ], reverifyTask);
+
+    expect(call.showAgentOutput).toBe(true);
+  });
+
   it("parses --last value for reverify", async () => {
     const reverifyTask = vi.fn(async () => 0);
     const call = await invokeReverifyAndCaptureCall([

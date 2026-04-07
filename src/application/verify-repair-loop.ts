@@ -46,6 +46,7 @@ export interface VerifyRepairLoopInput {
   executionEnv?: Record<string, string>;
   artifactContext: ArtifactContext;
   trace: boolean;
+  showAgentOutput?: boolean;
   verbose?: boolean;
   cliBlockExecutor?: CommandExecutor;
   cliExecutionOptions?: CommandExecutionOptions;
@@ -68,6 +69,19 @@ export async function runVerifyRepairLoop(
   input: VerifyRepairLoopInput,
 ): Promise<VerifyRepairLoopResult> {
   const emit = dependencies.output.emit.bind(dependencies.output);
+  const emitWorkerOutput = (stdout: string, stderr: string): void => {
+    if (!input.showAgentOutput) {
+      return;
+    }
+
+    if (stdout.trim().length > 0) {
+      emit({ kind: "text", text: stdout });
+    }
+
+    if (stderr.trim().length > 0) {
+      emit({ kind: "stderr", text: stderr });
+    }
+  };
   const repairIndent = "  ";
   const indentRepairMessage = (message: string): string => `${repairIndent}${message}`;
   const formatRepairAttempt = (attemptNumber: number): string => "Repair attempt "
@@ -174,6 +188,7 @@ export async function runVerifyRepairLoop(
     templateVars: input.templateVars,
     executionEnv: input.executionEnv,
     artifactContext: input.artifactContext,
+    onWorkerOutput: emitWorkerOutput,
     trace: input.trace,
     cliBlockExecutor: input.cliBlockExecutor,
     cliExecutionOptions: input.cliExecutionOptions,
@@ -248,6 +263,7 @@ export async function runVerifyRepairLoop(
       templateVars: input.templateVars,
       executionEnv: input.executionEnv,
       artifactContext: input.artifactContext,
+      onWorkerOutput: emitWorkerOutput,
       trace: input.trace,
       cliBlockExecutor: input.cliBlockExecutor,
       cliExecutionOptions: input.cliExecutionOptions,

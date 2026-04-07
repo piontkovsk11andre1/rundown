@@ -22,6 +22,8 @@ export interface TaskVerificationOptions {
   workerPattern: ParsedWorkerPattern;
   // Optional process execution mode (for example, inherited or captured output).
   mode?: ProcessRunMode;
+  // Optional callback invoked with raw worker stdout/stderr after verification executes.
+  onWorkerOutput?: (stdout: string, stderr: string) => void;
   // Enables verbose tracing output when true.
   trace?: boolean;
   // Working directory for worker execution.

@@ -2208,7 +2208,7 @@ describe.sequential("CLI integration", () => {
     expect(combinedOutput.includes("unknown option")).toBe(true);
   });
 
-  it("reverify rejects run-only --show-agent-output option", async () => {
+  it("reverify accepts --show-agent-output option", async () => {
     const workspace = makeTempWorkspace();
 
     const result = await runCli([
@@ -2219,15 +2219,15 @@ describe.sequential("CLI integration", () => {
       "run",
     ], workspace);
 
-    expect(result.code).toBe(1);
+    expect(result.code).toBe(3);
     const combinedOutput = [
       ...result.errors,
       ...result.logs,
       ...result.stdoutWrites,
       ...result.stderrWrites,
     ].join("\n").toLowerCase();
-    expect(combinedOutput.includes("--show-agent-output")).toBe(true);
-    expect(combinedOutput.includes("unknown option")).toBe(true);
+    expect(combinedOutput.includes("--show-agent-output")).toBe(false);
+    expect(combinedOutput.includes("unknown option")).toBe(false);
   });
 
   it("reverify returns 0 when verification passes and does not change markdown checkboxes", async () => {
@@ -2272,6 +2272,28 @@ describe.sequential("CLI integration", () => {
 
     expect(result.code).toBe(0);
     expect(fs.readFileSync(roadmapPath, "utf-8")).toBe(markdown);
+  });
+
+  it("reverify shows worker stderr when --show-agent-output is set", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [x] Write docs\n", "utf-8");
+    writeSavedRun(workspace, {
+      runId: "run-20260317T000000000Z-completed",
+      status: "completed",
+    });
+
+    const result = await runCli([
+      "reverify",
+      "--show-agent-output",
+      "--",
+      "node",
+      "-e",
+      "console.error('reverify worker diagnostic');console.log('OK')",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.stderrWrites.some((line) => line.includes("reverify worker diagnostic"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Re-verification passed."))).toBe(true);
   });
 
   it("reverify --keep-artifacts persists run metadata with reverify-completed status", async () => {

@@ -180,6 +180,7 @@ program
   .option("--dry-run", "Show what would be executed without running it", false)
   .option("--print-prompt", "Print the rendered verify prompt and exit", false)
   .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
+  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
   .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
   .option("-v, --verbose", "Show detailed per-task run diagnostics (within grouped output)", false)
   .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")

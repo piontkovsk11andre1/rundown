@@ -107,6 +107,7 @@ export interface ReverifyTaskOptions {
   dryRun: boolean;
   printPrompt: boolean;
   keepArtifacts: boolean;
+  showAgentOutput?: boolean;
   varsFileOption?: string | boolean | undefined;
   cliTemplateVarArgs?: string[];
   trace: boolean;
@@ -136,6 +137,7 @@ export function createReverifyTask(
       dryRun,
       printPrompt,
       keepArtifacts,
+      showAgentOutput = false,
       varsFileOption,
       cliTemplateVarArgs,
       trace,
@@ -466,6 +468,7 @@ export function createReverifyTask(
           executionEnv: rundownVarEnv,
           artifactContext,
           trace,
+          showAgentOutput,
           cliBlockExecutor,
           cliExecutionOptions: cliExecutionOptionsWithTemplateFailureAbort,
         });

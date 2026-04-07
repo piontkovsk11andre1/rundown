@@ -5,7 +5,6 @@ import type {
   Clock,
   ConfigDirResult,
 } from "../domain/ports/index.js";
-import pc from "picocolors";
 import { formatRelativeTimestamp } from "../domain/relative-time.js";
 import { toCompactRunId } from "../domain/run-id.js";
 
@@ -129,36 +128,16 @@ function toLogRunEntry(run: ArtifactRunMetadata, now: Date): LogRunEntry {
  * Formats a single run entry as a compact, pipe-delimited terminal line.
  */
 function formatLogLine(entry: LogRunEntry): string {
-  const line = [
+  return [
     entry.shortRunId,
     entry.relativeTime,
-    formatStatus(entry.status),
+    `[${entry.status}]`,
     entry.taskSummary,
     `source=${entry.source}`,
     `command=${entry.commandName}`,
     `sha=${entry.shortCommitSha ?? "-"}`,
     `revertable=${entry.revertable ? "yes" : "no"}`,
   ].join(" | ");
-
-  return entry.revertable ? line : pc.dim(line);
-}
-
-/**
- * Applies consistent status coloring used by run list output.
- */
-function formatStatus(status: string): string {
-  const label = `[${status}]`;
-  switch (status.toLowerCase()) {
-    case "completed":
-      return pc.green(label);
-    case "failed":
-      return pc.red(label);
-    case "cancelled":
-    case "canceled":
-      return pc.yellow(label);
-    default:
-      return pc.blue(label);
-  }
 }
 
 /**

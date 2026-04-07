@@ -597,6 +597,54 @@ describe("revert-task", () => {
     ]);
   });
 
+  it("emits group-start/group-end events for each revert operation", async () => {
+    const runs: ArtifactRunMetadata[] = [
+      createRunMetadata({
+        runId: "run-oldest",
+        status: "completed",
+        commitSha: "sha-oldest",
+        startedAt: "2026-03-19T18:00:00.000Z",
+      }),
+      createRunMetadata({
+        runId: "run-newest",
+        status: "completed",
+        commitSha: "sha-newest",
+        startedAt: "2026-03-19T18:00:20.000Z",
+      }),
+    ];
+
+    const { revertTask, events } = createDependencies(runs, {
+      gitRun: async (args) => {
+        if (args[0] === "revert" && args[2] === "--no-edit") {
+          return "";
+        }
+        return undefined;
+      },
+    });
+
+    const code = await revertTask(createOptions({ all: true, method: "revert" }));
+
+    expect(code).toBe(0);
+    const groupStarts = events.filter((event) => event.kind === "group-start");
+    const groupEnds = events.filter((event) => event.kind === "group-end");
+    expect(groupStarts).toEqual([
+      {
+        kind: "group-start",
+        label: "Revert operation: /workspace/roadmap.md:1 [#0] Do work",
+        counter: { current: 1, total: 2 },
+      },
+      {
+        kind: "group-start",
+        label: "Revert operation: /workspace/roadmap.md:1 [#0] Do work",
+        counter: { current: 2, total: 2 },
+      },
+    ]);
+    expect(groupEnds).toEqual([
+      { kind: "group-end", status: "success" },
+      { kind: "group-end", status: "success" },
+    ]);
+  });
+
   it("reverts --last N most recent committed runs newest-first", async () => {
     const runs: ArtifactRunMetadata[] = [
       createRunMetadata({
@@ -996,6 +1044,48 @@ describe("revert-task", () => {
         }),
       }),
     );
+  });
+
+  it("emits group-end failure when a revert operation fails", async () => {
+    const runs: ArtifactRunMetadata[] = [
+      createRunMetadata({
+        runId: "run-oldest",
+        status: "completed",
+        commitSha: "sha-oldest",
+        startedAt: "2026-03-19T18:00:00.000Z",
+      }),
+      createRunMetadata({
+        runId: "run-newest",
+        status: "completed",
+        commitSha: "sha-newest",
+        startedAt: "2026-03-19T18:00:20.000Z",
+      }),
+    ];
+
+    const { revertTask, events } = createDependencies(runs, {
+      gitRun: async (args) => {
+        if (args[0] === "revert" && args[1] === "sha-newest" && args[2] === "--no-edit") {
+          return "";
+        }
+        if (args[0] === "revert" && args[1] === "sha-oldest" && args[2] === "--no-edit") {
+          throw new Error("conflict while reverting");
+        }
+        return undefined;
+      },
+    });
+
+    const code = await revertTask(createOptions({ all: true, method: "revert" }));
+
+    expect(code).toBe(1);
+    const groupEnds = events.filter((event) => event.kind === "group-end");
+    expect(groupEnds).toEqual([
+      { kind: "group-end", status: "success" },
+      {
+        kind: "group-end",
+        status: "failure",
+        message: "Revert failed for run-oldest.",
+      },
+    ]);
   });
 
   it("uses newest-first order in --method revert dry-run output", async () => {

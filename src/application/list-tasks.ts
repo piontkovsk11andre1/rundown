@@ -5,6 +5,7 @@ import { sortFiles } from "../domain/sorting.js";
 import type { FileSystem } from "../domain/ports/file-system.js";
 import type { SourceResolverPort } from "../domain/ports/source-resolver-port.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
+import { pluralize } from "./run-task-utils.js";
 
 /**
  * Dependencies required to list tasks from Markdown sources.
@@ -35,10 +36,6 @@ export function createListTasks(
   dependencies: ListTasksDependencies,
 ): (options: ListTasksOptions) => Promise<number> {
   const emit = dependencies.output.emit.bind(dependencies.output);
-
-  function pluralize(count: number, singular: string, plural: string): string {
-    return count === 1 ? singular : plural;
-  }
 
   return async function listTasks(options: ListTasksOptions): Promise<number> {
     const { source, sortMode, includeAll } = options;

@@ -213,7 +213,7 @@ describe.sequential("memory CLI integration", () => {
     const result = await runCli(["memory-view", "roadmap.md"], workspace);
 
     expect(result.code).toBe(1);
-    expect(result.logs.some((line) => line.includes("No memory found."))).toBe(true);
+    expect(result.logs.some((line) => line.includes("No memory entries found."))).toBe(true);
   });
 
   it("memory-validate reports issues and exits 1", async () => {

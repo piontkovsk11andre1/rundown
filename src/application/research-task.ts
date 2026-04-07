@@ -22,6 +22,7 @@ import { parseUncheckedTodoLines } from "../domain/todo-lines.js";
 import { loadProjectTemplatesFromPorts } from "./project-templates.js";
 import { resolveWorkerPatternForInvocation } from "./resolve-worker.js";
 import { FileLockError } from "../domain/ports/file-lock.js";
+import { pluralize } from "./run-task-utils.js";
 import type {
   ArtifactRunContext,
   ArtifactStore,
@@ -101,6 +102,25 @@ export function createResearchTask(
 ): (options: ResearchTaskOptions) => Promise<number> {
   const emit = dependencies.output.emit.bind(dependencies.output);
 
+  const emitResearchGroupStart = (label: string): void => {
+    emit({
+      kind: "group-start",
+      label,
+      counter: {
+        current: 1,
+        total: 1,
+      },
+    });
+  };
+
+  const emitResearchGroupSuccess = (): void => {
+    emit({ kind: "group-end", status: "success" });
+  };
+
+  const emitResearchGroupFailure = (message: string): void => {
+    emit({ kind: "group-end", status: "failure", message });
+  };
+
   return async function researchTask(options: ResearchTaskOptions): Promise<number> {
     const {
       source,
@@ -137,123 +157,136 @@ export function createResearchTask(
         return 3;
       }
 
-      const varsFilePath = resolveTemplateVarsFilePath(
-        varsFileOption,
-        dependencies.configDir?.configDir,
-      );
-      const cwd = dependencies.workingDirectory.cwd();
-      const fileTemplateVars = varsFilePath
-        ? dependencies.templateVarsLoader.load(
-          varsFilePath,
-          cwd,
+      emitResearchGroupStart(deriveDocumentIntent(sourceDocument, source));
+      try {
+        const varsFilePath = resolveTemplateVarsFilePath(
+          varsFileOption,
           dependencies.configDir?.configDir,
-        )
-        : {};
-      const cliTemplateVars = parseCliTemplateVars(cliTemplateVarArgs);
-      const extraTemplateVars: ExtraTemplateVars = {
-        ...fileTemplateVars,
-        ...cliTemplateVars,
-      };
-      const rundownVarEnv = buildRundownVarEnv(extraTemplateVars);
-      const templateVarsWithUserVariables: ExtraTemplateVars = {
-        ...extraTemplateVars,
-        userVariables: formatTemplateVarsForPrompt(extraTemplateVars),
-      };
-
-      const templates = loadProjectTemplatesFromPorts(
-        dependencies.configDir,
-        dependencies.templateLoader,
-        dependencies.pathOperations,
-      );
-      const vars: TemplateVars = {
-        ...templateVarsWithUserVariables,
-        ...buildMemoryTemplateVars({
-          memoryMetadata: dependencies.memoryResolver?.resolve(source) ?? null,
-        }),
-        traceInstructions: getTraceInstructions(trace),
-        task: deriveDocumentIntent(sourceDocument, source),
-        file: source,
-        context: sourceDocument,
-        taskIndex: 0,
-        taskLine: 1,
-        source: sourceDocument,
-      };
-      const renderedPrompt = renderTemplate(templates.research, vars);
-      const promptCliBlockCount = extractCliBlocks(renderedPrompt).length;
-      const dryRunSuppressesCliExpansion = dryRun && !printPrompt;
-      let prompt = renderedPrompt;
-
-      if (!ignoreCliBlock && !dryRunSuppressesCliExpansion) {
-        try {
-          prompt = await expandCliBlocks(
-            renderedPrompt,
-            dependencies.cliBlockExecutor,
+        );
+        const cwd = dependencies.workingDirectory.cwd();
+        const fileTemplateVars = varsFilePath
+          ? dependencies.templateVarsLoader.load(
+            varsFilePath,
             cwd,
-            {
-              ...cliExecutionOptionsWithTemplateFailureAbort,
-              env: {
-                ...(cliExecutionOptionsWithTemplateFailureAbort?.env ?? {}),
-                ...rundownVarEnv,
+            dependencies.configDir?.configDir,
+          )
+          : {};
+        const cliTemplateVars = parseCliTemplateVars(cliTemplateVarArgs);
+        const extraTemplateVars: ExtraTemplateVars = {
+          ...fileTemplateVars,
+          ...cliTemplateVars,
+        };
+        const rundownVarEnv = buildRundownVarEnv(extraTemplateVars);
+        const templateVarsWithUserVariables: ExtraTemplateVars = {
+          ...extraTemplateVars,
+          userVariables: formatTemplateVarsForPrompt(extraTemplateVars),
+        };
+
+        const templates = loadProjectTemplatesFromPorts(
+          dependencies.configDir,
+          dependencies.templateLoader,
+          dependencies.pathOperations,
+        );
+        const vars: TemplateVars = {
+          ...templateVarsWithUserVariables,
+          ...buildMemoryTemplateVars({
+            memoryMetadata: dependencies.memoryResolver?.resolve(source) ?? null,
+          }),
+          traceInstructions: getTraceInstructions(trace),
+          task: deriveDocumentIntent(sourceDocument, source),
+          file: source,
+          context: sourceDocument,
+          taskIndex: 0,
+          taskLine: 1,
+          source: sourceDocument,
+        };
+        const renderedPrompt = renderTemplate(templates.research, vars);
+        const promptCliBlockCount = extractCliBlocks(renderedPrompt).length;
+        const dryRunSuppressesCliExpansion = dryRun && !printPrompt;
+        let prompt = renderedPrompt;
+
+        if (!ignoreCliBlock && !dryRunSuppressesCliExpansion) {
+          try {
+            prompt = await expandCliBlocks(
+              renderedPrompt,
+              dependencies.cliBlockExecutor,
+              cwd,
+              {
+                ...cliExecutionOptionsWithTemplateFailureAbort,
+                env: {
+                  ...(cliExecutionOptionsWithTemplateFailureAbort?.env ?? {}),
+                  ...rundownVarEnv,
+                },
               },
-            },
-          );
-        } catch (error) {
-          if (error instanceof TemplateCliBlockExecutionError) {
-            const exitCodeLabel = error.exitCode === null ? "unknown" : String(error.exitCode);
-            emit({
-              kind: "error",
-              message: "`cli` fenced command failed in "
+            );
+          } catch (error) {
+            if (error instanceof TemplateCliBlockExecutionError) {
+              const exitCodeLabel = error.exitCode === null ? "unknown" : String(error.exitCode);
+              const message = "`cli` fenced command failed in "
                 + error.templateLabel
                 + " (exit "
                 + exitCodeLabel
                 + "): "
                 + error.command
-                + ". Aborting run.",
-            });
-            return 1;
+                + ". Aborting run.";
+              emit({
+                kind: "error",
+                message,
+              });
+              emitResearchGroupFailure(message);
+              return 1;
+            }
+            throw error;
           }
-          throw error;
         }
-      }
 
-      if (printPrompt) {
-        emit({ kind: "text", text: prompt });
+        if (printPrompt) {
+          emit({ kind: "text", text: prompt });
+          emitResearchGroupSuccess();
+          return 0;
+        }
+
+        const loadedWorkerConfig = dependencies.configDir?.configDir
+          ? dependencies.workerConfigPort.load(dependencies.configDir.configDir)
+          : undefined;
+        const resolvedWorker = resolveWorkerPatternForInvocation({
+          commandName: "research",
+          workerConfig: loadedWorkerConfig,
+          source: sourceDocument,
+          cliWorkerPattern: workerPattern,
+          emit,
+        });
+        const resolvedWorkerCommand = resolvedWorker.workerCommand;
+
+        if (resolvedWorkerCommand.length === 0) {
+          const message = "No worker command available: .rundown/config.json has no configured worker, and no CLI worker was provided. Use --worker <pattern> or -- <command>.";
+          emit({
+            kind: "error",
+            message,
+          });
+          emitResearchGroupFailure(message);
+          return 1;
+        }
+
+        if (dryRunSuppressesCliExpansion && !ignoreCliBlock) {
+          emit({
+            kind: "info",
+            message: "Dry run — skipped `cli` fenced block execution; would execute "
+              + promptCliBlockCount
+              + " "
+              + pluralize(promptCliBlockCount, "block", "blocks")
+              + ".",
+          });
+        }
+        emit({ kind: "info", message: "Dry run - would research: " + resolvedWorkerCommand.join(" ") });
+        emit({ kind: "info", message: "Prompt length: " + prompt.length + " chars" });
+        emitResearchGroupSuccess();
         return 0;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        emitResearchGroupFailure(message);
+        throw error;
       }
-
-      const loadedWorkerConfig = dependencies.configDir?.configDir
-        ? dependencies.workerConfigPort.load(dependencies.configDir.configDir)
-        : undefined;
-      const resolvedWorker = resolveWorkerPatternForInvocation({
-        commandName: "research",
-        workerConfig: loadedWorkerConfig,
-        source: sourceDocument,
-        cliWorkerPattern: workerPattern,
-        emit,
-      });
-      const resolvedWorkerCommand = resolvedWorker.workerCommand;
-
-      if (resolvedWorkerCommand.length === 0) {
-        emit({
-          kind: "error",
-          message: "No worker command available: .rundown/config.json has no configured worker, and no CLI worker was provided. Use --worker <pattern> or -- <command>.",
-        });
-        return 1;
-      }
-
-      if (dryRunSuppressesCliExpansion && !ignoreCliBlock) {
-        emit({
-          kind: "info",
-          message: "Dry run — skipped `cli` fenced block execution; would execute "
-            + promptCliBlockCount
-            + " block"
-            + (promptCliBlockCount === 1 ? "" : "s")
-            + ".",
-        });
-      }
-      emit({ kind: "info", message: "Dry run - would research: " + resolvedWorkerCommand.join(" ") });
-      emit({ kind: "info", message: "Prompt length: " + prompt.length + " chars" });
-      return 0;
     };
 
     if (dryRun || printPrompt) {
@@ -324,237 +357,260 @@ export function createResearchTask(
         return 3;
       }
 
-      const varsFilePath = resolveTemplateVarsFilePath(
-        varsFileOption,
-        dependencies.configDir?.configDir,
-      );
-      const cwd = dependencies.workingDirectory.cwd();
-      const fileTemplateVars = varsFilePath
-        ? dependencies.templateVarsLoader.load(
-          varsFilePath,
-          cwd,
+      emitResearchGroupStart(deriveDocumentIntent(sourceDocument, source));
+      try {
+        const varsFilePath = resolveTemplateVarsFilePath(
+          varsFileOption,
           dependencies.configDir?.configDir,
-        )
-        : {};
-      const cliTemplateVars = parseCliTemplateVars(cliTemplateVarArgs);
-      const extraTemplateVars: ExtraTemplateVars = {
-        ...fileTemplateVars,
-        ...cliTemplateVars,
-      };
-      const rundownVarEnv = buildRundownVarEnv(extraTemplateVars);
-      const templateVarsWithUserVariables: ExtraTemplateVars = {
-        ...extraTemplateVars,
-        userVariables: formatTemplateVarsForPrompt(extraTemplateVars),
-      };
-
-      const templates = loadProjectTemplatesFromPorts(
-        dependencies.configDir,
-        dependencies.templateLoader,
-        dependencies.pathOperations,
-      );
-      const vars: TemplateVars = {
-        ...templateVarsWithUserVariables,
-        ...buildMemoryTemplateVars({
-          memoryMetadata: dependencies.memoryResolver?.resolve(source) ?? null,
-        }),
-        traceInstructions: getTraceInstructions(trace),
-        task: deriveDocumentIntent(sourceDocument, source),
-        file: source,
-        context: sourceDocument,
-        taskIndex: 0,
-        taskLine: 1,
-        source: sourceDocument,
-      };
-      const renderedPrompt = renderTemplate(templates.research, vars);
-      const promptCliBlockCount = extractCliBlocks(renderedPrompt).length;
-      const dryRunSuppressesCliExpansion = dryRun && !printPrompt;
-      let prompt = renderedPrompt;
-
-      if (!ignoreCliBlock && !dryRunSuppressesCliExpansion) {
-        try {
-          prompt = await expandCliBlocks(
-            renderedPrompt,
-            dependencies.cliBlockExecutor,
+        );
+        const cwd = dependencies.workingDirectory.cwd();
+        const fileTemplateVars = varsFilePath
+          ? dependencies.templateVarsLoader.load(
+            varsFilePath,
             cwd,
-            {
-              ...cliExecutionOptionsWithTemplateFailureAbort,
-              env: {
-                ...(cliExecutionOptionsWithTemplateFailureAbort?.env ?? {}),
-                ...rundownVarEnv,
+            dependencies.configDir?.configDir,
+          )
+          : {};
+        const cliTemplateVars = parseCliTemplateVars(cliTemplateVarArgs);
+        const extraTemplateVars: ExtraTemplateVars = {
+          ...fileTemplateVars,
+          ...cliTemplateVars,
+        };
+        const rundownVarEnv = buildRundownVarEnv(extraTemplateVars);
+        const templateVarsWithUserVariables: ExtraTemplateVars = {
+          ...extraTemplateVars,
+          userVariables: formatTemplateVarsForPrompt(extraTemplateVars),
+        };
+
+        const templates = loadProjectTemplatesFromPorts(
+          dependencies.configDir,
+          dependencies.templateLoader,
+          dependencies.pathOperations,
+        );
+        const vars: TemplateVars = {
+          ...templateVarsWithUserVariables,
+          ...buildMemoryTemplateVars({
+            memoryMetadata: dependencies.memoryResolver?.resolve(source) ?? null,
+          }),
+          traceInstructions: getTraceInstructions(trace),
+          task: deriveDocumentIntent(sourceDocument, source),
+          file: source,
+          context: sourceDocument,
+          taskIndex: 0,
+          taskLine: 1,
+          source: sourceDocument,
+        };
+        const renderedPrompt = renderTemplate(templates.research, vars);
+        const promptCliBlockCount = extractCliBlocks(renderedPrompt).length;
+        const dryRunSuppressesCliExpansion = dryRun && !printPrompt;
+        let prompt = renderedPrompt;
+
+        if (!ignoreCliBlock && !dryRunSuppressesCliExpansion) {
+          try {
+            prompt = await expandCliBlocks(
+              renderedPrompt,
+              dependencies.cliBlockExecutor,
+              cwd,
+              {
+                ...cliExecutionOptionsWithTemplateFailureAbort,
+                env: {
+                  ...(cliExecutionOptionsWithTemplateFailureAbort?.env ?? {}),
+                  ...rundownVarEnv,
+                },
               },
-            },
-          );
-        } catch (error) {
-          if (error instanceof TemplateCliBlockExecutionError) {
-            const exitCodeLabel = error.exitCode === null ? "unknown" : String(error.exitCode);
-            emit({
-              kind: "error",
-              message: "`cli` fenced command failed in "
+            );
+          } catch (error) {
+            if (error instanceof TemplateCliBlockExecutionError) {
+              const exitCodeLabel = error.exitCode === null ? "unknown" : String(error.exitCode);
+              const message = "`cli` fenced command failed in "
                 + error.templateLabel
                 + " (exit "
                 + exitCodeLabel
                 + "): "
                 + error.command
-                + ". Aborting run.",
-            });
-            return 1;
+                + ". Aborting run.";
+              emit({
+                kind: "error",
+                message,
+              });
+              emitResearchGroupFailure(message);
+              return 1;
+            }
+            throw error;
           }
-          throw error;
         }
-      }
 
-      if (printPrompt) {
-        emit({ kind: "text", text: prompt });
-        return 0;
-      }
-
-      const loadedWorkerConfig = dependencies.configDir?.configDir
-        ? dependencies.workerConfigPort.load(dependencies.configDir.configDir)
-        : undefined;
-      const resolvedWorker = resolveWorkerPatternForInvocation({
-        commandName: "research",
-        workerConfig: loadedWorkerConfig,
-        source: sourceDocument,
-        cliWorkerPattern: workerPattern,
-        emit,
-      });
-      const resolvedWorkerCommand = resolvedWorker.workerCommand;
-      const resolvedWorkerPattern = resolvedWorker.workerPattern;
-
-      if (resolvedWorkerCommand.length === 0) {
-        emit({
-          kind: "error",
-          message: "No worker command available: .rundown/config.json has no configured worker, and no CLI worker was provided. Use --worker <pattern> or -- <command>.",
-        });
-        return 1;
-      }
-
-      if (dryRun) {
-        if (dryRunSuppressesCliExpansion && !ignoreCliBlock) {
-          emit({
-            kind: "info",
-            message: "Dry run — skipped `cli` fenced block execution; would execute "
-              + promptCliBlockCount
-              + " block"
-              + (promptCliBlockCount === 1 ? "" : "s")
-              + ".",
-          });
+        if (printPrompt) {
+          emit({ kind: "text", text: prompt });
+          emitResearchGroupSuccess();
+          return 0;
         }
-        emit({ kind: "info", message: "Dry run - would research: " + resolvedWorkerCommand.join(" ") });
-        emit({ kind: "info", message: "Prompt length: " + prompt.length + " chars" });
-        return 0;
-      }
 
-      artifactContext = dependencies.artifactStore.createContext({
-        cwd,
-        configDir: dependencies.configDir?.configDir,
-        commandName: "research",
-        workerCommand: resolvedWorkerCommand,
-        mode,
-        source,
-        keepArtifacts,
-      });
-
-      emit({
-        kind: "info",
-        message: "Running research worker: "
-          + resolvedWorkerCommand.join(" ")
-          + " [mode="
-          + mode
-          + "]",
-      });
-
-      const runResult = await dependencies.workerExecutor.runWorker({
-        workerPattern: resolvedWorkerPattern,
-        prompt,
-        mode,
-        trace,
-        captureOutput: mode === "tui",
-        cwd,
-        env: rundownVarEnv,
-        configDir: dependencies.configDir?.configDir,
-        artifactContext,
-        artifactPhase: "worker",
-        artifactPhaseLabel: "research",
-      });
-
-      emit({
-        kind: "info",
-        message: "Research worker completed (exit "
-          + (runResult.exitCode === null ? "null" : String(runResult.exitCode))
-          + ").",
-      });
-
-      if (mode === "wait" && showAgentOutput && runResult.stderr) {
-        emit({ kind: "stderr", text: runResult.stderr });
-      }
-
-      if (runResult.exitCode !== 0) {
-        if (runResult.exitCode === null) {
-          emit({ kind: "error", message: "Research failed: worker exited without a code." });
-        } else {
-          emit({ kind: "error", message: "Research worker exited with code " + runResult.exitCode + "." });
-        }
-        return finishResearch(1, "execution-failed");
-      }
-
-      const updatedDocument = runResult.stdout;
-      try {
-        dependencies.fileSystem.writeText(source, updatedDocument);
-      } catch {
-        emit({
-          kind: "error",
-          message: "Research produced output, but failed to update Markdown document: " + source,
-        });
-        return finishResearch(1, "execution-failed");
-      }
-
-      if (hasCheckboxStateMutation(sourceDocument, updatedDocument)) {
-        const violationMessage = "Research changed checkbox state in "
-          + source
-          + ". Research may enrich prose, but must not mark/unmark checkboxes.";
-        emit({ kind: "error", message: violationMessage });
-        restoreOriginalDocumentAfterViolation(
-          dependencies.fileSystem,
-          source,
-          sourceDocument,
+        const loadedWorkerConfig = dependencies.configDir?.configDir
+          ? dependencies.workerConfigPort.load(dependencies.configDir.configDir)
+          : undefined;
+        const resolvedWorker = resolveWorkerPatternForInvocation({
+          commandName: "research",
+          workerConfig: loadedWorkerConfig,
+          source: sourceDocument,
+          cliWorkerPattern: workerPattern,
           emit,
-        );
-        emit({
-          kind: "error",
-          message: "Research update rejected due to constraint violation.",
         });
-        return finishResearch(1, "execution-failed");
-      }
+        const resolvedWorkerCommand = resolvedWorker.workerCommand;
+        const resolvedWorkerPattern = resolvedWorker.workerPattern;
 
-      const strippedTodos = stripIntroducedUncheckedTodos(sourceDocument, updatedDocument);
-      if (strippedTodos.removed.length > 0) {
-        try {
-          dependencies.fileSystem.writeText(source, strippedTodos.cleaned);
-        } catch {
+        if (resolvedWorkerCommand.length === 0) {
+          const message = "No worker command available: .rundown/config.json has no configured worker, and no CLI worker was provided. Use --worker <pattern> or -- <command>.";
           emit({
             kind: "error",
-            message: "Research produced output, but failed to update Markdown document: " + source,
+            message,
           });
+          emitResearchGroupFailure(message);
+          return 1;
+        }
+
+        if (dryRun) {
+          if (dryRunSuppressesCliExpansion && !ignoreCliBlock) {
+            emit({
+              kind: "info",
+              message: "Dry run — skipped `cli` fenced block execution; would execute "
+                + promptCliBlockCount
+                + " "
+                + pluralize(promptCliBlockCount, "block", "blocks")
+                + ".",
+            });
+          }
+          emit({ kind: "info", message: "Dry run - would research: " + resolvedWorkerCommand.join(" ") });
+          emit({ kind: "info", message: "Prompt length: " + prompt.length + " chars" });
+          emitResearchGroupSuccess();
+          return 0;
+        }
+
+        artifactContext = dependencies.artifactStore.createContext({
+          cwd,
+          configDir: dependencies.configDir?.configDir,
+          commandName: "research",
+          workerCommand: resolvedWorkerCommand,
+          mode,
+          source,
+          keepArtifacts,
+        });
+
+        emit({
+          kind: "info",
+          message: "Running research worker: "
+            + resolvedWorkerCommand.join(" ")
+            + " [mode="
+            + mode
+            + "]",
+        });
+
+        const runResult = await dependencies.workerExecutor.runWorker({
+          workerPattern: resolvedWorkerPattern,
+          prompt,
+          mode,
+          trace,
+          captureOutput: mode === "tui",
+          cwd,
+          env: rundownVarEnv,
+          configDir: dependencies.configDir?.configDir,
+          artifactContext,
+          artifactPhase: "worker",
+          artifactPhaseLabel: "research",
+        });
+
+        emit({
+          kind: "info",
+          message: "Research worker completed (exit "
+            + (runResult.exitCode === null ? "null" : String(runResult.exitCode))
+            + ").",
+        });
+
+        if (mode === "wait" && showAgentOutput && runResult.stderr) {
+          emit({ kind: "stderr", text: runResult.stderr });
+        }
+
+        if (runResult.exitCode !== 0) {
+          const message = runResult.exitCode === null
+            ? "Research failed: worker exited without a code."
+            : "Research worker exited with code " + runResult.exitCode + ".";
+          if (runResult.exitCode === null) {
+            emit({ kind: "error", message });
+          } else {
+            emit({ kind: "error", message });
+          }
+          emitResearchGroupFailure(message);
           return finishResearch(1, "execution-failed");
         }
 
-        emit({
-          kind: "warn",
-          message: "Research introduced new unchecked TODO items in "
-            + source
-            + ". Removed "
-            + strippedTodos.removed.length
-            + " introduced item"
-            + (strippedTodos.removed.length === 1 ? "" : "s")
-            + ": "
-            + strippedTodos.removed.join("; ")
-            + "; continuing with cleaned output.",
-        });
-      }
+        const updatedDocument = runResult.stdout;
+        try {
+          dependencies.fileSystem.writeText(source, updatedDocument);
+        } catch {
+          const message = "Research produced output, but failed to update Markdown document: " + source;
+          emit({
+            kind: "error",
+            message,
+          });
+          emitResearchGroupFailure(message);
+          return finishResearch(1, "execution-failed");
+        }
 
-      emit({ kind: "success", message: "Research worker completed." });
-      return finishResearch(0, "completed");
+        if (hasCheckboxStateMutation(sourceDocument, updatedDocument)) {
+          const violationMessage = "Research changed checkbox state in "
+            + source
+            + ". Research may enrich prose, but must not mark/unmark checkboxes.";
+          emit({ kind: "error", message: violationMessage });
+          restoreOriginalDocumentAfterViolation(
+            dependencies.fileSystem,
+            source,
+            sourceDocument,
+            emit,
+          );
+          emit({
+            kind: "error",
+            message: "Research update rejected due to constraint violation.",
+          });
+          emitResearchGroupFailure(violationMessage);
+          return finishResearch(1, "execution-failed");
+        }
+
+        const strippedTodos = stripIntroducedUncheckedTodos(sourceDocument, updatedDocument);
+        if (strippedTodos.removed.length > 0) {
+          try {
+            dependencies.fileSystem.writeText(source, strippedTodos.cleaned);
+          } catch {
+            const message = "Research produced output, but failed to update Markdown document: " + source;
+            emit({
+              kind: "error",
+              message,
+            });
+            emitResearchGroupFailure(message);
+            return finishResearch(1, "execution-failed");
+          }
+
+          emit({
+            kind: "warn",
+            message: "Research introduced new unchecked TODO items in "
+              + source
+              + ". Removed "
+              + strippedTodos.removed.length
+              + " "
+              + pluralize(strippedTodos.removed.length, "introduced item", "introduced items")
+              + ": "
+              + strippedTodos.removed.join("; ")
+              + "; continuing with cleaned output.",
+          });
+        }
+
+        emit({ kind: "success", message: "Research worker completed." });
+        emitResearchGroupSuccess();
+        return finishResearch(0, "completed");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        emitResearchGroupFailure(message);
+        throw error;
+      }
     } finally {
       if (artifactContext && !artifactsFinalized) {
         const finalStatus = artifactStatus === "running" ? "failed" : artifactStatus;

@@ -2486,6 +2486,41 @@ describe("discuss-task", () => {
     });
   });
 
+  it("emits group-start/group-end events for a successful discussion turn", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Refine rollout scope");
+    task.index = 5;
+    task.line = 42;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Refine rollout scope\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [ ] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    expect(events).toContainEqual({
+      kind: "group-start",
+      label: "Discuss turn: " + taskFile + ":42 [#5] Refine rollout scope",
+      counter: {
+        current: 1,
+        total: 1,
+      },
+    });
+    expect(events).toContainEqual({ kind: "group-end", status: "success" });
+  });
+
   it("acquires source lock before worker invocation and releases locks after worker exit", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");
@@ -2684,6 +2719,40 @@ describe("discuss-task", () => {
       payload: expect.objectContaining({
         exit_code: 7,
       }),
+    }));
+  });
+
+  it("emits group-end failure event when discussion worker exits non-zero", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Refine rollout scope");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Refine rollout scope\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [ ] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+    vi.mocked(dependencies.workerExecutor.runWorker).mockResolvedValue({
+      exitCode: 7,
+      stdout: "",
+      stderr: "",
+    });
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(7);
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "group-end",
+      status: "failure",
+      message: "Discussion exited with code 7.",
     }));
   });
 

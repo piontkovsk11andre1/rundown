@@ -3,6 +3,7 @@ import { createNodeFileSystem } from "../infrastructure/adapters/fs-file-system.
 import { createGlobalOutputLogWriter } from "../infrastructure/adapters/global-output-log-writer.js";
 import { globalOutputLogFilePath } from "../infrastructure/runtime-artifacts.js";
 import { CONFIG_DIR_NAME } from "../domain/ports/config-dir-port.js";
+import type { ApplicationOutputEvent } from "../domain/ports/output-port.js";
 import type { LoggedOutputContext } from "./logged-output-port.js";
 import type {
   CliInvocationLogState,
@@ -16,6 +17,8 @@ interface CreateCliInvocationLogStateDependencies extends CliInvocationMetadataD
   // Resolves config-dir metadata from invocation argv and cwd.
   resolveConfigDirForInvocation: ResolveConfigDirForInvocation;
 }
+
+type EmitOutputEvent = (event: ApplicationOutputEvent) => void;
 
 /**
  * Creates per-invocation logging state for CLI execution.
@@ -78,11 +81,20 @@ function resolveConfigDirPathForInvocation(
 /**
  * Emits a user-visible fatal error and appends it to the invocation log when available.
  */
-export function emitCliFatalError(error: unknown, state?: CliInvocationLogState): void {
+export function emitCliFatalError(
+  error: unknown,
+  state?: CliInvocationLogState,
+  emitOutputEvent?: EmitOutputEvent,
+): void {
   // Normalize unknown error values to a printable string.
   const message = String(error);
-  // Render fatal errors with a consistent terminal marker.
-  console.error(pc.red("✖") + " " + message);
+  if (emitOutputEvent) {
+    // Route fatal errors through the standard output port when available.
+    emitOutputEvent({ kind: "error", message });
+  } else {
+    // Fallback for parse-time failures before application output wiring exists.
+    console.error(pc.red("✖") + " " + message);
+  }
   // Mirror fatal errors into global logs for post-mortem diagnostics.
   appendCliFatalErrorToGlobalLog(message, state);
 }
@@ -123,16 +135,31 @@ function appendCliFatalErrorToGlobalLog(message: string, state?: CliInvocationLo
 export function configureCommanderOutputHandlers(
   command: Command,
   getState: () => CliInvocationLogState | undefined,
+  getEmitOutputEvent?: () => EmitOutputEvent | undefined,
 ): void {
   command.configureOutput({
     writeOut(output: string) {
-      // Preserve Commander stdout behavior for interactive CLI output.
+      const emitOutputEvent = getEmitOutputEvent?.();
+      if (emitOutputEvent) {
+        // Route framework stdout through the application output port when available.
+        emitOutputEvent({ kind: "text", text: output });
+        return;
+      }
+
+      // Preserve parse-time stdout behavior before application output wiring exists.
       process.stdout.write(output);
       // Persist framework stdout output to the global invocation log.
       appendCommanderFrameworkOutputToGlobalLog(output, "stdout", getState);
     },
     writeErr(output: string) {
-      // Preserve Commander stderr behavior for warnings and errors.
+      const emitOutputEvent = getEmitOutputEvent?.();
+      if (emitOutputEvent) {
+        // Route framework stderr through the application output port when available.
+        emitOutputEvent({ kind: "stderr", text: output });
+        return;
+      }
+
+      // Preserve parse-time stderr behavior before application output wiring exists.
       process.stderr.write(output);
       // Persist framework stderr output to the global invocation log.
       appendCommanderFrameworkOutputToGlobalLog(output, "stderr", getState);

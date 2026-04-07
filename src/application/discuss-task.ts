@@ -32,7 +32,7 @@ import {
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import { loadProjectTemplatesFromPorts } from "./project-templates.js";
 import { resolveWorkerPatternForInvocation } from "./resolve-worker.js";
-import { formatTaskLabel } from "./run-task-utils.js";
+import { formatTaskLabel, pluralize } from "./run-task-utils.js";
 import {
   resolveTaskContextFromRuntimeMetadata,
   validateRuntimeTaskMetadata,
@@ -163,6 +163,25 @@ export function createDiscussTask(
   const emit = dependencies.output.emit.bind(dependencies.output);
   const cliBlockExecutor = dependencies.cliBlockExecutor;
 
+  const emitDiscussionTurnStart = (label: string): void => {
+    emit({
+      kind: "group-start",
+      label,
+      counter: {
+        current: 1,
+        total: 1,
+      },
+    });
+  };
+
+  const emitDiscussionTurnSuccess = (): void => {
+    emit({ kind: "group-end", status: "success" });
+  };
+
+  const emitDiscussionTurnFailure = (message: string): void => {
+    emit({ kind: "group-end", status: "failure", message });
+  };
+
   return async function discussTask(options: DiscussTaskOptions): Promise<number> {
     const {
       source,
@@ -206,6 +225,8 @@ export function createDiscussTask(
     let selectedRuntimeTaskMetadata: RuntimeTaskMetadata | null = null;
     let files: string[] = [];
     let lockTargets: string[] = [];
+    let discussionTurnStarted = false;
+    let discussionTurnEnded = false;
 
     if (runId) {
       selectedRun = runId === "latest"
@@ -457,8 +478,8 @@ export function createDiscussTask(
             kind: "info",
             message: "Dry run — skipped `cli` fenced block execution; would execute "
               + promptCliBlockCount
-              + " block"
-              + (promptCliBlockCount === 1 ? "" : "s")
+              + " "
+              + pluralize(promptCliBlockCount, "block", "blocks")
               + ".",
           });
         }
@@ -531,111 +552,135 @@ export function createDiscussTask(
         }));
       }
 
-      // Invoke worker in TUI mode to collect discussion output.
-      emit({
-        kind: "info",
-        message: "Running discussion worker: " + resolvedWorkerCommand.join(" ") + " [mode=tui]",
-      });
-      const result = await dependencies.workerExecutor.runWorker({
-        workerPattern: resolvedWorkerPattern,
-        prompt,
-        mode: "tui",
-        trace: options.trace,
-        captureOutput: options.keepArtifacts,
-        cwd,
-        env: rundownVarEnv,
-        configDir: dependencies.configDir?.configDir,
-        artifactContext,
-        artifactPhase: "discuss",
-      });
-      emit({
-        kind: "info",
-        message: "Discussion worker completed (exit "
-          + (result.exitCode === null ? "null" : String(result.exitCode))
-          + ").",
-      });
+      const discussionTurnLabel = "Discuss turn: " + formatTaskLabel(taskContext.task);
+      emitDiscussionTurnStart(discussionTurnLabel);
+      discussionTurnStarted = true;
 
-      // Detect and immediately revert checkbox edits introduced by the discussion step.
-      const checkboxMutations = detectCheckboxMutations(lockTargets, beforeCheckboxStateByFile, dependencies.fileSystem);
+      try {
+        // Invoke worker in TUI mode to collect discussion output.
+        emit({
+          kind: "info",
+          message: "Running discussion worker: " + resolvedWorkerCommand.join(" ") + " [mode=tui]",
+        });
+        const result = await dependencies.workerExecutor.runWorker({
+          workerPattern: resolvedWorkerPattern,
+          prompt,
+          mode: "tui",
+          trace: options.trace,
+          captureOutput: options.keepArtifacts,
+          cwd,
+          env: rundownVarEnv,
+          configDir: dependencies.configDir?.configDir,
+          artifactContext,
+          artifactPhase: "discuss",
+        });
+        emit({
+          kind: "info",
+          message: "Discussion worker completed (exit "
+            + (result.exitCode === null ? "null" : String(result.exitCode))
+            + ").",
+        });
 
-      if (checkboxMutations.length > 0) {
-        for (const filePath of checkboxMutations) {
-          const sourceBeforeDiscussion = sourceBeforeDiscussionByFile.get(filePath);
-          if (typeof sourceBeforeDiscussion !== "string") {
-            continue;
+        // Detect and immediately revert checkbox edits introduced by the discussion step.
+        const checkboxMutations = detectCheckboxMutations(lockTargets, beforeCheckboxStateByFile, dependencies.fileSystem);
+
+        if (checkboxMutations.length > 0) {
+          for (const filePath of checkboxMutations) {
+            const sourceBeforeDiscussion = sourceBeforeDiscussionByFile.get(filePath);
+            if (typeof sourceBeforeDiscussion !== "string") {
+              continue;
+            }
+
+            dependencies.fileSystem.writeText(filePath, sourceBeforeDiscussion);
           }
-
-          dependencies.fileSystem.writeText(filePath, sourceBeforeDiscussion);
         }
-      }
 
-      // Emit completion trace event with duration and worker exit details.
-      traceWriter.write(createDiscussionCompletedEvent({
-        timestamp: new Date().toISOString(),
-        run_id: artifactContext.runId,
-        payload: {
-          task_text: taskContext.task.text,
-          task_file: taskContext.task.file,
-          task_line: taskContext.task.line,
-          duration_ms: Math.max(0, Date.now() - discussionStartedAtMs),
-          exit_code: result.exitCode,
-        },
-      }));
-
-      if (finishedRunPromptContext) {
-        traceWriter.write(createDiscussionFinishedCompletedEvent({
+        // Emit completion trace event with duration and worker exit details.
+        traceWriter.write(createDiscussionCompletedEvent({
           timestamp: new Date().toISOString(),
           run_id: artifactContext.runId,
           payload: {
             task_text: taskContext.task.text,
             task_file: taskContext.task.file,
             task_line: taskContext.task.line,
-            target_run_id: finishedRunPromptContext.run.runId,
-            target_run_status: finishedRunPromptContext.run.status ?? "metadata-missing",
             duration_ms: Math.max(0, Date.now() - discussionStartedAtMs),
             exit_code: result.exitCode,
           },
         }));
-      }
 
-      // Mark artifact status as cancelled when worker fails or checkbox state mutates.
-      const status = result.exitCode === 0 && checkboxMutations.length === 0
-        ? (finishedRunPromptContext ? "discuss-finished-completed" : "discuss-completed")
-        : (finishedRunPromptContext ? "discuss-finished-cancelled" : "discuss-cancelled");
-      dependencies.artifactStore.finalize(artifactContext, {
-        status,
-        preserve: options.keepArtifacts,
-      });
-
-      if (options.keepArtifacts) {
-        emit({
-          kind: "info",
-          message: "Runtime artifacts saved at " + dependencies.artifactStore.displayPath(artifactContext) + ".",
-        });
-      }
-
-      if (checkboxMutations.length > 0) {
-        emit({
-          kind: "error",
-          message: "Discussion changed checkbox state in "
-            + checkboxMutations[0]
-            + ". Discuss mode may rewrite task text, but must not mark/unmark checkboxes.",
-        });
-        return 1;
-      }
-
-      if (result.exitCode !== 0) {
-        if (result.exitCode === null) {
-          emit({ kind: "error", message: "Discussion failed: worker exited without a code." });
-          return 1;
-        } else {
-          emit({ kind: "error", message: "Discussion exited with code " + result.exitCode + "." });
-          return result.exitCode;
+        if (finishedRunPromptContext) {
+          traceWriter.write(createDiscussionFinishedCompletedEvent({
+            timestamp: new Date().toISOString(),
+            run_id: artifactContext.runId,
+            payload: {
+              task_text: taskContext.task.text,
+              task_file: taskContext.task.file,
+              task_line: taskContext.task.line,
+              target_run_id: finishedRunPromptContext.run.runId,
+              target_run_status: finishedRunPromptContext.run.status ?? "metadata-missing",
+              duration_ms: Math.max(0, Date.now() - discussionStartedAtMs),
+              exit_code: result.exitCode,
+            },
+          }));
         }
-      }
 
-      emit({ kind: "success", message: "Discussion completed." });
-      return 0;
+        // Mark artifact status as cancelled when worker fails or checkbox state mutates.
+        const status = result.exitCode === 0 && checkboxMutations.length === 0
+          ? (finishedRunPromptContext ? "discuss-finished-completed" : "discuss-completed")
+          : (finishedRunPromptContext ? "discuss-finished-cancelled" : "discuss-cancelled");
+        dependencies.artifactStore.finalize(artifactContext, {
+          status,
+          preserve: options.keepArtifacts,
+        });
+
+        if (options.keepArtifacts) {
+          emit({
+            kind: "info",
+            message: "Runtime artifacts saved at " + dependencies.artifactStore.displayPath(artifactContext) + ".",
+          });
+        }
+
+        if (checkboxMutations.length > 0) {
+          const message = "Discussion changed checkbox state in "
+            + checkboxMutations[0]
+            + ". Discuss mode may rewrite task text, but must not mark/unmark checkboxes.";
+          emit({
+            kind: "error",
+            message,
+          });
+          emitDiscussionTurnFailure(message);
+          discussionTurnEnded = true;
+          return 1;
+        }
+
+        if (result.exitCode !== 0) {
+          if (result.exitCode === null) {
+            const message = "Discussion failed: worker exited without a code.";
+            emit({ kind: "error", message });
+            emitDiscussionTurnFailure(message);
+            discussionTurnEnded = true;
+            return 1;
+          } else {
+            const message = "Discussion exited with code " + result.exitCode + ".";
+            emit({ kind: "error", message });
+            emitDiscussionTurnFailure(message);
+            discussionTurnEnded = true;
+            return result.exitCode;
+          }
+        }
+
+        emitDiscussionTurnSuccess();
+        discussionTurnEnded = true;
+        emit({ kind: "success", message: "Discussion completed." });
+        return 0;
+      } catch (error) {
+        if (discussionTurnStarted && !discussionTurnEnded) {
+          const message = error instanceof Error ? error.message : String(error);
+          emitDiscussionTurnFailure(message);
+          discussionTurnEnded = true;
+        }
+        throw error;
+      }
     } finally {
       // Flush trace output and release all source locks on every exit path.
       traceWriter.flush();

@@ -47,7 +47,7 @@ export function createUnlockTask(
 
     // Nothing to unlock when no lockfile exists for this source.
     if (!dependencies.fileSystem.exists(lockPath)) {
-      emit({ kind: "info", message: "No lockfile found for source: " + sourcePath });
+      emit({ kind: "info", message: "No source lock found for: " + sourcePath });
       return 3;
     }
 

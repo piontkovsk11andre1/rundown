@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import pc from "picocolors";
 import { createLogRuns } from "../../src/application/log-runs.js";
 import type {
   ApplicationOutputEvent,
@@ -53,11 +52,11 @@ describe("log-runs", () => {
     expect(events).toEqual([
       {
         kind: "text",
-        text: `run-20260328T120 | 2m ago | ${pc.green("[completed]")} | Ship release notes | source=TODO.md:22 | command=run | sha=1234567890ab | revertable=yes`,
+        text: "run-20260328T120 | 2m ago | [completed] | Ship release notes | source=TODO.md:22 | command=run | sha=1234567890ab | revertable=yes",
       },
       {
         kind: "text",
-        text: pc.dim(`run-20260328T110 | 30m ago | ${pc.green("[completed]")} | Plan rollout | source=roadmap.md:9 | command=plan | sha=- | revertable=no`),
+        text: "run-20260328T110 | 30m ago | [completed] | Plan rollout | source=roadmap.md:9 | command=plan | sha=- | revertable=no",
       },
     ]);
   });
@@ -76,7 +75,7 @@ describe("log-runs", () => {
     expect(events).toHaveLength(1);
     expect(events[0]).toEqual({
       kind: "text",
-      text: `run-a | 10m ago | ${pc.green("[completed]")} | Do work | source=roadmap.md:3 | command=run | sha=aaa111 | revertable=yes`,
+      text: "run-a | 10m ago | [completed] | Do work | source=roadmap.md:3 | command=run | sha=aaa111 | revertable=yes",
     });
   });
 
@@ -94,7 +93,7 @@ describe("log-runs", () => {
     expect(events).toHaveLength(1);
     expect(events[0]).toEqual({
       kind: "text",
-      text: `run-1 | 10m ago | ${pc.green("[completed]")} | Do work | source=roadmap.md:3 | command=run | sha=sha-1 | revertable=yes`,
+      text: "run-1 | 10m ago | [completed] | Do work | source=roadmap.md:3 | command=run | sha=sha-1 | revertable=yes",
     });
   });
 

@@ -71,7 +71,7 @@ export function createViewMemory(
     }
 
     if (memoryEntries.length === 0) {
-      emit({ kind: "info", message: "No memory found." });
+      emit({ kind: "info", message: "No memory entries found." });
       return 1;
     }
 

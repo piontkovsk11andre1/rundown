@@ -4,7 +4,9 @@ import type {
   GlobalOutputLogLevel,
   GlobalOutputLogStream,
 } from "../domain/global-output-log.js";
+import { sanitizeGlobalOutputLogEntry } from "../domain/global-output-log.js";
 import type { ApplicationOutputEvent, ApplicationOutputPort } from "../domain/ports/output-port.js";
+import { formatTaskDetailLines } from "./task-detail-lines.js";
 
 /**
  * Writes structured global output log entries to the configured sink.
@@ -49,7 +51,7 @@ export function createLoggedOutputPort(options: CreateLoggedOutputPortOptions): 
     // Emit to the structured logger first, then always forward to the real output port.
     emit(event) {
       try {
-        options.writer.write({
+        const entry: GlobalOutputLogEntry = {
           ts: now(),
           level: resolveLogLevel(event),
           stream: resolveLogStream(event),
@@ -61,7 +63,8 @@ export function createLoggedOutputPort(options: CreateLoggedOutputPortOptions): 
           pid: options.context.pid,
           version: options.context.version,
           session_id: options.context.sessionId,
-        });
+        };
+        options.writer.write(sanitizeGlobalOutputLogEntry(entry));
       } catch {
         // best-effort logging: never interrupt output flow on log write failures
       }
@@ -172,6 +175,8 @@ function resolveLogMessage(event: ApplicationOutputEvent): string {
         children,
         subItems,
         indentLevel: 1,
+        formatTaskLine,
+        formatSubItemLine: (subItem) => `${subItem.file}:${subItem.line} - ${subItem.text}`,
       });
 
       if (detailLines.length === 0) {
@@ -218,77 +223,4 @@ function formatProgressMessage(progress: {
  */
 function formatTaskLine(task: { file: string; line: number; index: number; text: string }): string {
   return `${task.file}:${task.line} [#${task.index}] ${task.text}`;
-}
-
-/**
- * Defines optional task tree data used to render nested detail lines.
- */
-interface TaskDetailLineOptions {
-  file: string;
-  parentDepth: number;
-  children?: unknown;
-  subItems?: unknown;
-  indentLevel: number;
-}
-
-/**
- * Represents the minimum shape required to render a nested task node.
- */
-interface TaskLike {
-  file: string;
-  line: number;
-  index: number;
-  text: string;
-  depth: number;
-  children?: unknown;
-  subItems?: unknown;
-}
-
-/**
- * Represents a leaf checklist/sub-item emitted under a task node.
- */
-interface SubItemLike {
-  text: string;
-  line: number;
-  depth: number;
-}
-
-/**
- * Builds sorted, indented detail lines for nested task and sub-item structures.
- */
-function formatTaskDetailLines(options: TaskDetailLineOptions): string[] {
-  // Accept only arrays to guard against malformed runtime payloads.
-  const children = Array.isArray(options.children) ? (options.children as TaskLike[]) : [];
-  const subItems = Array.isArray(options.subItems) ? (options.subItems as SubItemLike[]) : [];
-
-  const detailGroups: Array<{ line: number; lines: string[] }> = [];
-
-  for (const child of children) {
-    // Render each child line and recursively include all nested descendants.
-    const childLines = [
-      `${"  ".repeat(options.indentLevel)}${formatTaskLine(child)}`,
-      ...formatTaskDetailLines({
-        file: child.file,
-        parentDepth: child.depth,
-        children: child.children,
-        subItems: child.subItems,
-        indentLevel: options.indentLevel + 1,
-      }),
-    ];
-    detailGroups.push({ line: child.line, lines: childLines });
-  }
-
-  for (const subItem of subItems) {
-    // Preserve relative indentation depth for nested checklist entries.
-    const extraIndent = Math.max(0, subItem.depth - (options.parentDepth + 1));
-    const indent = options.indentLevel + extraIndent;
-    detailGroups.push({
-      line: subItem.line,
-      lines: [`${"  ".repeat(indent)}${options.file}:${subItem.line} - ${subItem.text}`],
-    });
-  }
-
-  // Keep task children and sub-items in source-file order for stable log output.
-  detailGroups.sort((left, right) => left.line - right.line);
-  return detailGroups.flatMap((group) => group.lines);
 }

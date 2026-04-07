@@ -72,7 +72,7 @@ export function createCleanMemory(
     const selectedCandidates = selectCandidates(candidates, options, olderThanMs, Date.now());
 
     if (selectedCandidates.length === 0) {
-      emit({ kind: "info", message: "No memory artifacts matched cleanup filters." });
+      emit({ kind: "info", message: "No memory artifacts found for cleanup filters." });
       return 0;
     }
 

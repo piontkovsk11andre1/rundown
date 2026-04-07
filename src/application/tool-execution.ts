@@ -4,6 +4,7 @@ import type { ToolDefinition } from "../domain/ports/tool-resolver-port.js";
 import { insertSubitems } from "../domain/planner.js";
 import type { TemplateVars } from "../domain/template.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
+import { pluralize } from "./run-task-utils.js";
 
 type EmitFn = (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
 
@@ -118,8 +119,9 @@ export async function executeToolChain(
       context.fileSystem.writeText(context.task.file, updatedSource);
       emit({
         kind: "info",
-        message: "Inserted " + result.childTasks.length + " tool-generated child TODO item"
-          + (result.childTasks.length === 1 ? "" : "s") + ".",
+        message: "Inserted " + result.childTasks.length + " "
+          + pluralize(result.childTasks.length, "tool-generated child TODO item", "tool-generated child TODO items")
+          + ".",
       });
     }
 

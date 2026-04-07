@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cliOutputPort } from "../../src/presentation/output-port.js";
+import { cliOutputPort, resetCliOutputPortState } from "../../src/presentation/output-port.js";
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001B\[[0-9;]*m/g, "");
@@ -7,6 +7,7 @@ function stripAnsi(value: string): string {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  resetCliOutputPortState();
 });
 
 describe("cliOutputPort", () => {
@@ -336,6 +337,55 @@ describe("cliOutputPort", () => {
     }
   });
 
+  it("renders nested groups with increasing indentation", () => {
+    const hadIsTTY = Object.prototype.hasOwnProperty.call(process.stdout, "isTTY");
+    const previousIsTTY = (process.stdout as { isTTY?: boolean }).isTTY;
+    Object.defineProperty(process.stdout, "isTTY", {
+      configurable: true,
+      writable: true,
+      value: true,
+    });
+
+    const previousCi = process.env.CI;
+    delete process.env.CI;
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      cliOutputPort.emit({ kind: "group-start", label: "Outer" });
+      cliOutputPort.emit({ kind: "info", message: "outer info" });
+      cliOutputPort.emit({ kind: "group-start", label: "Inner" });
+      cliOutputPort.emit({ kind: "info", message: "inner info" });
+      cliOutputPort.emit({ kind: "group-end", status: "success" });
+      cliOutputPort.emit({ kind: "group-end", status: "success" });
+
+      expect(logSpy).toHaveBeenCalledTimes(6);
+      const lines = logSpy.mock.calls.map((call) => stripAnsi(call[0] as string));
+      expect(lines[0]).toBe("┌ Outer");
+      expect(lines[1]).toBe("│  ℹ outer info");
+      expect(lines[2]).toBe("│  ┌ Inner");
+      expect(lines[3]).toBe("│  │  ℹ inner info");
+      expect(lines[4]).toBe("│  └ ✔ Done");
+      expect(lines[5]).toBe("└ ✔ Done");
+    } finally {
+      if (previousCi === undefined) {
+        delete process.env.CI;
+      } else {
+        process.env.CI = previousCi;
+      }
+
+      if (hadIsTTY) {
+        Object.defineProperty(process.stdout, "isTTY", {
+          configurable: true,
+          writable: true,
+          value: previousIsTTY,
+        });
+      } else {
+        Reflect.deleteProperty(process.stdout, "isTTY");
+      }
+    }
+  });
+
   it("renders grouped output with flat prefix in non-TTY mode", () => {
     const hadIsTTY = Object.prototype.hasOwnProperty.call(process.stdout, "isTTY");
     const previousIsTTY = (process.stdout as { isTTY?: boolean }).isTTY;
@@ -459,5 +509,35 @@ describe("cliOutputPort", () => {
         Reflect.deleteProperty(process.stdout, "isTTY");
       }
     }
+  });
+
+  it("styles log-runs text lines in the presentation layer", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    cliOutputPort.emit({
+      kind: "text",
+      text: "run-20260328T120 | 2m ago | [completed] | Ship release notes | source=TODO.md:22 | command=run | sha=1234567890ab | revertable=yes",
+    });
+    cliOutputPort.emit({
+      kind: "text",
+      text: "run-20260328T110 | 30m ago | [completed] | Plan rollout | source=roadmap.md:9 | command=plan | sha=- | revertable=no",
+    });
+
+    expect(logSpy).toHaveBeenCalledTimes(2);
+    expect(stripAnsi(logSpy.mock.calls[0]?.[0] as string)).toBe(
+      "run-20260328T120 | 2m ago | [completed] | Ship release notes | source=TODO.md:22 | command=run | sha=1234567890ab | revertable=yes",
+    );
+    expect(stripAnsi(logSpy.mock.calls[1]?.[0] as string)).toBe(
+      "run-20260328T110 | 30m ago | [completed] | Plan rollout | source=roadmap.md:9 | command=plan | sha=- | revertable=no",
+    );
+  });
+
+  it("keeps non log-runs text lines unchanged", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    cliOutputPort.emit({ kind: "text", text: "plain text" });
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy.mock.calls[0]?.[0]).toBe("plain text");
   });
 });

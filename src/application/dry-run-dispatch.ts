@@ -1,5 +1,6 @@
 import { type Task } from "../domain/parser.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
+import { pluralize } from "./run-task-utils.js";
 
 type EmitFn = (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
 
@@ -40,8 +41,8 @@ function emitDryRunCliExpansionNote(params: {
     kind: "info",
     message: "Dry run - skipped `cli` fenced block execution; would execute "
       + dryRunCliBlockCount
-      + " block"
-      + (dryRunCliBlockCount === 1 ? "" : "s")
+      + " "
+      + pluralize(dryRunCliBlockCount, "block", "blocks")
       + ".",
   });
 }

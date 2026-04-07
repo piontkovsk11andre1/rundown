@@ -4,6 +4,7 @@ import type {
   ConfigDirResult,
   DirectoryOpenerPort,
 } from "../domain/ports/index.js";
+import { pluralize } from "./run-task-utils.js";
 
 /**
  * Represents a saved runtime artifact run persisted by the artifact store.
@@ -109,8 +110,7 @@ export function createManageArtifacts(
         kind: "success",
         message: "Removed " + removed + " "
           + (onlyFailed ? "failed " : "")
-          + "runtime artifact run"
-          + (removed === 1 ? "" : "s")
+          + pluralize(removed, "runtime artifact run", "runtime artifact runs")
           + ".",
       });
       return 0;

@@ -5,7 +5,7 @@ import type { ProcessRunMode } from "../domain/ports/index.js";
 import { DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS } from "../domain/ports/command-executor.js";
 import { CONFIG_DIR_NAME } from "../domain/ports/config-dir-port.js";
 import { collectOption } from "./cli-options.js";
-import { drainAnimationQueue } from "./output-port.js";
+import { drainAnimationQueue, resetCliOutputPortState } from "./output-port.js";
 import { registerLockReleaseSignalHandlers } from "./cli-lock-handlers.js";
 import {
   configureCommanderOutputHandlers,
@@ -95,7 +95,11 @@ function getApp(): CliApp {
 }
 
 // Route commander framework output through invocation-aware logging handlers.
-configureCommanderOutputHandlers(program, () => runtimeState.invocationLogState);
+configureCommanderOutputHandlers(
+  program,
+  () => runtimeState.invocationLogState,
+  () => runtimeState.app?.emitOutput,
+);
 
 program
   .name("rundown")
@@ -439,7 +443,7 @@ program
       if (isCliExitSignal(err)) {
         throw err;
       }
-      emitCliFatalError(err, runtimeState.invocationLogState);
+      emitCliFatalError(err, runtimeState.invocationLogState, runtimeState.app?.emitOutput);
       terminate(1);
     }
   });
@@ -483,7 +487,7 @@ function withCliAction<Args extends unknown[]>(
       }
 
       // Emit a structured fatal error and exit with a non-zero code for unexpected failures.
-      emitCliFatalError(err, runtimeState.invocationLogState);
+      emitCliFatalError(err, runtimeState.invocationLogState, runtimeState.app?.emitOutput);
       terminate(1);
     }
   };
@@ -495,6 +499,7 @@ function withCliAction<Args extends unknown[]>(
  * This is the primary presentation entry point used by both production runtime and tests.
  */
 export async function parseCliArgs(argv: string[]): Promise<void> {
+  resetCliOutputPortState();
   // Normalize legacy aliases before any option parsing occurs.
   const rewrittenArgv = rewriteAllAlias(argv);
   // Split rundown-owned arguments from downstream worker arguments after `--`.
@@ -538,7 +543,7 @@ export async function parseCliArgs(argv: string[]): Promise<void> {
     validateUnsupportedDoMode(rundownArgs);
     validateRunCommitModeOption(rundownArgs);
   } catch (error) {
-    emitCliFatalError(error, runtimeState.invocationLogState);
+    emitCliFatalError(error, runtimeState.invocationLogState, runtimeState.app?.emitOutput);
     terminate(1);
     return;
   }
@@ -593,15 +598,16 @@ function cleanupCallCliCacheArtifactAtTeardown(
   try {
     fs.rmSync(cacheArtifactPath, { recursive: true, force: true });
   } catch (error) {
-    emitCliFatalError(
-      new Error(
-        "Failed to tear down CLI cache artifact after `call`: "
-        + cacheArtifactPath
-        + ". "
-        + String(error),
-      ),
-      logState,
-    );
+      emitCliFatalError(
+        new Error(
+          "Failed to tear down CLI cache artifact after `call`: "
+          + cacheArtifactPath
+          + ". "
+          + String(error),
+        ),
+        logState,
+        runtimeState.app?.emitOutput,
+      );
   }
 }
 
@@ -828,7 +834,7 @@ if (process.env.RUNDOWN_DISABLE_AUTO_PARSE !== "1") {
     if (isCliExitSignal(err)) {
       process.exit(err.code);
     }
-    emitCliFatalError(err, runtimeState.invocationLogState);
+    emitCliFatalError(err, runtimeState.invocationLogState, runtimeState.app?.emitOutput);
     process.exit(1);
   });
 }

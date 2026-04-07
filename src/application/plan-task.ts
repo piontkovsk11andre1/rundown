@@ -28,7 +28,7 @@ import {
   withTemplateCliFailureAbort,
 } from "./cli-block-handlers.js";
 import { loadProjectTemplatesFromPorts } from "./project-templates.js";
-import { countTraceLines } from "./run-task-utils.js";
+import { countTraceLines, pluralize } from "./run-task-utils.js";
 import {
   createOutputVolumeEvent,
   createPhaseCompletedEvent,
@@ -241,7 +241,9 @@ export function createPlanTask(
       emit({
         kind: "info",
         message: hasExistingTodos
-          ? "Detected " + existingTodoCount + " existing TODO item" + (existingTodoCount === 1 ? "" : "s") + " in document."
+          ? "Detected " + existingTodoCount + " "
+            + pluralize(existingTodoCount, "existing TODO item", "existing TODO items")
+            + " in document."
           : "No existing TODO items detected in document.",
       });
 
@@ -339,7 +341,8 @@ export function createPlanTask(
           } else {
             emit({
               kind: "info",
-              message: "Deep prompt preview (pass 1 of " + deep + ") for " + deepCandidates.length + " parent task" + (deepCandidates.length === 1 ? "" : "s") + ".",
+              message: "Deep prompt preview (pass 1 of " + deep + ") for " + deepCandidates.length + " "
+                + pluralize(deepCandidates.length, "parent task", "parent tasks") + ".",
             });
             for (const parentTask of deepCandidates) {
               const deepPrompt = buildPlanDeepPrompt({
@@ -368,8 +371,8 @@ export function createPlanTask(
             kind: "info",
             message: "Dry run — skipped `cli` fenced block execution; would execute "
               + promptCliBlockCount
-              + " block"
-              + (promptCliBlockCount === 1 ? "" : "s")
+              + " "
+              + pluralize(promptCliBlockCount, "block", "blocks")
               + ".",
           });
         }
@@ -387,7 +390,8 @@ export function createPlanTask(
           } else {
             emit({
               kind: "info",
-              message: "Dry run — would run deep pass 1 of " + deep + " for " + deepCandidates.length + " parent task" + (deepCandidates.length === 1 ? "" : "s") + ".",
+              message: "Dry run — would run deep pass 1 of " + deep + " for " + deepCandidates.length + " "
+                + pluralize(deepCandidates.length, "parent task", "parent tasks") + ".",
             });
             const firstDeepPrompt = buildPlanDeepPrompt({
               deepPlanTemplate,
@@ -553,94 +557,122 @@ export function createPlanTask(
           const scanBaseline = latestDocumentSource;
 
           emit({
-            kind: "info",
-            message: "Planning " + scanLabel + ".",
-          });
-          scansExecuted += 1;
-
-          // Build per-scan prompt context and execute the planner worker.
-          const scanPrompt = buildPlanScanPrompt(prompt, source, scanIndex, scanCount);
-          emit({
-            kind: "info",
-            message: "Executing planner " + scanLabel + "...",
-          });
-          const planPhaseTrace = beginPlanPhaseTrace(resolvedWorkerCommand);
-          const runResult = await dependencies.workerExecutor.runWorker({
-            workerPattern: resolvedWorkerPattern,
-            prompt: scanPrompt,
-            mode,
-            trace,
-            cwd,
-            env: rundownVarEnv,
-            configDir: dependencies.configDir?.configDir,
-            artifactContext,
-            artifactPhase: "plan",
-            artifactPhaseLabel: buildPlanScanPhaseLabel(scanIndex, scanCount),
-            artifactExtra: {
-              scanIndex,
-              scanCount,
-              scanLabel,
+            kind: "group-start",
+            label: "Plan scan " + scanLabel,
+            counter: {
+              current: scanIndex,
+              total: scanCount,
             },
           });
-          emit({
-            kind: "info",
-            message: "Planner " + scanLabel + " completed (exit "
-              + (runResult.exitCode === null ? "null" : String(runResult.exitCode))
-              + ").",
-          });
-          completePlanPhaseTrace(
-            planPhaseTrace,
-            runResult.exitCode,
-            runResult.stdout,
-            runResult.stderr,
-            mode === "wait",
-          );
 
-          // Forward worker stderr in wait mode only when explicitly enabled.
-          if (mode === "wait" && showAgentOutput && runResult.stderr) {
-            emit({ kind: "stderr", text: runResult.stderr });
-          }
+          const emitScanFailure = (message: string): void => {
+            emit({ kind: "group-end", status: "failure", message });
+          };
 
-          // Non-zero exits fail the planning run for this task.
-          if (runResult.exitCode !== 0 && runResult.exitCode !== null) {
-            emit({ kind: "error", message: "Planner worker exited with code " + runResult.exitCode + " during scan " + scanIndex + "." });
-            return finishPlan(1, "execution-failed");
-          }
-
-          let editedDocumentSource: string;
           try {
-            editedDocumentSource = dependencies.fileSystem.readText(source);
-          } catch {
             emit({
-              kind: "error",
-              message: "Unable to read Markdown document after scan " + scanIndex + ": " + source,
+              kind: "info",
+              message: "Planning " + scanLabel + ".",
             });
-            return finishPlan(3, "failed");
-          }
+            scansExecuted += 1;
 
-          const validationResult = validatePlanEdit(scanBaseline, editedDocumentSource);
-          if (!validationResult.valid) {
-            dependencies.fileSystem.writeText(source, scanBaseline);
+            // Build per-scan prompt context and execute the planner worker.
+            const scanPrompt = buildPlanScanPrompt(prompt, source, scanIndex, scanCount);
             emit({
-              kind: "error",
-              message: validationResult.rejectionReason
-                ?? "Planner edit was rejected because checked TODO items were modified.",
+              kind: "info",
+              message: "Executing planner " + scanLabel + "...",
             });
-            return finishPlan(1, "failed");
-          }
+            const planPhaseTrace = beginPlanPhaseTrace(resolvedWorkerCommand);
+            const runResult = await dependencies.workerExecutor.runWorker({
+              workerPattern: resolvedWorkerPattern,
+              prompt: scanPrompt,
+              mode,
+              trace,
+              cwd,
+              env: rundownVarEnv,
+              configDir: dependencies.configDir?.configDir,
+              artifactContext,
+              artifactPhase: "plan",
+              artifactPhaseLabel: buildPlanScanPhaseLabel(scanIndex, scanCount),
+              artifactExtra: {
+                scanIndex,
+                scanCount,
+                scanLabel,
+              },
+            });
+            emit({
+              kind: "info",
+              message: "Planner " + scanLabel + " completed (exit "
+                + (runResult.exitCode === null ? "null" : String(runResult.exitCode))
+                + ").",
+            });
+            completePlanPhaseTrace(
+              planPhaseTrace,
+              runResult.exitCode,
+              runResult.stdout,
+              runResult.stderr,
+              mode === "wait",
+            );
 
-          if (editedDocumentSource === scanBaseline) {
-            convergenceOutcome = "converged";
-            if (scanIndex === 1) {
-              emit({ kind: "warn", message: "Planner made no file edits. No TODO items added." });
-            } else {
-              emit({ kind: "info", message: "Planner converged at scan " + scanIndex + ": file unchanged after worker edit." });
+            // Forward worker stderr in wait mode only when explicitly enabled.
+            if (mode === "wait" && showAgentOutput && runResult.stderr) {
+              emit({ kind: "stderr", text: runResult.stderr });
             }
-            break;
-          }
 
-          latestDocumentSource = editedDocumentSource;
-          insertedTotal += validationResult.stats.added;
+            // Non-zero exits fail the planning run for this task.
+            if (runResult.exitCode !== 0 && runResult.exitCode !== null) {
+              const message = "Planner worker exited with code " + runResult.exitCode + " during scan " + scanIndex + ".";
+              emit({ kind: "error", message });
+              emitScanFailure(message);
+              return finishPlan(1, "execution-failed");
+            }
+
+            let editedDocumentSource: string;
+            try {
+              editedDocumentSource = dependencies.fileSystem.readText(source);
+            } catch {
+              const message = "Unable to read Markdown document after scan " + scanIndex + ": " + source;
+              emit({
+                kind: "error",
+                message,
+              });
+              emitScanFailure(message);
+              return finishPlan(3, "failed");
+            }
+
+            const validationResult = validatePlanEdit(scanBaseline, editedDocumentSource);
+            if (!validationResult.valid) {
+              dependencies.fileSystem.writeText(source, scanBaseline);
+              const message = validationResult.rejectionReason
+                ?? "Planner edit was rejected because checked TODO items were modified.";
+              emit({
+                kind: "error",
+                message,
+              });
+              emitScanFailure(message);
+              return finishPlan(1, "failed");
+            }
+
+            if (editedDocumentSource === scanBaseline) {
+              convergenceOutcome = "converged";
+              if (scanIndex === 1) {
+                emit({ kind: "warn", message: "Planner made no file edits. No TODO items added." });
+              } else {
+                emit({ kind: "info", message: "Planner converged at scan " + scanIndex + ": file unchanged after worker edit." });
+              }
+              emit({ kind: "group-end", status: "success" });
+              break;
+            }
+
+            latestDocumentSource = editedDocumentSource;
+            insertedTotal += validationResult.stats.added;
+            emit({ kind: "group-end", status: "success" });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            emit({ kind: "error", message });
+            emitScanFailure(message);
+            throw error;
+          }
         }
 
         // Execute additional deep passes to generate nested child TODO items.
@@ -668,7 +700,8 @@ export function createPlanTask(
 
             emit({
               kind: "info",
-              message: "Running deep pass " + deepPass + " of " + deep + " for " + deepCandidates.length + " parent task" + (deepCandidates.length === 1 ? "" : "s") + ".",
+              message: "Running deep pass " + deepPass + " of " + deep + " for " + deepCandidates.length + " "
+                + pluralize(deepCandidates.length, "parent task", "parent tasks") + ".",
             });
 
             let deepPassInsertedCount = 0;
@@ -788,7 +821,9 @@ export function createPlanTask(
 
         emit({
           kind: "success",
-          message: "Inserted " + insertedTotal + " TODO item" + (insertedTotal === 1 ? "" : "s") + " into: " + source,
+          message: "Inserted " + insertedTotal + " "
+            + pluralize(insertedTotal, "TODO item", "TODO items")
+            + " into: " + source,
         });
         return finishPlan(0, "completed", convergenceMetadata);
       } finally {

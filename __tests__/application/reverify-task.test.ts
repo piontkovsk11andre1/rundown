@@ -214,6 +214,70 @@ describe("reverify-task", () => {
     expect(events.some((event) => event.kind === "success" && event.message === "Re-verified 3 tasks successfully.")).toBe(true);
   });
 
+  it("emits group-start/group-end events for each multi-run reverify pass", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "roadmap.md");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [x] Task newest\n- [x] Task older\n",
+    });
+
+    const runNewest = createRunMetadata({
+      runId: "run-newest",
+      status: "completed",
+      task: {
+        text: "Task newest",
+        file: taskFile,
+        line: 1,
+        index: 0,
+        source: "roadmap.md",
+      },
+    });
+    const runOlder = createRunMetadata({
+      runId: "run-older",
+      status: "completed",
+      task: {
+        text: "Task older",
+        file: taskFile,
+        line: 2,
+        index: 1,
+        source: "roadmap.md",
+      },
+      startedAt: "2026-03-19T17:59:00.000Z",
+    });
+
+    const { dependencies, events, taskVerification } = createDependencies({
+      cwd,
+      fileSystem,
+      runs: [runNewest, runOlder],
+    });
+    vi.mocked(taskVerification.verify).mockResolvedValue({ valid: true });
+
+    const reverifyTask = createReverifyTask(dependencies);
+    const code = await reverifyTask(createOptions({ all: true, workerCommand: ["opencode", "run"] }));
+
+    expect(code).toBe(0);
+    const groupStarts = events.filter((event) => event.kind === "group-start");
+    const groupEnds = events.filter((event) => event.kind === "group-end");
+
+    expect(groupStarts).toHaveLength(2);
+    expect(groupStarts[0]).toMatchObject({
+      kind: "group-start",
+      counter: { current: 1, total: 2 },
+    });
+    expect(groupStarts[1]).toMatchObject({
+      kind: "group-start",
+      counter: { current: 2, total: 2 },
+    });
+    expect(groupStarts[0]?.label).toContain("Re-verify pass: run-newest");
+    expect(groupStarts[0]?.label).toContain("Task newest");
+    expect(groupStarts[1]?.label).toContain("Re-verify pass: run-older");
+    expect(groupStarts[1]?.label).toContain("Task older");
+
+    expect(groupEnds).toHaveLength(2);
+    expect(groupEnds[0]).toEqual({ kind: "group-end", status: "success" });
+    expect(groupEnds[1]).toEqual({ kind: "group-end", status: "success" });
+  });
+
   it("loads worker config once across multi-run reverify", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "roadmap.md");
@@ -1015,7 +1079,7 @@ describe("reverify-task", () => {
     const code = await reverifyTask(createOptions({ all: true }));
 
     expect(code).toBe(3);
-    expect(events.some((event) => event.kind === "error" && event.message.includes("No completed runs found to re-verify."))).toBe(true);
+    expect(events.some((event) => event.kind === "error" && event.message.includes("No completed runs found."))).toBe(true);
   });
 
   it("returns 1 for --all with --print-prompt", async () => {

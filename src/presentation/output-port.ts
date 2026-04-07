@@ -1,6 +1,7 @@
 import type { ApplicationOutputEvent, ApplicationOutputPort } from "../domain/ports/output-port.js";
 import pc from "picocolors";
 import { sleep, typeText } from "./animation.js";
+import { formatTaskDetailLines } from "./task-detail-lines.js";
 
 const ANSI_ESCAPE_PATTERN = /\u001B\[[0-9;]*m/g;
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -44,6 +45,14 @@ export function drainAnimationQueue(): Promise<void> {
 }
 
 /**
+ * Resets mutable render state between CLI invocations.
+ */
+export function resetCliOutputPortState(): void {
+  flushProgressLine();
+  groupDepth = 0;
+}
+
+/**
  * Applies a dimmed terminal style to supporting status text.
  */
 function dim(message: string): string {
@@ -55,30 +64,6 @@ function dim(message: string): string {
  */
 function taskLabel(task: { text: string; file: string; line: number; index: number }): string {
   return `${pc.cyan(task.file)}:${pc.yellow(String(task.line))} ${pc.dim(`[#${task.index}]`)} ${task.text}`;
-}
-
-interface TaskLike {
-  text: string;
-  file: string;
-  line: number;
-  index: number;
-  depth: number;
-  children?: unknown;
-  subItems?: unknown;
-}
-
-interface SubItemLike {
-  text: string;
-  line: number;
-  depth: number;
-}
-
-interface TaskDetailLineOptions {
-  file: string;
-  parentDepth: number;
-  children?: unknown;
-  subItems?: unknown;
-  indentLevel: number;
 }
 
 /**
@@ -172,7 +157,8 @@ function groupLinePrefix(): string {
     return "";
   }
 
-  return isInteractiveProgressEnabled() ? "│  " : "    ";
+  const segment = isInteractiveProgressEnabled() ? "│  " : "    ";
+  return segment.repeat(groupDepth);
 }
 
 /**
@@ -218,6 +204,57 @@ function styleInfoMessage(message: string): string {
   }
 
   return message;
+}
+
+/**
+ * Applies log-runs specific styling to plain text lines emitted by the application layer.
+ */
+function styleLogRunsLine(message: string): string {
+  if (!message.includes(" | source=") || !message.includes(" | command=") || !message.includes(" | revertable=")) {
+    return message;
+  }
+
+  const statusMatch = message.match(/\| \[([^\]]+)\] \|/);
+  let styled = message;
+  if (statusMatch && statusMatch[0]) {
+    const statusValue = statusMatch[1]?.toLowerCase() ?? "";
+    const statusToken = statusMatch[0].slice(2, -2);
+    const coloredStatus = (() => {
+      switch (statusValue) {
+        case "completed":
+          return pc.green(statusToken);
+        case "failed":
+          return pc.red(statusToken);
+        case "cancelled":
+        case "canceled":
+          return pc.yellow(statusToken);
+        default:
+          return pc.blue(statusToken);
+      }
+    })();
+
+    styled = styled.replace(statusToken, coloredStatus);
+  }
+
+  if (styled.endsWith(" | revertable=no")) {
+    return pc.dim(styled);
+  }
+
+  return styled;
+}
+
+/**
+ * Styles text event content while preserving non-log-runs payloads verbatim.
+ */
+function styleTextMessage(message: string): string {
+  if (!message.includes("\n")) {
+    return styleLogRunsLine(message);
+  }
+
+  return message
+    .split("\n")
+    .map((line) => styleLogRunsLine(line))
+    .join("\n");
 }
 
 /**
@@ -326,49 +363,6 @@ function renderInteractiveProgress(progress: ProgressPayload): void {
 }
 
 /**
- * Flattens nested child tasks and sub-items into ordered, indented CLI output lines.
- */
-function formatTaskDetailLines(options: TaskDetailLineOptions): string[] {
-  // Normalize optional collections to arrays so downstream rendering is deterministic.
-  const children = Array.isArray(options.children) ? (options.children as TaskLike[]) : [];
-  const subItems = Array.isArray(options.subItems) ? (options.subItems as SubItemLike[]) : [];
-
-  const detailGroups: Array<{ line: number; lines: string[] }> = [];
-
-  for (const child of children) {
-    // Render each child task and recursively include its nested detail lines.
-    const childLines = [
-      `${"  ".repeat(options.indentLevel)}${taskLabel(child)}`,
-      ...formatTaskDetailLines({
-        file: child.file,
-        parentDepth: child.depth,
-        children: child.children,
-        subItems: child.subItems,
-        indentLevel: options.indentLevel + 1,
-      }),
-    ];
-
-    detailGroups.push({ line: child.line, lines: childLines });
-  }
-
-  for (const subItem of subItems) {
-    // Preserve relative indentation for sub-items based on their markdown depth.
-    const extraIndent = Math.max(0, subItem.depth - (options.parentDepth + 1));
-    const indent = options.indentLevel + extraIndent;
-    detailGroups.push({
-      line: subItem.line,
-      lines: [
-        `${"  ".repeat(indent)}${pc.cyan(options.file)}:${pc.yellow(String(subItem.line))} - ${subItem.text}`,
-      ],
-    });
-  }
-
-  // Sort by source line so mixed children and sub-items print in document order.
-  detailGroups.sort((left, right) => left.line - right.line);
-  return detailGroups.flatMap((group) => group.lines);
-}
-
-/**
  * CLI implementation of the application output port.
  *
  * Routes domain output events to console channels with consistent color and structure.
@@ -383,27 +377,28 @@ export const cliOutputPort: ApplicationOutputPort = {
       case "group-start": {
         flushProgressLine();
         const counter = event.counter ? `[${event.counter.current}/${event.counter.total}] ` : "";
+        const parentPrefix = groupLinePrefix();
         if (isInteractiveProgressEnabled()) {
-          console.log(`┌ ${counter}${event.label}`);
+          console.log(`${parentPrefix}┌ ${counter}${event.label}`);
         } else {
-          console.log(`${counter}${event.label}`);
+          console.log(`${parentPrefix}${counter}${event.label}`);
         }
-        groupDepth = 1;
+        groupDepth += 1;
         return;
       }
       case "group-end": {
         flushProgressLine();
+        groupDepth = Math.max(0, groupDepth - 1);
         const isSuccess = event.status === "success";
         const statusLabel = isSuccess ? `${pc.green("✔")} Done` : `${pc.red("✖")} Failed`;
         const suffix = event.message ? ` — ${event.message}` : "";
+        const parentPrefix = groupLinePrefix();
 
         if (isInteractiveProgressEnabled()) {
-          console.log(`└ ${statusLabel}${suffix}`);
+          console.log(`${parentPrefix}└ ${statusLabel}${suffix}`);
         } else {
-          console.log(`${statusLabel}${suffix}`);
+          console.log(`${parentPrefix}${statusLabel}${suffix}`);
         }
-
-        groupDepth = 0;
         return;
       }
       case "info":
@@ -464,6 +459,8 @@ export const cliOutputPort: ApplicationOutputPort = {
               children,
               subItems,
               indentLevel: 1,
+              formatTaskLine: taskLabel,
+              formatSubItemLine: (subItem) => `${pc.cyan(subItem.file)}:${pc.yellow(String(subItem.line))} - ${subItem.text}`,
             }),
           ];
           console.log(lines.join("\n"));
@@ -471,7 +468,7 @@ export const cliOutputPort: ApplicationOutputPort = {
         return;
       case "text":
         flushProgressLine();
-        console.log(withGroupPrefixMultiline(event.text));
+        console.log(withGroupPrefixMultiline(styleTextMessage(event.text)));
         return;
       case "stderr":
         flushProgressLine();

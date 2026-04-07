@@ -228,11 +228,11 @@ function executeCommand(
 
         child.stdout?.on("data", (chunk: Buffer) => {
           stdout.push(chunk);
-          process.stdout.write(chunk);
+          mirrorWorkerChunkToTerminal("stdout", chunk);
         });
         child.stderr?.on("data", (chunk: Buffer) => {
           stderr.push(chunk);
-          process.stderr.write(chunk);
+          mirrorWorkerChunkToTerminal("stderr", chunk);
         });
 
         child.on("close", (code: number | null) => {
@@ -310,11 +310,27 @@ function buildCaptureNotes(mode: RunnerMode, captureOutput: boolean): string | u
 
   if (mode === "tui") {
     if (captureOutput) {
-      return "Interactive TUI mode captures and mirrors worker stdout/stderr transcripts.";
+      return "Interactive TUI mode captures worker stdout/stderr transcripts while mirroring raw stream bytes to the terminal.";
     }
 
     return "Interactive TUI mode does not capture worker stdout/stderr transcripts.";
   }
 
   return "Detached mode does not capture worker stdout/stderr and leaves runtime artifacts in place.";
+}
+
+/**
+ * Mirrors captured TUI stream chunks to the parent terminal without formatting.
+ *
+ * This bypass is intentional: show-agent-output in interactive mode should
+ * preserve raw worker rendering (ANSI escapes, carriage returns, and partial
+ * line updates) instead of routing through the structured output port.
+ */
+function mirrorWorkerChunkToTerminal(stream: "stdout" | "stderr", chunk: Buffer): void {
+  if (stream === "stdout") {
+    process.stdout.write(chunk);
+    return;
+  }
+
+  process.stderr.write(chunk);
 }

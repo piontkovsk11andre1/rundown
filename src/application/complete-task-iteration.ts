@@ -22,6 +22,7 @@ import type {
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import type { ExtraTemplateVars } from "../domain/template-vars.js";
 import type { RunTaskDependencies } from "./run-task-execution.js";
+import { pluralize } from "./run-task-utils.js";
 
 type EmitFn = (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
 type ArtifactContext = ArtifactRunContext;
@@ -222,11 +223,11 @@ export async function completeTaskIteration(params: {
     const skipResult = skipRemainingSiblingsUsingFileSystem(task, skipRemainingSiblingsReason, dependencies.fileSystem);
     emit({
       kind: "info",
-      message: "Skipped " + skipResult.skippedSiblingCount + " sibling task"
-        + (skipResult.skippedSiblingCount === 1 ? "" : "s")
+      message: "Skipped " + skipResult.skippedSiblingCount + " "
+        + pluralize(skipResult.skippedSiblingCount, "sibling task", "sibling tasks")
         + (skipResult.skippedDescendantCount > 0
-          ? " and " + skipResult.skippedDescendantCount + " descendant task"
-            + (skipResult.skippedDescendantCount === 1 ? "" : "s")
+          ? " and " + skipResult.skippedDescendantCount + " "
+            + pluralize(skipResult.skippedDescendantCount, "descendant task", "descendant tasks")
           : "")
         + " because end condition was met.",
     });

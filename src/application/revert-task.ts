@@ -6,6 +6,7 @@ import {
   isWorkingDirectoryClean,
   resolveGitArtifactAndLockExcludes,
 } from "./git-operations.js";
+import { formatTaskLabel, pluralize } from "./run-task-utils.js";
 import type {
   ArtifactRunMetadata,
   ArtifactStore,
@@ -68,6 +69,14 @@ interface RevertProgressDescriptor {
   detailPrefix: string;
 }
 
+interface RevertOperationGroupDescriptor {
+  label: string;
+  counter: {
+    current: number;
+    total: number;
+  };
+}
+
 /**
  * Builds the application-level `revert` command handler.
  *
@@ -121,7 +130,7 @@ export function createRevertTask(
       }
 
       if (hasMultiRunSelection) {
-        emit({ kind: "error", message: "No completed runs found to revert." });
+        emit({ kind: "error", message: "No completed runs found." });
         return 3;
       }
 
@@ -291,8 +300,8 @@ export function createRevertTask(
         const dryRunProgress = buildRevertProgressDescriptor(method, true);
         emit({
           kind: "info",
-          message: "Dry run - would revert " + executionRuns.length + " run"
-            + (executionRuns.length === 1 ? "" : "s")
+          message: "Dry run - would revert " + executionRuns.length + " "
+            + pluralize(executionRuns.length, "run", "runs")
             + " using method=" + method + ".",
         });
         for (const [index, operation] of executionOperations.entries()) {
@@ -377,7 +386,13 @@ export function createRevertTask(
             const run = operation.run;
             const commitSha = operation.ref;
             const current = index + 1;
+            const operationGroup = buildRevertOperationGroupDescriptor(run, current, executionOperations.length);
             attemptedRunIds.push(run.runId);
+            emit({
+              kind: "group-start",
+              label: operationGroup.label,
+              counter: operationGroup.counter,
+            });
             emit({
               kind: "progress",
               progress: {
@@ -396,8 +411,15 @@ export function createRevertTask(
             try {
               await dependencies.gitClient.run(["revert", commitSha, "--no-edit"], cwd);
               successfulRunIds.push(run.runId);
+              emit({ kind: "group-end", status: "success" });
             } catch (error) {
               failedRunId = run.runId;
+              const groupFailureMessage = "Revert failed for " + run.runId + ".";
+              emit({
+                kind: "group-end",
+                status: "failure",
+                message: groupFailureMessage,
+              });
               if (hasMultiRunSelection) {
                 emit({
                   kind: "error",
@@ -479,8 +501,8 @@ export function createRevertTask(
 
         emit({
           kind: "success",
-          message: "Reverted " + executionRuns.length + " run"
-            + (executionRuns.length === 1 ? "" : "s")
+          message: "Reverted " + executionRuns.length + " "
+            + pluralize(executionRuns.length, "run", "runs")
             + " successfully.",
         });
         return 0;
@@ -536,6 +558,20 @@ function buildRevertProgressDescriptor(
   return {
     phaseLabel: dryRun ? "Dry-run revert plan" : "Reverting runs",
     detailPrefix: dryRun ? "Previewing run" : "Reverting run",
+  };
+}
+
+function buildRevertOperationGroupDescriptor(
+  run: ArtifactRunMetadata,
+  current: number,
+  total: number,
+): RevertOperationGroupDescriptor {
+  return {
+    label: "Revert operation: " + formatTaskLabel(run),
+    counter: {
+      current,
+      total,
+    },
   };
 }
 
@@ -808,17 +844,6 @@ async function validatePreResetRefTargetsExistInHistory(
       throw new Error("Run " + operation.run.runId + " preResetRef " + operation.ref + " is not a commit object.");
     }
   }
-}
-
-/**
- * Formats task metadata for user-facing diagnostics.
- */
-function formatTaskLabel(run: ArtifactRunMetadata): string {
-  if (!run.task) {
-    return "(task metadata unavailable)";
-  }
-
-  return `${run.task.file}:${run.task.line} [#${run.task.index}] ${run.task.text}`;
 }
 
 /**

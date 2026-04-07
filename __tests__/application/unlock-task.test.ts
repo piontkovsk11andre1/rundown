@@ -12,7 +12,7 @@ describe("unlock-task", () => {
     const code = await unlockTask({ source: "tasks.md" });
 
     expect(code).toBe(3);
-    expect(events.some((event) => event.kind === "info" && event.message.includes("No lockfile found"))).toBe(true);
+    expect(events.some((event) => event.kind === "info" && event.message.includes("No source lock found"))).toBe(true);
     expect(vi.mocked(dependencies.fileLock.forceRelease)).not.toHaveBeenCalled();
   });
 

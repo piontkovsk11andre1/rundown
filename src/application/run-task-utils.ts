@@ -1,4 +1,5 @@
 import type { Task } from "../domain/parser.js";
+import type { ArtifactRunMetadata } from "../domain/ports/artifact-store.js";
 
 /**
  * Safely parses a JSON string and returns null when parsing fails.
@@ -90,8 +91,16 @@ export function computeDurationMs(startedAt: string | undefined, completedAt: st
 /**
  * Builds a stable task label for logs and diagnostics.
  */
-export function formatTaskLabel(task: Task): string {
-  return `${task.file}:${task.line} [#${task.index}] ${task.text}`;
+export function formatTaskLabel(taskOrRun: Task | ArtifactRunMetadata): string {
+  if ("runId" in taskOrRun) {
+    if (!taskOrRun.task) {
+      return "(task metadata unavailable)";
+    }
+
+    return `${taskOrRun.task.file}:${taskOrRun.task.line} [#${taskOrRun.task.index}] ${taskOrRun.task.text}`;
+  }
+
+  return `${taskOrRun.file}:${taskOrRun.line} [#${taskOrRun.index}] ${taskOrRun.text}`;
 }
 
 /**
@@ -117,4 +126,11 @@ export function hasLongOption(args: string[], option: string): boolean {
  */
 export function hasLongOptionVariant(args: string[], options: string[]): boolean {
   return options.some((option) => hasLongOption(args, option));
+}
+
+/**
+ * Returns singular or plural noun form based on count.
+ */
+export function pluralize(count: number, singular: string, plural: string): string {
+  return count === 1 ? singular : plural;
 }

@@ -71,6 +71,40 @@ describe("createLoggedOutputPort", () => {
     expect(outputEmit).toHaveBeenCalledWith({ kind: "error", message: "boom" });
   });
 
+  it("strips ANSI sequences before writing JSONL payloads", () => {
+    const ansiRed = "\u001b[31m";
+    const ansiReset = "\u001b[0m";
+    const writer = {
+      write: vi.fn(),
+    };
+
+    const port = createLoggedOutputPort({
+      output: { emit: vi.fn() },
+      writer,
+      context: {
+        command: `${ansiRed}rundown${ansiReset}`,
+        argv: ["run", `${ansiRed}TODO.md${ansiReset}`],
+        cwd: `${ansiRed}/workspace${ansiReset}`,
+        pid: 321,
+        version: `${ansiRed}1.2.3${ansiReset}`,
+        sessionId: `${ansiRed}session-ansi${ansiReset}`,
+      },
+      now: () => `${ansiRed}2026-03-28T00:00:00.000Z${ansiReset}`,
+    });
+
+    port.emit({ kind: "text", text: `${ansiRed}colored line${ansiReset}` });
+
+    expect(writer.write).toHaveBeenCalledWith(expect.objectContaining({
+      ts: "2026-03-28T00:00:00.000Z",
+      message: "colored line",
+      command: "rundown",
+      argv: ["run", "TODO.md"],
+      cwd: "/workspace",
+      version: "1.2.3",
+      session_id: "session-ansi",
+    }));
+  });
+
   it("logs expected level, stream, kind, and message for every event kind", () => {
     const outputEmit = vi.fn();
     const writer = {

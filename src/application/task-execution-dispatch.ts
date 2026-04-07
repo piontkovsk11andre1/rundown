@@ -19,6 +19,7 @@ import {
 import { createTraceRunSession } from "./trace-run-session.js";
 import type { PrefixChain } from "../domain/prefix-chain.js";
 import { executeToolChain } from "./tool-execution.js";
+import { pluralize } from "./run-task-utils.js";
 
 const INCLUDE_STACK_ENV = "RUNDOWN_INCLUDE_STACK";
 
@@ -417,8 +418,9 @@ export async function dispatchTaskExecution(params: {
       dependencies.fileSystem.writeText(task.file, updatedSource);
       emit({
         kind: "info",
-        message: "Inserted " + subitemLines.length + " tool-generated child TODO item"
-          + (subitemLines.length === 1 ? "" : "s") + ".",
+        message: "Inserted " + subitemLines.length + " "
+          + pluralize(subitemLines.length, "tool-generated child TODO item", "tool-generated child TODO items")
+          + ".",
       });
     } else {
       emit({ kind: "info", message: "Tool expansion produced no child TODO items." });

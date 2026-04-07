@@ -574,12 +574,52 @@ describe("runWorker", () => {
       notes?: string;
     };
     expect(metadata.outputCaptured).toBe(true);
-    expect(metadata.notes).toBe("Interactive TUI mode captures and mirrors worker stdout/stderr transcripts.");
+    expect(metadata.notes).toBe(
+      "Interactive TUI mode captures worker stdout/stderr transcripts while mirroring raw stream bytes to the terminal.",
+    );
     expect(fs.readFileSync(path.join(phaseDir, "stdout.log"), "utf-8")).toBe("hello tui\n");
     expect(fs.readFileSync(path.join(phaseDir, "stderr.log"), "utf-8")).toBe("warn tui\n");
 
     stdoutWriteSpy.mockRestore();
     stderrWriteSpy.mockRestore();
+  });
+
+  it("documents raw passthrough behavior in tui capture metadata", async () => {
+    spawnMock.mockImplementation((_cmd: string, _args: string[], _options: Record<string, unknown>) => {
+      const child = new EventEmitter() as EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+      };
+
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+
+      queueMicrotask(() => {
+        child.emit("close", 0);
+      });
+
+      return child;
+    });
+
+    const { runWorker } = await import("../../src/infrastructure/runner.js");
+
+    await runWorker({
+      command: ["opencode"],
+      prompt: "interactive prompt",
+      mode: "tui",
+      captureOutput: true,
+      keepArtifacts: true,
+      cwd: workspace,
+    });
+
+    const runsDir = path.join(workspace, ".rundown", "runs");
+    const [runDirName] = fs.readdirSync(runsDir);
+    const phaseDir = path.join(runsDir, runDirName!, "01-worker");
+    const metadata = JSON.parse(fs.readFileSync(path.join(phaseDir, "metadata.json"), "utf-8")) as {
+      notes?: string;
+    };
+
+    expect(metadata.notes).toContain("mirroring raw stream bytes to the terminal");
   });
 
   it("uses custom artifact phase labels for directory naming", async () => {

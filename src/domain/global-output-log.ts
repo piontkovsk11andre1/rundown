@@ -30,6 +30,8 @@ export type GlobalOutputLogKind =
   | "task"
   | "text"
   | "stderr"
+  | "cli-fatal"
+  | "commander"
   | "group-start"
   | "group-end";
 

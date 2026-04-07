@@ -40,6 +40,7 @@ import {
 } from "./task-context-resolution.js";
 import { runVerifyRepairLoop } from "./verify-repair-loop.js";
 import { resolveWorkerPatternForInvocation } from "./resolve-worker.js";
+import { pluralize } from "./run-task-utils.js";
 import type {
   ArtifactStoreStatus,
   ArtifactRunMetadata,
@@ -340,8 +341,8 @@ export function createReverifyTask(
             kind: "info",
             message: "Dry run — skipped `cli` fenced block execution; would execute "
               + totalCliBlockCount
-              + " block"
-              + (totalCliBlockCount === 1 ? "" : "s")
+              + " "
+              + pluralize(totalCliBlockCount, "block", "blocks")
               + ".",
           });
         }
@@ -499,7 +500,7 @@ export function createReverifyTask(
     });
     if (targetRuns.length === 0) {
       if (hasMultiRunSelection) {
-        emit({ kind: "error", message: "No completed runs found to re-verify." });
+        emit({ kind: "error", message: "No completed runs found." });
         return 3;
       }
 
@@ -528,9 +529,34 @@ export function createReverifyTask(
 
     // Process selected runs sequentially and stop at the first failure.
     let tasksReverified = 0;
-    for (const run of targetRuns) {
-      const result = await reverifyOneRun(run);
+    for (const [index, run] of targetRuns.entries()) {
+      emit({
+        kind: "group-start",
+        label: formatReverifyPassLabel(run),
+        counter: {
+          current: index + 1,
+          total: targetRuns.length,
+        },
+      });
+
+      let result: { exitCode: number; status: ArtifactStoreStatus | null };
+      try {
+        result = await reverifyOneRun(run);
+      } catch (error) {
+        emit({
+          kind: "group-end",
+          status: "failure",
+          message: "Re-verify failed for " + run.runId + ".",
+        });
+        throw error;
+      }
+
       if (result.exitCode !== 0) {
+        emit({
+          kind: "group-end",
+          status: "failure",
+          message: "Re-verify failed for " + run.runId + ".",
+        });
         if (hasMultiRunSelection) {
           emit({
             kind: "error",
@@ -541,6 +567,7 @@ export function createReverifyTask(
         return result.exitCode;
       }
 
+      emit({ kind: "group-end", status: "success" });
       tasksReverified += 1;
     }
 
@@ -553,6 +580,17 @@ export function createReverifyTask(
 
     return 0;
   };
+}
+
+/**
+ * Builds the grouped output label shown for each reverify pass.
+ */
+function formatReverifyPassLabel(run: ArtifactRunMetadata): string {
+  if (run.task) {
+    return "Re-verify pass: " + run.runId + " " + formatTaskMetadataLabel(run.task);
+  }
+
+  return "Re-verify pass: " + run.runId;
 }
 
 /**

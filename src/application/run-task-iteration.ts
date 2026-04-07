@@ -232,9 +232,23 @@ export async function runTaskIteration(params: {
     emit({ kind: "info", message: "Next task: " + formatTaskLabel(task) });
   }
 
-  const emitGroupFailure = (message: string): void => {
-    emit({ kind: "group-end", status: "failure", message });
+  let groupEnded = false;
+  const emitGroupSuccess = (): void => {
+    if (groupEnded) {
+      return;
+    }
+    emit({ kind: "group-end", status: "success" });
+    groupEnded = true;
   };
+  const emitGroupFailure = (message: string): void => {
+    if (groupEnded) {
+      return;
+    }
+    emit({ kind: "group-end", status: "failure", message });
+    groupEnded = true;
+  };
+
+  try {
 
   if (taskIntentDecision.intent === "memory-capture" && taskIntentDecision.hasEmptyPayload) {
     const message = "Memory capture task requires payload text after the prefix (memory:, memorize:, remember:, inventory:).";
@@ -262,7 +276,7 @@ export async function runTaskIteration(params: {
       kind: "warn",
       message,
     });
-    emit({ kind: "group-end", status: "success" });
+    emitGroupSuccess();
     return { continueLoop: false, exitCode: 0 };
   }
 
@@ -375,6 +389,8 @@ export async function runTaskIteration(params: {
       const failureMessage = promptPreparationFailureReason
         ?? "Task failed during prompt preparation (exit " + preparedPrompts.earlyExitCode + ").";
       emitGroupFailure(failureMessage);
+    } else {
+      emitGroupSuccess();
     }
     return { continueLoop: false, exitCode: preparedPrompts.earlyExitCode };
   }
@@ -400,6 +416,8 @@ export async function runTaskIteration(params: {
           + dryRunOrPrintPromptExitCode
           + ").",
       );
+    } else {
+      emitGroupSuccess();
     }
     return { continueLoop: false, exitCode: dryRunOrPrintPromptExitCode };
   }
@@ -501,6 +519,7 @@ export async function runTaskIteration(params: {
   // Detached runs intentionally skip immediate verification and checkbox updates.
   if (dispatchResult.kind === "detached") {
     emit({ kind: "info", message: "Detached mode — skipping immediate verification and leaving the task unchecked." });
+    emitGroupSuccess();
     return {
       continueLoop: false,
       exitCode: await lifecycle.finishRun(0, "detached", true),
@@ -561,7 +580,16 @@ export async function runTaskIteration(params: {
 
   if (!completionResult.continueLoop && (completionResult.exitCode ?? 0) !== 0) {
     emitGroupFailure(dispatchResult.verificationFailureRunReason);
+  } else if (!completionResult.continueLoop && !groupEnded) {
+    emitGroupSuccess();
   }
 
   return completionResult;
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : String(error);
+    emitGroupFailure(message);
+    throw error;
+  }
 }

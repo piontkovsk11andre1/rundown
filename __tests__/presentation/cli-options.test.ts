@@ -2527,6 +2527,33 @@ describe("CLI plan and utility command normalization", () => {
     }
   });
 
+  it("make defaults plan scan count to unlimited mode", async () => {
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-scan-count-default-"));
+    const markdownFile = path.join(tempRoot, "8. Do something.md");
+
+    try {
+      const result = await invokeMakeAndCaptureCalls([
+        "make",
+        "please do something",
+        markdownFile,
+        "--worker",
+        "opencode",
+        "run",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(0);
+      expect(planTask).toHaveBeenCalledTimes(1);
+      expect(planTask).toHaveBeenCalledWith(expect.objectContaining({
+        source: markdownFile,
+        scanCount: undefined,
+      }));
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("do forwards interactive question context to run phase via runAll execution", async () => {
     const researchTask = vi.fn(async () => 0);
     const planTask = vi.fn(async () => 0);
@@ -2550,6 +2577,36 @@ describe("CLI plan and utility command normalization", () => {
         source: markdownFile,
         runAll: true,
         mode: "wait",
+      }));
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("do forwards bounded bootstrap scan count to plan", async () => {
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const runTask = vi.fn(async () => 0);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-do-scan-count-forward-"));
+    const markdownFile = path.join(tempRoot, "8. Do something.md");
+
+    try {
+      const result = await invokeDoAndCaptureCalls([
+        "do",
+        "please do something",
+        markdownFile,
+        "--scan-count",
+        "4",
+        "--worker",
+        "opencode",
+        "run",
+      ], runTask, researchTask, planTask);
+
+      expect(result.exitCode).toBe(0);
+      expect(planTask).toHaveBeenCalledTimes(1);
+      expect(planTask).toHaveBeenCalledWith(expect.objectContaining({
+        source: markdownFile,
+        scanCount: 4,
       }));
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -3075,7 +3132,7 @@ describe("CLI plan and utility command normalization", () => {
     expect(call.forceUnlock).toBe(true);
   });
 
-  it("defaults plan scan count to 3", async () => {
+  it("defaults plan scan count to unlimited mode", async () => {
     const planTask = vi.fn(async () => 0);
     const call = await invokePlanAndCaptureCall([
       "plan",
@@ -3085,7 +3142,7 @@ describe("CLI plan and utility command normalization", () => {
       "run",
     ], planTask);
 
-    expect(call.scanCount).toBe(3);
+    expect(call.scanCount).toBeUndefined();
   });
 
   it("defaults plan deep to 0", async () => {

@@ -76,7 +76,44 @@ type ArtifactContext = ArtifactRunContext;
 /**
  * Convergence states tracked across multi-scan planning runs.
  */
-type PlanConvergenceOutcome = "converged" | "scan-cap-reached";
+export type PlanConvergenceOutcome =
+  | "converged-no-change"
+  | "converged-no-additions"
+  | "scan-cap-reached"
+  | "emergency-cap-reached";
+
+/**
+ * Structured convergence metadata persisted with plan artifacts.
+ */
+interface PlanConvergenceMetadata extends Record<string, unknown> {
+  planScanMode: PlanScanMode;
+  planScanCount: number | null;
+  planScansExecuted: number;
+  planConvergenceReason: PlanConvergenceOutcome;
+  planConvergenceOutcome: PlanConvergenceOutcome;
+  planConverged: boolean;
+  planScanCapReached: boolean;
+  planEmergencyCapReached: boolean;
+}
+
+/**
+ * Top-level scan strategy for plan execution.
+ */
+type PlanScanMode = "bounded" | "unlimited";
+
+/**
+ * Concrete scan strategy used to drive loop behavior.
+ */
+type PlanScanStrategy =
+  | { mode: Extract<PlanScanMode, "bounded">; scanCount: number }
+  | { mode: Extract<PlanScanMode, "unlimited"> };
+
+type PlanScanCountTemplateValue = number | string;
+
+/**
+ * Internal safety ceiling for unlimited top-level plan scans.
+ */
+const EMERGENCY_MAX_UNLIMITED_PLAN_SCANS = 30;
 
 /**
  * Ports and services required to execute the `plan` command.
@@ -136,7 +173,7 @@ export function createPlanTask(
   return async function planTask(options: PlanTaskOptions): Promise<number> {
     const {
       source,
-      scanCount = 3,
+      scanCount,
       deep = 0,
       mode,
       workerPattern,
@@ -281,6 +318,7 @@ export function createPlanTask(
       const deepPlanTemplate = DEFAULT_DEEP_PLAN_TEMPLATE;
 
       const planPromptDocumentContext = buildPlanPromptDocumentContext(source);
+      const scanStrategy = resolvePlanScanStrategy(scanCount);
       const vars: TemplateVars = {
         ...templateVarsWithUserVariables,
         ...buildMemoryTemplateVars({
@@ -293,7 +331,8 @@ export function createPlanTask(
         taskIndex: 0,
         taskLine: 1,
         source: planPromptDocumentContext,
-        scanCount,
+        scanCount: resolvePlanScanCountTemplateValue(scanStrategy),
+        scanMode: scanStrategy.mode,
         existingTodoCount,
         hasExistingTodos: hasExistingTodos ? "true" : "false",
       };
@@ -339,7 +378,15 @@ export function createPlanTask(
 
       // Print mode returns rendered scan/deep prompts without invoking workers.
       if (printPrompt) {
-        emit({ kind: "text", text: buildPlanScanPrompt(prompt, source, 1, scanCount) });
+        emit({
+          kind: "text",
+          text: buildPlanScanPrompt(
+            prompt,
+            source,
+            1,
+            scanStrategy.mode === "bounded" ? scanStrategy.scanCount : undefined,
+          ),
+        });
         if (deep > 0) {
           const deepCandidates = collectDeepLeafCandidates(documentSource, source);
           if (deepCandidates.length === 0) {
@@ -386,8 +433,21 @@ export function createPlanTask(
           });
         }
         emit({ kind: "info", message: "Dry run — would plan: " + resolvedWorkerCommand.join(" ") });
-        emit({ kind: "info", message: "Scan count: " + scanCount });
-        emit({ kind: "info", message: "Prompt length: " + buildPlanScanPrompt(prompt, source, 1, scanCount).length + " chars" });
+        emit({
+          kind: "info",
+          message: scanStrategy.mode === "bounded"
+            ? "Scan count: " + scanStrategy.scanCount
+            : "Scan count: unlimited",
+        });
+        emit({
+          kind: "info",
+          message: "Prompt length: " + buildPlanScanPrompt(
+            prompt,
+            source,
+            1,
+            scanStrategy.mode === "bounded" ? scanStrategy.scanCount : undefined,
+          ).length + " chars",
+        });
         if (deep > 0) {
           const deepCandidates = collectDeepLeafCandidates(documentSource, source);
           emit({ kind: "info", message: "Deep count: " + deep });
@@ -571,18 +631,28 @@ export function createPlanTask(
           });
         };
 
-        // Execute up to `scanCount` independent scans using in-memory snapshots.
-        for (let scanIndex = 1; scanIndex <= scanCount; scanIndex += 1) {
-          const scanLabel = buildPlanScanLabel(scanIndex, scanCount);
+        // Execute scans until convergence, while honoring bounded scan caps when configured.
+        let scanIndex = 1;
+        while (shouldContinuePlanScans(scanIndex, scanStrategy, convergenceOutcome)) {
+          if (scanStrategy.mode === "unlimited" && scanIndex > EMERGENCY_MAX_UNLIMITED_PLAN_SCANS) {
+            convergenceOutcome = "emergency-cap-reached";
+            emit({
+              kind: "warn",
+              message: "Emergency scan ceiling reached: planner stopped after "
+                + EMERGENCY_MAX_UNLIMITED_PLAN_SCANS
+                + " unlimited scans to prevent a runaway loop. This is a non-fatal safety stop; using current plan output.",
+            });
+            break;
+          }
+
+          const scanLabel = buildPlanScanLabel(scanIndex, scanStrategy);
           const scanBaseline = latestDocumentSource;
+          const scanCounter = buildPlanScanCounter(scanIndex, scanStrategy);
 
           emit({
             kind: "group-start",
             label: "Plan scan " + scanLabel,
-            counter: {
-              current: scanIndex,
-              total: scanCount,
-            },
+            counter: scanCounter,
           });
 
           const emitScanFailure = (message: string): void => {
@@ -600,7 +670,12 @@ export function createPlanTask(
             scansExecuted += 1;
 
             // Build per-scan prompt context and execute the planner worker.
-            const scanPrompt = buildPlanScanPrompt(prompt, source, scanIndex, scanCount);
+            const scanPrompt = buildPlanScanPrompt(
+              prompt,
+              source,
+              scanIndex,
+              scanStrategy.mode === "bounded" ? scanStrategy.scanCount : undefined,
+            );
             if (verbose) {
               emit({
                 kind: "info",
@@ -618,10 +693,11 @@ export function createPlanTask(
               configDir: dependencies.configDir?.configDir,
               artifactContext,
               artifactPhase: "plan",
-              artifactPhaseLabel: buildPlanScanPhaseLabel(scanIndex, scanCount),
+              artifactPhaseLabel: buildPlanScanPhaseLabel(scanIndex, scanStrategy),
               artifactExtra: {
                 scanIndex,
-                scanCount,
+                scanCount: scanStrategy.mode === "bounded" ? scanStrategy.scanCount : null,
+                scanMode: scanStrategy.mode,
                 scanLabel,
               },
             });
@@ -684,7 +760,7 @@ export function createPlanTask(
             }
 
             if (editedDocumentSource === scanBaseline) {
-              convergenceOutcome = "converged";
+              convergenceOutcome = "converged-no-change";
               if (scanIndex === 1) {
                 emit({ kind: "warn", message: "Planner made no file edits. No TODO items added." });
               } else {
@@ -692,13 +768,23 @@ export function createPlanTask(
               }
               planSuccessCount += 1;
               emit({ kind: "group-end", status: "success" });
-              break;
+              continue;
+            }
+
+            if (validationResult.stats.added === 0) {
+              convergenceOutcome = "converged-no-additions";
+              latestDocumentSource = editedDocumentSource;
+              emit({ kind: "info", message: "Planner converged at scan " + scanIndex + ": edit added no new TODO items." });
+              planSuccessCount += 1;
+              emit({ kind: "group-end", status: "success" });
+              continue;
             }
 
             latestDocumentSource = editedDocumentSource;
             insertedTotal += validationResult.stats.added;
             planSuccessCount += 1;
             emit({ kind: "group-end", status: "success" });
+            scanIndex += 1;
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             emit({ kind: "error", message });
@@ -852,13 +938,20 @@ export function createPlanTask(
         }
 
         // Hitting the scan cap without convergence is tracked explicitly.
-        if (scansExecuted > 0 && convergenceOutcome === null) {
+        if (scansExecuted > 0 && convergenceOutcome === null && scanStrategy.mode === "bounded") {
           convergenceOutcome = "scan-cap-reached";
         }
 
         const convergenceMetadata = convergenceOutcome
-          ? buildPlanConvergenceMetadata(scanCount, scansExecuted, convergenceOutcome)
+          ? buildPlanConvergenceMetadata(scanStrategy, scansExecuted, convergenceOutcome)
           : undefined;
+
+        if (convergenceOutcome) {
+          emit({
+            kind: "info",
+            message: formatPlanStopReason(convergenceOutcome),
+          });
+        }
 
         emitPlanSummary();
 
@@ -927,17 +1020,69 @@ function finalizePlanArtifacts(
  * Builds structured convergence metadata for artifact finalization.
  */
 function buildPlanConvergenceMetadata(
-  scanCount: number,
+  scanStrategy: PlanScanStrategy,
   scansExecuted: number,
   convergenceOutcome: PlanConvergenceOutcome,
-): Record<string, unknown> {
+): PlanConvergenceMetadata {
   return {
-    planScanCount: scanCount,
+    planScanMode: scanStrategy.mode,
+    planScanCount: scanStrategy.mode === "bounded" ? scanStrategy.scanCount : null,
     planScansExecuted: scansExecuted,
+    planConvergenceReason: convergenceOutcome,
     planConvergenceOutcome: convergenceOutcome,
-    planConverged: convergenceOutcome === "converged",
+    planConverged: convergenceOutcome === "converged-no-change"
+      || convergenceOutcome === "converged-no-additions",
     planScanCapReached: convergenceOutcome === "scan-cap-reached",
+    planEmergencyCapReached: convergenceOutcome === "emergency-cap-reached",
   };
+}
+
+/**
+ * Builds a user-facing summary line for top-level plan stop reason.
+ */
+function formatPlanStopReason(convergenceOutcome: PlanConvergenceOutcome): string {
+  return "Plan stop reason: " + convergenceOutcome + ".";
+}
+
+/**
+ * Resolves bounded vs unlimited scan behavior from the provided option.
+ */
+function resolvePlanScanStrategy(scanCount: number | undefined): PlanScanStrategy {
+  if (scanCount === undefined) {
+    return { mode: "unlimited" };
+  }
+
+  return { mode: "bounded", scanCount };
+}
+
+/**
+ * Returns a stable `scanCount` template value for bounded and unlimited modes.
+ */
+function resolvePlanScanCountTemplateValue(scanStrategy: PlanScanStrategy): PlanScanCountTemplateValue {
+  if (scanStrategy.mode === "bounded") {
+    return scanStrategy.scanCount;
+  }
+
+  return `unlimited (emergency cap: ${EMERGENCY_MAX_UNLIMITED_PLAN_SCANS})`;
+}
+
+/**
+ * Returns true while top-level planning scans should continue running.
+ */
+function shouldContinuePlanScans(
+  scanIndex: number,
+  scanStrategy: PlanScanStrategy,
+  convergenceOutcome: PlanConvergenceOutcome | null,
+): boolean {
+  if (convergenceOutcome !== null) {
+    return false;
+  }
+
+  if (scanStrategy.mode === "unlimited") {
+    return true;
+  }
+
+  return scanIndex <= scanStrategy.scanCount;
 }
 
 /**
@@ -959,11 +1104,15 @@ function buildPlanScanPrompt(
   basePrompt: string,
   sourcePath: string,
   scanIndex: number,
-  scanCount: number,
+  scanCount: number | undefined,
 ): string {
-  const scanLabel = buildPlanScanLabel(scanIndex, scanCount);
+  const scanStrategy = resolvePlanScanStrategy(scanCount);
+  const scanLabel = buildPlanScanLabel(scanIndex, scanStrategy);
+  const scanContextLine = scanStrategy.mode === "bounded"
+    ? `Scan pass ${scanIndex} of ${scanStrategy.scanCount}.`
+    : `Scan pass ${scanIndex} (unlimited mode; total pass count is unknown).`;
 
-  return `${basePrompt}\n\n## Scan Context\n\nScan label: ${scanLabel}\nScan pass ${scanIndex} of ${scanCount}.\n\nTreat this scan as a clean standalone worker session. Do not rely on prior prompt history or prior scan outputs.\n\nEdit the source file directly at: ${sourcePath}\n\nIf no useful TODO edits are needed, leave the file unchanged.`;
+  return `${basePrompt}\n\n## Scan Context\n\nScan label: ${scanLabel}\n${scanContextLine}\n\nTreat this scan as a clean standalone worker session. Do not rely on prior prompt history or prior scan outputs.\n\nEdit the source file directly at: ${sourcePath}\n\nAvoid cosmetic rewrites (including reordering, reformatting, or wording-only changes). Only edit when adding genuinely missing actionable TODO items.\n\nIf plan coverage is already sufficient, leave the file unchanged. If no useful TODO edits are needed, leave the file unchanged.`;
 }
 
 /**
@@ -976,20 +1125,45 @@ function buildPlanPromptDocumentContext(sourcePath: string): string {
 /**
  * Builds a stable scan label used in messages and trace metadata.
  */
-function buildPlanScanLabel(scanIndex: number, scanCount: number): string {
-  const width = Math.max(2, String(scanCount).length);
+function buildPlanScanLabel(scanIndex: number, scanStrategy: PlanScanStrategy): string {
+  if (scanStrategy.mode === "unlimited") {
+    const width = Math.max(2, String(scanIndex).length);
+    const indexLabel = String(scanIndex).padStart(width, "0");
+    return `plan-scan-${indexLabel}`;
+  }
+
+  const width = Math.max(2, String(scanStrategy.scanCount).length);
   const indexLabel = String(scanIndex).padStart(width, "0");
-  const countLabel = String(scanCount).padStart(width, "0");
+  const countLabel = String(scanStrategy.scanCount).padStart(width, "0");
   return `plan-scan-${indexLabel}-of-${countLabel}`;
 }
 
 /**
  * Builds the artifact phase label for a specific scan index.
  */
-function buildPlanScanPhaseLabel(scanIndex: number, scanCount: number): string {
-  const width = Math.max(2, String(scanCount).length);
+function buildPlanScanPhaseLabel(scanIndex: number, scanStrategy: PlanScanStrategy): string {
+  const width = scanStrategy.mode === "bounded"
+    ? Math.max(2, String(scanStrategy.scanCount).length)
+    : Math.max(2, String(scanIndex).length);
   const indexLabel = String(scanIndex).padStart(width, "0");
   return `plan-scan-${indexLabel}`;
+}
+
+/**
+ * Builds an optional progress counter for plan scan groups.
+ */
+function buildPlanScanCounter(
+  scanIndex: number,
+  scanStrategy: PlanScanStrategy,
+): { current: number; total: number } | undefined {
+  if (scanStrategy.mode === "unlimited") {
+    return undefined;
+  }
+
+  return {
+    current: scanIndex,
+    total: scanStrategy.scanCount,
+  };
 }
 
 /**

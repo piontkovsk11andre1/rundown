@@ -363,7 +363,7 @@ Deep pass semantics (`--deep`):
 Artifacts and audit expectations:
 
 - Scan phases are recorded with deterministic labels (`plan-scan-01`, `plan-scan-02`, ...).
-- Run metadata includes convergence fields (`planConvergenceOutcome`, `planConverged`, `planScanCapReached`, plus scan counts).
+- Run metadata includes convergence fields (`planConvergenceOutcome`, `planConverged`, `planScanCapReached`, `planEmergencyCapReached`, plus scan counts).
 - Failed planning runs keep artifacts automatically.
 - Successful runs are pruned by default unless `--keep-artifacts` is set.
 

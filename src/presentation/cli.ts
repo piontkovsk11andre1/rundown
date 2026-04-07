@@ -61,7 +61,6 @@ const MAKE_MODES: readonly ProcessRunMode[] = ["wait"];
 const DO_MODES: readonly ProcessRunMode[] = ["wait"];
 const LOOP_MODES: readonly ProcessRunMode[] = ["wait"];
 const COMMIT_MODES = ["per-task", "file-done"] as const;
-const DEFAULT_PLAN_SCAN_COUNT = 3;
 const DEFAULT_PLAN_DEEP = 0;
 const DEFAULT_FORCE_ATTEMPTS = 2;
 const DEFAULT_VARS_FILE_HELP = "Load extra template variables from a JSON file (default: <config-dir>/vars.json)";
@@ -297,8 +296,7 @@ program
   .argument("[markdown-file...]", "Markdown document to plan")
   .option(
     "--scan-count <n>",
-    "Max clean-session TODO coverage scans (default: 3)",
-    String(DEFAULT_PLAN_SCAN_COUNT),
+    "Max clean-session TODO coverage scans (omit for convergence-driven unlimited mode)",
   )
   .option(
     "--deep <n>",
@@ -339,8 +337,7 @@ program
   .option("--mode <mode>", "Make mode: wait", "wait")
   .option(
     "--scan-count <n>",
-    "Max clean-session TODO coverage scans for the plan phase (default: 3)",
-    String(DEFAULT_PLAN_SCAN_COUNT),
+    "Max clean-session TODO coverage scans for the plan phase (omit for convergence-driven unlimited mode)",
   )
   .option("--dry-run", "Show what would run for research and plan without executing workers", false)
   .option("--print-prompt", "Print rendered research/plan prompts and exit", false)
@@ -374,8 +371,7 @@ program
   .option("--mode <mode>", "Do mode: wait", "wait")
   .option(
     "--scan-count <n>",
-    "Max clean-session TODO coverage scans for the plan phase (default: 3)",
-    String(DEFAULT_PLAN_SCAN_COUNT),
+    "Max clean-session TODO coverage scans for the plan phase (omit for convergence-driven unlimited mode)",
   )
   .option("--sort <sort>", "File sort mode for execution phase: name-sort, none, old-first, new-first", "name-sort")
   .option("--verify", "Run verification after task execution (default)")

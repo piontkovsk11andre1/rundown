@@ -829,59 +829,96 @@ export function createMakeCommandAction({
     const targetMarkdownFile = resolveMakeMarkdownFile(markdownFile);
     const mode = parseRunnerMode(opts.mode as string | undefined, makeModes);
     const sharedRuntimeOptions = resolveSharedWorkerRuntimeOptions(opts, getWorkerFromSeparator);
-    const sharedWorkerPattern = sharedRuntimeOptions.workerPattern;
     const dryRun = Boolean(opts.dryRun as boolean | undefined);
     const printPrompt = Boolean(opts.printPrompt as boolean | undefined);
     const scanCount = parseScanCount(opts.scanCount as string | undefined);
     const verbose = resolveVerboseOption(opts);
 
-    createSeedMarkdownFile(targetMarkdownFile, seedText);
-
-    emitCliInfo(app, "Make phase 1/2: research");
-
-    const researchCode = normalizeMakePhaseExitCode(await app.researchTask({
-      source: targetMarkdownFile,
+    return runMakeBootstrapPhases({
+      app,
+      seedText,
+      targetMarkdownFile,
       mode,
-      workerPattern: sharedWorkerPattern,
-      showAgentOutput: sharedRuntimeOptions.showAgentOutput,
+      sharedRuntimeOptions,
       dryRun,
       printPrompt,
-      keepArtifacts: sharedRuntimeOptions.keepArtifacts,
-      trace: sharedRuntimeOptions.trace,
-      forceUnlock: sharedRuntimeOptions.forceUnlock,
-      ignoreCliBlock: sharedRuntimeOptions.ignoreCliBlock,
-      cliBlockTimeoutMs: sharedRuntimeOptions.cliBlockTimeoutMs,
-      configDirOption: sharedRuntimeOptions.configDirOption,
-      varsFileOption: sharedRuntimeOptions.varsFileOption,
-      cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,
-      verbose,
-    }));
-
-    if (researchCode !== 0) {
-      return researchCode;
-    }
-
-    emitCliInfo(app, "Make transition: research -> plan");
-    emitCliInfo(app, "Make phase 2/2: plan");
-
-    return normalizeMakePhaseExitCode(await app.planTask({
-      source: targetMarkdownFile,
       scanCount,
-      mode,
-      workerPattern: sharedWorkerPattern,
-      showAgentOutput: sharedRuntimeOptions.showAgentOutput,
-      dryRun,
-      printPrompt,
-      keepArtifacts: sharedRuntimeOptions.keepArtifacts,
-      trace: sharedRuntimeOptions.trace,
-      forceUnlock: sharedRuntimeOptions.forceUnlock,
-      ignoreCliBlock: sharedRuntimeOptions.ignoreCliBlock,
-      cliBlockTimeoutMs: sharedRuntimeOptions.cliBlockTimeoutMs,
-      varsFileOption: sharedRuntimeOptions.varsFileOption,
-      cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,
       verbose,
-    }));
+    });
   };
+}
+
+interface RunMakeBootstrapPhasesOptions {
+  app: CliApp;
+  seedText: string;
+  targetMarkdownFile: string;
+  mode: ProcessRunMode;
+  sharedRuntimeOptions: ReturnType<typeof resolveSharedWorkerRuntimeOptions>;
+  dryRun: boolean;
+  printPrompt: boolean;
+  scanCount: number | undefined;
+  verbose: boolean;
+}
+
+async function runMakeBootstrapPhases({
+  app,
+  seedText,
+  targetMarkdownFile,
+  mode,
+  sharedRuntimeOptions,
+  dryRun,
+  printPrompt,
+  scanCount,
+  verbose,
+}: RunMakeBootstrapPhasesOptions): Promise<number> {
+  const sharedWorkerPattern = sharedRuntimeOptions.workerPattern;
+
+  createSeedMarkdownFile(targetMarkdownFile, seedText);
+
+  emitCliInfo(app, "Make phase 1/2: research");
+
+  const researchCode = normalizeMakePhaseExitCode(await app.researchTask({
+    source: targetMarkdownFile,
+    mode,
+    workerPattern: sharedWorkerPattern,
+    showAgentOutput: sharedRuntimeOptions.showAgentOutput,
+    dryRun,
+    printPrompt,
+    keepArtifacts: sharedRuntimeOptions.keepArtifacts,
+    trace: sharedRuntimeOptions.trace,
+    forceUnlock: sharedRuntimeOptions.forceUnlock,
+    ignoreCliBlock: sharedRuntimeOptions.ignoreCliBlock,
+    cliBlockTimeoutMs: sharedRuntimeOptions.cliBlockTimeoutMs,
+    configDirOption: sharedRuntimeOptions.configDirOption,
+    varsFileOption: sharedRuntimeOptions.varsFileOption,
+    cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,
+    verbose,
+  }));
+
+  if (researchCode !== 0) {
+    return researchCode;
+  }
+
+  emitCliInfo(app, "Make transition: research -> plan");
+  emitCliInfo(app, "Make phase 2/2: plan");
+
+  return normalizeMakePhaseExitCode(await app.planTask({
+    source: targetMarkdownFile,
+    scanCount,
+    mode,
+    workerPattern: sharedWorkerPattern,
+    showAgentOutput: sharedRuntimeOptions.showAgentOutput,
+    dryRun,
+    printPrompt,
+    keepArtifacts: sharedRuntimeOptions.keepArtifacts,
+    trace: sharedRuntimeOptions.trace,
+    forceUnlock: sharedRuntimeOptions.forceUnlock,
+    ignoreCliBlock: sharedRuntimeOptions.ignoreCliBlock,
+    cliBlockTimeoutMs: sharedRuntimeOptions.cliBlockTimeoutMs,
+    varsFileOption: sharedRuntimeOptions.varsFileOption,
+    cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,
+    verbose,
+  }));
 }
 
 /**
@@ -931,11 +968,17 @@ export function createDoCommandAction({
 
     emitCliInfo(app, "Do phase 1/2: bootstrap (make)");
 
-    const bootstrapCode = normalizeMakePhaseExitCode(await createMakeCommandAction({
-      getApp,
-      getWorkerFromSeparator,
-      makeModes,
-    })(seedText, targetMarkdownFile, opts));
+    const bootstrapCode = await runMakeBootstrapPhases({
+      app,
+      seedText,
+      targetMarkdownFile,
+      mode,
+      sharedRuntimeOptions,
+      dryRun,
+      printPrompt,
+      scanCount,
+      verbose,
+    });
 
     if (bootstrapCode !== 0) {
       return bootstrapCode;

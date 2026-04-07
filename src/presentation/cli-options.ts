@@ -28,8 +28,6 @@ const SORT_MODES: readonly SortMode[] = ["name-sort", "none", "old-first", "new-
 // Supported restore mechanisms for rollback-related commands.
 const REVERT_METHODS = ["revert", "reset"] as const;
 const COMMIT_MODES = ["per-task", "file-done"] as const;
-// Default number of plan files scanned when no explicit value is provided.
-const DEFAULT_PLAN_SCAN_COUNT = 3;
 // Default additional nested plan depth passes.
 const DEFAULT_PLAN_DEEP = 0;
 
@@ -187,13 +185,15 @@ export function parseForceAttempts(value: string | undefined): number {
 }
 
 /**
- * Parses the plan scan count with a positive minimum bound.
+ * Parses the optional plan scan count.
+ *
+ * Returns `undefined` when `--scan-count` is omitted so callers can select
+ * unlimited scan mode; provided values must remain positive integers.
  */
-export function parseScanCount(value: string | undefined): number {
+export function parseScanCount(value: string | undefined): number | undefined {
   return parseIntOption(value, {
     optionName: "scan-count",
-    defaultValue: DEFAULT_PLAN_SCAN_COUNT,
-    allowUndefined: false,
+    allowUndefined: true,
     min: 1,
     integerLabel: "positive integer",
     safeIntegerLabel: "safe positive integer",

@@ -106,7 +106,7 @@ without changing raw stdout/stderr forwarding semantics.
 - Hook `plan.scan.worker.finish`: immediately after worker return.
 - Hook `plan.scan.apply.start`: before applying planner output.
 - Hook `plan.scan.apply.finish`: after write/no-op/reject decision.
-- Hook `plan.convergence`: when converged or scan cap reached.
+- Hook `plan.convergence`: when converged (no-change or no-additions), scan cap reached, or emergency cap reached.
 
 ## `src/application/research-task.ts`
 

@@ -6889,7 +6889,7 @@ describe.sequential("CLI integration", () => {
     const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
     expect(compactHelpOutput).toContain("--force-unlock");
     expect(compactHelpOutput).toContain("--scan-count <n>");
-    expect(compactHelpOutput).toContain("Max clean-session TODO coverage scans (default: 3)");
+    expect(compactHelpOutput).toContain("Max clean-session TODO coverage scans (omit for convergence-driven unlimited mode)");
     expect(compactHelpOutput).toContain("--deep <n>");
     expect(compactHelpOutput).toContain("Additional nested planning depth passes after top-level scans (default: 0)");
   });
@@ -7667,7 +7667,7 @@ describe.sequential("CLI integration", () => {
     expect(updated.indexOf("- [ ] Add CI checks")).toBe(updated.lastIndexOf("- [ ] Add CI checks"));
   });
 
-  it("plan defaults to 3 scans when --scan-count is omitted", async () => {
+  it("plan defaults to unlimited scans when --scan-count is omitted", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");
     const workerScriptPath = path.join(workspace, "plan-worker-default-scan-count.cjs");
@@ -7715,9 +7715,9 @@ describe.sequential("CLI integration", () => {
     ], workspace);
 
     expect(result.code).toBe(0);
-    expect(result.logs.some((line) => line.includes("Planning plan-scan-01-of-03"))).toBe(true);
-    expect(result.logs.some((line) => line.includes("Planning plan-scan-02-of-03"))).toBe(true);
-    expect(result.logs.some((line) => line.includes("Planning plan-scan-03-of-03"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Planning plan-scan-01"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Planning plan-scan-02"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Planning plan-scan-03"))).toBe(true);
     expect(result.logs.some((line) => line.includes("converged at scan 3"))).toBe(true);
     expect(fs.readFileSync(scanMarkerPath, "utf-8").trim()).toBe("3");
 
@@ -7725,6 +7725,55 @@ describe.sequential("CLI integration", () => {
     expect(updated).toContain("- [ ] Existing task");
     expect(updated).toContain("- [ ] Add API checklist");
     expect(updated).toContain("- [ ] Add rollback checklist");
+  });
+
+  it("plan --scan-count enforces an exact bounded scan cap", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "plan-worker-bounded-cap.cjs");
+    const scanMarkerPath = path.join(workspace, ".plan-scan-count-bounded-cap");
+
+    fs.writeFileSync(
+      roadmapPath,
+      "# Roadmap\n\n## Scope\nShip release workflow.\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        `const roadmapPath = ${JSON.stringify(roadmapPath.replace(/\\/g, "/"))};`,
+        `const markerPath = ${JSON.stringify(scanMarkerPath.replace(/\\/g, "/"))};`,
+        "const source = fs.readFileSync(roadmapPath, 'utf-8');",
+        "const previous = fs.existsSync(markerPath) ? Number(fs.readFileSync(markerPath, 'utf-8')) : 0;",
+        "const current = Number.isFinite(previous) ? previous + 1 : 1;",
+        "fs.writeFileSync(markerPath, String(current));",
+        "fs.writeFileSync(roadmapPath, source.trimEnd() + `\\n- [ ] Scan ${current} task\\n`, 'utf-8');",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "plan",
+      "roadmap.md",
+      "--scan-count",
+      "2",
+      "--verbose",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Planning plan-scan-01-of-02"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Planning plan-scan-02-of-02"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Plan stop reason: scan-cap-reached."))).toBe(true);
+    expect(fs.readFileSync(scanMarkerPath, "utf-8").trim()).toBe("2");
+
+    const updated = fs.readFileSync(roadmapPath, "utf-8");
+    expect(updated).toContain("- [ ] Scan 1 task");
+    expect(updated).toContain("- [ ] Scan 2 task");
+    expect(updated).not.toContain("- [ ] Scan 3 task");
   });
 
   it("plan --deep 2 produces a two-level task hierarchy", async () => {

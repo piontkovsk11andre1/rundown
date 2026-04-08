@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runVerifyRepairLoop } from "../../src/application/verify-repair-loop.js";
 import type { Task } from "../../src/domain/parser.js";
+import type { VerificationStore } from "../../src/domain/ports/index.js";
 import { inferWorkerPatternFromCommand } from "../../src/domain/worker-pattern.js";
 import { createArtifactVerificationStore } from "../../src/infrastructure/adapters/artifact-verification-store.js";
 import {
@@ -208,6 +209,73 @@ describe("verify-repair-loop output", () => {
         execution_stdout: "Error: rate limit exceeded for this workspace",
         matched_phase: "execute",
         matched_stdout: "Error: rate limit exceeded for this workspace",
+      }),
+    }));
+  });
+
+  it("integration test: detects usage limit from single execution output known-pattern without cross-phase comparison", async () => {
+    const verify = vi.fn(async () => ({
+      valid: false,
+      stdout: "NOT_OK: this verification output should never be used",
+    }));
+    const output = {
+      emit: vi.fn(),
+    };
+    const traceWriter = {
+      write: vi.fn(),
+      flush: vi.fn(),
+    };
+
+    const knownLimitError = "HTTP 429 Too Many Requests: billing quota reached for this account";
+
+    const result = await runVerifyRepairLoop({
+      taskVerification: {
+        verify,
+      },
+      taskRepair: {
+        repair: vi.fn(async () => ({ valid: false, attempts: 0 })),
+      },
+      verificationStore: {
+        write: vi.fn(),
+        read: vi.fn(() => null),
+        remove: vi.fn(),
+      },
+      traceWriter,
+      output,
+    }, {
+      task: createTask(),
+      source: "- [ ] ship release",
+      contextBefore: "",
+      verifyTemplate: "{{task}}",
+      repairTemplate: "{{task}}",
+      executionStdout: knownLimitError,
+      workerPattern: inferWorkerPatternFromCommand(["opencode", "run"]),
+      maxRepairAttempts: 2,
+      allowRepair: true,
+      templateVars: {},
+      artifactContext: { runId: "run-limit-known-pattern-integration" },
+      trace: true,
+    });
+
+    expect(result).toEqual({
+      valid: false,
+      failureReason: "Possible API usage limit detected: execution output matches a known usage-limit or quota error pattern; aborting verify/repair to avoid wasting quota. Please check your API quota and rate-limit status.",
+      usageLimitDetected: true,
+    });
+    expect(verify).not.toHaveBeenCalled();
+    expect(output.emit).toHaveBeenCalledWith({
+      kind: "error",
+      message: "Possible API usage limit detected: execution output matches a known usage-limit or quota error pattern; aborting verify/repair to avoid wasting quota. Please check your API quota and rate-limit status.",
+    });
+    expect(traceWriter.write).toHaveBeenCalledWith(expect.objectContaining({
+      event_type: "usage.limit_detected",
+      payload: expect.objectContaining({
+        phase: "execute",
+        similarity_detected: false,
+        known_pattern_detected: true,
+        execution_stdout: knownLimitError,
+        matched_phase: "execute",
+        matched_stdout: knownLimitError,
       }),
     }));
   });
@@ -860,6 +928,75 @@ describe("verify-repair-loop output", () => {
     }));
   });
 
+  it("integration test: short-circuits repair loop when usage limit is hit during repair", async () => {
+    const output = {
+      emit: vi.fn(),
+    };
+    const traceWriter = {
+      write: vi.fn(),
+      flush: vi.fn(),
+    };
+
+    const limitMessage = "Service is temporarily unavailable while backend processing is paused for maintenance window.";
+    const repair = vi.fn(async () => ({
+      valid: false,
+      attempts: 1,
+      repairStdout: limitMessage,
+      verificationStdout: "NOT_OK: initial failure still present",
+    }));
+
+    const result = await runVerifyRepairLoop({
+      taskVerification: {
+        verify: vi.fn(async () => ({
+          valid: false,
+          stdout: "NOT_OK: initial verification failure",
+        })),
+      },
+      taskRepair: {
+        repair,
+      },
+      verificationStore: {
+        write: vi.fn(),
+        read: vi.fn(() => "still failing"),
+        remove: vi.fn(),
+      },
+      traceWriter,
+      output,
+    }, {
+      task: createTask(),
+      source: "- [ ] ship release",
+      contextBefore: "",
+      verifyTemplate: "{{task}}",
+      repairTemplate: "{{task}}",
+      executionStdout: limitMessage,
+      workerPattern: inferWorkerPatternFromCommand(["opencode", "run"]),
+      maxRepairAttempts: 3,
+      allowRepair: true,
+      templateVars: {},
+      artifactContext: { runId: "run-repair-short-circuit" },
+      trace: true,
+    });
+
+    expect(result).toEqual({
+      valid: false,
+      failureReason: "Possible API usage limit detected: identical or near-identical responses across execution and repair phases; aborting verify/repair to avoid wasting quota. Please check your API quota and rate-limit status.",
+      usageLimitDetected: true,
+    });
+    expect(repair).toHaveBeenCalledTimes(1);
+    expect(output.emit).not.toHaveBeenCalledWith({
+      kind: "info",
+      message: "  Repair attempt 2 of 3: starting...",
+    });
+    expect(traceWriter.write).toHaveBeenCalledWith(expect.objectContaining({
+      event_type: "usage.limit_detected",
+      payload: expect.objectContaining({
+        phase: "repair",
+        matched_phase: "repair",
+        matched_stdout: limitMessage,
+      }),
+    }));
+  });
+
   it("short-circuits when re-verification stdout matches execution stdout", async () => {
     const output = {
       emit: vi.fn(),
@@ -1056,6 +1193,8 @@ describe("verify-repair-loop output", () => {
         matched_stdout: verificationOutput,
       }),
     }));
+  });
+
   it("integration test: legitimately different outputs across phases do not trigger usage limit detection", async () => {
     const outputDiff = {
       emit: vi.fn(),
@@ -1111,19 +1250,6 @@ describe("verify-repair-loop output", () => {
       message: expect.stringContaining("Possible API usage limit detected"),
     }));
     expect(traceWriterDiff.write).not.toHaveBeenCalledWith(expect.objectContaining({
-      event_type: "usage.limit_detected",
-    }));
-  });
-
-    expect(result).toEqual({
-      valid: true,
-      failureReason: null,
-    });
-    expect(output.emit).not.toHaveBeenCalledWith(expect.objectContaining({
-      kind: "error",
-      message: expect.stringContaining("Possible API usage limit detected"),
-    }));
-    expect(traceWriter.write).not.toHaveBeenCalledWith(expect.objectContaining({
       event_type: "usage.limit_detected",
     }));
   });
@@ -1523,4 +1649,27 @@ function createTask(file = "tasks.md"): Task {
     children: [],
     subItems: [],
   };
+}
+
+function persistVerifyResult(
+  artifactContext: RuntimeArtifactsContext,
+  task: Task,
+  verificationStore: VerificationStore,
+  reason: string,
+  passed: boolean,
+): void {
+  const phase = beginRuntimePhase(artifactContext, {
+    phase: "verify",
+    mode: "wait",
+    transport: "worker",
+    command: ["verify"],
+  });
+  verificationStore.write(task, reason);
+  completeRuntimePhase(phase, {
+    exitCode: passed ? 0 : 1,
+    outputCaptured: true,
+    stdout: passed ? "OK" : `NOT_OK: ${reason}`,
+    stderr: "",
+    verificationResult: passed ? "ok" : reason,
+  });
 }

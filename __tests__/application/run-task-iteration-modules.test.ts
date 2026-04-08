@@ -3221,6 +3221,89 @@ describe("complete-task-iteration", () => {
     expect(failRun).toHaveBeenCalledWith(2, "verification-failed", "Verification failed.", 2);
   });
 
+  it("skips usage-limit detection entirely when shouldVerify is false", async () => {
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] Ship release\n",
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    const emit = vi.fn();
+    const verifyRepairLoopSpy = vi.spyOn(verifyRepairLoopModule, "runVerifyRepairLoop");
+    vi.spyOn(checkboxOperationsModule, "checkTaskUsingFileSystem").mockImplementation(() => {});
+
+    const result = await completeTaskIteration({
+      dependencies,
+      emit,
+      state: {
+        traceWriter: dependencies.traceWriter,
+        deferredCommitContext: null,
+        tasksCompleted: 0,
+        runCompleted: false,
+      },
+      traceRunSession: createCompletionSession(),
+      failRun: vi.fn(async () => 2),
+      finishRun: vi.fn(async () => 0),
+      resetArtifacts: vi.fn(),
+      keepArtifacts: true,
+      effectiveRunAll: false,
+      commitAfterComplete: false,
+      deferCommitUntilPostRun: false,
+      commitMessageTemplate: undefined,
+      onCompleteCommand: undefined,
+      onFailCommand: undefined,
+      hideHookOutput: false,
+      maxRepairAttempts: 1,
+      allowRepair: true,
+      trace: true,
+      verbose: false,
+      cliBlockExecutor: dependencies.cliBlockExecutor!,
+      cliExpansionEnabled: true,
+      task,
+      sourceText: "- [ ] Ship release",
+      expandedSource: "- [ ] Ship release",
+      expandedContextBefore: "",
+      templates: {
+        task: "",
+        discuss: "",
+        research: "",
+        verify: "{{task}}",
+        repair: "{{task}}",
+        plan: "",
+        trace: "",
+      },
+      templateVarsWithTrace: {},
+      automationCommand: ["opencode", "run"],
+      automationWorkerPattern: inferWorkerPatternFromCommand(["opencode", "run"]),
+      shouldVerify: false,
+      runMode: "wait",
+      executionOutputCaptured: true,
+      verificationPrompt: "verify",
+      executionStdout: "HTTP 429 Too Many Requests: billing quota reached",
+      artifactContext: {
+        runId: "run-complete",
+        rootDir: path.join(cwd, ".rundown", "runs", "run-complete"),
+        cwd,
+        keepArtifacts: true,
+        commandName: "run",
+      },
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      verificationFailureMessage: "Verification failed. Task not checked.",
+      verificationFailureRunReason: "Verification failed.",
+      extraTemplateVars: {},
+    });
+
+    expect(result).toEqual({ continueLoop: false, exitCode: 0, groupEnded: true });
+    expect(verifyRepairLoopSpy).not.toHaveBeenCalled();
+    expect(emit).not.toHaveBeenCalledWith(expect.objectContaining({
+      kind: "error",
+      message: expect.stringContaining("Possible API usage limit detected"),
+    }));
+  });
+
   it("keeps per-task commit immediate when commit is enabled without deferral", async () => {
     const fileSystem = createInMemoryFileSystem({
       [task.file]: "- [ ] Ship release\n",

@@ -9434,6 +9434,261 @@ describe.sequential("CLI integration", () => {
     expect(hierarchyOutput).toContain(":3 - Nested detail");
   });
 
+  it("explore exits with 0 and prints per-file plus aggregate summaries", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "alpha.md"), "- [x] Done\n- [ ] Todo\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "beta.md"), "# Notes\n", "utf-8");
+
+    const result = await runCli(["explore", "*.md", "--compact"], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("alpha.md") && line.includes("2 tasks") && line.includes("50%"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("beta.md") && line.includes("0 tasks") && line.includes("0%"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("2 tasks across 2 files: 1 checked, 1 unchecked (50%)."))).toBe(true);
+  });
+
+  it("explore <dir> produces per-file summary output on stdout", async () => {
+    const workspace = makeTempWorkspace();
+    const docsDir = path.join(workspace, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "alpha.md"), "- [x] Done\n- [ ] Todo\n", "utf-8");
+    fs.writeFileSync(path.join(docsDir, "beta.md"), "# Notes\n", "utf-8");
+
+    const result = await runCli(["explore", "docs", "--compact"], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("alpha.md") && line.includes("2 tasks") && line.includes("50%"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("beta.md") && line.includes("0 tasks") && line.includes("0%"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("2 tasks across 2 files: 1 checked, 1 unchecked (50%)."))).toBe(true);
+    expect(result.stderrWrites.some((line) => line.includes("2 tasks across 2 files"))).toBe(false);
+  });
+
+  it("explore <dir> --compact produces compact tabular output", async () => {
+    const workspace = makeTempWorkspace();
+    const docsDir = path.join(workspace, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    const uniqueTaskText = "UNIQUE_DIR_COMPACT_TASK_TEXT";
+    fs.writeFileSync(path.join(docsDir, "alpha.md"), `- [ ] ${uniqueTaskText}\n- [x] Done\n`, "utf-8");
+    fs.writeFileSync(path.join(docsDir, "beta.md"), "- [ ] Another task\n", "utf-8");
+
+    const result = await runCli(["explore", "docs", "--compact"], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.filter((line) => line.includes("alpha.md"))).toHaveLength(1);
+    expect(result.logs.filter((line) => line.includes("beta.md"))).toHaveLength(1);
+    expect(result.logs.some((line) => line.includes(uniqueTaskText))).toBe(false);
+  });
+
+  it("explore --compact prints one summary line per file without task listings", async () => {
+    const workspace = makeTempWorkspace();
+    const uniqueTaskText = "UNIQUE_COMPACT_TASK_TEXT";
+    fs.writeFileSync(path.join(workspace, "alpha.md"), `- [ ] ${uniqueTaskText}\n- [x] Done\n`, "utf-8");
+    fs.writeFileSync(path.join(workspace, "beta.md"), "- [ ] Another task\n", "utf-8");
+
+    const result = await runCli(["explore", "*.md", "--compact"], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.filter((line) => line.includes("alpha.md"))).toHaveLength(1);
+    expect(result.logs.filter((line) => line.includes("beta.md"))).toHaveLength(1);
+    expect(result.logs.some((line) => line.includes(uniqueTaskText))).toBe(false);
+  });
+
+  it("explore supports --file-status filtering", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "complete.md"), "- [x] Done\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "incomplete.md"), "- [ ] Todo\n", "utf-8");
+
+    const result = await runCli(["explore", "*.md", "--compact", "--file-status", "complete"], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("complete.md"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("incomplete.md"))).toBe(false);
+    expect(result.logs.some((line) => line.includes("1 task across 1 file: 1 checked, 0 unchecked (100%)."))).toBe(true);
+  });
+
+  it("explore --file-status supports comma-separated multi-value filters", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "complete.md"), "- [x] Done\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "incomplete.md"), "- [ ] Todo\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "empty.md"), "# Notes\n", "utf-8");
+
+    const result = await runCli(["explore", "*.md", "--compact", "--file-status", "complete,empty"], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("complete.md") && line.includes("100%"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("empty.md") && line.includes("0 tasks") && line.includes("0%"))).toBe(true);
+    expect(result.logs.some((line) => /\bincomplete\.md\b/.test(line))).toBe(false);
+    expect(result.logs.some((line) => line.includes("1 task across 2 files: 1 checked, 0 unchecked (100%)."))).toBe(true);
+  });
+
+  it("explore includes zero-task files when --file-status empty is used", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "complete.md"), "- [x] Done\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "empty.md"), "# Notes\n", "utf-8");
+
+    const result = await runCli(["explore", "*.md", "--compact", "--file-status", "empty"], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("empty.md") && line.includes("0 tasks") && line.includes("0%"))).toBe(true);
+    expect(result.logs.some((line) => /\bcomplete\.md\b/.test(line))).toBe(false);
+    expect(result.logs.some((line) => line.includes("0 tasks across 1 file: 0 checked, 0 unchecked (0%)."))).toBe(true);
+  });
+
+  it("explore --file-status incomplete shows only files with unchecked tasks", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "complete.md"), "- [x] Done\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "incomplete.md"), "- [ ] Todo\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "mixed.md"), "- [x] Done\n- [ ] Another\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "empty.md"), "# Notes\n", "utf-8");
+
+    const result = await runCli(["explore", "*.md", "--compact", "--file-status", "incomplete"], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("incomplete.md") && line.includes("1 unchecked") && line.includes("0%"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("mixed.md") && line.includes("1 unchecked") && line.includes("50%"))).toBe(true);
+    expect(result.logs.some((line) => /\bcomplete\.md\b/.test(line))).toBe(false);
+    expect(result.logs.some((line) => line.includes("empty.md"))).toBe(false);
+    expect(result.logs.some((line) => line.includes("3 tasks across 2 files: 1 checked, 2 unchecked (33%)."))).toBe(true);
+  });
+
+  it("explore <dir> --file-status incomplete filters correctly", async () => {
+    const workspace = makeTempWorkspace();
+    const docsDir = path.join(workspace, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "complete.md"), "- [x] Done\n", "utf-8");
+    fs.writeFileSync(path.join(docsDir, "incomplete.md"), "- [ ] Todo\n", "utf-8");
+    fs.writeFileSync(path.join(docsDir, "mixed.md"), "- [x] Done\n- [ ] Another\n", "utf-8");
+    fs.writeFileSync(path.join(docsDir, "empty.md"), "# Notes\n", "utf-8");
+
+    const result = await runCli(["explore", "docs", "--compact", "--file-status", "incomplete"], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("incomplete.md") && line.includes("1 unchecked") && line.includes("0%"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("mixed.md") && line.includes("1 unchecked") && line.includes("50%"))).toBe(true);
+    expect(result.logs.some((line) => /\bcomplete\.md\b/.test(line))).toBe(false);
+    expect(result.logs.some((line) => line.includes("empty.md"))).toBe(false);
+    expect(result.logs.some((line) => line.includes("3 tasks across 2 files: 1 checked, 2 unchecked (33%)."))).toBe(true);
+  });
+
+  it("explore <dir> --file-status complete,empty multi-value filter works", async () => {
+    const workspace = makeTempWorkspace();
+    const docsDir = path.join(workspace, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "complete.md"), "- [x] Done\n", "utf-8");
+    fs.writeFileSync(path.join(docsDir, "incomplete.md"), "- [ ] Todo\n", "utf-8");
+    fs.writeFileSync(path.join(docsDir, "empty.md"), "# Notes\n", "utf-8");
+
+    const result = await runCli([
+      "explore",
+      "docs",
+      "--compact",
+      "--file-status",
+      "complete,empty",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("complete.md") && line.includes("100%"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("empty.md") && line.includes("0 tasks") && line.includes("0%"))).toBe(true);
+    expect(result.logs.some((line) => /\bincomplete\.md\b/.test(line))).toBe(false);
+    expect(result.logs.some((line) => line.includes("1 task across 2 files: 1 checked, 0 unchecked (100%)."))).toBe(true);
+  });
+
+  it("explore exits with 3 when source resolves to no markdown files", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli(["explore", "missing/**/*.md", "--compact"], workspace);
+
+    expect(result.code).toBe(3);
+    expect(result.errors.some((line) => line.includes("No Markdown files found matching: missing/**/*.md"))).toBe(true);
+  });
+
+  it("explore missing-glob exits with code 3", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli(["explore", "missing-glob", "--compact"], workspace);
+
+    expect(result.code).toBe(3);
+    expect(result.errors.some((line) => line.includes("No Markdown files found matching: missing-glob"))).toBe(true);
+  });
+
+  it("explore --file-status invalid exits with an error", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "notes.md"), "- [ ] Parent\n", "utf-8");
+
+    const result = await runCli(["explore", "notes.md", "--file-status", "invalid"], workspace);
+
+    expect(result.code).toBe(1);
+    const combinedOutput = [
+      ...result.errors,
+      ...result.logs,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n");
+    expect(combinedOutput.includes("Invalid --file-status value: invalid")).toBe(true);
+  });
+
+  it("explore rejects unknown options", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "notes.md"), "- [ ] Parent\n", "utf-8");
+
+    const result = await runCli(["explore", "notes.md", "--invalid-option"], workspace);
+
+    expect(result.code).toBe(1);
+    const combinedOutput = [
+      ...result.errors,
+      ...result.logs,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n").toLowerCase();
+    expect(combinedOutput.includes("--invalid-option")).toBe(true);
+    expect(combinedOutput.includes("unknown option")).toBe(true);
+  });
+
+  it("explore --sort modes order files as expected", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "2-second.md"), "- [ ] Second\n", "utf-8");
+    await sleep(20);
+    fs.writeFileSync(path.join(workspace, "10-third.md"), "- [ ] Third\n", "utf-8");
+    await sleep(20);
+    fs.writeFileSync(path.join(workspace, "1-first.md"), "- [ ] First\n", "utf-8");
+
+    const noneResult = await runCli(["explore", "*.md", "--compact", "--sort", "none"], workspace);
+    const nameSortResult = await runCli(["explore", "*.md", "--compact", "--sort", "name-sort"], workspace);
+    const oldFirstResult = await runCli(["explore", "*.md", "--compact", "--sort", "old-first"], workspace);
+    const newFirstResult = await runCli(["explore", "*.md", "--compact", "--sort", "new-first"], workspace);
+
+    expect(noneResult.code).toBe(0);
+    expect(nameSortResult.code).toBe(0);
+    expect(oldFirstResult.code).toBe(0);
+    expect(newFirstResult.code).toBe(0);
+
+    expect(getExploreFileOrder(noneResult.logs)).toEqual(["1-first.md", "10-third.md", "2-second.md"]);
+    expect(getExploreFileOrder(nameSortResult.logs)).toEqual(["1-first.md", "2-second.md", "10-third.md"]);
+    expect(getExploreFileOrder(oldFirstResult.logs)).toEqual(["2-second.md", "10-third.md", "1-first.md"]);
+    expect(getExploreFileOrder(newFirstResult.logs)).toEqual(["1-first.md", "10-third.md", "2-second.md"]);
+  });
+
+  it("rundown explore <dir> --sort new-first orders files by modification time", async () => {
+    const workspace = makeTempWorkspace();
+    const docsDir = path.join(workspace, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+
+    const oldestPath = path.join(docsDir, "oldest.md");
+    const middlePath = path.join(docsDir, "middle.md");
+    const newestPath = path.join(docsDir, "newest.md");
+
+    fs.writeFileSync(oldestPath, "- [ ] Oldest\n", "utf-8");
+    await sleep(20);
+    fs.writeFileSync(middlePath, "- [ ] Middle\n", "utf-8");
+    await sleep(20);
+    fs.writeFileSync(newestPath, "- [ ] Newest\n", "utf-8");
+
+    const result = await runCli(["explore", "docs", "--compact", "--sort", "new-first"], workspace);
+
+    expect(result.code).toBe(0);
+    expect(getExploreFileOrder(result.logs)).toEqual(["newest.md", "middle.md", "oldest.md"]);
+  });
+
   it("init creates .rundown defaults and exits with 0", async () => {
     const workspace = makeTempWorkspace();
 
@@ -9524,6 +9779,18 @@ function writeSavedRun(
     status: options.status,
     extra: options.extra,
   }, null, 2), "utf-8");
+}
+
+function getExploreFileOrder(lines: string[]): string[] {
+  return lines
+    .map(stripAnsi)
+    .map((line) => line.match(/([^\s|]+\.md)\s*\|/u)?.[1] ?? null)
+    .map((filePath) => (filePath ? path.basename(filePath) : null))
+    .filter((file): file is string => file !== null);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function readSavedRunMetadata(workspace: string): Array<{

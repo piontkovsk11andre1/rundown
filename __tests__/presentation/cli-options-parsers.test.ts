@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCooldown, parseMaxItems, parseScanCount } from "../../src/presentation/cli-options.js";
+import { parseCooldown, parseFileStatusFilter, parseMaxItems, parseScanCount } from "../../src/presentation/cli-options.js";
 
 describe("parseCooldown", () => {
   it("returns milliseconds for positive cooldown seconds", () => {
@@ -56,5 +56,45 @@ describe("parseMaxItems", () => {
     expect(() => parseMaxItems("1.5")).toThrow("Invalid --max-items value: 1.5");
     expect(() => parseMaxItems("abc")).toThrow("Invalid --max-items value: abc");
     expect(() => parseMaxItems("1.5")).toThrow("Must be a non-negative integer (0 or greater)");
+  });
+});
+
+describe("parseFileStatusFilter", () => {
+  it("returns undefined for undefined input", () => {
+    expect(parseFileStatusFilter(undefined)).toBeUndefined();
+  });
+
+  it("parses a single valid status", () => {
+    expect(parseFileStatusFilter("complete")).toEqual(["complete"]);
+  });
+
+  it("parses comma-separated statuses", () => {
+    expect(parseFileStatusFilter("complete,incomplete")).toEqual(["complete", "incomplete"]);
+  });
+
+  it("parses complete and empty in comma-separated form", () => {
+    expect(parseFileStatusFilter("complete,empty")).toEqual(["complete", "empty"]);
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(parseFileStatusFilter(" complete, empty ")).toEqual(["complete", "empty"]);
+  });
+
+  it("rejects invalid status values", () => {
+    expect(() => parseFileStatusFilter("complete,invalid")).toThrow("Invalid --file-status value: complete,invalid");
+    expect(() => parseFileStatusFilter("complete,invalid")).toThrow("Allowed: complete, incomplete, empty");
+  });
+
+  it("rejects a single invalid status", () => {
+    expect(() => parseFileStatusFilter("invalid")).toThrow("Invalid --file-status value: invalid");
+    expect(() => parseFileStatusFilter("invalid")).toThrow("Allowed: complete, incomplete, empty");
+  });
+
+  it("rejects empty status lists", () => {
+    expect(() => parseFileStatusFilter(" , ")).toThrow("Invalid --file-status value:  , ");
+  });
+
+  it("rejects empty string input", () => {
+    expect(() => parseFileStatusFilter("")).toThrow("Invalid --file-status value: ");
   });
 });

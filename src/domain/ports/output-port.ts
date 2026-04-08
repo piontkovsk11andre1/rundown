@@ -38,6 +38,17 @@ export type ApplicationOutputEvent =
   | { kind: "group-end"; status: "success" | "failure"; message?: string }
   // Structured task payload for planner/task-list rendering.
   | { kind: "task"; task: Task; blocked?: boolean; children?: Task[]; subItems?: SubItem[] }
+  // Structured per-file task summary payload for explore rendering.
+  | {
+    kind: "explore-file-summary";
+    summary: {
+      file: string;
+      total: number;
+      checked: number;
+      unchecked: number;
+      percent: number;
+    };
+  }
   // Raw text line intended for standard application output.
   | { kind: "text"; text: string }
   // Raw text line captured from standard error output.

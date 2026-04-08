@@ -492,6 +492,14 @@ export const cliOutputPort: ApplicationOutputPort = {
           console.log(lines.join("\n"));
         }
         return;
+      case "explore-file-summary":
+        flushProgressLine();
+        {
+          const { file, total, checked, unchecked, percent } = event.summary;
+          const taskLabel = `${total} ${total === 1 ? "task" : "tasks"}`;
+          console.log(withGroupPrefix(`${file} | ${taskLabel} | ${checked} checked | ${unchecked} unchecked | ${percent}%`));
+        }
+        return;
       case "text":
         flushProgressLine();
         console.log(withGroupPrefixMultiline(styleTextMessage(event.text)));

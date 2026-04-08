@@ -95,6 +95,8 @@ function resolveLogKind(event: ApplicationOutputEvent): GlobalOutputLogKind {
       return "progress";
     case "task":
       return "task";
+    case "explore-file-summary":
+      return "explore-file-summary";
     case "text":
       return "text";
     case "stderr":
@@ -119,6 +121,7 @@ function resolveLogLevel(event: ApplicationOutputEvent): GlobalOutputLogLevel {
     case "success":
     case "progress":
     case "task":
+    case "explore-file-summary":
     case "text":
     default:
       return "info";
@@ -139,6 +142,7 @@ function resolveLogStream(event: ApplicationOutputEvent): GlobalOutputLogStream 
     case "success":
     case "progress":
     case "task":
+    case "explore-file-summary":
     case "text":
       return "stdout";
     case "group-end":
@@ -188,6 +192,11 @@ function resolveLogMessage(event: ApplicationOutputEvent): string {
 
       // Preserve multi-line readability in downstream logs.
       return [parentLine, ...detailLines].join("\n");
+    }
+    case "explore-file-summary": {
+      const { file, total, checked, unchecked, percent } = event.summary;
+      const taskLabel = total === 1 ? "task" : "tasks";
+      return `${file} (${total} ${taskLabel}, ${checked} checked, ${unchecked} unchecked, ${percent}%)`;
     }
     case "text":
     case "stderr":

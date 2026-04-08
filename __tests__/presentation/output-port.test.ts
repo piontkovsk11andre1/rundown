@@ -680,6 +680,42 @@ describe("cliOutputPort", () => {
     expect(logSpy.mock.calls[0]?.[0]).toBe("plain text");
   });
 
+  it("renders explore-file-summary rows as file statistics lines", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    cliOutputPort.emit({
+      kind: "explore-file-summary",
+      summary: {
+        file: "tasks.md",
+        total: 2,
+        checked: 1,
+        unchecked: 1,
+        percent: 50,
+      },
+    });
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy.mock.calls[0]?.[0]).toBe("tasks.md | 2 tasks | 1 checked | 1 unchecked | 50%");
+  });
+
+  it("renders zero-task explore-file-summary rows with a 0 tasks indication", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    cliOutputPort.emit({
+      kind: "explore-file-summary",
+      summary: {
+        file: "empty.md",
+        total: 0,
+        checked: 0,
+        unchecked: 0,
+        percent: 0,
+      },
+    });
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy.mock.calls[0]?.[0]).toBe("empty.md | 0 tasks | 0 checked | 0 unchecked | 0%");
+  });
+
   it("suppresses info-level output events in quiet mode", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 

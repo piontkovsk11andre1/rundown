@@ -515,6 +515,65 @@ TODO.md:1 [#0] Release prep (blocked — has unchecked subtasks)
 
 In this example, `Confirm target branch` is a non-checkable detail item, and the checkbox children are shown as nested task lines.
 
+### `rundown explore <source>`
+
+Show a high-level task completion overview across Markdown files.
+
+`explore` is a read-only inspection command. It resolves the same source inputs as `list` (`file`, `directory`, or `glob`) and reports per-file completion stats plus cross-file totals.
+
+Output includes:
+
+- Per-file summary row: file name, total tasks, checked, unchecked, and completion percent.
+- Aggregate footer: totals across all included files.
+- In non-compact mode, unchecked tasks are listed under each file so you can quickly identify remaining work.
+
+Options:
+
+| Option | Description | Default |
+|---|---|---|
+| `--sort <name-sort|none|old-first|new-first>` | Source ordering strategy before rendering summaries. | `name-sort` |
+| `--file-status <complete|incomplete|empty>` | Filter included files by computed status. Accepts comma-separated values (for example `complete,empty`). | unset |
+| `--compact` | Print one summary line per file and omit per-file unchecked task listings. | off |
+
+File-status filter semantics:
+
+- `complete`: file has tasks and is 100% complete.
+- `incomplete`: file has at least one unchecked task.
+- `empty`: file has zero parsed tasks.
+
+Exit behavior:
+
+- `0`: success.
+- `3`: source matched no files.
+
+Examples:
+
+```bash
+rundown explore docs/
+rundown explore "docs/**/*.md" --compact
+rundown explore roadmap.md --file-status incomplete
+rundown explore docs/ --file-status complete,empty --sort new-first
+```
+
+Example output (default mode):
+
+```text
+docs/api.md      total: 12  checked: 9  unchecked: 3   complete: 75%
+  docs/api.md:18 [#4] Add retry budget section
+  docs/api.md:27 [#6] Document timeout defaults
+docs/release.md  total: 5   checked: 5  unchecked: 0   complete: 100%
+
+Totals           total: 17  checked: 14 unchecked: 3   complete: 82%
+```
+
+Example output (`--compact`):
+
+```text
+docs/api.md      total: 12  checked: 9  unchecked: 3   complete: 75%
+docs/release.md  total: 5   checked: 5  unchecked: 0   complete: 100%
+Totals           total: 17  checked: 14 unchecked: 3   complete: 82%
+```
+
 ### `rundown artifacts`
 
 Inspect or clean saved runtime artifact folders under `<config-dir>/runs/`.

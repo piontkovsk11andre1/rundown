@@ -35,6 +35,7 @@ import {
   createLoopCommandAction,
   createDiscussCommandAction,
   createDoCommandAction,
+  createExploreCommandAction,
   createHelpCommandAction,
   createInitCommandAction,
   createIntroCommandAction,
@@ -270,6 +271,16 @@ program
   .option("--sort <sort>", "File sort mode: name-sort, none, old-first, new-first", "name-sort")
   .option("--all", "Show all tasks including checked ones", false)
   .action(withCliAction(createListCommandAction({ getApp })));
+
+program
+  .command("explore")
+  .description("Show task completion overview across source files.")
+  .argument("<source>", "File, directory, or glob to scan for Markdown tasks")
+  .option("--sort <sort>", "File sort mode: name-sort, none, old-first, new-first", "name-sort")
+  .option("--file-status <status>", "Filter files by status: complete, incomplete, empty")
+  .option("--compact", "Show one summary row per file", false)
+  .allowUnknownOption(false)
+  .action(withCliAction(createExploreCommandAction({ getApp })));
 
 program
   .command("artifacts")

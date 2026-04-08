@@ -175,6 +175,16 @@ describe("createLoggedOutputPort", () => {
         },
         blocked: true,
       },
+      {
+        kind: "explore-file-summary",
+        summary: {
+          file: "tasks.md",
+          total: 4,
+          checked: 3,
+          unchecked: 1,
+          percent: 75,
+        },
+      },
       { kind: "text", text: "plain text" },
       { kind: "stderr", text: "stderr text" },
     ];
@@ -193,6 +203,7 @@ describe("createLoggedOutputPort", () => {
     expect(outputEmit).toHaveBeenNthCalledWith(7, events[6]);
     expect(outputEmit).toHaveBeenNthCalledWith(8, events[7]);
     expect(outputEmit).toHaveBeenNthCalledWith(9, events[8]);
+    expect(outputEmit).toHaveBeenNthCalledWith(10, events[9]);
 
     expect(writer.write).toHaveBeenCalledTimes(events.length);
     expect(writer.write).toHaveBeenNthCalledWith(1, {
@@ -290,6 +301,19 @@ describe("createLoggedOutputPort", () => {
       ts: "2026-03-28T12:34:56.000Z",
       level: "info",
       stream: "stdout",
+      kind: "explore-file-summary",
+      message: "tasks.md (4 tasks, 3 checked, 1 unchecked, 75%)",
+      command: "rundown",
+      argv: ["execute", "TODO.md"],
+      cwd: "/workspace",
+      pid: 456,
+      version: "1.2.3",
+      session_id: "session-2",
+    });
+    expect(writer.write).toHaveBeenNthCalledWith(9, {
+      ts: "2026-03-28T12:34:56.000Z",
+      level: "info",
+      stream: "stdout",
       kind: "text",
       message: "plain text",
       command: "rundown",
@@ -299,7 +323,7 @@ describe("createLoggedOutputPort", () => {
       version: "1.2.3",
       session_id: "session-2",
     });
-    expect(writer.write).toHaveBeenNthCalledWith(9, {
+    expect(writer.write).toHaveBeenNthCalledWith(10, {
       ts: "2026-03-28T12:34:56.000Z",
       level: "error",
       stream: "stderr",

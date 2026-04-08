@@ -30,6 +30,7 @@ export type GlobalOutputLogKind =
   | "success"
   | "progress"
   | "task"
+  | "explore-file-summary"
   | "text"
   | "stderr"
   | "cli-fatal"

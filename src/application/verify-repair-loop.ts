@@ -62,6 +62,7 @@ export interface VerifyRepairLoopInput {
   executionOutputCaptured?: boolean;
   isInlineCliTask?: boolean;
   isToolExpansionTask?: boolean;
+  onVerificationEfficiency?: (metrics: { verifyAttempts: number; repairAttempts: number }) => void;
 }
 
 /**
@@ -195,6 +196,11 @@ export async function runVerifyRepairLoop(
 
   // Emits aggregate efficiency metrics for verification and repair behavior.
   const emitVerificationEfficiency = (): void => {
+    input.onVerificationEfficiency?.({
+      verifyAttempts,
+      repairAttempts,
+    });
+
     if (!input.trace || !runId) {
       return;
     }

@@ -368,6 +368,175 @@ describe("run-task-execution helpers", () => {
     expect(groupStartCounters).toEqual([1, 1, 2]);
   });
 
+  it("inserts trace statistics per task in --all mode without cross-task carryover", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] AAAA\n- [ ] BBBBBBBB\n",
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "AAAA"),
+      fileSystem,
+      gitClient: createGitClientMock(),
+      workerConfig: {
+        traceStatistics: {
+          enabled: true,
+          fields: ["tokens_estimated"],
+        },
+      },
+    });
+
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      const source = fileSystem.readText(taskFile);
+      const next = parseTasks(source, taskFile).find((task) => !task.checked);
+      if (!next) {
+        return null;
+      }
+      return {
+        task: next,
+        source: "tasks.md",
+        contextBefore: "",
+      };
+    });
+
+    dependencies.templateLoader.load = (templatePath: string) => {
+      if (templatePath.endsWith("execute.md")) {
+        return "{{task}}";
+      }
+      return null;
+    };
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({ verify: false, runAll: true }));
+
+    expect(code).toBe(0);
+    expect(fileSystem.readText(taskFile)).toBe([
+      "- [x] AAAA",
+      "  - tokens estimated: 1",
+      "- [x] BBBBBBBB",
+      "  - tokens estimated: 2",
+      "",
+    ].join("\n"));
+  });
+
+  it("cleans prior trace statistics during --redo and avoids duplication across reruns", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [x] AAAA",
+        "  - total time: 9s",
+        "    - execution: 8s",
+        "  - tokens estimated: 999",
+        "",
+      ].join("\n"),
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "AAAA"),
+      fileSystem,
+      gitClient: createGitClientMock(),
+      workerConfig: {
+        traceStatistics: {
+          enabled: true,
+          fields: ["tokens_estimated"],
+        },
+      },
+    });
+
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      const source = fileSystem.readText(taskFile);
+      const next = parseTasks(source, taskFile).find((task) => !task.checked);
+      if (!next) {
+        return null;
+      }
+      return {
+        task: next,
+        source: "tasks.md",
+        contextBefore: "",
+      };
+    });
+
+    dependencies.templateLoader.load = (templatePath: string) => {
+      if (templatePath.endsWith("execute.md")) {
+        return "{{task}}";
+      }
+      return null;
+    };
+
+    const runTask = createRunTaskExecution(dependencies);
+
+    const firstCode = await runTask(createOptions({ verify: false, redo: true, traceStats: true }));
+    expect(firstCode).toBe(0);
+    expect(fileSystem.readText(taskFile)).toBe([
+      "- [x] AAAA",
+      "  - tokens estimated: 1",
+      "",
+    ].join("\n"));
+    expect(fileSystem.readText(taskFile)).not.toContain("total time: 9s");
+    expect(fileSystem.readText(taskFile)).not.toContain("tokens estimated: 999");
+
+    const secondCode = await runTask(createOptions({ verify: false, redo: true, traceStats: true }));
+    expect(secondCode).toBe(0);
+    expect(fileSystem.readText(taskFile)).toBe([
+      "- [x] AAAA",
+      "  - tokens estimated: 1",
+      "",
+    ].join("\n"));
+  });
+
+  it("selects unchecked tasks correctly when prior tasks contain trace-statistics subItems", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [x] Completed task",
+        "  - total time: 5s",
+        "    - execution: 2s",
+        "  - tokens estimated: 42",
+        "- [ ] Follow-up task",
+      ].join("\n"),
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "Follow-up task"),
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      const source = fileSystem.readText(taskFile);
+      const next = parseTasks(source, taskFile).find((task) => !task.checked);
+      if (!next) {
+        return null;
+      }
+
+      return {
+        task: next,
+        source: "tasks.md",
+        contextBefore: "",
+      };
+    });
+
+    dependencies.templateLoader.load = (templatePath: string) => {
+      if (templatePath.endsWith("execute.md")) {
+        return "{{task}}";
+      }
+      return null;
+    };
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({ verify: false }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(1);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: "Follow-up task",
+    }));
+    expect(fileSystem.readText(taskFile)).toContain("- [x] Follow-up task");
+  });
+
   it("refreshes force task text from source before retrying same task identity", async () => {
     const cwd = "/workspace";
     const taskFile = `${cwd}/tasks.md`;

@@ -475,6 +475,30 @@ describe("plan-task", () => {
     expect(events.some((event) => event.kind === "info" && event.message.includes("Detected 1 existing TODO item"))).toBe(true);
   });
 
+  it("ignores trace-statistics subItems when counting existing TODO items for scan context", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, events, workerExecutor } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: [
+        "# Roadmap",
+        "- [x] Completed setup",
+        "  - total time: 5s",
+        "    - execution: 2s",
+        "  - tokens estimated: 42",
+        "- [ ] Remaining task",
+      ].join("\n"),
+    });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile, dryRun: true }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(workerExecutor.runWorker)).not.toHaveBeenCalled();
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Detected 2 existing TODO items"))).toBe(true);
+  });
+
   it("returns 3 when source markdown cannot be read", async () => {
     const cwd = "/workspace";
     const markdownFile = path.join(cwd, "missing.md");

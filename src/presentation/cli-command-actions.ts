@@ -208,6 +208,7 @@ export function createRunCommandAction({
     const printPrompt = opts.printPrompt as boolean;
     const keepArtifacts = opts.keepArtifacts as boolean;
     const trace = opts.trace as boolean;
+    const traceStats = Boolean(opts.traceStats as boolean | undefined);
     const traceOnly = opts.traceOnly as boolean;
     const varsFileOption = opts.varsFile as string | boolean | undefined;
     const cliTemplateVarArgs = (opts.var as string[] | undefined) ?? [];
@@ -249,6 +250,7 @@ export function createRunCommandAction({
       printPrompt,
       keepArtifacts,
       trace,
+      traceStats,
       traceOnly,
       varsFileOption,
       cliTemplateVarArgs,
@@ -322,6 +324,7 @@ export function createLoopCommandAction({
     const dryRun = Boolean(opts.dryRun as boolean | undefined);
     const printPrompt = Boolean(opts.printPrompt as boolean | undefined);
     const traceOnly = Boolean(opts.traceOnly as boolean | undefined);
+    const traceStats = Boolean(opts.traceStats as boolean | undefined);
     const sharedRuntimeOptions = resolveSharedWorkerRuntimeOptions(opts, getWorkerFromSeparator);
     const commitAfterComplete = Boolean(opts.commit as boolean | undefined);
     const commitMode = parseCommitMode(opts.commitMode as string | undefined);
@@ -371,6 +374,7 @@ export function createLoopCommandAction({
             printPrompt,
             keepArtifacts: sharedRuntimeOptions.keepArtifacts,
             trace: sharedRuntimeOptions.trace,
+            traceStats,
             traceOnly,
             varsFileOption: sharedRuntimeOptions.varsFileOption,
             cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,

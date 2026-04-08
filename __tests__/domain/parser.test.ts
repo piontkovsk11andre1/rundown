@@ -129,6 +129,31 @@ describe("parseTasks", () => {
     expect(tasks[1]!.subItems).toEqual([{ text: "Child note", line: 4, depth: 2 }]);
   });
 
+  it("parses trace statistics lines as plain subItems on subsequent runs", () => {
+    const md = [
+      "- [x] Ship release",
+      "  - total time: 12s",
+      "    - execution: 4s",
+      "    - verify: 8s",
+      "  - tokens estimated: 1234",
+      "- [ ] Follow-up task",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]!.text).toBe("Ship release");
+    expect(tasks[0]!.checked).toBe(true);
+    expect(tasks[0]!.subItems).toEqual([
+      { text: "total time: 12s", line: 2, depth: 1 },
+      { text: "execution: 4s", line: 3, depth: 2 },
+      { text: "verify: 8s", line: 4, depth: 2 },
+      { text: "tokens estimated: 1234", line: 5, depth: 1 },
+    ]);
+    expect(tasks[1]!.text).toBe("Follow-up task");
+    expect(tasks[1]!.checked).toBe(false);
+  });
+
   it("supports mixed checkbox and plain sub-items under one parent", () => {
     const md = [
       "- [ ] Parent task",

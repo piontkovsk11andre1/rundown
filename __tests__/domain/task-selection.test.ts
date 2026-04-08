@@ -102,6 +102,21 @@ describe("filterRunnable", () => {
     expect(filterRunnable([parent])).toEqual([parent]);
   });
 
+  it("ignores trace-statistics subItems when selecting runnable tasks", () => {
+    const parent = makeTask({
+      text: "Parent",
+      depth: 0,
+      index: 0,
+      subItems: [
+        { text: "total time: 5s", line: 2, depth: 1 },
+        { text: "execution: 2s", line: 3, depth: 2 },
+        { text: "tokens estimated: 42", line: 4, depth: 1 },
+      ],
+    });
+
+    expect(filterRunnable([parent])).toEqual([parent]);
+  });
+
   it("handles populated children and subItems fields without changing runnable order", () => {
     const child = makeTask({
       text: "Child",

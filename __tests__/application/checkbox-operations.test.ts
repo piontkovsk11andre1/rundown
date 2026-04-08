@@ -6,6 +6,7 @@ import {
   captureCheckboxState,
   checkTaskUsingFileSystem,
   countCheckedTasks,
+  insertTraceStatisticsUsingFileSystem,
   maybeResetFileCheckboxes,
   resetFileCheckboxes,
   skipRemainingSiblingsUsingFileSystem,
@@ -180,6 +181,99 @@ describe("checkbox-operations", () => {
       "  - skipped: no output",
       "- [x] Do that",
       "  - skipped: no output",
+    ].join("\n"));
+  });
+
+  it("inserts trace statistics after existing descendant block", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [x] Parent",
+        "  - note: existing",
+        "  - [x] Child",
+        "    - child note",
+        "- [ ] Next task",
+      ].join("\n"),
+    });
+    const task = createTask({
+      text: "Parent",
+      line: 1,
+      index: 0,
+      file: "todo.md",
+      checked: true,
+    });
+
+    insertTraceStatisticsUsingFileSystem(task, [
+      "    - total time: 5s",
+      "        - execution: 2s",
+      "    - tokens estimated: 42",
+    ], fileSystem);
+
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [x] Parent",
+      "  - note: existing",
+      "  - [x] Child",
+      "    - child note",
+      "  - total time: 5s",
+      "    - execution: 2s",
+      "  - tokens estimated: 42",
+      "- [ ] Next task",
+    ].join("\n"));
+  });
+
+  it("skips reinsertion when task already has trace statistics", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [x] Parent",
+        "  - note: existing",
+        "  - total time: 2s",
+        "    - execution: 1s",
+        "  - tokens estimated: 10",
+        "- [ ] Next task",
+      ].join("\n"),
+    });
+    const task = createTask({
+      text: "Parent",
+      line: 1,
+      index: 0,
+      file: "todo.md",
+      checked: true,
+    });
+
+    insertTraceStatisticsUsingFileSystem(task, [
+      "    - total time: 5s",
+      "        - execution: 2s",
+      "    - tokens estimated: 42",
+    ], fileSystem);
+
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [x] Parent",
+      "  - note: existing",
+      "  - total time: 2s",
+      "    - execution: 1s",
+      "  - tokens estimated: 10",
+      "- [ ] Next task",
+    ].join("\n"));
+  });
+
+  it("removes prior trace statistics during checkbox reset", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [x] Parent",
+        "  - note: existing",
+        "  - total time: 5s",
+        "    - execution: 2s",
+        "  - tokens estimated: 42",
+        "- [x] Next task",
+        "  - verify attempts: 1",
+      ].join("\n"),
+    });
+
+    resetFileCheckboxes("todo.md", fileSystem);
+
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [ ] Parent",
+      "  - note: existing",
+      "- [ ] Next task",
     ].join("\n"));
   });
 

@@ -31,6 +31,7 @@ import type {
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import type { ExtraTemplateVars } from "../domain/template-vars.js";
 import type { RunTaskDependencies } from "./run-task-execution.js";
+import type { TraceStatisticsConfig } from "../domain/worker-config.js";
 
 type EmitFn = (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
 type ArtifactContext = ArtifactRunContext;
@@ -79,6 +80,7 @@ interface IterationExecutionOptions {
   showAgentOutput: boolean;
   hideHookOutput: boolean;
   trace: boolean;
+  traceOnly: boolean;
   forceRetryMetadata?: {
     attemptNumber: number;
     maxAttempts: number;
@@ -107,6 +109,7 @@ interface IterationCompletionConfig {
   onCompleteCommand?: string;
   onFailCommand?: string;
   extraTemplateVars: ExtraTemplateVars;
+  traceStatisticsConfig?: TraceStatisticsConfig;
 }
 
 interface IterationPromptConfig {
@@ -614,6 +617,7 @@ export async function runTaskIteration(params: {
     maxRepairAttempts: verifyConfig.maxRepairAttempts,
     allowRepair: verifyConfig.allowRepair,
     trace: execution.trace,
+    traceOnly: execution.traceOnly,
     verbose: execution.verbose,
     cliBlockExecutor: prompts.cliBlockExecutor,
     cliExpansionEnabled: execution.cliExpansionEnabled,
@@ -646,6 +650,9 @@ export async function runTaskIteration(params: {
     skipRemainingSiblingsReason: dispatchResult.skipRemainingSiblingsReason,
     toolExpansionInsertedChildCount: dispatchResult.toolExpansionInsertedChildCount,
     failOnCompleteHookError: execution.forceStrippedTaskText !== undefined,
+    traceStatisticsConfig: completion.traceStatisticsConfig,
+    currentRound: traceConfig.roundContext.currentRound,
+    totalRounds: traceConfig.roundContext.totalRounds,
   });
 
   if (completionResult.groupEnded === true) {

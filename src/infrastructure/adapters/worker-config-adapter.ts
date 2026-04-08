@@ -2,7 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import type { WorkerConfigPort } from "../../domain/ports/worker-config-port.js";
 import {
+  DEFAULT_TRACE_STATISTICS_FIELDS,
+  TRACE_STATISTICS_FIELD_REGISTRY,
   WORKER_CONFIG_COMMAND_NAMES,
+  type TraceStatisticsConfig,
   type WorkerCommand,
   type WorkerCommandProfiles,
   type WorkerConfig,
@@ -116,6 +119,48 @@ function validateCommandProfiles(value: unknown, keyPath: string): WorkerCommand
 }
 
 /**
+ * Validates optional inline trace statistics configuration.
+ */
+function validateTraceStatisticsConfig(value: unknown, keyPath: string): TraceStatisticsConfig {
+  if (value === undefined) {
+    return {
+      enabled: false,
+      fields: [...DEFAULT_TRACE_STATISTICS_FIELDS],
+    };
+  }
+
+  if (!isPlainObject(value)) {
+    throw new Error(`Invalid worker config at ${keyPath}: expected object.`);
+  }
+
+  const enabled = value.enabled;
+  const fields = value.fields;
+
+  if (enabled !== undefined && typeof enabled !== "boolean") {
+    throw new Error(`Invalid worker config at ${keyPath}.enabled: expected boolean.`);
+  }
+
+  if (fields !== undefined && !isStringArray(fields)) {
+    throw new Error(`Invalid worker config at ${keyPath}.fields: expected string array.`);
+  }
+
+  if (fields !== undefined) {
+    const allowedFields = new Set<string>(TRACE_STATISTICS_FIELD_REGISTRY);
+    const unknownField = fields.find((field) => !allowedFields.has(field));
+    if (unknownField) {
+      throw new Error(
+        `Invalid worker config at ${keyPath}.fields: unknown field "${unknownField}". Allowed: ${TRACE_STATISTICS_FIELD_REGISTRY.join(", ")}.`,
+      );
+    }
+  }
+
+  return {
+    enabled: enabled === true,
+    fields: fields === undefined ? [...DEFAULT_TRACE_STATISTICS_FIELDS] : [...fields],
+  };
+}
+
+/**
  * Validates the top-level worker configuration document.
  */
 function validateWorkerConfig(value: unknown): WorkerConfig {
@@ -131,6 +176,7 @@ function validateWorkerConfig(value: unknown): WorkerConfig {
     workers: workers === undefined ? undefined : validateWorkers(workers, "workers"),
     commands: commands === undefined ? undefined : validateCommandProfiles(commands, "commands"),
     profiles: profiles === undefined ? undefined : validateProfileMap(profiles, "profiles"),
+    traceStatistics: validateTraceStatisticsConfig(value.traceStatistics, "traceStatistics"),
   };
 }
 

@@ -1,9 +1,132 @@
 import { markChecked, markTasksChecked, resetAllCheckboxes } from "../domain/checkbox.js";
-import { insertSubitems } from "../domain/planner.js";
+import { computeChildIndent, insertSubitems } from "../domain/planner.js";
 import { parseTasks, type Task } from "../domain/parser.js";
 import { findRemainingSiblings, findUncheckedDescendants } from "../domain/task-selection.js";
 import type { FileSystem } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
+
+const TRACE_STATISTICS_CHILD_LABEL_PATTERN = /^(?:total time|execution|verify|repair|idle|tokens estimated|phases|verify attempts|repair attempts):\s+\S/i;
+const TRACE_STATISTICS_GRANDCHILD_LABEL_PATTERN = /^(?:execution|verify|repair):\s+\S/i;
+
+function getLeadingWhitespaceLength(line: string): number {
+  return (line.match(/^(\s*)/)?.[1] ?? "").length;
+}
+
+function isListItemWithLabel(line: string, labelPattern: RegExp): boolean {
+  const match = line.match(/^\s*[-*+]\s+(.*)$/);
+  if (!match) {
+    return false;
+  }
+
+  const label = match[1] ?? "";
+  return labelPattern.test(label);
+}
+
+function isTraceStatisticsLineForTask(line: string, parentIndentLength: number): boolean {
+  const lineIndentLength = getLeadingWhitespaceLength(line);
+  if (lineIndentLength === parentIndentLength + 2) {
+    return isListItemWithLabel(line, TRACE_STATISTICS_CHILD_LABEL_PATTERN);
+  }
+
+  if (lineIndentLength === parentIndentLength + 4) {
+    return isListItemWithLabel(line, TRACE_STATISTICS_GRANDCHILD_LABEL_PATTERN);
+  }
+
+  return false;
+}
+
+function stripTrailingTraceStatisticsLines(
+  lines: string[],
+  parentLineIndex: number,
+  descendantEndIndexExclusive: number,
+): number {
+  const parentLine = lines[parentLineIndex] ?? "";
+  const parentIndentLength = getLeadingWhitespaceLength(parentLine);
+  let removeStartIndex = descendantEndIndexExclusive;
+
+  for (let index = descendantEndIndexExclusive - 1; index > parentLineIndex; index -= 1) {
+    const line = lines[index] ?? "";
+    if (line.trim().length === 0) {
+      if (removeStartIndex < descendantEndIndexExclusive) {
+        removeStartIndex = index;
+        continue;
+      }
+
+      break;
+    }
+
+    if (!isTraceStatisticsLineForTask(line, parentIndentLength)) {
+      break;
+    }
+
+    removeStartIndex = index;
+  }
+
+  if (removeStartIndex < descendantEndIndexExclusive) {
+    lines.splice(removeStartIndex, descendantEndIndexExclusive - removeStartIndex);
+  }
+
+  return removeStartIndex;
+}
+
+function hasTraceStatisticsInDescendants(
+  lines: string[],
+  parentLineIndex: number,
+  descendantEndIndexExclusive: number,
+): boolean {
+  const parentLine = lines[parentLineIndex] ?? "";
+  const parentIndentLength = getLeadingWhitespaceLength(parentLine);
+
+  for (let index = parentLineIndex + 1; index < descendantEndIndexExclusive; index += 1) {
+    const line = lines[index] ?? "";
+    if (line.trim().length === 0) {
+      continue;
+    }
+
+    if (isTraceStatisticsLineForTask(line, parentIndentLength)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function stripTraceStatisticsFromSource(source: string, file: string): string {
+  const tasks = parseTasks(source, file);
+  if (tasks.length === 0) {
+    return source;
+  }
+
+  const eol = source.includes("\r\n") ? "\r\n" : "\n";
+  const lines = source.split(/\r?\n/);
+  const tasksDescending = [...tasks].sort((left, right) => right.line - left.line);
+
+  for (const task of tasksDescending) {
+    const parentLineIndex = task.line - 1;
+    if (parentLineIndex < 0 || parentLineIndex >= lines.length) {
+      continue;
+    }
+
+    const parentIndentLength = getLeadingWhitespaceLength(lines[parentLineIndex] ?? "");
+    let descendantEndIndexExclusive = parentLineIndex + 1;
+    for (let index = parentLineIndex + 1; index < lines.length; index += 1) {
+      const line = lines[index] ?? "";
+      if (line.trim().length === 0) {
+        continue;
+      }
+
+      if (getLeadingWhitespaceLength(line) <= parentIndentLength) {
+        break;
+      }
+
+      descendantEndIndexExclusive = index + 1;
+    }
+
+    stripTrailingTraceStatisticsLines(lines, parentLineIndex, descendantEndIndexExclusive);
+  }
+
+  return lines.join(eol);
+}
 
 /**
  * Marks a single task as checked in its source file.
@@ -12,6 +135,94 @@ export function checkTaskUsingFileSystem(task: Task, fileSystem: FileSystem): vo
   const source = fileSystem.readText(task.file);
   const updated = markChecked(source, task);
   fileSystem.writeText(task.file, updated);
+}
+
+/**
+ * Inserts formatted trace-statistics lines beneath a completed task.
+ *
+ * The insertion point is after the task's existing descendant block, so any
+ * pre-existing child tasks/sub-items remain above the appended statistics.
+ */
+export function insertTraceStatisticsUsingFileSystem(
+  task: Task,
+  statisticsLines: string[],
+  fileSystem: FileSystem,
+): void {
+  if (statisticsLines.length === 0) {
+    return;
+  }
+
+  const source = fileSystem.readText(task.file);
+  const eol = source.includes("\r\n") ? "\r\n" : "\n";
+  const lines = source.split(/\r?\n/);
+  const parentLineIndex = task.line - 1;
+
+  if (parentLineIndex < 0 || parentLineIndex >= lines.length) {
+    return;
+  }
+
+  const parentLine = lines[parentLineIndex] ?? "";
+  const parentIndentLength = (parentLine.match(/^(\s*)/)?.[1] ?? "").length;
+  const childIndent = computeChildIndent(parentLine);
+
+  let insertionIndex = parentLineIndex + 1;
+  for (let index = parentLineIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    if (line.trim().length === 0) {
+      continue;
+    }
+
+    const lineIndentLength = (line.match(/^(\s*)/)?.[1] ?? "").length;
+    if (lineIndentLength <= parentIndentLength) {
+      break;
+    }
+
+    insertionIndex = index + 1;
+  }
+
+  if (hasTraceStatisticsInDescendants(lines, parentLineIndex, insertionIndex)) {
+    return;
+  }
+
+  insertionIndex = stripTrailingTraceStatisticsLines(lines, parentLineIndex, insertionIndex);
+
+  const minimumLeadingSpaces = statisticsLines.reduce<number>((minimum, line) => {
+    if (line.trim().length === 0) {
+      return minimum;
+    }
+
+    const leadingSpaces = line.match(/^(\s*)/)?.[1].length ?? 0;
+    return Math.min(minimum, leadingSpaces);
+  }, Number.POSITIVE_INFINITY);
+
+  const baseIndent = Number.isFinite(minimumLeadingSpaces) ? minimumLeadingSpaces : 0;
+  const relativeIndentUnit = statisticsLines.reduce<number>((minimum, line) => {
+    if (line.trim().length === 0) {
+      return minimum;
+    }
+
+    const leadingSpaces = line.match(/^(\s*)/)?.[1].length ?? 0;
+    const delta = leadingSpaces - baseIndent;
+    if (delta <= 0) {
+      return minimum;
+    }
+
+    return Math.min(minimum, delta);
+  }, Number.POSITIVE_INFINITY);
+
+  const indentUnit = Number.isFinite(relativeIndentUnit) && relativeIndentUnit > 0
+    ? relativeIndentUnit
+    : 2;
+
+  const adjustedLines = statisticsLines.map((line) => {
+    const leadingSpaces = line.match(/^(\s*)/)?.[1].length ?? 0;
+    const relativeLevels = Math.max(0, Math.floor((leadingSpaces - baseIndent) / indentUnit));
+    const content = line.trimStart();
+    return `${childIndent}${"  ".repeat(relativeLevels)}${content}`;
+  });
+
+  lines.splice(insertionIndex, 0, ...adjustedLines);
+  fileSystem.writeText(task.file, lines.join(eol));
 }
 
 /**
@@ -112,7 +323,8 @@ export function resetFileCheckboxes(file: string, fileSystem: FileSystem): void 
   }
 
   const updated = resetAllCheckboxes(source, file);
-  fileSystem.writeText(file, updated);
+  const cleaned = stripTraceStatisticsFromSource(updated, file);
+  fileSystem.writeText(file, cleaned);
 }
 
 /**

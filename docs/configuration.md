@@ -7,6 +7,7 @@ This lets you:
 - define a default worker so you do not need `--worker` on every command,
 - set per-command worker overrides (`run`, `plan`, `discuss`, `help`, `research`, `reverify`, `verify`, `memory`, `tools.<toolName>`),
 - define named profiles (for model or other worker args),
+- configure inline task trace statistics written under completed TODOs,
 - apply profiles from file frontmatter, directive parent list items, or `profile:` prefix modifiers,
 - override everything from the CLI when needed.
 
@@ -82,6 +83,10 @@ All command arrays and arg arrays must be JSON arrays of strings.
       "worker": ["string", "..."],
       "workerArgs": ["string", "..."]
     }
+  },
+  "traceStatistics": {
+    "enabled": true,
+    "fields": ["total_time", "tokens_estimated"]
   }
 }
 ```
@@ -92,6 +97,73 @@ Section behavior:
 - `commands.<name>`: override/extend defaults for one command (for example `plan`, `verify`, or `memory`).
 - `commands.tools.<toolName>`: override/extend defaults for one tool-expansion prefix task (for example `tools.post-on-gitea`).
 - `profiles.<name>`: named reusable profile values, selected from frontmatter, directives, or prefix modifiers.
+- `traceStatistics`: controls optional inline trace summary lines written below completed checkbox tasks.
+
+## Trace statistics
+
+`traceStatistics` config controls whether rundown inserts human-readable execution statistics under tasks it marks complete.
+
+Example:
+
+```json
+{
+  "traceStatistics": {
+    "enabled": true,
+    "fields": [
+      "total_time",
+      "execution_time",
+      "verify_time",
+      "repair_time",
+      "idle_time",
+      "tokens_estimated",
+      "phases_count",
+      "verify_attempts",
+      "repair_attempts"
+    ]
+  }
+}
+```
+
+Behavior:
+
+- `enabled`: turns inline trace statistics insertion on or off.
+- `fields`: ordered list of metric field names to render.
+- unknown field names are rejected at config-load time.
+
+Defaults:
+
+- if `traceStatistics` is omitted, rundown keeps statistics disabled by default.
+- if `--trace` or `--trace-stats` is used and `traceStatistics` is omitted, rundown enables statistics with default fields:
+  - `total_time`
+  - `tokens_estimated`
+- if `traceStatistics.fields` is omitted while `enabled` is true, rundown uses the same default field list.
+
+Available field names:
+
+- `total_time`: total task duration.
+- `execution_time`: execution phase duration.
+- `verify_time`: verification phase duration.
+- `repair_time`: repair phase duration.
+- `idle_time`: idle/wait time from waterfall timing.
+- `tokens_estimated`: estimated prompt tokens used.
+- `phases_count`: number of phases completed.
+- `verify_attempts`: verification attempts used.
+- `repair_attempts`: repair attempts used.
+
+Rendered output shape:
+
+```markdown
+- [x] Implement feature X
+    - total time: 522s
+        - execution: 5s
+        - verify: 12s
+    - tokens estimated: 429391
+```
+
+Notes:
+
+- statistics are inserted only when a task is actually completed by `run`.
+- existing statistics are de-duplicated, and stale ones are cleaned during redo/reset flows.
 
 ## Resolution cascade
 

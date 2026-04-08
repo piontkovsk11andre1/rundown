@@ -47,6 +47,30 @@ export type WorkerCommandProfiles = {
   [K in WorkerConfigCommandName]?: WorkerCommand;
 };
 
+export const TRACE_STATISTICS_FIELD_REGISTRY = [
+  "total_time",
+  "execution_time",
+  "verify_time",
+  "repair_time",
+  "idle_time",
+  "tokens_estimated",
+  "phases_count",
+  "verify_attempts",
+  "repair_attempts",
+] as const;
+
+export type TraceStatisticsField = typeof TRACE_STATISTICS_FIELD_REGISTRY[number];
+
+export const DEFAULT_TRACE_STATISTICS_FIELDS: string[] = ["total_time", "tokens_estimated"];
+
+/**
+ * Trace statistics configuration for inline markdown output.
+ */
+export interface TraceStatisticsConfig {
+  enabled: boolean;
+  fields: string[];
+}
+
 /**
  * Worker configuration loaded from user or project settings.
  */
@@ -57,6 +81,29 @@ export interface WorkerConfig {
   commands?: WorkerCommandProfiles;
   // Named reusable profiles referenced by directive or file metadata.
   profiles?: Record<string, WorkerCommand>;
+  // Optional trace statistics output configuration.
+  traceStatistics?: TraceStatisticsConfig;
+}
+
+/**
+ * Returns worker config with trace-statistics defaults applied only when
+ * tracing is enabled and traceStatistics config is not provided.
+ */
+export function applyTraceStatisticsDefaults(
+  config: WorkerConfig | undefined,
+  traceEnabled: boolean,
+): WorkerConfig | undefined {
+  if (!traceEnabled || config?.traceStatistics) {
+    return config;
+  }
+
+  return {
+    ...(config ?? {}),
+    traceStatistics: {
+      enabled: true,
+      fields: [...DEFAULT_TRACE_STATISTICS_FIELDS],
+    },
+  };
 }
 
 // Matches a sub-item like "profile: build" and captures the profile name.

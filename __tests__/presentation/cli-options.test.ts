@@ -1072,6 +1072,20 @@ describe("CLI run option normalization", () => {
     expect(call.traceOnly).toBe(true);
   });
 
+  it("passes trace-stats option to run task", async () => {
+    const runTask = vi.fn(async () => 0);
+    const call = await invokeRunAndCaptureCall([
+      "run",
+      "tasks.md",
+      "--trace-stats",
+      "--worker",
+      "opencode",
+      "run",
+    ], runTask);
+
+    expect(call.traceStats).toBe(true);
+  });
+
   it("collects repeated template vars", async () => {
     const runTask = vi.fn(async () => 0);
     const call = await invokeRunAndCaptureCall([

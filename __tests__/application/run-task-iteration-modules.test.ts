@@ -3134,6 +3134,8 @@ describe("complete-task-iteration", () => {
       beginPhase: vi.fn(() => ({ phase: "verify", sequence: 1, startedAtMs: 1, startedAtIso: "2026-01-01T00:00:00.000Z" })),
       emitPromptMetrics: vi.fn(),
       completePhase: vi.fn(),
+      setVerificationEfficiency: vi.fn(),
+      collectStatistics: vi.fn(() => null),
     } as unknown as ReturnType<typeof createTraceRunSession>;
   }
 
@@ -3565,7 +3567,7 @@ describe("complete-task-iteration", () => {
     expect(state.tasksCompleted).toBe(1);
     expect(state.deferredCommitContext).toEqual({
       task,
-      source: "- [ ] Ship release",
+      source: "- [ ] Ship release\n",
       artifactContext: {
         runId: "run-complete",
         rootDir: path.join(cwd, ".rundown", "runs", "run-complete"),
@@ -3608,14 +3610,30 @@ describe("complete-task-iteration", () => {
 
     const afterTaskCompleteSpy = vi.spyOn(runLifecycleModule, "afterTaskComplete").mockResolvedValue({});
     const checkTaskSpy = vi.spyOn(checkboxOperationsModule, "checkTaskUsingFileSystem").mockImplementation(() => {});
+    const insertStatisticsSpy = vi.spyOn(checkboxOperationsModule, "insertTraceStatisticsUsingFileSystem");
     const finishRun = vi.fn(async () => 0);
     const resetArtifacts = vi.fn();
+    const traceRunSession = {
+      collectStatistics: vi.fn(() => ({
+        fields: {
+          total_time: 5_100,
+          execution_time: 2_000,
+          verify_time: 0,
+          repair_time: 0,
+          idle_time: 0,
+          tokens_estimated: 42,
+          phases_count: 1,
+          verify_attempts: 0,
+          repair_attempts: 0,
+        },
+      })),
+    } as unknown as ReturnType<typeof createTraceRunSession>;
 
     const result = await completeTaskIteration({
       dependencies,
       emit: vi.fn(),
       state,
-      traceRunSession: createCompletionSession(),
+      traceRunSession,
       failRun: vi.fn(async () => 1),
       finishRun,
       resetArtifacts,
@@ -3662,14 +3680,315 @@ describe("complete-task-iteration", () => {
       verificationFailureRunReason: "unused",
       toolExpansionInsertedChildCount: 1,
       extraTemplateVars: {},
+      traceStatisticsConfig: {
+        enabled: true,
+        fields: ["total_time", "execution_time", "tokens_estimated"],
+      },
     });
 
     expect(result).toEqual({ continueLoop: true, groupEnded: true });
     expect(state.tasksCompleted).toBe(1);
     expect(checkTaskSpy).toHaveBeenCalledTimes(1);
+    expect(traceRunSession.collectStatistics).not.toHaveBeenCalled();
+    expect(insertStatisticsSpy).not.toHaveBeenCalled();
     expect(afterTaskCompleteSpy).not.toHaveBeenCalled();
     expect(finishRun).not.toHaveBeenCalled();
     expect(resetArtifacts).toHaveBeenCalledTimes(1);
+  });
+
+  it("inserts trace statistics after checking the task when enabled", async () => {
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] Ship release\n",
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    const state = {
+      traceWriter: dependencies.traceWriter,
+      deferredCommitContext: null,
+      tasksCompleted: 0,
+      runCompleted: false,
+    };
+    const traceRunSession = {
+      collectStatistics: vi.fn(() => ({
+        fields: {
+          total_time: 5_100,
+          execution_time: 2_000,
+          verify_time: 0,
+          repair_time: 0,
+          idle_time: 0,
+          tokens_estimated: 42,
+          phases_count: 1,
+          verify_attempts: 0,
+          repair_attempts: 0,
+        },
+      })),
+    } as unknown as ReturnType<typeof createTraceRunSession>;
+
+    const checkTaskSpy = vi.spyOn(checkboxOperationsModule, "checkTaskUsingFileSystem");
+    const insertStatisticsSpy = vi.spyOn(checkboxOperationsModule, "insertTraceStatisticsUsingFileSystem");
+
+    const result = await completeTaskIteration({
+      dependencies,
+      emit: vi.fn(),
+      state,
+      traceRunSession,
+      failRun: vi.fn(async () => 1),
+      finishRun: vi.fn(async () => 0),
+      resetArtifacts: vi.fn(),
+      keepArtifacts: true,
+      effectiveRunAll: false,
+      commitAfterComplete: false,
+      deferCommitUntilPostRun: false,
+      commitMessageTemplate: undefined,
+      onCompleteCommand: undefined,
+      onFailCommand: undefined,
+      hideHookOutput: false,
+      maxRepairAttempts: 1,
+      allowRepair: true,
+      trace: false,
+      verbose: false,
+      cliBlockExecutor: dependencies.cliBlockExecutor!,
+      cliExpansionEnabled: true,
+      task,
+      sourceText: "- [ ] Ship release",
+      expandedSource: "- [ ] Ship release",
+      expandedContextBefore: "",
+      templates: {
+        task: "",
+        discuss: "",
+        research: "",
+        verify: "",
+        repair: "",
+        plan: "",
+        trace: "",
+      },
+      templateVarsWithTrace: {},
+      automationCommand: ["opencode", "run"],
+      shouldVerify: false,
+      verificationPrompt: "",
+      artifactContext: {
+        runId: "run-complete",
+        rootDir: path.join(cwd, ".rundown", "runs", "run-complete"),
+        cwd,
+        keepArtifacts: true,
+        commandName: "run",
+      },
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      verificationFailureMessage: "unused",
+      verificationFailureRunReason: "unused",
+      extraTemplateVars: {},
+      traceStatisticsConfig: {
+        enabled: true,
+        fields: ["total_time", "execution_time", "tokens_estimated"],
+      },
+    });
+
+    expect(result).toEqual({ continueLoop: false, exitCode: 0, groupEnded: true });
+    expect(checkTaskSpy).toHaveBeenCalledTimes(1);
+    expect(insertStatisticsSpy).toHaveBeenCalledTimes(1);
+    expect(insertStatisticsSpy.mock.calls[0]?.[1]).toEqual([
+      "    - total time: 5s",
+      "        - execution: 2s",
+      "    - tokens estimated: 42",
+    ]);
+  });
+
+  it("skips trace statistics insertion in detached mode", async () => {
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] Ship release\n",
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    const state = {
+      traceWriter: dependencies.traceWriter,
+      deferredCommitContext: null,
+      tasksCompleted: 0,
+      runCompleted: false,
+    };
+    const traceRunSession = {
+      collectStatistics: vi.fn(() => ({
+        fields: {
+          total_time: 5_100,
+          execution_time: 2_000,
+          verify_time: 0,
+          repair_time: 0,
+          idle_time: 0,
+          tokens_estimated: 42,
+          phases_count: 1,
+          verify_attempts: 0,
+          repair_attempts: 0,
+        },
+      })),
+    } as unknown as ReturnType<typeof createTraceRunSession>;
+
+    const insertStatisticsSpy = vi.spyOn(checkboxOperationsModule, "insertTraceStatisticsUsingFileSystem");
+
+    const result = await completeTaskIteration({
+      dependencies,
+      emit: vi.fn(),
+      state,
+      traceRunSession,
+      failRun: vi.fn(async () => 1),
+      finishRun: vi.fn(async () => 0),
+      resetArtifacts: vi.fn(),
+      keepArtifacts: true,
+      effectiveRunAll: false,
+      commitAfterComplete: false,
+      deferCommitUntilPostRun: false,
+      commitMessageTemplate: undefined,
+      onCompleteCommand: undefined,
+      onFailCommand: undefined,
+      hideHookOutput: false,
+      maxRepairAttempts: 1,
+      allowRepair: true,
+      trace: false,
+      verbose: false,
+      cliBlockExecutor: dependencies.cliBlockExecutor!,
+      cliExpansionEnabled: true,
+      task,
+      sourceText: "- [ ] Ship release",
+      expandedSource: "- [ ] Ship release",
+      expandedContextBefore: "",
+      templates: {
+        task: "",
+        discuss: "",
+        research: "",
+        verify: "",
+        repair: "",
+        plan: "",
+        trace: "",
+      },
+      templateVarsWithTrace: {},
+      automationCommand: ["opencode", "run"],
+      shouldVerify: false,
+      runMode: "detached",
+      verificationPrompt: "",
+      artifactContext: {
+        runId: "run-complete",
+        rootDir: path.join(cwd, ".rundown", "runs", "run-complete"),
+        cwd,
+        keepArtifacts: true,
+        commandName: "run",
+      },
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      verificationFailureMessage: "unused",
+      verificationFailureRunReason: "unused",
+      extraTemplateVars: {},
+      traceStatisticsConfig: {
+        enabled: true,
+        fields: ["total_time", "execution_time", "tokens_estimated"],
+      },
+    });
+
+    expect(result).toEqual({ continueLoop: false, exitCode: 0, groupEnded: true });
+    expect(traceRunSession.collectStatistics).not.toHaveBeenCalled();
+    expect(insertStatisticsSpy).not.toHaveBeenCalled();
+  });
+
+  it("skips trace statistics insertion before the final round", async () => {
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] Ship release\n",
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    const state = {
+      traceWriter: dependencies.traceWriter,
+      deferredCommitContext: null,
+      tasksCompleted: 0,
+      runCompleted: false,
+    };
+    const traceRunSession = {
+      collectStatistics: vi.fn(() => ({
+        fields: {
+          total_time: 5_100,
+          execution_time: 2_000,
+          verify_time: 0,
+          repair_time: 0,
+          idle_time: 0,
+          tokens_estimated: 42,
+          phases_count: 1,
+          verify_attempts: 0,
+          repair_attempts: 0,
+        },
+      })),
+    } as unknown as ReturnType<typeof createTraceRunSession>;
+
+    const insertStatisticsSpy = vi.spyOn(checkboxOperationsModule, "insertTraceStatisticsUsingFileSystem");
+
+    const result = await completeTaskIteration({
+      dependencies,
+      emit: vi.fn(),
+      state,
+      traceRunSession,
+      failRun: vi.fn(async () => 1),
+      finishRun: vi.fn(async () => 0),
+      resetArtifacts: vi.fn(),
+      keepArtifacts: true,
+      effectiveRunAll: false,
+      commitAfterComplete: false,
+      deferCommitUntilPostRun: false,
+      commitMessageTemplate: undefined,
+      onCompleteCommand: undefined,
+      onFailCommand: undefined,
+      hideHookOutput: false,
+      maxRepairAttempts: 1,
+      allowRepair: true,
+      trace: false,
+      verbose: false,
+      cliBlockExecutor: dependencies.cliBlockExecutor!,
+      cliExpansionEnabled: true,
+      task,
+      sourceText: "- [ ] Ship release",
+      expandedSource: "- [ ] Ship release",
+      expandedContextBefore: "",
+      templates: {
+        task: "",
+        discuss: "",
+        research: "",
+        verify: "",
+        repair: "",
+        plan: "",
+        trace: "",
+      },
+      templateVarsWithTrace: {},
+      automationCommand: ["opencode", "run"],
+      shouldVerify: false,
+      runMode: "wait",
+      currentRound: 1,
+      totalRounds: 2,
+      verificationPrompt: "",
+      artifactContext: {
+        runId: "run-complete",
+        rootDir: path.join(cwd, ".rundown", "runs", "run-complete"),
+        cwd,
+        keepArtifacts: true,
+        commandName: "run",
+      },
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      verificationFailureMessage: "unused",
+      verificationFailureRunReason: "unused",
+      extraTemplateVars: {},
+      traceStatisticsConfig: {
+        enabled: true,
+        fields: ["total_time", "execution_time", "tokens_estimated"],
+      },
+    });
+
+    expect(result).toEqual({ continueLoop: false, exitCode: 0, groupEnded: true });
+    expect(traceRunSession.collectStatistics).not.toHaveBeenCalled();
+    expect(insertStatisticsSpy).not.toHaveBeenCalled();
   });
 
   it("skips remaining siblings when completion receives skipRemainingSiblings reason", async () => {

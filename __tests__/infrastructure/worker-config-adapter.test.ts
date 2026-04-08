@@ -54,6 +54,10 @@ describe("createWorkerConfigAdapter", () => {
       profiles: {
         fast: ["opencode", "run", "--model", "gpt-5.3-codex"],
       },
+      traceStatistics: {
+        enabled: false,
+        fields: ["total_time", "tokens_estimated"],
+      },
     });
   });
 
@@ -113,6 +117,10 @@ describe("createWorkerConfigAdapter", () => {
       },
       commands: undefined,
       profiles: undefined,
+      traceStatistics: {
+        enabled: false,
+        fields: ["total_time", "tokens_estimated"],
+      },
     });
   });
 
@@ -145,6 +153,10 @@ describe("createWorkerConfigAdapter", () => {
       },
       commands: undefined,
       profiles: undefined,
+      traceStatistics: {
+        enabled: false,
+        fields: ["total_time", "tokens_estimated"],
+      },
     });
   });
 
@@ -183,7 +195,84 @@ describe("createWorkerConfigAdapter", () => {
         complex: ["opencode", "run", "--model", "opus-4.6"],
         fast: ["opencode", "run", "--model", "gpt-5.3-codex"],
       },
+      traceStatistics: {
+        enabled: false,
+        fields: ["total_time", "tokens_estimated"],
+      },
     });
+  });
+
+  it("loads explicit traceStatistics config", () => {
+    const configDir = makeTempConfigDir();
+    writeConfig(
+      configDir,
+      JSON.stringify({
+        traceStatistics: {
+          enabled: true,
+          fields: ["total_time", "verify_time", "repair_attempts"],
+        },
+      }),
+    );
+
+    const adapter = createWorkerConfigAdapter();
+
+    expect(adapter.load(configDir)).toEqual({
+      workers: undefined,
+      commands: undefined,
+      profiles: undefined,
+      traceStatistics: {
+        enabled: true,
+        fields: ["total_time", "verify_time", "repair_attempts"],
+      },
+    });
+  });
+
+  it("rejects unknown trace statistics fields", () => {
+    const configDir = makeTempConfigDir();
+    const configPath = writeConfig(
+      configDir,
+      JSON.stringify({
+        traceStatistics: {
+          enabled: true,
+          fields: ["total_time", "mystery_metric"],
+        },
+      }),
+    );
+
+    const adapter = createWorkerConfigAdapter();
+
+    expect(() => adapter.load(configDir)).toThrow(
+      `Invalid worker config at \"${configPath}\": Invalid worker config at traceStatistics.fields: unknown field \"mystery_metric\". Allowed: total_time, execution_time, verify_time, repair_time, idle_time, tokens_estimated, phases_count, verify_attempts, repair_attempts.`,
+    );
+  });
+
+  it("reports actionable details for unknown trace statistics fields", () => {
+    const configDir = makeTempConfigDir();
+    writeConfig(
+      configDir,
+      JSON.stringify({
+        traceStatistics: {
+          enabled: true,
+          fields: ["total_time", "tokens_estimated", "surprise_metric"],
+        },
+      }),
+    );
+
+    const adapter = createWorkerConfigAdapter();
+
+    try {
+      adapter.load(configDir);
+      throw new Error("Expected adapter.load to throw for unknown trace statistic field.");
+    } catch (error) {
+      const message = (error as Error).message;
+      expect(message).toContain("Invalid worker config at");
+      expect(message).toContain("traceStatistics.fields");
+      expect(message).toContain('unknown field "surprise_metric"');
+      expect(message).toContain("Allowed:");
+      expect(message).toContain("total_time");
+      expect(message).toContain("tokens_estimated");
+      expect(message).toContain("verify_attempts");
+    }
   });
 
   it("rejects unknown command keys in commands config", () => {

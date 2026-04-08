@@ -2803,6 +2803,45 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("Task checked: cli: node -e"))).toBe(true);
   });
 
+  it("run inserts total_time and execution_time trace statistics for inline CLI tasks", async () => {
+    const workspace = makeTempWorkspace();
+    const configDir = path.join(workspace, ".rundown");
+    const inlineScriptPath = path.join(workspace, "inline-trace-stats.cjs");
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, "config.json"),
+      JSON.stringify({
+        traceStatistics: {
+          enabled: true,
+          fields: ["total_time", "execution_time"],
+        },
+      }, null, 2),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      inlineScriptPath,
+      "setTimeout(() => { console.log('inline done'); }, 1100);\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(workspace, "roadmap.md"),
+      "- [ ] cli: node inline-trace-stats.cjs\n",
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const updated = fs.readFileSync(path.join(workspace, "roadmap.md"), "utf-8");
+    expect(updated).toContain("- [x] cli: node inline-trace-stats.cjs");
+    expect(updated).toMatch(/\n\s+- total time: (?:<1s|\d+s)\n/);
+    expect(updated).toMatch(/\n\s+- execution: (?:<1s|\d+s)\n/);
+  });
+
   it("run keeps failure exit code and rundown error output visible with hidden agent output by default", async () => {
     const workspace = makeTempWorkspace();
     fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] Write docs\n", "utf-8");
@@ -2951,6 +2990,61 @@ describe.sequential("CLI integration", () => {
     const eventTypes = events.map((event) => event.event_type);
     expect(eventTypes).toContain("run.started");
     expect(eventTypes).toContain("run.completed");
+  });
+
+  it("run with config.json missing traceStatistics keeps baseline behavior when tracing is off", async () => {
+    const workspace = makeTempWorkspace();
+    const configDir = path.join(workspace, ".rundown");
+    const workerScriptPath = path.join(workspace, "baseline-no-trace-stats-worker.mjs");
+
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] Write docs\n", "utf-8");
+    fs.writeFileSync(
+      path.join(configDir, "config.json"),
+      JSON.stringify({
+        workers: {
+          default: ["node", workerScriptPath.replace(/\\/g, "/")],
+        },
+      }, null, 2),
+      "utf-8",
+    );
+    fs.writeFileSync(workerScriptPath, "console.log('done');\n", "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const updated = fs.readFileSync(path.join(workspace, "roadmap.md"), "utf-8");
+    expect(updated).toContain("- [x] Write docs");
+    expect(updated).not.toContain("total time:");
+    expect(updated).not.toContain("tokens estimated:");
+  });
+
+  it("run --trace inserts default inline trace statistics in source Markdown", async () => {
+    const workspace = makeTempWorkspace();
+    const workerScriptPath = path.join(workspace, "trace-stats-worker.mjs");
+    fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] Write docs\n", "utf-8");
+    fs.writeFileSync(workerScriptPath, "console.log('done');\n", "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--trace",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+
+    const updated = fs.readFileSync(path.join(workspace, "roadmap.md"), "utf-8");
+    expect(updated).toContain("- [x] Write docs");
+    expect(updated).toMatch(/\n\s+- total time: (?:<1s|\d+s)\n/);
+    expect(updated).toMatch(/\n\s+- tokens estimated: \d+\n/);
   });
 
   it("run --trace writes analysis.summary as the last event before run.completed", async () => {
@@ -4102,6 +4196,17 @@ describe.sequential("CLI integration", () => {
     expect(compactHelpOutput).toContain("--force-attempts <n> Default outer retry attempts for force:-prefixed tasks");
     expect(compactHelpOutput).toContain("--commit-mode <mode> Commit timing for --commit: per-task (default) or file-done (effective run-all via --all/all/--redo/--clean)");
     expect(compactHelpOutput).toContain("--on-complete <command> Run a shell command after successful task completion");
+  });
+
+  it("run --help lists --trace-stats option", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli(["run", "roadmap.md", "--help"], workspace);
+
+    expect(result.code).toBe(0);
+    const helpOutput = result.stdoutWrites.join("\n");
+    const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("--trace-stats Enable inline task trace statistics in Markdown without requiring JSONL trace output");
   });
 
   it("run rejects invalid --commit-mode values", async () => {
@@ -6633,6 +6738,84 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.filter((line) => line.includes("Task checked:")).length).toBe(2);
     expect(result.logs.some((line) => line.includes("All tasks completed (2 tasks total)"))).toBe(true);
     expect(fs.readFileSync(roadmapPath, "utf-8")).toBe("- [x] Draft release notes\n- [x] Publish release\n");
+  });
+
+  it("run --redo removes prior trace statistics before re-inserting updated fields", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const configDir = path.join(workspace, ".rundown");
+    const configPath = path.join(configDir, "config.json");
+    const workerScriptPath = path.join(workspace, "redo-trace-stats-worker.mjs");
+
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(roadmapPath, "- [ ] Ship release\n", "utf-8");
+    fs.writeFileSync(workerScriptPath, "process.exit(0);\n", "utf-8");
+
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        traceStatistics: {
+          enabled: true,
+          fields: ["total_time", "tokens_estimated"],
+        },
+      }, null, 2),
+      "utf-8",
+    );
+
+    const firstResult = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--trace-stats",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(firstResult.code).toBe(0);
+    const afterFirstRun = fs.readFileSync(roadmapPath, "utf-8");
+    expect(afterFirstRun).toContain("- [x] Ship release");
+    expect(afterFirstRun).toMatch(/\n\s+- total time: (?:<1s|\d+s)\n/);
+    expect(afterFirstRun).toMatch(/\n\s+- tokens estimated: \d+\n/);
+    expect(afterFirstRun).not.toMatch(/\n\s+- execution: (?:<1s|\d+s)\n/);
+
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        traceStatistics: {
+          enabled: true,
+          fields: ["total_time", "execution_time"],
+        },
+      }, null, 2),
+      "utf-8",
+    );
+
+    const secondResult = await runCli([
+      "run",
+      "roadmap.md",
+      "--redo",
+      "--no-verify",
+      "--trace-stats",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(secondResult.code).toBe(0);
+    expect(secondResult.logs.some((line) => /Reset 1 checkbox(?:es)? in /.test(line) && line.includes("roadmap.md"))).toBe(
+      true,
+    );
+
+    const afterSecondRun = fs.readFileSync(roadmapPath, "utf-8");
+    expect(afterSecondRun).toContain("- [x] Ship release");
+    expect(afterSecondRun).toMatch(/\n\s+- total time: (?:<1s|\d+s)\n/);
+    expect(afterSecondRun).toMatch(/\n\s+- execution: (?:<1s|\d+s)\n/);
+    expect(afterSecondRun).not.toContain("tokens estimated:");
+
+    const totalTimeMatches = afterSecondRun.match(/\n\s+- total time: (?:<1s|\d+s)\n/g) ?? [];
+    const executionMatches = afterSecondRun.match(/\n\s+- execution: (?:<1s|\d+s)\n/g) ?? [];
+    expect(totalTimeMatches).toHaveLength(1);
+    expect(executionMatches).toHaveLength(1);
   });
 
   it("run with glob source and --redo resets checked tasks in all resolved files", async () => {

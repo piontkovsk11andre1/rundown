@@ -1,4 +1,5 @@
 import type { Task } from "../domain/parser.js";
+import type { TraceStatisticsSnapshot } from "../domain/trace-statistics.js";
 import {
   createForceRetryEvent,
   createAnalysisSummaryEvent,
@@ -39,6 +40,12 @@ interface ActiveTraceRun {
   task: Task;
   startedAtMs: number;
   totalPhases: number;
+  totalCharCount: number;
+  totalEstimatedTokens: number;
+  totalStdoutBytes: number;
+  totalStderrBytes: number;
+  verifyAttempts: number;
+  repairAttempts: number;
   phaseTimings: Array<{
     phase: TracePhase;
     sequence: number;
@@ -92,6 +99,12 @@ class TraceRunSessionState {
       task,
       startedAtMs,
       totalPhases: 0,
+      totalCharCount: 0,
+      totalEstimatedTokens: 0,
+      totalStdoutBytes: 0,
+      totalStderrBytes: 0,
+      verifyAttempts: 0,
+      repairAttempts: 0,
       phaseTimings: [],
       taskOutcomeEmitted: false,
       timingWaterfallEmitted: false,
@@ -124,7 +137,13 @@ class TraceRunSessionState {
   /**
    * Finalizes a phase timing record and stores it in run state.
    */
-  completePhase(phaseTrace: PhaseTraceHandle, completedAtMs: number, completedAtIso: string): { runId: string; durationMs: number } | null {
+  completePhase(
+    phaseTrace: PhaseTraceHandle,
+    completedAtMs: number,
+    completedAtIso: string,
+    stdoutBytes: number,
+    stderrBytes: number,
+  ): { runId: string; durationMs: number } | null {
     if (!this.activeTraceRun) {
       return null;
     }
@@ -141,9 +160,85 @@ class TraceRunSessionState {
     };
 
     this.activeTraceRun.phaseTimings.push(phaseTiming);
+    this.activeTraceRun.totalStdoutBytes += stdoutBytes;
+    this.activeTraceRun.totalStderrBytes += stderrBytes;
     return {
       runId: this.activeTraceRun.runId,
       durationMs,
+    };
+  }
+
+  /**
+   * Adds prompt-size metrics into the active run totals.
+   */
+  accumulatePromptMetrics(charCount: number, estimatedTokens: number): void {
+    if (!this.activeTraceRun) {
+      return;
+    }
+
+    this.activeTraceRun.totalCharCount += charCount;
+    this.activeTraceRun.totalEstimatedTokens += estimatedTokens;
+  }
+
+  /**
+   * Captures aggregate verification and repair attempt counters.
+   */
+  setVerificationEfficiency(verifyAttempts: number, repairAttempts: number): void {
+    if (!this.activeTraceRun) {
+      return;
+    }
+
+    this.activeTraceRun.verifyAttempts = Math.max(0, verifyAttempts);
+    this.activeTraceRun.repairAttempts = Math.max(0, repairAttempts);
+  }
+
+  /**
+   * Builds a trace-statistics snapshot from active run state.
+   */
+  collectStatistics(nowMs: number): TraceStatisticsSnapshot | null {
+    if (!this.activeTraceRun) {
+      return null;
+    }
+
+    const orderedPhaseTimings = [...this.activeTraceRun.phaseTimings]
+      .sort((a, b) => a.sequence - b.sequence);
+
+    const phaseDurationsMs = orderedPhaseTimings.reduce((totals, phaseTiming) => {
+      if (phaseTiming.phase === "execute" || phaseTiming.phase === "verify" || phaseTiming.phase === "repair") {
+        totals[phaseTiming.phase] += phaseTiming.durationMs;
+      }
+      return totals;
+    }, {
+      execute: 0,
+      verify: 0,
+      repair: 0,
+    });
+
+    let idleTimeMs = 0;
+    for (let index = 1; index < orderedPhaseTimings.length; index++) {
+      const previous = orderedPhaseTimings[index - 1];
+      const current = orderedPhaseTimings[index];
+      if (!previous || !current) {
+        continue;
+      }
+
+      idleTimeMs += Math.max(0, current.startedAtMs - previous.completedAtMs);
+    }
+
+    const totalDurationMs = Math.max(0, nowMs - this.activeTraceRun.startedAtMs);
+
+    return {
+      fields: {
+        total_time: totalDurationMs,
+        execution_time: phaseDurationsMs.execute,
+        verify_time: phaseDurationsMs.verify,
+        repair_time: phaseDurationsMs.repair,
+        idle_time: idleTimeMs,
+        tokens_estimated: this.activeTraceRun.totalEstimatedTokens,
+        phases_count: this.activeTraceRun.totalPhases,
+        verify_attempts: this.activeTraceRun.verifyAttempts,
+        repair_attempts: this.activeTraceRun.repairAttempts,
+      },
     };
   }
 
@@ -456,18 +551,35 @@ export function createTraceRunSession(config: {
       }
 
       const charCount = promptText.length;
+      const estimatedTokens = charCount / 4;
       const contextRatio = charCount === 0 ? 0 : contextText.length / charCount;
+
+      sessionState.accumulatePromptMetrics(charCount, estimatedTokens);
 
       config.getTraceWriter().write(createPromptMetricsEvent({
         timestamp: nowIso(),
         run_id: runId,
         payload: {
           char_count: charCount,
-          estimated_tokens: charCount / 4,
+          estimated_tokens: estimatedTokens,
           context_ratio: contextRatio,
           template_name: templateName,
         },
       }));
+    },
+
+    /**
+     * Stores aggregate verification-loop attempt counters.
+     */
+    setVerificationEfficiency(verifyAttempts: number, repairAttempts: number): void {
+      sessionState.setVerificationEfficiency(verifyAttempts, repairAttempts);
+    },
+
+    /**
+     * Returns a structured snapshot for inline trace statistics rendering.
+     */
+    collectStatistics(): TraceStatisticsSnapshot | null {
+      return sessionState.collectStatistics(Date.now());
     },
 
     /**
@@ -486,7 +598,15 @@ export function createTraceRunSession(config: {
 
       const completedAtMs = Date.now();
       const completedAtIso = nowIso();
-      const completedPhase = sessionState.completePhase(phaseTrace, completedAtMs, completedAtIso);
+      const stdoutBytes = Buffer.byteLength(stdout, "utf8");
+      const stderrBytes = Buffer.byteLength(stderr, "utf8");
+      const completedPhase = sessionState.completePhase(
+        phaseTrace,
+        completedAtMs,
+        completedAtIso,
+        stdoutBytes,
+        stderrBytes,
+      );
       if (!completedPhase) {
         return;
       }
@@ -499,8 +619,8 @@ export function createTraceRunSession(config: {
           sequence: phaseTrace.sequence,
           exit_code: exitCode,
           duration_ms: completedPhase.durationMs,
-          stdout_bytes: Buffer.byteLength(stdout, "utf8"),
-          stderr_bytes: Buffer.byteLength(stderr, "utf8"),
+          stdout_bytes: stdoutBytes,
+          stderr_bytes: stderrBytes,
           output_captured: outputCaptured,
         },
       }));
@@ -511,8 +631,8 @@ export function createTraceRunSession(config: {
         payload: {
           phase: phaseTrace.phase,
           sequence: phaseTrace.sequence,
-          stdout_bytes: Buffer.byteLength(stdout, "utf8"),
-          stderr_bytes: Buffer.byteLength(stderr, "utf8"),
+          stdout_bytes: stdoutBytes,
+          stderr_bytes: stderrBytes,
           stdout_lines: countTraceLines(stdout),
           stderr_lines: countTraceLines(stderr),
         },

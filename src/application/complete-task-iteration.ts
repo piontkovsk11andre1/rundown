@@ -4,6 +4,7 @@ import { runVerifyRepairLoop } from "./verify-repair-loop.js";
 import { handleTemplateCliFailure } from "./cli-block-handlers.js";
 import {
   checkTaskUsingFileSystem,
+  insertTraceStatisticsUsingFileSystem,
   skipRemainingSiblingsUsingFileSystem,
 } from "./checkbox-operations.js";
 import {
@@ -23,6 +24,8 @@ import type {
 } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import type { ExtraTemplateVars } from "../domain/template-vars.js";
+import type { TraceStatisticsConfig } from "../domain/worker-config.js";
+import { formatStatisticsLines } from "../domain/trace-statistics.js";
 import type { RunTaskDependencies } from "./run-task-execution.js";
 import { pluralize } from "./run-task-utils.js";
 import {
@@ -100,6 +103,7 @@ export async function completeTaskIteration(params: {
   automationWorkerPattern: ParsedWorkerPattern;
   shouldVerify: boolean;
   runMode: ProcessRunMode;
+  traceOnly?: boolean;
   executionOutputCaptured?: boolean;
   verificationPrompt: string;
   executionStdout?: string;
@@ -112,6 +116,9 @@ export async function completeTaskIteration(params: {
   skipRemainingSiblingsReason?: string;
   toolExpansionInsertedChildCount?: number;
   failOnCompleteHookError?: boolean;
+  traceStatisticsConfig?: TraceStatisticsConfig;
+  currentRound?: number;
+  totalRounds?: number;
 }): Promise<{
   continueLoop: boolean;
   exitCode?: number;
@@ -154,6 +161,7 @@ export async function completeTaskIteration(params: {
     automationWorkerPattern,
     shouldVerify,
     runMode,
+    traceOnly = false,
     executionOutputCaptured,
     verificationPrompt,
     executionStdout,
@@ -166,6 +174,9 @@ export async function completeTaskIteration(params: {
     skipRemainingSiblingsReason,
     toolExpansionInsertedChildCount,
     failOnCompleteHookError,
+    traceStatisticsConfig,
+    currentRound = 1,
+    totalRounds = 1,
   } = params;
   const failOnCompleteHookFailure = failOnCompleteHookError ?? false;
 
@@ -177,8 +188,16 @@ export async function completeTaskIteration(params: {
     let valid: boolean;
     let failureReason: string | null;
     let usageLimitDetected = false;
+    let verificationEfficiency: { verifyAttempts: number; repairAttempts: number } = {
+      verifyAttempts: 0,
+      repairAttempts: 0,
+    };
     try {
-      ({ valid, failureReason, usageLimitDetected: usageLimitDetected = false } = await runVerifyRepairLoop({
+      ({
+        valid,
+        failureReason,
+        usageLimitDetected: usageLimitDetected = false,
+      } = await runVerifyRepairLoop({
         taskVerification: dependencies.taskVerification,
         taskRepair: dependencies.taskRepair,
         verificationStore: dependencies.verificationStore,
@@ -207,6 +226,9 @@ export async function completeTaskIteration(params: {
         executionOutputCaptured,
         isInlineCliTask,
         isToolExpansionTask,
+        onVerificationEfficiency: (metrics) => {
+          verificationEfficiency = metrics;
+        },
       }));
     } catch (error) {
       const failureCode = await handleTemplateCliFailure(
@@ -234,6 +256,10 @@ export async function completeTaskIteration(params: {
     }
     // Record verification phase completion for trace consumers.
     traceRunSession.completePhase(verifyPhaseTrace, valid ? 0 : 1, "", "", false);
+    traceRunSession.setVerificationEfficiency(
+      verificationEfficiency.verifyAttempts,
+      verificationEfficiency.repairAttempts,
+    );
     if (!valid) {
       const usageLimitFailureMessage = failureReason
         ?? "Possible API usage limit detected during verification/repair.";
@@ -270,6 +296,22 @@ export async function completeTaskIteration(params: {
 
   // Mark the task checkbox in the markdown source once iteration checks pass.
   checkTaskUsingFileSystem(task, dependencies.fileSystem);
+
+  const shouldInsertTraceStatistics = traceStatisticsConfig?.enabled === true
+    && !traceOnly
+    && runMode !== "detached"
+    && (toolExpansionInsertedChildCount ?? 0) === 0
+    && currentRound >= totalRounds;
+
+  if (shouldInsertTraceStatistics) {
+    const statisticsSnapshot = traceRunSession.collectStatistics();
+    if (statisticsSnapshot) {
+      const statisticsLines = formatStatisticsLines(statisticsSnapshot, traceStatisticsConfig.fields);
+      if (statisticsLines.length > 0) {
+        insertTraceStatisticsUsingFileSystem(task, statisticsLines, dependencies.fileSystem);
+      }
+    }
+  }
 
   if (skipRemainingSiblingsReason) {
     const skipResult = skipRemainingSiblingsUsingFileSystem(task, skipRemainingSiblingsReason, dependencies.fileSystem);
@@ -308,7 +350,7 @@ export async function completeTaskIteration(params: {
   if (shouldDeferCommit) {
     state.deferredCommitContext = {
       task,
-      source: sourceText,
+      source: dependencies.fileSystem.readText(task.file),
       artifactContext,
     };
   }

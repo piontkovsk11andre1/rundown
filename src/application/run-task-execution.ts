@@ -30,6 +30,7 @@ import {
 } from "./git-operations.js";
 import { runTaskIteration } from "./run-task-iteration.js";
 import { extractForceModifier } from "../domain/prefix-chain.js";
+import { applyTraceStatisticsDefaults } from "../domain/worker-config.js";
 import { createCachedCommandExecutor } from "./cached-command-executor.js";
 import { formatNoItemsFound, formatNoItemsFoundMatching, pluralize } from "./run-task-utils.js";
 import {
@@ -142,6 +143,7 @@ export interface RunTaskOptions {
   onFailCommand?: string;
   showAgentOutput: boolean;
   trace: boolean;
+  traceStats?: boolean;
   traceOnly: boolean;
   forceUnlock: boolean;
   cliBlockTimeoutMs?: number;
@@ -198,6 +200,7 @@ export function createRunTaskExecution(
       onFailCommand,
       showAgentOutput,
       trace,
+      traceStats = false,
       traceOnly,
       forceUnlock,
       cliBlockTimeoutMs,
@@ -299,9 +302,19 @@ export function createRunTaskExecution(
       ? { env: rundownVarEnv }
       : { timeoutMs: cliBlockTimeoutMs, env: rundownVarEnv };
     // Load worker defaults from config when a config directory is available.
-    const loadedWorkerConfig = dependencies.configDir?.configDir
+    const rawWorkerConfig = dependencies.configDir?.configDir
       ? dependencies.workerConfigPort.load(dependencies.configDir.configDir)
       : undefined;
+    const loadedWorkerConfigWithDefaults = applyTraceStatisticsDefaults(rawWorkerConfig, trace || traceStats);
+    const loadedWorkerConfig = traceStats
+      ? {
+        ...(loadedWorkerConfigWithDefaults ?? {}),
+        traceStatistics: {
+          enabled: true,
+          fields: [...(loadedWorkerConfigWithDefaults?.traceStatistics?.fields ?? [])],
+        },
+      }
+      : loadedWorkerConfigWithDefaults;
 
     // Initialize run-scoped mutable state shared across task iterations.
     const state: Parameters<typeof runTaskIteration>[0]["state"] = {
@@ -632,6 +645,7 @@ export function createRunTaskExecution(
                 showAgentOutput,
                 hideHookOutput,
                 trace,
+                traceOnly,
                 forceRetryMetadata,
               },
               worker: {
@@ -652,6 +666,7 @@ export function createRunTaskExecution(
                 onCompleteCommand,
                 onFailCommand,
                 extraTemplateVars,
+                traceStatisticsConfig: loadedWorkerConfig?.traceStatistics,
               },
               prompts: {
                 extraTemplateVars: templateVarsWithUserVariables,

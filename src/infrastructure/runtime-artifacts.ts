@@ -12,6 +12,7 @@ export type RuntimePhase =
   | "repair"
   | "plan"
   | "discuss"
+  | "help"
   | "inline-cli"
   | "rundown-delegate"
   | "worker";

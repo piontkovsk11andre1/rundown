@@ -12,6 +12,11 @@ import {
   createRuntimeArtifactsContext,
   type RuntimeArtifactsContext,
 } from "../../src/infrastructure/runtime-artifacts.js";
+import {
+  normalizeWorkerOutput,
+  areOutputsSuspiciouslySimilar,
+  containsKnownUsageLimitPattern,
+} from "../../src/domain/services/output-similarity.js";
 
 const tempDirs: string[] = [];
 
@@ -923,7 +928,7 @@ describe("verify-repair-loop output", () => {
     }));
   });
 
-  it("treats empty outputs across execution, verification, and repair as a separate failure path", async () => {
+  it("integration test: detects usage limit when execution and verification stdout are identical", async () => {
     const output = {
       emit: vi.fn(),
     };
@@ -932,23 +937,21 @@ describe("verify-repair-loop output", () => {
       flush: vi.fn(),
     };
 
-    const repair = vi.fn(async () => ({
-      valid: false,
-      attempts: 1,
-      repairStdout: "   ",
-      verificationStdout: "\n\t",
-    }));
+    const identicalOutput = "Service is temporarily unavailable while backend processing is paused for maintenance window.";
 
     const result = await runVerifyRepairLoop({
       taskVerification: {
-        verify: vi.fn(async () => ({ valid: false, stdout: "   " })),
+        verify: vi.fn(async () => ({
+          valid: false,
+          stdout: identicalOutput,
+        })),
       },
       taskRepair: {
-        repair,
+        repair: vi.fn(async () => ({ valid: false, attempts: 0 })),
       },
       verificationStore: {
         write: vi.fn(),
-        read: vi.fn(() => "Verification failed (no details)."),
+        read: vi.fn(() => "verification failed"),
         remove: vi.fn(),
       },
       traceWriter,
@@ -959,30 +962,171 @@ describe("verify-repair-loop output", () => {
       contextBefore: "",
       verifyTemplate: "{{task}}",
       repairTemplate: "{{task}}",
-      executionStdout: "\n",
+      executionStdout: identicalOutput,
       workerPattern: inferWorkerPatternFromCommand(["opencode", "run"]),
       maxRepairAttempts: 2,
       allowRepair: true,
       templateVars: {},
-      artifactContext: { runId: "run-empty-output" },
+      artifactContext: { runId: "integration-test-run" },
       trace: true,
     });
 
     expect(result).toEqual({
       valid: false,
-      failureReason: "Worker output was empty across execution, verification, and repair phases; aborting because this indicates an execution/capture failure rather than an API usage limit.",
+      failureReason: "Possible API usage limit detected: identical or near-identical responses across execution and verification phases; aborting verify/repair to avoid wasting quota. Please check your API quota and rate-limit status.",
+      usageLimitDetected: true,
     });
-    expect(repair).toHaveBeenCalledTimes(1);
     expect(output.emit).toHaveBeenCalledWith({
       kind: "error",
-      message: "Worker output was empty across execution, verification, and repair phases; aborting because this indicates an execution/capture failure rather than an API usage limit.",
+      message: "Possible API usage limit detected: identical or near-identical responses across execution and verification phases; aborting verify/repair to avoid wasting quota. Please check your API quota and rate-limit status.",
     });
-    expect(traceWriter.write).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(traceWriter.write).toHaveBeenCalledWith(expect.objectContaining({
+      event_type: "usage.limit_detected",
+      payload: expect.objectContaining({
+        phase: "verify",
+        similarity_detected: true,
+        known_pattern_detected: false,
+        execution_stdout: identicalOutput,
+        matched_phase: "verify",
+        matched_stdout: identicalOutput,
+      }),
+    }));
+  });
+
+  it("integration test: detects usage limit when execution and verification stdout are near-identical with minor noise differences", async () => {
+    const output = {
+      emit: vi.fn(),
+    };
+    const traceWriter = {
+      write: vi.fn(),
+      flush: vi.fn(),
+    };
+    const executionOutput = "Service is temporarily unavailable while backend processing is paused for maintenance window at 2023-04-07T12:34:56Z with request ID 123e4567-e89b-12d3-a456-426614174000.";
+    const verificationOutput = "service is temporarily unavailable while backend processing is paused for maintenance window at 2024-05-08T13:45:67Z with request ID 87654321-dcba-4321-fedc-098765432109.";
+
+    const result = await runVerifyRepairLoop({
+      taskVerification: {
+        verify: vi.fn(async () => ({
+          valid: false,
+          stdout: verificationOutput,
+        })),
+      },
+      taskRepair: {
+        repair: vi.fn(async () => ({ valid: false, attempts: 0 })),
+      },
+      verificationStore: {
+        write: vi.fn(),
+        read: vi.fn(() => "verification failed"),
+        remove: vi.fn(),
+      },
+      traceWriter,
+      output,
+    }, {
+      task: createTask(),
+      source: "- [ ] ship release",
+      contextBefore: "",
+      verifyTemplate: "{{task}}",
+      repairTemplate: "{{task}}",
+      executionStdout: executionOutput,
+      workerPattern: inferWorkerPatternFromCommand(["opencode", "run"]),
+      maxRepairAttempts: 2,
+      allowRepair: true,
+      templateVars: {},
+      artifactContext: { runId: "integration-test-run-noise" },
+      trace: true,
+    });
+
+    expect(result).toEqual({
+      valid: false,
+      failureReason: "Possible API usage limit detected: identical or near-identical responses across execution and verification phases; aborting verify/repair to avoid wasting quota. Please check your API quota and rate-limit status.",
+      usageLimitDetected: true,
+    });
+    expect(output.emit).toHaveBeenCalledWith({
+      kind: "error",
+      message: "Possible API usage limit detected: identical or near-identical responses across execution and verification phases; aborting verify/repair to avoid wasting quota. Please check your API quota and rate-limit status.",
+    });
+    expect(traceWriter.write).toHaveBeenCalledWith(expect.objectContaining({
+      event_type: "usage.limit_detected",
+      payload: expect.objectContaining({
+        phase: "verify",
+        similarity_detected: true,
+        known_pattern_detected: false,
+        execution_stdout: executionOutput,
+        matched_phase: "verify",
+        matched_stdout: verificationOutput,
+      }),
+    }));
+  it("integration test: legitimately different outputs across phases do not trigger usage limit detection", async () => {
+    const outputDiff = {
+      emit: vi.fn(),
+    };
+    const traceWriterDiff = {
+      write: vi.fn(),
+      flush: vi.fn(),
+    };
+
+    const resultDiff = await runVerifyRepairLoop({
+      taskVerification: {
+        verify: vi.fn(async () => ({
+          valid: false,
+          stdout: "NOT_OK: Missing unit tests for new feature implementation",
+        })),
+      },
+      taskRepair: {
+        repair: vi.fn(async () => ({
+          valid: true,
+          attempts: 1,
+          repairStdout: "Fixed by adding comprehensive test coverage for all new functions",
+          verificationStdout: "OK",
+        })),
+      },
+      verificationStore: {
+        write: vi.fn(),
+        read: vi.fn(() => "Missing unit tests for new feature implementation"),
+        remove: vi.fn(),
+      },
+      traceWriter: traceWriterDiff,
+      output: outputDiff,
+    }, {
+      task: createTask(),
+      source: "- [ ] implement new feature",
+      contextBefore: "",
+      verifyTemplate: "{{task}}",
+      repairTemplate: "{{task}}",
+      executionStdout: "Successfully implemented new feature with enhanced functionality",
+      workerPattern: inferWorkerPatternFromCommand(["opencode", "run"]),
+      maxRepairAttempts: 2,
+      allowRepair: true,
+      templateVars: {},
+      artifactContext: { runId: "integration-test-different-outputs" },
+      trace: true,
+    });
+
+    expect(resultDiff).toEqual({
+      valid: true,
+      failureReason: null,
+    });
+    expect(outputDiff.emit).not.toHaveBeenCalledWith(expect.objectContaining({
+      kind: "error",
+      message: expect.stringContaining("Possible API usage limit detected"),
+    }));
+    expect(traceWriterDiff.write).not.toHaveBeenCalledWith(expect.objectContaining({
       event_type: "usage.limit_detected",
     }));
   });
 
-  it("reads failure reasons from artifact-backed verification store", async () => {
+    expect(result).toEqual({
+      valid: true,
+      failureReason: null,
+    });
+    expect(output.emit).not.toHaveBeenCalledWith(expect.objectContaining({
+      kind: "error",
+      message: expect.stringContaining("Possible API usage limit detected"),
+    }));
+    expect(traceWriter.write).not.toHaveBeenCalledWith(expect.objectContaining({
+      event_type: "usage.limit_detected",
+    }));
+  });
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-loop-artifact-store-"));
     tempDirs.push(root);
 
@@ -1111,13 +1255,24 @@ describe("verify-repair-loop output", () => {
     });
 
     expect(result).toEqual({
-      valid: true,
-      failureReason: null,
+      valid: false,
+      failureReason: "type mismatch in payload.id",
     });
-    expect(verificationStore.read(task)).toBe("OK");
+    expect(output.emit).toHaveBeenCalledWith({
+      kind: "warn",
+      message: "Verification failed: missing integration test. Running repair (1 attempt(s))...",
+    });
+    expect(output.emit).toHaveBeenCalledWith({
+      kind: "warn",
+      message: "  Repair attempt 1 failed: type mismatch in payload.id",
+    });
+    expect(output.emit).toHaveBeenCalledWith({
+      kind: "error",
+      message: "Last validation error: type mismatch in payload.id",
+    });
   });
 
-  it("passes verification failure to repair via in-memory store when artifacts are not persisted", async () => {
+  it("keeps verification artifacts when loop calls remove on success", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-loop-artifact-store-"));
     tempDirs.push(root);
 
@@ -1184,9 +1339,244 @@ describe("verify-repair-loop output", () => {
       message: "Last validation error: still failing post-repair",
     });
   });
+
+  it("integration test: legitimately different outputs across phases do not trigger usage limit detection", async () => {
+    const outputDiff = {
+      emit: vi.fn(),
+    };
+    const traceWriterDiff = {
+      write: vi.fn(),
+      flush: vi.fn(),
+    };
+
+    const resultDiff = await runVerifyRepairLoop({
+      taskVerification: {
+        verify: vi.fn(async () => ({
+          valid: false,
+          stdout: "NOT_OK: Missing unit tests for new feature implementation",
+        })),
+      },
+      taskRepair: {
+        repair: vi.fn(async () => ({
+          valid: true,
+          attempts: 1,
+          repairStdout: "Fixed by adding comprehensive test coverage for all new functions",
+          verificationStdout: "OK",
+        })),
+      },
+      verificationStore: {
+        write: vi.fn(),
+        read: vi.fn(() => "Missing unit tests for new feature implementation"),
+        remove: vi.fn(),
+      },
+      traceWriter: traceWriterDiff,
+      output: outputDiff,
+    }, {
+      task: createTask(),
+      source: "- [ ] implement new feature",
+      contextBefore: "",
+      verifyTemplate: "{{task}}",
+      repairTemplate: "{{task}}",
+      executionStdout: "Successfully implemented new feature with enhanced functionality",
+      workerPattern: inferWorkerPatternFromCommand(["opencode", "run"]),
+      maxRepairAttempts: 2,
+      allowRepair: true,
+      templateVars: {},
+      artifactContext: { runId: "integration-test-different-outputs" },
+      trace: true,
+    });
+
+    expect(resultDiff).toEqual({
+      valid: true,
+      failureReason: null,
+    });
+    expect(outputDiff.emit).not.toHaveBeenCalledWith(expect.objectContaining({
+      kind: "error",
+      message: expect.stringContaining("Possible API usage limit detected"),
+    }));
+    expect(traceWriterDiff.write).not.toHaveBeenCalledWith(expect.objectContaining({
+      event_type: "usage.limit_detected",
+    }));
+  });
+
+  it("does not trigger detection for short/trivial outputs (e.g. 'Done')", async () => {
+    const mockTaskVerification = {
+      verify: vi.fn().mockResolvedValue({
+        valid: false,
+        formatWarning: null,
+        stdout: "Done",
+      }),
+    };
+    const mockTaskRepair = {
+      repair: vi.fn(),
+    };
+    const mockVerificationStore = {
+      read: vi.fn().mockReturnValue("Verification failed"),
+      remove: vi.fn(),
+      write: vi.fn(),
+    };
+    const mockTraceWriter = {
+      write: vi.fn(),
+      flush: vi.fn(),
+    };
+    const mockOutput = {
+      emit: vi.fn(),
+    };
+
+    const dependencies: Parameters<typeof runVerifyRepairLoop>[0] = {
+      taskVerification: mockTaskVerification,
+      taskRepair: mockTaskRepair,
+      verificationStore: mockVerificationStore,
+      traceWriter: mockTraceWriter,
+      output: mockOutput,
+    };
+
+    const input: Parameters<typeof runVerifyRepairLoop>[1] = {
+      task: createTask(),
+      source: "- [ ] test task",
+      contextBefore: "",
+      verifyTemplate: "{{task}}",
+      repairTemplate: "{{task}}",
+      executionStdout: "Done",
+      workerPattern: inferWorkerPatternFromCommand(["opencode", "run"]),
+      maxRepairAttempts: 1,
+      allowRepair: false,
+      templateVars: {},
+      trace: false,
+      runMode: "tui",
+      executionOutputCaptured: true,
+      isInlineCliTask: false,
+      isToolExpansionTask: false,
+      artifactContext: {},
+    };
+
+    const result = await runVerifyRepairLoop(dependencies, input);
+
+    expect(result.valid).toBe(false);
+    expect(result.usageLimitDetected).toBeUndefined();
+    expect(mockOutput.emit).toHaveBeenCalledWith({
+      kind: "error",
+      message: expect.stringContaining("Last validation error"),
+    });
+  });
 });
 
-function persistVerifyResult(
+describe("output similarity utilities", () => {
+  describe("normalizeWorkerOutput", () => {
+    it("normalizes whitespace", () => {
+      expect(normalizeWorkerOutput("  hello   world  \n\t  ")).toBe("hello world");
+    });
+
+    it("strips ANSI codes", () => {
+      expect(normalizeWorkerOutput("\x1b[31mred\x1b[0m text")).toBe("red text");
+    });
+
+    it("removes UUIDs", () => {
+      expect(normalizeWorkerOutput("error 123e4567-e89b-12d3-a456-426614174000 occurred")).toBe("error occurred");
+    });
+
+    it("removes ISO timestamps", () => {
+      expect(normalizeWorkerOutput("at 2023-04-07T12:34:56Z something")).toBe("at something");
+    });
+
+    it("removes datetime patterns", () => {
+      expect(normalizeWorkerOutput("on 2023-04-07 12:34:56 happened")).toBe("on happened");
+    });
+
+    it("converts to lowercase", () => {
+      expect(normalizeWorkerOutput("ERROR MESSAGE")).toBe("error message");
+    });
+
+    it("handles complex output with multiple transformations", () => {
+      const input = "\x1b[31mError\x1b[0m 123e4567-e89b-12d3-a456-426614174000 at 2023-04-07T12:34:56Z\nRATE LIMIT";
+      expect(normalizeWorkerOutput(input)).toBe("error at rate limit");
+    });
+  });
+
+  describe("areOutputsSuspiciouslySimilar", () => {
+    it("returns true for exact match above min length", () => {
+      const output = "Service is temporarily unavailable while backend processing is paused for maintenance window.";
+      expect(areOutputsSuspiciouslySimilar(output, output)).toBe(true);
+    });
+
+    it("returns true for near-match with noise removed", () => {
+      const outputA = "Error: rate limit exceeded for this workspace at 2023-04-07T12:34:56Z due to high usage volume and concurrent requests from multiple users.";
+      const outputB = "error: rate limit exceeded for this workspace at 2024-05-08T13:45:67Z due to high usage volume and concurrent requests from multiple users.";
+      expect(areOutputsSuspiciouslySimilar(outputA, outputB)).toBe(true);
+    });
+
+    it("returns false for short outputs", () => {
+      expect(areOutputsSuspiciouslySimilar("OK", "OK")).toBe(false);
+      expect(areOutputsSuspiciouslySimilar("short", "short")).toBe(false);
+    });
+
+    it("returns false for empty outputs", () => {
+      expect(areOutputsSuspiciouslySimilar("", "something")).toBe(false);
+      expect(areOutputsSuspiciouslySimilar("something", "")).toBe(false);
+      expect(areOutputsSuspiciouslySimilar("", "")).toBe(false);
+    });
+
+    it("returns false for legitimately different outputs", () => {
+      const outputA = "Task completed successfully with no errors.";
+      const outputB = "Verification failed due to missing test coverage.";
+      expect(areOutputsSuspiciouslySimilar(outputA, outputB)).toBe(false);
+    });
+
+    it("respects custom min length", () => {
+      expect(areOutputsSuspiciouslySimilar("short", "short", { minLength: 3 })).toBe(true);
+      expect(areOutputsSuspiciouslySimilar("short", "short", { minLength: 10 })).toBe(false);
+    });
+  });
+
+  describe("containsKnownUsageLimitPattern", () => {
+    it("detects rate limit patterns", () => {
+      expect(containsKnownUsageLimitPattern("Error: rate limit exceeded")).toBe(true);
+      expect(containsKnownUsageLimitPattern("You have been rate limited")).toBe(true);
+    });
+
+    it("detects quota patterns", () => {
+      expect(containsKnownUsageLimitPattern("Quota exceeded for this month")).toBe(true);
+      expect(containsKnownUsageLimitPattern("Billing quota reached")).toBe(true);
+    });
+
+    it("detects usage limit patterns", () => {
+      expect(containsKnownUsageLimitPattern("Usage limit has been reached")).toBe(true);
+    });
+
+    it("detects too many requests patterns", () => {
+      expect(containsKnownUsageLimitPattern("Too many requests")).toBe(true);
+    });
+
+    it("detects billing patterns", () => {
+      expect(containsKnownUsageLimitPattern("Billing error: insufficient funds")).toBe(true);
+    });
+
+    it("detects HTTP 429 status", () => {
+      expect(containsKnownUsageLimitPattern("HTTP 429 Too Many Requests")).toBe(true);
+      expect(containsKnownUsageLimitPattern("Status: 429")).toBe(true);
+    });
+
+    it("returns false for partial matches that are not the full pattern", () => {
+      expect(containsKnownUsageLimitPattern("This is a rate of something")).toBe(false);
+      expect(containsKnownUsageLimitPattern("My quota is good")).toBe(false);
+    });
+
+    it("returns false for legitimate outputs", () => {
+      expect(containsKnownUsageLimitPattern("Task completed successfully")).toBe(false);
+      expect(containsKnownUsageLimitPattern("Build failed due to syntax error")).toBe(false);
+    });
+
+    it("returns false for empty output", () => {
+      expect(containsKnownUsageLimitPattern("")).toBe(false);
+    });
+
+    it("is case insensitive", () => {
+      expect(containsKnownUsageLimitPattern("RATE LIMIT EXCEEDED")).toBe(true);
+      expect(containsKnownUsageLimitPattern("quota exceeded")).toBe(true);
+    });
+  });
+
+
   artifactContext: RuntimeArtifactsContext,
   task: Task,
   verificationStore: ReturnType<typeof createArtifactVerificationStore>,

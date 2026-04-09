@@ -12,8 +12,6 @@ export {
   type CreateAppDependencies,
 } from "./create-app.js";
 
-export type { ExploreTasksOptions } from "./application/explore-tasks.js";
-
 export { resetAllCheckboxes } from "./domain/checkbox.js";
 
 export type { FileLock, FileLockHolder, FileLockMetadata } from "./domain/ports/file-lock.js";

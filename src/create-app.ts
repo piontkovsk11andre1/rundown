@@ -16,10 +16,6 @@ import {
 import { createPlanTask, type PlanTaskOptions as PlanTaskUseCaseOptions } from "./application/plan-task.js";
 import { createResearchTask, type ResearchTaskOptions as ResearchTaskUseCaseOptions } from "./application/research-task.js";
 import { createListTasks, type ListTasksOptions } from "./application/list-tasks.js";
-import {
-  createExploreTasks,
-  type ExploreTasksOptions,
-} from "./application/explore-tasks.js";
 import { createNextTask, type NextTaskOptions } from "./application/next-task.js";
 import { createUnlockTask, type UnlockTaskOptions } from "./application/unlock-task.js";
 import { createInitProject, type InitProjectOptions } from "./application/init-project.js";
@@ -111,7 +107,6 @@ export type App = {
   researchTask: (options: ResearchTaskCommandOptions) => Promise<number>;
   unlockTask: (options: UnlockTaskOptions) => Promise<number>;
   listTasks: (options: ListTasksOptions) => Promise<number>;
-  exploreTasks: (options: ExploreTasksOptions) => Promise<number>;
   nextTask: (options: NextTaskOptions) => Promise<number>;
   logRuns: (options: LogRunsOptions) => number;
   initProject: (options?: InitProjectOptions) => Promise<number>;
@@ -454,11 +449,6 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       sourceResolver: ports.sourceResolver,
       output: ports.output,
     }),
-    exploreTasks: (ports) => createExploreTasks({
-      fileSystem: ports.fileSystem,
-      sourceResolver: ports.sourceResolver,
-      output: ports.output,
-    }),
     nextTask: (ports) => createNextTask({
       sourceResolver: ports.sourceResolver,
       taskSelector: ports.taskSelector,
@@ -532,7 +522,6 @@ function createAppFromFactories(
     researchTask: factories.researchTask(ports),
     unlockTask: factories.unlockTask(ports),
     listTasks: factories.listTasks(ports),
-    exploreTasks: factories.exploreTasks(ports),
     nextTask: factories.nextTask(ports),
     logRuns: factories.logRuns(ports),
     initProject: factories.initProject(ports),

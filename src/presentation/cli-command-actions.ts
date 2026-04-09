@@ -11,7 +11,6 @@ import {
   parseLoopCooldownSeconds,
   parseLoopIterations,
   parseMaxItems,
-  parseFileStatusFilter,
   parseRepairAttempts,
   parseRevertMethod,
   parseRounds,
@@ -676,26 +675,6 @@ export function createListCommandAction({
       source,
       sortMode: parseSortMode(opts.sort as string | undefined),
       includeAll: opts.all as boolean,
-    });
-  };
-}
-
-/**
- * Creates the `explore` command action handler.
- *
- * The returned action requests per-file task summary data from the application layer.
- */
-export function createExploreCommandAction({
-  getApp,
-}: Pick<WorkerActionDependencies, "getApp">): (source: string, opts: CliOpts) => CliActionResult {
-  return (source: string, opts: CliOpts) => {
-    const fileStatus = parseFileStatusFilter(normalizeOptionalString(opts.fileStatus));
-
-    return getApp().exploreTasks({
-      source,
-      sortMode: parseSortMode(opts.sort as string | undefined),
-      fileStatus,
-      compact: Boolean(opts.compact as boolean | undefined),
     });
   };
 }

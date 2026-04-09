@@ -25,7 +25,6 @@ export interface SharedWorkerRuntimeOptions {
 
 // Supported sort modes for command output ordering.
 const SORT_MODES: readonly SortMode[] = ["name-sort", "none", "old-first", "new-first"];
-const FILE_STATUSES = ["complete", "incomplete", "empty"] as const;
 // Supported restore mechanisms for rollback-related commands.
 const REVERT_METHODS = ["revert", "reset"] as const;
 const COMMIT_MODES = ["per-task", "file-done"] as const;
@@ -156,26 +155,6 @@ export function parseRunnerMode(value: string | undefined, allowed: readonly Pro
  */
 export function parseSortMode(value: string | undefined): SortMode {
   return parseEnumOption(value, "sort", SORT_MODES, "name-sort");
-}
-
-/**
- * Parses comma-separated file-status filters used by `explore`.
- */
-export function parseFileStatusFilter(value: string | undefined): string[] | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  const parsed = value
-    .split(",")
-    .map((status) => status.trim())
-    .filter((status) => status.length > 0);
-
-  if (parsed.length === 0 || parsed.some((status) => !FILE_STATUSES.includes(status as (typeof FILE_STATUSES)[number]))) {
-    throw new Error(`Invalid --file-status value: ${value}. Allowed: ${FILE_STATUSES.join(", ")}.`);
-  }
-
-  return parsed;
 }
 
 /**

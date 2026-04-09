@@ -79,34 +79,6 @@ describe("createApp", () => {
     expect(capturedPorts?.processRunner).toBe(processRunner);
   });
 
-  it("passes port overrides through to exploreTasks factory", async () => {
-    const fileSystem = createInMemoryFileSystem();
-    const processRunner: ProcessRunner = {
-      run: vi.fn(async () => ({
-        exitCode: 0,
-        stdout: "",
-        stderr: "",
-      })),
-    };
-
-    let capturedPorts: AppPorts | undefined;
-    const app = createApp({
-      ports: { fileSystem, processRunner },
-      useCaseFactories: {
-        exploreTasks: (ports) => async () => {
-          capturedPorts = ports;
-          return 0;
-        },
-      },
-    });
-
-    await app.exploreTasks({ source: "tasks.md", sortMode: "none" });
-
-    expect(capturedPorts).toBeDefined();
-    expect(capturedPorts?.fileSystem).toBe(fileSystem);
-    expect(capturedPorts?.processRunner).toBe(processRunner);
-  });
-
   it("passes output port overrides through to factories", async () => {
     const emit = vi.fn();
 
@@ -262,37 +234,6 @@ describe("createApp", () => {
     });
 
     const code = await app.listTasks({ source: "tasks.md", sortMode: "name-sort", includeAll: false });
-
-    expect(code).toBe(0);
-    expect(fileLock.acquire).not.toHaveBeenCalled();
-    expect(fileLock.release).not.toHaveBeenCalled();
-    expect(fileLock.forceRelease).not.toHaveBeenCalled();
-  });
-
-  it("does not acquire file locks for exploreTasks (read-only)", async () => {
-    const fileLock: FileLock = {
-      acquire: vi.fn(),
-      isLocked: vi.fn(() => false),
-      release: vi.fn(),
-      forceRelease: vi.fn(),
-      releaseAll: vi.fn(),
-    };
-
-    const fileSystem = createInMemoryFileSystem({
-      "tasks.md": "- [ ] Read-only task\n",
-    });
-
-    const app = createApp({
-      ports: {
-        fileLock,
-        fileSystem,
-        sourceResolver: {
-          resolveSources: vi.fn(async () => ["tasks.md"]),
-        },
-      },
-    });
-
-    const code = await app.exploreTasks({ source: "tasks.md", sortMode: "name-sort" });
 
     expect(code).toBe(0);
     expect(fileLock.acquire).not.toHaveBeenCalled();

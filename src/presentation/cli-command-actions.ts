@@ -159,6 +159,10 @@ interface MakeActionDependencies extends WorkerActionDependencies {
   makeModes: readonly ProcessRunMode[];
 }
 
+interface ExploreActionDependencies extends WorkerActionDependencies {
+  exploreModes: readonly ProcessRunMode[];
+}
+
 interface DoActionDependencies extends WorkerActionDependencies {
   makeModes: readonly ProcessRunMode[];
 }
@@ -818,6 +822,149 @@ export function createResearchCommandAction({
 
     return getApp().researchTask(request);
   };
+}
+
+/**
+ * Creates the `explore` command action handler.
+ *
+ * The returned action composes `research` and `plan` over the same Markdown source,
+ * forwarding shared runtime options to both phases and plan-specific options to planning.
+ */
+export function createExploreCommandAction({
+  getApp,
+  getWorkerFromSeparator,
+  exploreModes,
+}: ExploreActionDependencies): (markdownFiles: string[], opts: CliOpts) => CliActionResult {
+  return async (markdownFiles: string[], opts: CliOpts) => {
+    const app = getApp();
+    const targetMarkdownFile = resolveResearchMarkdownFile(markdownFiles);
+    const {
+      mode,
+      sharedRuntimeOptions,
+      dryRun,
+      printPrompt,
+      scanCount,
+      deep,
+      maxItems,
+      verbose,
+    } = parseExploreCliOptions(opts, exploreModes, getWorkerFromSeparator);
+
+    return runExplorePhases({
+      app,
+      targetMarkdownFile,
+      mode,
+      sharedRuntimeOptions,
+      dryRun,
+      printPrompt,
+      scanCount,
+      deep,
+      maxItems,
+      verbose,
+    });
+  };
+}
+
+interface RunExplorePhasesOptions {
+  app: CliApp;
+  targetMarkdownFile: string;
+  mode: ProcessRunMode;
+  sharedRuntimeOptions: ReturnType<typeof resolveSharedWorkerRuntimeOptions>;
+  dryRun: boolean;
+  printPrompt: boolean;
+  scanCount: number | undefined;
+  deep: number;
+  maxItems: number | undefined;
+  verbose: boolean;
+}
+
+interface ParsedExploreCliOptions {
+  mode: ProcessRunMode;
+  sharedRuntimeOptions: ReturnType<typeof resolveSharedWorkerRuntimeOptions>;
+  dryRun: boolean;
+  printPrompt: boolean;
+  scanCount: number | undefined;
+  deep: number;
+  maxItems: number | undefined;
+  verbose: boolean;
+}
+
+function parseExploreCliOptions(
+  opts: CliOpts,
+  exploreModes: readonly ProcessRunMode[],
+  getWorkerFromSeparator: () => string[] | undefined,
+): ParsedExploreCliOptions {
+  return {
+    mode: parseRunnerMode(opts.mode as string | undefined, exploreModes),
+    sharedRuntimeOptions: resolveSharedWorkerRuntimeOptions(opts, getWorkerFromSeparator),
+    dryRun: Boolean(opts.dryRun as boolean | undefined),
+    printPrompt: Boolean(opts.printPrompt as boolean | undefined),
+    scanCount: parseScanCount(opts.scanCount as string | undefined),
+    deep: parsePlanDeep(opts.deep as string | undefined),
+    maxItems: parseMaxItems(opts.maxItems as string | undefined),
+    verbose: resolveVerboseOption(opts),
+  };
+}
+
+async function runExplorePhases({
+  app,
+  targetMarkdownFile,
+  mode,
+  sharedRuntimeOptions,
+  dryRun,
+  printPrompt,
+  scanCount,
+  deep,
+  maxItems,
+  verbose,
+}: RunExplorePhasesOptions): Promise<number> {
+  const sharedWorkerPattern = sharedRuntimeOptions.workerPattern;
+
+  emitCliInfo(app, "Explore phase 1/2: research");
+
+  const researchCode = normalizeMakePhaseExitCode(await app.researchTask({
+    source: targetMarkdownFile,
+    mode,
+    workerPattern: sharedWorkerPattern,
+    showAgentOutput: sharedRuntimeOptions.showAgentOutput,
+    dryRun,
+    printPrompt,
+    keepArtifacts: sharedRuntimeOptions.keepArtifacts,
+    trace: sharedRuntimeOptions.trace,
+    forceUnlock: sharedRuntimeOptions.forceUnlock,
+    ignoreCliBlock: sharedRuntimeOptions.ignoreCliBlock,
+    cliBlockTimeoutMs: sharedRuntimeOptions.cliBlockTimeoutMs,
+    configDirOption: sharedRuntimeOptions.configDirOption,
+    varsFileOption: sharedRuntimeOptions.varsFileOption,
+    cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,
+    verbose,
+  }));
+
+  if (researchCode !== 0) {
+    return researchCode;
+  }
+
+  emitCliInfo(app, "Explore transition: research -> plan");
+  emitCliInfo(app, "Explore phase 2/2: plan");
+
+  return normalizeMakePhaseExitCode(await app.planTask({
+    source: targetMarkdownFile,
+    scanCount,
+    maxItems,
+    deep,
+    mode,
+    workerPattern: sharedWorkerPattern,
+    showAgentOutput: sharedRuntimeOptions.showAgentOutput,
+    dryRun,
+    printPrompt,
+    keepArtifacts: sharedRuntimeOptions.keepArtifacts,
+    trace: sharedRuntimeOptions.trace,
+    forceUnlock: sharedRuntimeOptions.forceUnlock,
+    ignoreCliBlock: sharedRuntimeOptions.ignoreCliBlock,
+    cliBlockTimeoutMs: sharedRuntimeOptions.cliBlockTimeoutMs,
+    varsFileOption: sharedRuntimeOptions.varsFileOption,
+    cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,
+    verbose,
+  }));
 }
 
 /**

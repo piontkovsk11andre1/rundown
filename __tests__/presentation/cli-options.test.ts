@@ -2132,6 +2132,88 @@ describe("CLI log option normalization", () => {
 });
 
 describe("CLI plan and utility command normalization", () => {
+  it("explore forwards shared worker/runtime options to both research and plan", async () => {
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-explore-shared-forwarding-"));
+    const markdownFile = path.join(tempRoot, "8. Explore.md");
+    fs.writeFileSync(markdownFile, "# Explore target\n", "utf8");
+
+    try {
+      const result = await invokeExploreAndCaptureCalls([
+        "explore",
+        markdownFile,
+        "--scan-count",
+        "5",
+        "--deep",
+        "2",
+        "--max-items",
+        "9",
+        "--dry-run",
+        "--print-prompt",
+        "--keep-artifacts",
+        "--show-agent-output",
+        "--trace",
+        "--force-unlock",
+        "--vars-file",
+        "vars.local.json",
+        "--var",
+        "env=prod",
+        "--var",
+        "region=eu",
+        "--ignore-cli-block",
+        "--cli-block-timeout",
+        "5678",
+        "--",
+        "opencode",
+        "run",
+        "--model",
+        "gpt-5",
+      ], researchTask, planTask);
+
+      expect(result.exitCode).toBe(0);
+      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(planTask).toHaveBeenCalledTimes(1);
+
+      expect(researchTask).toHaveBeenCalledWith(expect.objectContaining({
+        source: markdownFile,
+        mode: "wait",
+        keepArtifacts: true,
+        showAgentOutput: true,
+        trace: true,
+        forceUnlock: true,
+        ignoreCliBlock: true,
+        cliBlockTimeoutMs: 5678,
+        varsFileOption: "vars.local.json",
+        cliTemplateVarArgs: ["env=prod", "region=eu"],
+        workerPattern: expect.objectContaining({
+          command: ["opencode", "run", "--model", "gpt-5"],
+        }),
+      }));
+
+      expect(planTask).toHaveBeenCalledWith(expect.objectContaining({
+        source: markdownFile,
+        mode: "wait",
+        scanCount: 5,
+        deep: 2,
+        maxItems: 9,
+        keepArtifacts: true,
+        showAgentOutput: true,
+        trace: true,
+        forceUnlock: true,
+        ignoreCliBlock: true,
+        cliBlockTimeoutMs: 5678,
+        varsFileOption: "vars.local.json",
+        cliTemplateVarArgs: ["env=prod", "region=eu"],
+        workerPattern: expect.objectContaining({
+          command: ["opencode", "run", "--model", "gpt-5"],
+        }),
+      }));
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("make creates file then runs research and plan with forwarded options", async () => {
     const researchTask = vi.fn(async () => 0);
     const planTask = vi.fn(async () => 0);
@@ -4138,6 +4220,53 @@ async function invokeResearchAndExpectExit(args: string[], researchTask: ReturnT
 }
 
 async function invokeMakeAndCaptureCalls(
+  args: string[],
+  researchTask: ReturnType<typeof vi.fn>,
+  planTask: ReturnType<typeof vi.fn>,
+): Promise<{ exitCode: number }> {
+  const previousEnv = captureEnv();
+
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
+
+  vi.doMock("../../src/create-app.js", () => ({
+    createApp: () => ({
+      runTask: vi.fn(async () => 0),
+      discussTask: vi.fn(async () => 0),
+      reverifyTask: vi.fn(async () => 0),
+      revertTask: vi.fn(async () => 0),
+      nextTask: vi.fn(async () => 0),
+      listTasks: vi.fn(async () => 0),
+      planTask,
+      researchTask,
+      unlockTask: vi.fn(async () => 0),
+      initProject: vi.fn(async () => 0),
+      manageArtifacts: vi.fn(() => 0),
+    }),
+  }));
+
+  let exitCode = 0;
+  try {
+    const { parseCliArgs } = await import("../../src/presentation/cli.js");
+    await parseCliArgs(normalizeLegacyWorkerPatternArgs(args));
+  } catch (error) {
+    const message = String(error);
+    const match = /CLI exited with code (\d+)/.exec(message);
+    if (match) {
+      exitCode = Number(match[1]);
+    } else if (/process\.exit unexpectedly called/.test(message)) {
+      exitCode = 1;
+    } else {
+      throw error;
+    }
+  } finally {
+    restoreEnv(previousEnv);
+  }
+
+  return { exitCode };
+}
+
+async function invokeExploreAndCaptureCalls(
   args: string[],
   researchTask: ReturnType<typeof vi.fn>,
   planTask: ReturnType<typeof vi.fn>,

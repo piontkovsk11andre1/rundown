@@ -392,6 +392,81 @@ rundown plan docs/spec.md --scan-count 2 --worker "opencode run --file $file $bo
 rundown plan docs/spec.md --scan-count 2 --deep 2 --worker "claude -p $bootstrap"
 ```
 
+### `rundown explore <markdown-file>`
+
+Run `research` and then `plan` on the same existing Markdown document.
+
+`explore` is a convenience alias for the common enrichment flow on docs that already exist:
+
+1. `rundown research <source>` enriches context and structure,
+2. `rundown plan <source>` synthesizes actionable TODO items.
+
+Synopsis:
+
+```bash
+rundown explore <markdown-file> [options] -- <command>
+rundown explore <markdown-file> [options] --worker <pattern>
+```
+
+Usage example:
+
+```bash
+rundown explore docs/spec.md -- opencode run
+```
+
+Execution is sequential and fail-fast:
+
+- `research` runs first.
+- If `research` exits non-zero, `plan` is skipped.
+- If both phases succeed, `explore` exits `0`.
+- If either phase fails, `explore` returns the failing phase exit code.
+
+Input rules:
+
+- Exactly one file path is required.
+- File extension must be `.md` or `.markdown`.
+- Directories and globs are rejected.
+
+Options:
+
+| Option | Description | Default |
+|---|---|---|
+| `--mode <mode>` | Shared execution mode forwarded to both phases (`research` + `plan`). Use `wait` for compatibility with `plan`. | `wait` |
+| `--scan-count <n>` | Planner-only scan cap forwarded to `plan`. Must be a safe positive integer. | `3` |
+| `--deep <n>` | Planner-only nested pass count forwarded to `plan`. Must be a safe non-negative integer. | `0` |
+| `--max-items <n>` | Planner-only item cap forwarded to `plan`. | unset |
+| `--force-unlock` | Remove stale source lockfiles before each phase lock acquisition. Active locks held by live processes are not removed. | off |
+| `--dry-run` | Render phase prompts + execution intent and exit without running workers. | off |
+| `--print-prompt` | Print rendered phase prompts and exit `0` without running workers. | off |
+| `--keep-artifacts` | Preserve runtime artifacts under `.rundown/runs/` even on success. | off |
+| `--show-agent-output` | Show worker stdout/stderr during phase execution (hidden by default). | off |
+| `-v, --verbose` | Show detailed per-task run diagnostics within grouped output for both phases. | off |
+| `-q, --quiet` | Suppress info-level output (info, success, progress, grouped status) across both phases. | off |
+| `--trace` | Write structured trace events to `.rundown/runs/<id>/trace.jsonl` and mirror to `.rundown/logs/trace.jsonl`. | off |
+| `--vars-file [path]` | Load template variables from JSON (default path: `<config-dir>/vars.json`). | unset |
+| `--var <key=value>` | Inject template variables (repeatable). | none |
+| `--ignore-cli-block` | Skip `cli` fenced-block command execution during prompt expansion. | off |
+| `--cli-block-timeout <ms>` | Per-command timeout for `cli` fenced-block execution (`0` disables timeout). | `30000` |
+| `--worker <pattern>` | Worker pattern override (preferred on PowerShell). | unset |
+
+Worker resolution:
+
+- `--worker <pattern>` and separator form `-- <command>` are both supported.
+- If neither is provided, `explore` resolves worker input using the same command resolution behavior as `research` and `plan`.
+
+Examples:
+
+```bash
+# One-step enrichment for an existing document: research -> plan
+rundown explore docs/spec.md -- opencode run
+
+# Include nested TODO generation in the plan phase
+rundown explore docs/spec.md --scan-count 3 --deep 1 -- opencode run
+
+# PowerShell-safe worker form
+rundown explore docs/spec.md --worker "opencode run --file $file $bootstrap"
+```
+
 ### `rundown make <seed-text> <markdown-file>`
 
 Create a new Markdown file from seed text, then run `research` followed by `plan` on that same file.
@@ -586,6 +661,7 @@ Lock scope by command:
 
 - `run`: acquires before task-selection reads and holds through the full task lifecycle, including `--all` loops, verification/repair, checkbox updates, and `--on-complete`/`--on-fail` hooks.
 - `plan`: acquires before planning starts and holds for the full scan loop until planning finalization completes.
+- `explore`: acquires phase locks in sequence (`research` lock first, then `plan` lock).
 - `make`: acquires phase locks in sequence (`research` lock first, then `plan` lock) while running create -> research -> plan.
 - `research`: acquires before reading the source and holds through worker invocation plus document replacement/guard checks.
 - `revert`: acquires before git undo operations for the target source set and releases after undo processing finishes.
@@ -599,7 +675,7 @@ Stale lock detection:
 
 Stale lock recovery:
 
-- `run` and `plan` support `--force-unlock` to remove stale lockfiles before normal lock acquisition. Live-process locks are never removed by this flag.
+- `run`, `plan`, `research`, `make`, and `explore` support `--force-unlock` to remove stale lockfiles before normal lock acquisition. Live-process locks are never removed by this flag.
 - `unlock` provides manual stale-lock cleanup for one source file.
 
 `unlock` exit behavior:
@@ -922,8 +998,7 @@ rundown research docs/spec.md --dry-run --vars-file --var ticket=ENG-42 --worker
 - `--ignore-cli-block` — skip execution of markdown fenced `cli` blocks during prompt expansion (blocks remain unexpanded)
 - `--cli-block-timeout <ms>` — per-command timeout for fenced `cli` block execution (default `30000`, `0` disables timeout)
 
-These options apply to `run`, `discuss`, `plan`, `make`, and `reverify`.
-These options also apply to `research`.
+These options apply to `run`, `discuss`, `plan`, `explore`, `make`, `reverify`, and `research`.
 
 During fenced `cli` block execution, variables loaded from `--var` and `--vars-file` are available in the spawned shell environment as `RUNDOWN_VAR_<UPPERCASE_KEY>`.
 
@@ -1085,6 +1160,7 @@ Behavior notes:
 - `force:` outer retries are inert in `--dry-run` and `--print-prompt` flows for `run`: those modes return exit `0` after rendering/output-only handling, so no retry attempts are triggered.
 - For `reverify --all` or `reverify --last <n>`, `--print-prompt` is not supported and returns exit code `1`; use `--dry-run` to inspect all selected runs.
 - For `plan`, both flags apply to the planner prompt.
+- For `explore`, both flags apply to the research and planner prompts.
 - For `make`, both flags apply to the research/plan phase prompts.
 - For `research`, both flags apply to the research prompt.
 - Fenced `cli` blocks run during `--print-prompt` so printed prompts match worker-visible prompts (unless `--ignore-cli-block` is set).

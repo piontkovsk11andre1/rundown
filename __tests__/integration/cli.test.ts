@@ -682,6 +682,242 @@ describe.sequential("CLI integration", () => {
     expect(fs.existsSync(path.join(workspace, ".rundown", `${sourceName}.lock`))).toBe(false);
   });
 
+  it("explore on a valid markdown file runs research then plan sequentially", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "roadmap.md";
+    const sourcePath = path.join(workspace, sourceName);
+    const lockPath = path.join(workspace, ".rundown", `${sourceName}.lock`).replace(/\\/g, "/");
+    const phaseProbePath = path.join(workspace, "explore-phase-probe.jsonl");
+    const workerScriptPath = path.join(workspace, "explore-sequence-worker.cjs");
+
+    fs.writeFileSync(sourcePath, "# Roadmap\n\nSeed from explore\n\n- [ ] Existing parent task\n", "utf-8");
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        `const sourcePath = ${JSON.stringify(sourcePath.replace(/\\/g, "/"))};`,
+        `const lockPath = ${JSON.stringify(lockPath)};`,
+        `const phaseProbePath = ${JSON.stringify(phaseProbePath.replace(/\\/g, "/"))};`,
+        "const lockExists = fs.existsSync(lockPath);",
+        "let lockCommand = 'missing';",
+        "if (lockExists) {",
+        "  try {",
+        "    const payload = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));",
+        "    lockCommand = typeof payload.command === 'string' ? payload.command : 'unknown';",
+        "  } catch {",
+        "    lockCommand = 'unreadable';",
+        "  }",
+        "}",
+        "fs.appendFileSync(phaseProbePath, JSON.stringify({ lockExists, lockCommand }) + '\\n', 'utf-8');",
+        "if (lockCommand === 'research') {",
+        "  console.log('# Roadmap\\n\\nSeed from explore\\n\\n## Research Context\\n- Captured integration context');",
+        "  process.exit(0);",
+        "}",
+        "if (lockCommand === 'plan') {",
+        "  const source = fs.readFileSync(sourcePath, 'utf-8');",
+        "  if (!source.includes('- [ ] Add rollout checklist')) {",
+        "    fs.writeFileSync(sourcePath, source.trimEnd() + '\\n\\n- [ ] Add rollout checklist\\n', 'utf-8');",
+        "  }",
+        "  process.exit(0);",
+        "}",
+        "console.error('Unexpected lock command: ' + lockCommand);",
+        "process.exit(92);",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "explore",
+      sourceName,
+      "--scan-count",
+      "1",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const probeEntries = fs.readFileSync(phaseProbePath, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { lockExists: boolean; lockCommand: string });
+    expect(probeEntries).toEqual([
+      { lockExists: true, lockCommand: "research" },
+      { lockExists: true, lockCommand: "plan" },
+    ]);
+    const updated = fs.readFileSync(sourcePath, "utf-8");
+    expect(updated).toContain("## Research Context");
+    expect(updated).toContain("- [ ] Add rollout checklist");
+    expect(fs.existsSync(path.join(workspace, ".rundown", `${sourceName}.lock`))).toBe(false);
+  });
+
+  it("explore fails fast when research fails and does not run plan", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "roadmap.md";
+    const sourcePath = path.join(workspace, sourceName);
+    const lockPath = path.join(workspace, ".rundown", `${sourceName}.lock`).replace(/\\/g, "/");
+    const phaseProbePath = path.join(workspace, "explore-fail-fast-probe.jsonl");
+    const workerScriptPath = path.join(workspace, "explore-fail-fast-worker.cjs");
+
+    fs.writeFileSync(sourcePath, "# Roadmap\n\nSeed from explore\n", "utf-8");
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        `const lockPath = ${JSON.stringify(lockPath)};`,
+        `const phaseProbePath = ${JSON.stringify(phaseProbePath.replace(/\\/g, "/"))};`,
+        "const lockExists = fs.existsSync(lockPath);",
+        "let lockCommand = 'missing';",
+        "if (lockExists) {",
+        "  try {",
+        "    const payload = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));",
+        "    lockCommand = typeof payload.command === 'string' ? payload.command : 'unknown';",
+        "  } catch {",
+        "    lockCommand = 'unreadable';",
+        "  }",
+        "}",
+        "fs.appendFileSync(phaseProbePath, JSON.stringify({ lockExists, lockCommand }) + '\\n', 'utf-8');",
+        "if (lockCommand === 'research') {",
+        "  process.exit(7);",
+        "}",
+        "process.exit(93);",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "explore",
+      sourceName,
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).not.toBe(0);
+    const probeEntries = fs.readFileSync(phaseProbePath, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { lockExists: boolean; lockCommand: string });
+    expect(probeEntries).toEqual([
+      { lockExists: true, lockCommand: "research" },
+    ]);
+    expect(fs.existsSync(path.join(workspace, ".rundown", `${sourceName}.lock`))).toBe(false);
+  });
+
+  it("explore forwards --scan-count, --deep, and --max-items to the plan phase only", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "roadmap.md";
+    const sourcePath = path.join(workspace, sourceName);
+    const lockPath = path.join(workspace, ".rundown", `${sourceName}.lock`).replace(/\\/g, "/");
+    const forwardingProbePath = path.join(workspace, "explore-plan-options-forwarding-probe.jsonl");
+    const workerScriptPath = path.join(workspace, "explore-plan-options-forwarding-worker.cjs");
+
+    fs.writeFileSync(sourcePath, "# Roadmap\n\nSeed from explore\n", "utf-8");
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        `const sourcePath = ${JSON.stringify(sourcePath.replace(/\\/g, "/"))};`,
+        `const lockPath = ${JSON.stringify(lockPath)};`,
+        `const forwardingProbePath = ${JSON.stringify(forwardingProbePath.replace(/\\/g, "/"))};`,
+        "const promptPath = process.argv[process.argv.length - 1];",
+        "const prompt = fs.readFileSync(promptPath, 'utf-8');",
+        "const lockCommand = (() => {",
+        "  if (!fs.existsSync(lockPath)) {",
+        "    return 'missing';",
+        "  }",
+        "  try {",
+        "    const payload = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));",
+        "    return typeof payload.command === 'string' ? payload.command : 'unknown';",
+        "  } catch {",
+        "    return 'unreadable';",
+        "  }",
+        "})();",
+        "if (lockCommand === 'research') {",
+        "  fs.appendFileSync(forwardingProbePath, JSON.stringify({",
+        "    phase: 'research',",
+        "    hasScanPassContext: prompt.includes('Scan pass 1 of 3.'),",
+        "    hasDeepPassContext: prompt.includes('Deep pass 1 of 2.'),",
+        "    hasMaxItemsContext: prompt.includes('Max-items cap: 7.'),",
+        "  }) + '\\n', 'utf-8');",
+        "  console.log('# Roadmap\\n\\nSeed from explore\\n\\n## Research Context\\n- Captured integration context\\n\\n- [ ] Existing parent task');",
+        "  process.exit(0);",
+        "}",
+        "if (lockCommand === 'plan') {",
+        "  const isDeepPrompt = prompt.includes('## Deep Pass Context');",
+        "  fs.appendFileSync(forwardingProbePath, JSON.stringify({",
+        "    phase: 'plan',",
+        "    isDeepPrompt,",
+        "    hasScanPassContext: prompt.includes('Scan pass 1 of 3.'),",
+        "    hasDeepPassContext: prompt.includes('Deep pass 1 of 2.'),",
+        "    hasMaxItemsContext: prompt.includes('Max-items cap: 7.'),",
+        "  }) + '\\n', 'utf-8');",
+        "  if (!isDeepPrompt) {",
+        "    const source = fs.readFileSync(sourcePath, 'utf-8');",
+        "    if (!source.includes('- [ ] Parent task for deep forwarding')) {",
+        "      fs.writeFileSync(sourcePath, source.trimEnd() + '\\n\\n- [ ] Parent task for deep forwarding\\n', 'utf-8');",
+        "    }",
+        "  }",
+        "  process.exit(0);",
+        "}",
+        "process.exit(94);",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "explore",
+      sourceName,
+      "--scan-count",
+      "3",
+      "--deep",
+      "2",
+      "--max-items",
+      "7",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const probeEntries = fs.readFileSync(forwardingProbePath, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as {
+        phase: "research" | "plan";
+        isDeepPrompt?: boolean;
+        hasScanPassContext: boolean;
+        hasDeepPassContext: boolean;
+        hasMaxItemsContext: boolean;
+      });
+
+    const researchEntry = probeEntries.find((entry) => entry.phase === "research");
+    expect(researchEntry).toBeDefined();
+    expect(researchEntry).toMatchObject({
+      hasScanPassContext: false,
+      hasDeepPassContext: false,
+      hasMaxItemsContext: false,
+    });
+
+    const planScanEntry = probeEntries.find((entry) => entry.phase === "plan" && entry.isDeepPrompt === false);
+    expect(planScanEntry).toBeDefined();
+    expect(planScanEntry).toMatchObject({
+      hasScanPassContext: true,
+      hasDeepPassContext: false,
+      hasMaxItemsContext: true,
+    });
+
+    const planDeepEntry = probeEntries.find((entry) => entry.phase === "plan" && entry.isDeepPrompt === true);
+    expect(planDeepEntry).toBeDefined();
+    expect(planDeepEntry).toMatchObject({
+      hasDeepPassContext: true,
+      hasMaxItemsContext: true,
+    });
+  });
+
   it("make forwards --max-items to plan and stops after reaching the item cap", async () => {
     const workspace = makeTempWorkspace();
     const sourceName = "8. Do something.md";
@@ -7355,6 +7591,20 @@ describe.sequential("CLI integration", () => {
     expect(compactHelpOutput).toContain("Max clean-session TODO coverage scans (omit for convergence-driven unlimited mode)");
     expect(compactHelpOutput).toContain("--deep <n>");
     expect(compactHelpOutput).toContain("Additional nested planning depth passes after top-level scans (default: 0)");
+  });
+
+  it("explore --help shows variadic argument and plan-phase options", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli(["explore", "--help"], workspace);
+
+    expect(result.code).toBe(0);
+    const helpOutput = result.stdoutWrites.join("\n");
+    const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("explore [options] [markdown-file...]");
+    expect(compactHelpOutput).toContain("--scan-count <n>");
+    expect(compactHelpOutput).toContain("--deep <n>");
+    expect(compactHelpOutput).toContain("--max-items <n>");
   });
 
   it("init --help explains --config-dir creation target", async () => {

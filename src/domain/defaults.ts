@@ -326,11 +326,13 @@ Review the document and evaluate whether existing TODO items fully cover the des
 
 Use built-in prefixes when they improve execution quality:
 
-- \`verify:\` / \`confirm:\` / \`check:\` for validation-only tasks that should skip execute and run verify directly.
-- \`fast:\` / \`raw:\` for small, mechanical, low-risk tasks that should skip verify.
+- \`verify:\` for validation-only tasks that should skip execute and run verify directly.
+- \`fast:\` for small, mechanical, low-risk tasks that should skip verify.
 - \`profile: <name>\` to choose a worker profile for specific tasks.
-- \`memory:\` / \`memorize:\` / \`remember:\` / \`inventory:\` for tasks that should capture reusable context.
+- \`memory:\` for tasks that should capture reusable context.
 - \`include: <path>\` to delegate subtasks to another Markdown file.
+
+Always use the canonical prefix name. Do not use aliases (\`check:\`, \`confirm:\`, \`raw:\`, \`memorize:\`, \`remember:\`, \`inventory:\`). If an existing item uses an alias, normalize it to the canonical form.
 
 You can apply prefixes in either form:
 
@@ -348,9 +350,9 @@ Prefix composition is supported with \`, \` or \`; \` separators when combining 
 
 Heuristics:
 
-- Use verify-only prefixes when the task is purely to confirm current state.
-- Use fast prefixes for tiny edits that do not need a separate validation pass.
-- Use profile when task complexity or cost/speed trade-offs suggest a non-default worker.
+- Use \`verify:\` when the task is purely to confirm current state.
+- Use \`fast:\` for small, mechanical tasks that do not need a separate validation pass. When several small steps make more sense verified together rather than one-by-one, group them under a \`fast:\` directive parent.
+- Use \`profile:\` when task complexity or cost/speed trade-offs suggest a non-default worker.
 - Use directive parents when multiple adjacent tasks share the same prefix.
 - Prefer plain \`- [ ]\` items when no special behavior is needed.
 
@@ -358,7 +360,8 @@ Rules:
 - Add only unchecked TODO items using \`- [ ]\` syntax.
 - Prefer appending new items at the end of the document. Each task only sees the document content above it, so items placed at the end have the most context available during execution.
 - Do not insert new items between existing items or between prose paragraphs. Append after the last existing TODO item or at the document end.
-- Do not reorder, reword, rephrase, or rewrite any existing TODO item (checked or unchecked).
+- Do not reword, rephrase, or rewrite the descriptive text of any existing TODO item.
+- You may fix prefixes on existing unchecked items: normalize aliases to canonical form (e.g. \`check:\` → \`verify:\`), add a missing prefix when the task clearly needs one, or remove an incorrect prefix.
 - Do not change any \`- [ ]\` item to \`- [x]\`.
 - Do not remove or move any existing item (checked or unchecked).
 - Do not output a proposed list on stdout; apply edits to \`{{file}}\` directly.
@@ -390,11 +393,13 @@ Review \`{{file}}\` and add missing unchecked child TODO items under this parent
 
 Use built-in prefixes when they improve execution quality for child tasks:
 
-- \`verify:\` / \`confirm:\` / \`check:\` for validation-only child tasks that should skip execute and run verify directly.
-- \`fast:\` / \`raw:\` for small, mechanical, low-risk child tasks that should skip verify.
+- \`verify:\` for validation-only child tasks that should skip execute and run verify directly.
+- \`fast:\` for small, mechanical, low-risk child tasks that should skip verify.
 - \`profile: <name>\` to choose a worker profile for specific child tasks.
-- \`memory:\` / \`memorize:\` / \`remember:\` / \`inventory:\` for child tasks that should capture reusable context.
+- \`memory:\` for child tasks that should capture reusable context.
 - \`include: <path>\` to delegate child subtasks to another Markdown file.
+
+Always use the canonical prefix name. Do not use aliases (\`check:\`, \`confirm:\`, \`raw:\`, \`memorize:\`, \`remember:\`, \`inventory:\`). If an existing item uses an alias, normalize it to the canonical form.
 
 You can apply prefixes in either form:
 
@@ -412,9 +417,9 @@ Prefix composition is supported with \`, \` or \`; \` separators when combining 
 
 Heuristics:
 
-- Use verify-only prefixes when the child task is purely to confirm current state.
-- Use fast prefixes for tiny child edits that do not need a separate validation pass.
-- Use profile when child task complexity or cost/speed trade-offs suggest a non-default worker.
+- Use \`verify:\` when the child task is purely to confirm current state.
+- Use \`fast:\` for small, mechanical child tasks that do not need a separate validation pass. When several small steps make more sense verified together rather than one-by-one, group them under a \`fast:\` directive parent.
+- Use \`profile:\` when child task complexity or cost/speed trade-offs suggest a non-default worker.
 - Use directive parents when multiple adjacent child tasks share the same prefix.
 - Prefer plain \`- [ ]\` child items when no special behavior is needed.
 
@@ -422,7 +427,8 @@ Rules:
 - Scope changes strictly to child TODO items under the selected parent task.
 - Add only unchecked TODO items using \`- [ ]\` syntax.
 - Append new child items after the last existing child under the parent. Do not insert between existing children.
-- Do not reorder, reword, rephrase, or rewrite any existing child item (checked or unchecked).
+- Do not reword, rephrase, or rewrite the descriptive text of any existing child item.
+- You may fix prefixes on existing unchecked items: normalize aliases to canonical form (e.g. \`check:\` → \`verify:\`), add a missing prefix when the task clearly needs one, or remove an incorrect prefix.
 - Do not change any \`- [ ]\` item to \`- [x]\`.
 - Do not remove or move any existing child item (checked or unchecked).
 - Do not output a proposed list on stdout; apply edits to \`{{file}}\` directly.

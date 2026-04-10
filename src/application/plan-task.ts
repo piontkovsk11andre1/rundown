@@ -844,7 +844,15 @@ export function createPlanTask(
 
             const netAdditions = validationResult.stats.added - validationResult.stats.removed;
 
-            if ((validationResult.stats.removed > 0 || validationResult.stats.reordered > 0) && netAdditions <= 0) {
+            // Accept edits that only fix prefixes (symmetric add/remove with
+            // no reordering, e.g. `check:` → `verify:`).  These show up as
+            // equal adds and removes in the stats.
+            const isPrefixFixOnly = validationResult.stats.added > 0
+              && validationResult.stats.added === validationResult.stats.removed
+              && validationResult.stats.reordered === 0
+              && netAdditions === 0;
+
+            if ((validationResult.stats.removed > 0 || validationResult.stats.reordered > 0) && netAdditions <= 0 && !isPrefixFixOnly) {
               dependencies.fileSystem.writeText(source, scanBaseline);
               latestDocumentSource = scanBaseline;
               convergenceOutcome = "converged-rewrite-only";

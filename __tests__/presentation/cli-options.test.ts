@@ -1926,11 +1926,65 @@ describe("CLI lock release signal handling", () => {
     expect(sigintHandler).toBeDefined();
     expect(sigtermHandler).toBeDefined();
 
-    expect(() => (sigintHandler as () => void)()).toThrow(/130/);
+    (sigintHandler as () => void)();
+    const { awaitLockReleaseShutdown } = await import("../../src/presentation/cli-lock-handlers.js");
+    await expect(awaitLockReleaseShutdown()).rejects.toThrow(/130/);
     expect(releaseAllLocks).toHaveBeenCalledTimes(1);
 
-    expect(() => (sigtermHandler as () => void)()).toThrow(/143/);
+    (sigtermHandler as () => void)();
+    await expect(awaitLockReleaseShutdown()).rejects.toThrow(/143/);
     expect(releaseAllLocks).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits for app shutdown before releasing locks and terminating on SIGINT", async () => {
+    const previousEnv = captureEnv();
+    process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+    process.env.RUNDOWN_TEST_MODE = "1";
+
+    const releaseAllLocks = vi.fn();
+    let resolveShutdown: (() => void) | undefined;
+    const awaitShutdown = vi.fn(() => new Promise<void>((resolve) => {
+      resolveShutdown = resolve;
+    }));
+
+    vi.doMock("../../src/create-app.js", () => ({
+      createApp: () => ({
+        runTask: vi.fn(async () => 0),
+        reverifyTask: vi.fn(async () => 0),
+        revertTask: vi.fn(async () => 0),
+        nextTask: vi.fn(async () => 0),
+        listTasks: vi.fn(async () => 0),
+        planTask: vi.fn(async () => 0),
+        initProject: vi.fn(async () => 0),
+        manageArtifacts: vi.fn(() => 0),
+        releaseAllLocks,
+        awaitShutdown,
+      }),
+    }));
+
+    try {
+      const { parseCliArgs } = await import("../../src/presentation/cli.js");
+      await expect(parseCliArgs(["init"]))
+        .rejects.toThrow("CLI exited with code 0");
+    } finally {
+      restoreEnv(previousEnv);
+    }
+
+    const sigintHandler = process
+      .listeners("SIGINT")
+      .find((listener) => (listener as { __rundownLockReleaseSignalHandler?: boolean }).__rundownLockReleaseSignalHandler === true);
+
+    expect(sigintHandler).toBeDefined();
+    (sigintHandler as () => void)();
+
+    expect(awaitShutdown).toHaveBeenCalledTimes(1);
+    expect(releaseAllLocks).not.toHaveBeenCalled();
+
+    resolveShutdown?.();
+
+    const { awaitLockReleaseShutdown } = await import("../../src/presentation/cli-lock-handlers.js");
+    await expect(awaitLockReleaseShutdown()).rejects.toThrow(/130/);
+    expect(releaseAllLocks).toHaveBeenCalledTimes(1);
   });
 
   it("registers an exit fallback handler on Windows", async () => {

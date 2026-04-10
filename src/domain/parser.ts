@@ -111,6 +111,8 @@ const CLI_ARGS_DIRECTIVE_PATTERN = /^cli[-\s]?args\s*:\s*(.*)$/i;
 const VERIFY_DIRECTIVE_PATTERN = /^(?:verify|confirm|check)\s*:\s*$/i;
 // Detects directive list items that switch tasks to fast-execution intent.
 const FAST_DIRECTIVE_PATTERN = /^(?:fast|raw)\s*:\s*$/i;
+// Detects directive list items that switch tasks to parallel-group intent.
+const PARALLEL_DIRECTIVE_PATTERN = /^(?:parallel|concurrent|par)\s*:\s*$/i;
 // Detects explicit verify-only task prefixes with payload text.
 const VERIFY_TASK_PREFIX_PATTERN = /^(?:verify|confirm|check)\s*:/i;
 // Detects memory-capture task prefixes with payload text.
@@ -417,6 +419,10 @@ export function parseDirectiveParent(text: string): DirectiveContext {
 
   if (FAST_DIRECTIVE_PATTERN.test(text)) {
     return { intent: "fast-execution" };
+  }
+
+  if (PARALLEL_DIRECTIVE_PATTERN.test(text)) {
+    return { intent: "parallel-group" };
   }
 
   return {};

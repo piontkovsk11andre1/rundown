@@ -113,6 +113,7 @@ export type App = {
   manageArtifacts: (options: ManageArtifactsOptions) => number;
   emitOutput?: (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
   releaseAllLocks?: () => void;
+  awaitShutdown?: () => Promise<void>;
 };
 
 export interface PlanTaskCommandOptions {
@@ -154,7 +155,7 @@ export interface ResearchTaskCommandOptions {
 }
 
 export type AppUseCaseFactories = {
-  [Key in Exclude<keyof App, "releaseAllLocks" | "emitOutput">]: (ports: AppPorts) => App[Key];
+  [Key in Exclude<keyof App, "releaseAllLocks" | "emitOutput" | "awaitShutdown">]: (ports: AppPorts) => App[Key];
 };
 
 export interface AppPorts {
@@ -509,28 +510,59 @@ function createAppFromFactories(
     ...factoryOverrides,
   };
 
+  const helpTask = factories.helpTask(ports);
+  const runTask = factories.runTask(ports);
+  const discussTask = factories.discussTask(ports);
+  const viewMemory = factories.viewMemory(ports);
+  const validateMemory = factories.validateMemory(ports);
+  const cleanMemory = factories.cleanMemory(ports);
+  const reverifyTask = factories.reverifyTask(ports);
+  const revertTask = factories.revertTask(ports);
+  const planTask = factories.planTask(ports);
+  const researchTask = factories.researchTask(ports);
+  const unlockTask = factories.unlockTask(ports);
+  const listTasks = factories.listTasks(ports);
+  const nextTask = factories.nextTask(ports);
+  const logRuns = factories.logRuns(ports);
+  const initProject = factories.initProject(ports);
+  const manageArtifacts = factories.manageArtifacts(ports);
+  const inFlightRunTasks = new Set<Promise<number>>();
+
+  const trackInFlightRun = (taskRun: Promise<number>): Promise<number> => {
+    inFlightRunTasks.add(taskRun);
+    void taskRun.finally(() => {
+      inFlightRunTasks.delete(taskRun);
+    });
+    return taskRun;
+  };
+
   return {
-    helpTask: factories.helpTask(ports),
-    runTask: factories.runTask(ports),
-    discussTask: factories.discussTask(ports),
-    viewMemory: factories.viewMemory(ports),
-    validateMemory: factories.validateMemory(ports),
-    cleanMemory: factories.cleanMemory(ports),
-    reverifyTask: factories.reverifyTask(ports),
-    revertTask: factories.revertTask(ports),
-    planTask: factories.planTask(ports),
-    researchTask: factories.researchTask(ports),
-    unlockTask: factories.unlockTask(ports),
-    listTasks: factories.listTasks(ports),
-    nextTask: factories.nextTask(ports),
-    logRuns: factories.logRuns(ports),
-    initProject: factories.initProject(ports),
-    manageArtifacts: factories.manageArtifacts(ports),
+    helpTask,
+    runTask: (options) => trackInFlightRun(runTask(options)),
+    discussTask,
+    viewMemory,
+    validateMemory,
+    cleanMemory,
+    reverifyTask,
+    revertTask,
+    planTask,
+    researchTask,
+    unlockTask,
+    listTasks,
+    nextTask,
+    logRuns,
+    initProject,
+    manageArtifacts,
     emitOutput: (event) => {
       ports.output.emit(event);
     },
     releaseAllLocks: () => {
       ports.fileLock.releaseAll();
+    },
+    awaitShutdown: async () => {
+      while (inFlightRunTasks.size > 0) {
+        await Promise.allSettled([...inFlightRunTasks]);
+      }
     },
   };
 }

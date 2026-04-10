@@ -280,6 +280,66 @@ describe("parseTasks", () => {
     expect(tasks[1]!.intent).toBe("fast-execution");
   });
 
+  it("propagates parallel directive parent intent to child checkboxes", () => {
+    const md = [
+      "- parallel:",
+      "  - [ ] Setup API",
+      "  - [ ] Setup worker",
+      "- concurrent:",
+      "  - [ ] Warm cache",
+      "- par:",
+      "  - [ ] Prepare fixtures",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(4);
+    expect(tasks[0]!.text).toBe("Setup API");
+    expect(tasks[0]!.intent).toBe("parallel-group");
+    expect(tasks[1]!.text).toBe("Setup worker");
+    expect(tasks[1]!.intent).toBe("parallel-group");
+    expect(tasks[2]!.text).toBe("Warm cache");
+    expect(tasks[2]!.intent).toBe("parallel-group");
+    expect(tasks[3]!.text).toBe("Prepare fixtures");
+    expect(tasks[3]!.intent).toBe("parallel-group");
+  });
+
+  it("treats whitespace-only parallel directives as directive parents", () => {
+    const md = [
+      "- parallel :",
+      "  - [ ] Setup API",
+      "- CONCURRENT:\t",
+      "  - [ ] Warm cache",
+      "- PaR :",
+      "  - [ ] Prepare fixtures",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(3);
+    expect(tasks[0]!.intent).toBe("parallel-group");
+    expect(tasks[1]!.intent).toBe("parallel-group");
+    expect(tasks[2]!.intent).toBe("parallel-group");
+  });
+
+  it("does not treat payload-bearing parallel lines as directive-only parents", () => {
+    const md = [
+      "- parallel: setup all services",
+      "  - [ ] Child task keeps default intent",
+      "- concurrent: preflight checks",
+      "  - [ ] Another child keeps default intent",
+      "- par: prep artifacts",
+      "  - [ ] Last child keeps default intent",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(3);
+    expect(tasks[0]!.intent).toBeUndefined();
+    expect(tasks[1]!.intent).toBeUndefined();
+    expect(tasks[2]!.intent).toBeUndefined();
+  });
+
   it("treats whitespace-only fast/raw directives as directive parents", () => {
     const md = [
       "- fast :",

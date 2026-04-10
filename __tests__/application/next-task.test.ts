@@ -19,7 +19,7 @@ describe("next-task", () => {
     });
     const { dependencies, events } = createDependencies({
       files: ["tasks.md"],
-      selection,
+      selection: [selection],
     });
 
     const nextTask = createNextTask(dependencies);
@@ -64,7 +64,7 @@ describe("next-task", () => {
 
 function createDependencies(options: {
   files: string[];
-  selection: TaskSelectionResult | null;
+  selection: TaskSelectionResult[] | null;
 }): {
   dependencies: NextTaskDependencies;
   events: ApplicationOutputEvent[];

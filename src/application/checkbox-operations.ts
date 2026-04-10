@@ -8,6 +8,55 @@ import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 const TRACE_STATISTICS_CHILD_LABEL_PATTERN = /^(?:total time|execution|verify|repair|idle|tokens estimated|phases|verify attempts|repair attempts):\s+\S/i;
 const TRACE_STATISTICS_GRANDCHILD_LABEL_PATTERN = /^(?:execution|verify|repair):\s+\S/i;
 
+interface FileMutationQueue {
+  locked: boolean;
+  operations: Array<() => void>;
+}
+
+const fileMutationQueues = new Map<string, FileMutationQueue>();
+
+function withSerializedFileMutation(filePath: string, operation: () => void): void {
+  const existingQueue = fileMutationQueues.get(filePath);
+  const queue = existingQueue ?? { locked: false, operations: [] };
+  if (!existingQueue) {
+    fileMutationQueues.set(filePath, queue);
+  }
+
+  queue.operations.push(operation);
+
+  if (queue.locked) {
+    return;
+  }
+
+  let firstError: unknown = null;
+  queue.locked = true;
+  try {
+    while (queue.operations.length > 0) {
+      const nextOperation = queue.operations.shift();
+      if (!nextOperation) {
+        continue;
+      }
+
+      try {
+        nextOperation();
+      } catch (error) {
+        if (firstError === null) {
+          firstError = error;
+        }
+      }
+    }
+  } finally {
+    queue.locked = false;
+    if (queue.operations.length === 0) {
+      fileMutationQueues.delete(filePath);
+    }
+  }
+
+  if (firstError !== null) {
+    throw firstError;
+  }
+}
+
 function getLeadingWhitespaceLength(line: string): number {
   return (line.match(/^(\s*)/)?.[1] ?? "").length;
 }
@@ -132,9 +181,11 @@ function stripTraceStatisticsFromSource(source: string, file: string): string {
  * Marks a single task as checked in its source file.
  */
 export function checkTaskUsingFileSystem(task: Task, fileSystem: FileSystem): void {
-  const source = fileSystem.readText(task.file);
-  const updated = markChecked(source, task);
-  fileSystem.writeText(task.file, updated);
+  withSerializedFileMutation(task.file, () => {
+    const source = fileSystem.readText(task.file);
+    const updated = markChecked(source, task);
+    fileSystem.writeText(task.file, updated);
+  });
 }
 
 /**
@@ -152,77 +203,79 @@ export function insertTraceStatisticsUsingFileSystem(
     return;
   }
 
-  const source = fileSystem.readText(task.file);
-  const eol = source.includes("\r\n") ? "\r\n" : "\n";
-  const lines = source.split(/\r?\n/);
-  const parentLineIndex = task.line - 1;
+  withSerializedFileMutation(task.file, () => {
+    const source = fileSystem.readText(task.file);
+    const eol = source.includes("\r\n") ? "\r\n" : "\n";
+    const lines = source.split(/\r?\n/);
+    const parentLineIndex = task.line - 1;
 
-  if (parentLineIndex < 0 || parentLineIndex >= lines.length) {
-    return;
-  }
-
-  const parentLine = lines[parentLineIndex] ?? "";
-  const parentIndentLength = (parentLine.match(/^(\s*)/)?.[1] ?? "").length;
-  const childIndent = computeChildIndent(parentLine);
-
-  let insertionIndex = parentLineIndex + 1;
-  for (let index = parentLineIndex + 1; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    if (line.trim().length === 0) {
-      continue;
+    if (parentLineIndex < 0 || parentLineIndex >= lines.length) {
+      return;
     }
 
-    const lineIndentLength = (line.match(/^(\s*)/)?.[1] ?? "").length;
-    if (lineIndentLength <= parentIndentLength) {
-      break;
+    const parentLine = lines[parentLineIndex] ?? "";
+    const parentIndentLength = (parentLine.match(/^(\s*)/)?.[1] ?? "").length;
+    const childIndent = computeChildIndent(parentLine);
+
+    let insertionIndex = parentLineIndex + 1;
+    for (let index = parentLineIndex + 1; index < lines.length; index += 1) {
+      const line = lines[index] ?? "";
+      if (line.trim().length === 0) {
+        continue;
+      }
+
+      const lineIndentLength = (line.match(/^(\s*)/)?.[1] ?? "").length;
+      if (lineIndentLength <= parentIndentLength) {
+        break;
+      }
+
+      insertionIndex = index + 1;
     }
 
-    insertionIndex = index + 1;
-  }
-
-  if (hasTraceStatisticsInDescendants(lines, parentLineIndex, insertionIndex)) {
-    return;
-  }
-
-  insertionIndex = stripTrailingTraceStatisticsLines(lines, parentLineIndex, insertionIndex);
-
-  const minimumLeadingSpaces = statisticsLines.reduce<number>((minimum, line) => {
-    if (line.trim().length === 0) {
-      return minimum;
+    if (hasTraceStatisticsInDescendants(lines, parentLineIndex, insertionIndex)) {
+      return;
     }
 
-    const leadingSpaces = line.match(/^(\s*)/)?.[1].length ?? 0;
-    return Math.min(minimum, leadingSpaces);
-  }, Number.POSITIVE_INFINITY);
+    insertionIndex = stripTrailingTraceStatisticsLines(lines, parentLineIndex, insertionIndex);
 
-  const baseIndent = Number.isFinite(minimumLeadingSpaces) ? minimumLeadingSpaces : 0;
-  const relativeIndentUnit = statisticsLines.reduce<number>((minimum, line) => {
-    if (line.trim().length === 0) {
-      return minimum;
-    }
+    const minimumLeadingSpaces = statisticsLines.reduce<number>((minimum, line) => {
+      if (line.trim().length === 0) {
+        return minimum;
+      }
 
-    const leadingSpaces = line.match(/^(\s*)/)?.[1].length ?? 0;
-    const delta = leadingSpaces - baseIndent;
-    if (delta <= 0) {
-      return minimum;
-    }
+      const leadingSpaces = line.match(/^(\s*)/)?.[1].length ?? 0;
+      return Math.min(minimum, leadingSpaces);
+    }, Number.POSITIVE_INFINITY);
 
-    return Math.min(minimum, delta);
-  }, Number.POSITIVE_INFINITY);
+    const baseIndent = Number.isFinite(minimumLeadingSpaces) ? minimumLeadingSpaces : 0;
+    const relativeIndentUnit = statisticsLines.reduce<number>((minimum, line) => {
+      if (line.trim().length === 0) {
+        return minimum;
+      }
 
-  const indentUnit = Number.isFinite(relativeIndentUnit) && relativeIndentUnit > 0
-    ? relativeIndentUnit
-    : 2;
+      const leadingSpaces = line.match(/^(\s*)/)?.[1].length ?? 0;
+      const delta = leadingSpaces - baseIndent;
+      if (delta <= 0) {
+        return minimum;
+      }
 
-  const adjustedLines = statisticsLines.map((line) => {
-    const leadingSpaces = line.match(/^(\s*)/)?.[1].length ?? 0;
-    const relativeLevels = Math.max(0, Math.floor((leadingSpaces - baseIndent) / indentUnit));
-    const content = line.trimStart();
-    return `${childIndent}${"  ".repeat(relativeLevels)}${content}`;
+      return Math.min(minimum, delta);
+    }, Number.POSITIVE_INFINITY);
+
+    const indentUnit = Number.isFinite(relativeIndentUnit) && relativeIndentUnit > 0
+      ? relativeIndentUnit
+      : 2;
+
+    const adjustedLines = statisticsLines.map((line) => {
+      const leadingSpaces = line.match(/^(\s*)/)?.[1].length ?? 0;
+      const relativeLevels = Math.max(0, Math.floor((leadingSpaces - baseIndent) / indentUnit));
+      const content = line.trimStart();
+      return `${childIndent}${"  ".repeat(relativeLevels)}${content}`;
+    });
+
+    lines.splice(insertionIndex, 0, ...adjustedLines);
+    fileSystem.writeText(task.file, lines.join(eol));
   });
-
-  lines.splice(insertionIndex, 0, ...adjustedLines);
-  fileSystem.writeText(task.file, lines.join(eol));
 }
 
 /**
@@ -238,53 +291,64 @@ export function skipRemainingSiblingsUsingFileSystem(
   skippedDescendantCount: number;
   skippedTaskTexts: string[];
 } {
-  let source = fileSystem.readText(task.file);
-  const allTasks = parseTasks(source, task.file);
-  const currentTask = allTasks.find((candidate) => candidate.line === task.line && candidate.index === task.index)
-    ?? allTasks.find((candidate) => candidate.line === task.line)
-    ?? task;
+  let outcome = {
+    skippedSiblingCount: 0,
+    skippedDescendantCount: 0,
+    skippedTaskTexts: [] as string[],
+  };
 
-  const remainingSiblings = findRemainingSiblings(currentTask, allTasks);
-  if (remainingSiblings.length === 0) {
-    return {
-      skippedSiblingCount: 0,
-      skippedDescendantCount: 0,
-      skippedTaskTexts: [],
-    };
-  }
+  withSerializedFileMutation(task.file, () => {
+    let source = fileSystem.readText(task.file);
+    const allTasks = parseTasks(source, task.file);
+    const currentTask = allTasks.find((candidate) => candidate.line === task.line && candidate.index === task.index)
+      ?? allTasks.find((candidate) => candidate.line === task.line)
+      ?? task;
 
-  const siblingsDescending = [...remainingSiblings].sort((left, right) => right.line - left.line);
-  const tasksToSkip = new Map<number, Task>();
-
-  // Process siblings from bottom to top so sub-item insertion does not shift
-  // yet-to-be-processed task line numbers.
-  for (const sibling of siblingsDescending) {
-    const descendantsDescending = findUncheckedDescendants(sibling, allTasks)
-      .sort((left, right) => right.line - left.line);
-
-    for (const descendant of descendantsDescending) {
-      tasksToSkip.set(descendant.line, descendant);
+    const remainingSiblings = findRemainingSiblings(currentTask, allTasks);
+    if (remainingSiblings.length === 0) {
+      outcome = {
+        skippedSiblingCount: 0,
+        skippedDescendantCount: 0,
+        skippedTaskTexts: [],
+      };
+      return;
     }
 
-    tasksToSkip.set(sibling.line, sibling);
-  }
+    const siblingsDescending = [...remainingSiblings].sort((left, right) => right.line - left.line);
+    const tasksToSkip = new Map<number, Task>();
 
-  const orderedTasksToSkip = [...tasksToSkip.values()].sort((left, right) => right.line - left.line);
-  const annotation = reason.trim().length > 0 ? reason.trim() : "condition met";
+    // Process siblings from bottom to top so sub-item insertion does not shift
+    // yet-to-be-processed task line numbers.
+    for (const sibling of siblingsDescending) {
+      const descendantsDescending = findUncheckedDescendants(sibling, allTasks)
+        .sort((left, right) => right.line - left.line);
 
-  source = markTasksChecked(source, orderedTasksToSkip);
+      for (const descendant of descendantsDescending) {
+        tasksToSkip.set(descendant.line, descendant);
+      }
 
-  for (const skippedTask of orderedTasksToSkip) {
-    source = insertSubitems(source, skippedTask, [`skipped: ${annotation}`]);
-  }
+      tasksToSkip.set(sibling.line, sibling);
+    }
 
-  fileSystem.writeText(task.file, source);
+    const orderedTasksToSkip = [...tasksToSkip.values()].sort((left, right) => right.line - left.line);
+    const annotation = reason.trim().length > 0 ? reason.trim() : "condition met";
 
-  return {
-    skippedSiblingCount: remainingSiblings.length,
-    skippedDescendantCount: Math.max(0, orderedTasksToSkip.length - remainingSiblings.length),
-    skippedTaskTexts: remainingSiblings.map((sibling) => sibling.text),
-  };
+    source = markTasksChecked(source, orderedTasksToSkip);
+
+    for (const skippedTask of orderedTasksToSkip) {
+      source = insertSubitems(source, skippedTask, [`skipped: ${annotation}`]);
+    }
+
+    fileSystem.writeText(task.file, source);
+
+    outcome = {
+      skippedSiblingCount: remainingSiblings.length,
+      skippedDescendantCount: Math.max(0, orderedTasksToSkip.length - remainingSiblings.length),
+      skippedTaskTexts: remainingSiblings.map((sibling) => sibling.text),
+    };
+  });
+
+  return outcome;
 }
 
 /**
@@ -314,17 +378,19 @@ export function maybeResetFileCheckboxes(
  * Resets all checked markdown task checkboxes in a file.
  */
 export function resetFileCheckboxes(file: string, fileSystem: FileSystem): void {
-  const source = fileSystem.readText(file);
-  const resetCount = countCheckedTasks(source, file);
+  withSerializedFileMutation(file, () => {
+    const source = fileSystem.readText(file);
+    const resetCount = countCheckedTasks(source, file);
 
-  // Skip rewriting the file when there is nothing to reset.
-  if (resetCount === 0) {
-    return;
-  }
+    // Skip rewriting the file when there is nothing to reset.
+    if (resetCount === 0) {
+      return;
+    }
 
-  const updated = resetAllCheckboxes(source, file);
-  const cleaned = stripTraceStatisticsFromSource(updated, file);
-  fileSystem.writeText(file, cleaned);
+    const updated = resetAllCheckboxes(source, file);
+    const cleaned = stripTraceStatisticsFromSource(updated, file);
+    fileSystem.writeText(file, cleaned);
+  });
 }
 
 /**

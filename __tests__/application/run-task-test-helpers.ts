@@ -74,11 +74,11 @@ export function createDependencies(options: {
       resolveSources: vi.fn(async () => [options.task.file]),
     },
     taskSelector: {
-      selectNextTask: vi.fn(() => ({
+      selectNextTask: vi.fn(() => [{
         task: options.task,
         source: path.relative(options.cwd, options.task.file).replace(/\\/g, "/"),
         contextBefore: "",
-      })),
+      }]),
       selectTaskByLocation: vi.fn((filePath: string, line: number) => {
         if (!options.fileSystem.exists(filePath)) {
           return null;

@@ -6955,6 +6955,586 @@ describe.sequential("CLI integration", () => {
     expect(content).toBe("- [x] cli: echo one\n- [x] cli: echo two\n- [x] cli: echo three\n");
   });
 
+  it("run --all batches composed-prefix parallel children and auto-completes the parent", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "parallel-batch-barrier-worker.mjs");
+
+    fs.writeFileSync(
+      roadmapPath,
+      [
+        "- [ ] profile: fast, parallel: setup release environments",
+        "  - [ ] first setup task",
+        "  - [ ] second setup task",
+      ].join("\n") + "\n",
+      "utf-8",
+    );
+
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "import fs from 'node:fs';",
+        "",
+        "const promptPath = process.argv[process.argv.length - 1];",
+        "const prompt = fs.readFileSync(promptPath, 'utf-8');",
+        `const sourcePath = ${JSON.stringify(roadmapPath.replace(/\\/g, "/"))};`,
+        "",
+        "if (prompt.includes('first setup task')) {",
+        "  await new Promise((resolve) => setTimeout(resolve, 500));",
+        "  process.exit(0);",
+        "}",
+        "",
+        "if (prompt.includes('second setup task')) {",
+        "  const source = fs.readFileSync(sourcePath, 'utf-8');",
+        "  if (source.includes('  - [x] first setup task')) {",
+        "    console.error('Second sibling started after first was already checked.');",
+        "    process.exit(92);",
+        "  }",
+        "  process.exit(0);",
+        "}",
+        "",
+        "console.error('Unexpected task prompt for parallel batching test');",
+        "process.exit(91);",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--all",
+      "--no-verify",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Task checked: first setup task"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Task checked: second setup task"))).toBe(true);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+      "- [x] profile: fast, parallel: setup release environments",
+      "  - [x] first setup task",
+      "  - [x] second setup task",
+      "",
+    ].join("\n"));
+  });
+
+  it("run --all executes runnable siblings in stable document order within each parallel batch", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const orderPath = path.join(workspace, "execution-order.log");
+    const workerScriptPath = path.join(workspace, "parallel-order-worker.mjs");
+
+    fs.writeFileSync(
+      roadmapPath,
+      [
+        "- [ ] parallel: batch one",
+        "  - [ ] batch-one task 1",
+        "  - [ ] batch-one task 2",
+        "  - [ ] batch-one task 3",
+        "- [ ] parallel: batch two",
+        "  - [ ] batch-two task 1",
+        "  - [ ] batch-two task 2",
+      ].join("\n") + "\n",
+      "utf-8",
+    );
+
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "import fs from 'node:fs';",
+        "",
+        "const promptPath = process.argv[process.argv.length - 1];",
+        "const prompt = fs.readFileSync(promptPath, 'utf-8');",
+        `const orderPath = ${JSON.stringify(orderPath.replace(/\\/g, "/"))};`,
+        "",
+        "const selectedTaskMatch = prompt.match(/## Selected task\\n\\n(.+)/);",
+        "const selectedTask = selectedTaskMatch ? selectedTaskMatch[1].trim() : '';",
+        "",
+        "const writeOrder = (label) => fs.appendFileSync(orderPath, `${label}\\n`, 'utf-8');",
+        "",
+        "if (selectedTask === 'batch-one task 1') {",
+        "  writeOrder('batch-one task 1');",
+        "  await new Promise((resolve) => setTimeout(resolve, 250));",
+        "  process.exit(0);",
+        "}",
+        "",
+        "if (selectedTask === 'batch-one task 2') {",
+        "  writeOrder('batch-one task 2');",
+        "  await new Promise((resolve) => setTimeout(resolve, 50));",
+        "  process.exit(0);",
+        "}",
+        "",
+        "if (selectedTask === 'batch-one task 3') {",
+        "  writeOrder('batch-one task 3');",
+        "  await new Promise((resolve) => setTimeout(resolve, 10));",
+        "  process.exit(0);",
+        "}",
+        "",
+        "if (selectedTask === 'batch-two task 1') {",
+        "  writeOrder('batch-two task 1');",
+        "  await new Promise((resolve) => setTimeout(resolve, 150));",
+        "  process.exit(0);",
+        "}",
+        "",
+        "if (selectedTask === 'batch-two task 2') {",
+        "  writeOrder('batch-two task 2');",
+        "  await new Promise((resolve) => setTimeout(resolve, 20));",
+        "  process.exit(0);",
+        "}",
+        "",
+        "console.error('Unexpected task prompt for parallel stable-order test');",
+        "process.exit(91);",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--all",
+      "--no-verify",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const executionOrder = fs.readFileSync(orderPath, "utf-8")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    expect(executionOrder).toEqual([
+      "batch-one task 1",
+      "batch-one task 2",
+      "batch-one task 3",
+      "batch-two task 1",
+      "batch-two task 2",
+    ]);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+      "- [x] parallel: batch one",
+      "  - [x] batch-one task 1",
+      "  - [x] batch-one task 2",
+      "  - [x] batch-one task 3",
+      "- [x] parallel: batch two",
+      "  - [x] batch-two task 1",
+      "  - [x] batch-two task 2",
+      "",
+    ].join("\n"));
+  });
+
+  it("run --all --commit creates one commit at the parallel parent sync point after children complete", async () => {
+    const workspace = makeTempWorkspace();
+    const sourceName = "roadmap.md";
+    const roadmapPath = path.join(workspace, sourceName);
+    const workerScriptPath = path.join(workspace, "parallel-commit-boundary-worker.mjs");
+
+    fs.writeFileSync(
+      roadmapPath,
+      [
+        "- [ ] parallel: setup release environments",
+        "  - [ ] first setup task",
+        "  - [ ] second setup task",
+      ].join("\n") + "\n",
+      "utf-8",
+    );
+
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "import fs from 'node:fs';",
+        "",
+        "const promptPath = process.argv[process.argv.length - 1];",
+        "const prompt = fs.readFileSync(promptPath, 'utf-8');",
+        `const sourcePath = ${JSON.stringify(roadmapPath.replace(/\\/g, "/"))};`,
+        "",
+        "if (prompt.includes('first setup task')) {",
+        "  await new Promise((resolve) => setTimeout(resolve, 500));",
+        "  process.exit(0);",
+        "}",
+        "",
+        "if (prompt.includes('second setup task')) {",
+        "  const source = fs.readFileSync(sourcePath, 'utf-8');",
+        "  if (source.includes('  - [x] first setup task')) {",
+        "    console.error('Second sibling started after first was already checked.');",
+        "    process.exit(92);",
+        "  }",
+        "  process.exit(0);",
+        "}",
+        "",
+        "console.error('Unexpected task prompt for parallel commit-boundary test');",
+        "process.exit(91);",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
+
+    const result = await runCli([
+      "run",
+      sourceName,
+      "--all",
+      "--no-verify",
+      "--commit",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.filter((line) => line.includes("Committed:"))).toHaveLength(1);
+    const firstChildCheckedLogIndex = result.logs.findIndex((line) => line.includes("Task checked: first setup task"));
+    const secondChildCheckedLogIndex = result.logs.findIndex((line) => line.includes("Task checked: second setup task"));
+    const commitLogIndex = result.logs.findIndex((line) => line.includes("Committed:"));
+    expect(firstChildCheckedLogIndex).toBeGreaterThanOrEqual(0);
+    expect(secondChildCheckedLogIndex).toBeGreaterThanOrEqual(0);
+    expect(commitLogIndex).toBeGreaterThan(secondChildCheckedLogIndex);
+
+    const commitDeltaCount = Number(execFileSync("git", ["rev-list", "--count", "HEAD~1..HEAD"], {
+      cwd: workspace,
+      encoding: "utf-8",
+    }).trim());
+    expect(commitDeltaCount).toBe(1);
+
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+      "- [x] parallel: setup release environments",
+      "  - [x] first setup task",
+      "  - [x] second setup task",
+      "",
+    ].join("\n"));
+  });
+
+  it("run --all falls back to sequential execution for parallel groups in tui mode", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "parallel-tui-sequential-worker.mjs");
+
+    fs.writeFileSync(
+      roadmapPath,
+      [
+        "- [ ] parallel: setup release environments",
+        "  - [ ] first setup task",
+        "  - [ ] second setup task",
+      ].join("\n") + "\n",
+      "utf-8",
+    );
+
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "import fs from 'node:fs';",
+        "",
+        "const promptPath = process.argv[process.argv.length - 1];",
+        "const prompt = fs.readFileSync(promptPath, 'utf-8');",
+        `const sourcePath = ${JSON.stringify(roadmapPath.replace(/\\/g, "/"))};`,
+        "",
+        "if (prompt.includes('first setup task')) {",
+        "  await new Promise((resolve) => setTimeout(resolve, 400));",
+        "  process.exit(0);",
+        "}",
+        "",
+        "if (prompt.includes('second setup task')) {",
+        "  const source = fs.readFileSync(sourcePath, 'utf-8');",
+        "  if (!source.includes('  - [x] first setup task')) {",
+        "    console.error('Second sibling started before first was checked.');",
+        "    process.exit(92);",
+        "  }",
+        "  process.exit(0);",
+        "}",
+        "",
+        "console.error('Unexpected task prompt for TUI sequential fallback test');",
+        "process.exit(91);",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--all",
+      "--no-verify",
+      "--mode",
+      "tui",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("Parallel batch selected in TUI mode; executing tasks sequentially."))).toBe(
+      true,
+    );
+    expect(result.logs.some((line) => line.includes("Task checked: first setup task"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Task checked: second setup task"))).toBe(true);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+      "- [x] parallel: setup release environments",
+      "  - [x] first setup task",
+      "  - [x] second setup task",
+      "",
+    ].join("\n"));
+  });
+
+  it("run --all retries only previously failed children after partial parallel batch failure", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "parallel-partial-failure-worker.mjs");
+    const firstAttemptsPath = path.join(workspace, "parallel-first-task.attempt");
+    const secondAttemptsPath = path.join(workspace, "parallel-second-task.attempt");
+
+    fs.writeFileSync(
+      roadmapPath,
+      [
+        "- [ ] parallel: setup release environments",
+        "  - [ ] first setup task",
+        "  - [ ] second setup task",
+      ].join("\n") + "\n",
+      "utf-8",
+    );
+
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "import fs from 'node:fs';",
+        "",
+        "const promptPath = process.argv[process.argv.length - 1];",
+        "const prompt = fs.readFileSync(promptPath, 'utf-8');",
+        "const selectedTaskMatch = prompt.match(/## Selected task\\n\\n(.+)/);",
+        "const selectedTask = selectedTaskMatch ? selectedTaskMatch[1].trim() : '';",
+        `const firstAttemptsPath = ${JSON.stringify(firstAttemptsPath.replace(/\\/g, "/"))};`,
+        `const secondAttemptsPath = ${JSON.stringify(secondAttemptsPath.replace(/\\/g, "/"))};`,
+        "",
+        "if (selectedTask === 'first setup task') {",
+        "  const attempts = fs.existsSync(firstAttemptsPath) ? Number.parseInt(fs.readFileSync(firstAttemptsPath, 'utf-8'), 10) : 0;",
+        "  const nextAttempt = Number.isFinite(attempts) ? attempts + 1 : 1;",
+        "  fs.writeFileSync(firstAttemptsPath, String(nextAttempt), 'utf-8');",
+        "  process.exit(0);",
+        "}",
+        "",
+        "if (selectedTask === 'second setup task') {",
+        "  const attempts = fs.existsSync(secondAttemptsPath) ? Number.parseInt(fs.readFileSync(secondAttemptsPath, 'utf-8'), 10) : 0;",
+        "  const nextAttempt = Number.isFinite(attempts) ? attempts + 1 : 1;",
+        "  fs.writeFileSync(secondAttemptsPath, String(nextAttempt), 'utf-8');",
+        "  process.exit(nextAttempt === 1 ? 1 : 0);",
+        "}",
+        "",
+        "console.error('Unexpected task prompt for parallel partial-failure retry test');",
+        "process.exit(91);",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const firstResult = await runCli([
+      "run",
+      "roadmap.md",
+      "--all",
+      "--no-verify",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(firstResult.code).toBe(1);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+      "- [ ] parallel: setup release environments",
+      "  - [x] first setup task",
+      "  - [ ] second setup task",
+      "",
+    ].join("\n"));
+    expect(fs.readFileSync(firstAttemptsPath, "utf-8")).toBe("1");
+    expect(fs.readFileSync(secondAttemptsPath, "utf-8")).toBe("1");
+
+    const secondResult = await runCli([
+      "run",
+      "roadmap.md",
+      "--all",
+      "--no-verify",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(secondResult.code).toBe(0);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+      "- [x] parallel: setup release environments",
+      "  - [x] first setup task",
+      "  - [x] second setup task",
+      "",
+    ].join("\n"));
+    expect(fs.readFileSync(firstAttemptsPath, "utf-8")).toBe("1");
+    expect(fs.readFileSync(secondAttemptsPath, "utf-8")).toBe("2");
+  });
+
+  it("run --all keeps nested parallel parents unchecked after child failure until retry succeeds", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "nested-parallel-child-failure-worker.mjs");
+    const firstChildAttemptsPath = path.join(workspace, "nested-parallel-first-child.attempt");
+    const secondChildAttemptsPath = path.join(workspace, "nested-parallel-second-child.attempt");
+
+    fs.writeFileSync(
+      roadmapPath,
+      [
+        "- [ ] parallel: outer setup phase",
+        "  - [ ] parallel: inner setup phase",
+        "    - [ ] nested child one",
+        "    - [ ] nested child two",
+      ].join("\n") + "\n",
+      "utf-8",
+    );
+
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "import fs from 'node:fs';",
+        "",
+        "const promptPath = process.argv[process.argv.length - 1];",
+        "const prompt = fs.readFileSync(promptPath, 'utf-8');",
+        "const selectedTaskMatch = prompt.match(/## Selected task\\n\\n(.+)/);",
+        "const selectedTask = selectedTaskMatch ? selectedTaskMatch[1].trim() : '';",
+        `const firstChildAttemptsPath = ${JSON.stringify(firstChildAttemptsPath.replace(/\\/g, "/"))};`,
+        `const secondChildAttemptsPath = ${JSON.stringify(secondChildAttemptsPath.replace(/\\/g, "/"))};`,
+        "",
+        "if (selectedTask === 'nested child one') {",
+        "  const attempts = fs.existsSync(firstChildAttemptsPath) ? Number.parseInt(fs.readFileSync(firstChildAttemptsPath, 'utf-8'), 10) : 0;",
+        "  const nextAttempt = Number.isFinite(attempts) ? attempts + 1 : 1;",
+        "  fs.writeFileSync(firstChildAttemptsPath, String(nextAttempt), 'utf-8');",
+        "  process.exit(0);",
+        "}",
+        "",
+        "if (selectedTask === 'nested child two') {",
+        "  const attempts = fs.existsSync(secondChildAttemptsPath) ? Number.parseInt(fs.readFileSync(secondChildAttemptsPath, 'utf-8'), 10) : 0;",
+        "  const nextAttempt = Number.isFinite(attempts) ? attempts + 1 : 1;",
+        "  fs.writeFileSync(secondChildAttemptsPath, String(nextAttempt), 'utf-8');",
+        "  process.exit(nextAttempt === 1 ? 1 : 0);",
+        "}",
+        "",
+        "console.error('Unexpected task prompt for nested parallel child-failure retry test');",
+        "process.exit(91);",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const firstResult = await runCli([
+      "run",
+      "roadmap.md",
+      "--all",
+      "--no-verify",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(firstResult.code).toBe(1);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+      "- [ ] parallel: outer setup phase",
+      "  - [ ] parallel: inner setup phase",
+      "    - [x] nested child one",
+      "    - [ ] nested child two",
+      "",
+    ].join("\n"));
+    expect(fs.readFileSync(firstChildAttemptsPath, "utf-8")).toBe("1");
+    expect(fs.readFileSync(secondChildAttemptsPath, "utf-8")).toBe("1");
+
+    const secondResult = await runCli([
+      "run",
+      "roadmap.md",
+      "--all",
+      "--no-verify",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(secondResult.code).toBe(0);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+      "- [x] parallel: outer setup phase",
+      "  - [x] parallel: inner setup phase",
+      "    - [x] nested child one",
+      "    - [x] nested child two",
+      "",
+    ].join("\n"));
+    expect(fs.readFileSync(firstChildAttemptsPath, "utf-8")).toBe("1");
+    expect(fs.readFileSync(secondChildAttemptsPath, "utf-8")).toBe("2");
+  });
+
+  it("run --all preserves checkbox state when parallel children complete concurrently in the same markdown file", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "parallel-shared-file-completion-worker.mjs");
+    const releasePath = path.join(workspace, "parallel-shared-file-release.txt");
+    const childCount = 8;
+    const childTasks = Array.from({ length: childCount }, (_, index) => `shared-file child ${index + 1}`);
+
+    fs.writeFileSync(
+      roadmapPath,
+      ["- [ ] parallel: stabilize shared checklist updates", ...childTasks.map((task) => `  - [ ] ${task}`)].join("\n") + "\n",
+      "utf-8",
+    );
+
+    fs.writeFileSync(releasePath, String(Date.now() + 900), "utf-8");
+
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "import fs from 'node:fs';",
+        "",
+        "const promptPath = process.argv[process.argv.length - 1];",
+        "const prompt = fs.readFileSync(promptPath, 'utf-8');",
+        "const selectedTaskMatch = prompt.match(/## Selected task\\n\\n(.+)/);",
+        "const selectedTask = selectedTaskMatch ? selectedTaskMatch[1].trim() : '';",
+        `const releasePath = ${JSON.stringify(releasePath.replace(/\\/g, "/"))};`,
+        "",
+        "if (!selectedTask.startsWith('shared-file child ')) {",
+        "  console.error('Unexpected task prompt for shared-file concurrent completion test');",
+        "  process.exit(91);",
+        "}",
+        "",
+        "const releaseAt = Number.parseInt(fs.readFileSync(releasePath, 'utf-8'), 10);",
+        "if (Number.isFinite(releaseAt)) {",
+        "  const waitMs = releaseAt - Date.now();",
+        "  if (waitMs > 0) {",
+        "    await new Promise((resolve) => setTimeout(resolve, waitMs));",
+        "  }",
+        "}",
+        "",
+        "await new Promise((resolve) => setTimeout(resolve, 5));",
+        "process.exit(0);",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--all",
+      "--no-verify",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const childCheckedLogs = result.logs.filter((line) => line.includes("Task checked: shared-file child "));
+    expect(childCheckedLogs).toHaveLength(childCount);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+      "- [x] parallel: stabilize shared checklist updates",
+      ...childTasks.map((task) => `  - [x] ${task}`),
+      "",
+    ].join("\n"));
+  });
+
   it("run --redo --all resets checked tasks before execution and runs all tasks", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");

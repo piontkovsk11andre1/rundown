@@ -23,6 +23,7 @@ export interface ToolFrontmatter {
   kind?: ToolKind;
   skipExecution?: boolean;
   shouldVerify?: boolean;
+  autoComplete?: boolean;
   insertChildren?: boolean;
   profile?: string;
 }

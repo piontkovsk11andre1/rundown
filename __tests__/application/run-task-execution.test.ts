@@ -326,11 +326,11 @@ describe("run-task-execution helpers", () => {
       if (!next) {
         return null;
       }
-      return {
+      return [{
         task: next,
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     const executedPrompts: string[] = [];
@@ -385,11 +385,11 @@ describe("run-task-execution helpers", () => {
       if (!next) {
         return null;
       }
-      return {
+      return [{
         task: next,
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     const executedPrompts: string[] = [];
@@ -447,11 +447,11 @@ describe("run-task-execution helpers", () => {
       if (!next) {
         return null;
       }
-      return {
+      return [{
         task: next,
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     dependencies.templateLoader.load = (templatePath: string) => {
@@ -505,11 +505,11 @@ describe("run-task-execution helpers", () => {
       if (!next) {
         return null;
       }
-      return {
+      return [{
         task: next,
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     dependencies.templateLoader.load = (templatePath: string) => {
@@ -566,11 +566,11 @@ describe("run-task-execution helpers", () => {
         return null;
       }
 
-      return {
+      return [{
         task: next,
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     dependencies.templateLoader.load = (templatePath: string) => {
@@ -610,11 +610,11 @@ describe("run-task-execution helpers", () => {
       if (!next) {
         return null;
       }
-      return {
+      return [{
         task: next,
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     const executedPrompts: string[] = [];
@@ -666,11 +666,11 @@ describe("run-task-execution helpers", () => {
       if (!next) {
         return null;
       }
-      return {
+      return [{
         task: next,
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     let attempts = 0;
@@ -1558,11 +1558,11 @@ describe("run-task-execution helpers", () => {
       if (!next) {
         return null;
       }
-      return {
+      return [{
         task: next,
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     let inspectObservedAnswer = false;
@@ -1620,6 +1620,864 @@ describe("run-task-execution helpers", () => {
     expect(fileSystem.readText(taskFile)).toContain("  - answer: CliResourceModule");
   });
 
+  it("auto-completes parallel tasks with no children without invoking worker execution", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] parallel: setup all environments\n",
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "parallel: setup all environments"),
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    dependencies.toolResolver = {
+      resolve: (toolName) => resolveBuiltinTool(toolName),
+      listKnownToolNames: () => listBuiltinToolNames(),
+    };
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({ verify: false }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+    expect(dependencies.workerExecutor.executeInlineCli).not.toHaveBeenCalled();
+    expect(dependencies.workerExecutor.executeRundownTask).not.toHaveBeenCalled();
+    expect(fileSystem.readText(taskFile)).toBe("- [x] parallel: setup all environments\n");
+  });
+
+  it("auto-completes runnable parallel-group parents without creating worker runs", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] parallel: setup all environments",
+        "  - [x] cli: npm install",
+        "  - [x] cli: pip install -r requirements.txt",
+      ].join("\n") + "\n",
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "parallel: setup all environments"),
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    dependencies.toolResolver = {
+      resolve: (toolName) => resolveBuiltinTool(toolName),
+      listKnownToolNames: () => listBuiltinToolNames(),
+    };
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({ verify: false }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+    expect(dependencies.workerExecutor.executeInlineCli).not.toHaveBeenCalled();
+    expect(dependencies.workerExecutor.executeRundownTask).not.toHaveBeenCalled();
+    expect(fileSystem.readText(taskFile)).toBe([
+      "- [x] parallel: setup all environments",
+      "  - [x] cli: npm install",
+      "  - [x] cli: pip install -r requirements.txt",
+      "",
+    ].join("\n"));
+  });
+
+  it("auto-completes composed-prefix parallel-group parents without creating worker runs", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] profile: fast, parallel: setup all environments",
+        "  - [x] cli: npm install",
+        "  - [x] cli: pip install -r requirements.txt",
+      ].join("\n") + "\n",
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "profile: fast, parallel: setup all environments"),
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    dependencies.toolResolver = {
+      resolve: (toolName) => resolveBuiltinTool(toolName),
+      listKnownToolNames: () => listBuiltinToolNames(),
+    };
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({ verify: false }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+    expect(dependencies.workerExecutor.executeInlineCli).not.toHaveBeenCalled();
+    expect(dependencies.workerExecutor.executeRundownTask).not.toHaveBeenCalled();
+    expect(fileSystem.readText(taskFile)).toBe([
+      "- [x] profile: fast, parallel: setup all environments",
+      "  - [x] cli: npm install",
+      "  - [x] cli: pip install -r requirements.txt",
+      "",
+    ].join("\n"));
+  });
+
+  it("does not re-check or re-emit previously auto-completed parallel-group parents on later scans", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] parallel: setup all environments",
+        "  - [x] cli: npm install",
+        "  - [x] cli: pip install -r requirements.txt",
+      ].join("\n") + "\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "parallel: setup all environments"),
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    dependencies.toolResolver = {
+      resolve: (toolName) => resolveBuiltinTool(toolName),
+      listKnownToolNames: () => listBuiltinToolNames(),
+    };
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      const source = fileSystem.readText(taskFile);
+      const next = parseTasks(source, taskFile).find((task) => !task.checked);
+      if (!next) {
+        return null;
+      }
+
+      return [{
+        task: next,
+        source: "tasks.md",
+        contextBefore: "",
+      }];
+    });
+
+    const runTask = createRunTaskExecution(dependencies);
+    const firstCode = await runTask(createOptions({ verify: false }));
+
+    expect(firstCode).toBe(0);
+    expect(fileSystem.readText(taskFile)).toBe([
+      "- [x] parallel: setup all environments",
+      "  - [x] cli: npm install",
+      "  - [x] cli: pip install -r requirements.txt",
+      "",
+    ].join("\n"));
+
+    const firstCheckEventCount = events
+      .filter((event) => event.kind === "success" && event.message.startsWith("Task checked:"))
+      .length;
+    expect(firstCheckEventCount).toBe(1);
+
+    const secondCode = await runTask(createOptions({ verify: false }));
+    const secondCheckEventCount = events
+      .filter((event) => event.kind === "success" && event.message.startsWith("Task checked:"))
+      .length;
+
+    expect(secondCode).toBe(3);
+    expect(secondCheckEventCount).toBe(1);
+    expect(fileSystem.readText(taskFile)).toBe([
+      "- [x] parallel: setup all environments",
+      "  - [x] cli: npm install",
+      "  - [x] cli: pip install -r requirements.txt",
+      "",
+    ].join("\n"));
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+    expect(dependencies.workerExecutor.executeInlineCli).not.toHaveBeenCalled();
+    expect(dependencies.workerExecutor.executeRundownTask).not.toHaveBeenCalled();
+  });
+
+  it("does not auto-complete parallel-group parents while unchecked descendants remain", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] parallel: setup all environments",
+        "  - [ ] cli: npm install",
+      ].join("\n") + "\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "parallel: setup all environments"),
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    dependencies.toolResolver = {
+      resolve: (toolName) => resolveBuiltinTool(toolName),
+      listKnownToolNames: () => listBuiltinToolNames(),
+    };
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({ verify: false }));
+
+    expect(code).toBe(1);
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+    expect(dependencies.workerExecutor.executeInlineCli).not.toHaveBeenCalled();
+    expect(dependencies.workerExecutor.executeRundownTask).not.toHaveBeenCalled();
+    expect(fileSystem.readText(taskFile)).toBe([
+      "- [ ] parallel: setup all environments",
+      "  - [ ] cli: npm install",
+      "",
+    ].join("\n"));
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "error",
+      message: "Parallel-group parent cannot auto-complete while unchecked descendants remain.",
+    }));
+  });
+
+  it("falls back to sequential execution for selected parallel batches in tui mode", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] parallel: setup",
+        "  - [ ] first task",
+        "  - [ ] second task",
+      ].join("\n") + "\n",
+    });
+    const firstTask = createTask(taskFile, "first task", { index: 1, line: 2, depth: 1 });
+    const secondTask = createTask(taskFile, "second task", { index: 2, line: 3, depth: 1 });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: firstTask,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      const source = fileSystem.readText(taskFile);
+      if (source.includes("- [x] first task") && source.includes("- [x] second task")) {
+        return null;
+      }
+
+      return [{
+        task: firstTask,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup",
+      }, {
+        task: secondTask,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup\n  - [ ] first task",
+      }];
+    });
+
+    dependencies.templateLoader.load = (templatePath: string) => {
+      if (templatePath.endsWith("execute.md")) {
+        return "{{task}}";
+      }
+      return null;
+    };
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({
+      verify: false,
+      runAll: true,
+      mode: "tui",
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(2);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ prompt: "first task", mode: "tui" }),
+    );
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ prompt: "second task", mode: "tui" }),
+    );
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "info",
+      message: "Parallel batch selected in TUI mode; executing tasks sequentially.",
+    }));
+    expect(fileSystem.readText(taskFile)).toContain("  - [x] first task");
+    expect(fileSystem.readText(taskFile)).toContain("  - [x] second task");
+  });
+
+  it("deduplicates duplicate child selections within a single parallel batch", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] parallel: setup",
+        "  - [ ] first task",
+        "  - [ ] second task",
+      ].join("\n") + "\n",
+    });
+    const firstTask = createTask(taskFile, "first task", { index: 1, line: 2, depth: 1 });
+    const secondTask = createTask(taskFile, "second task", { index: 2, line: 3, depth: 1 });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: firstTask,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      const source = fileSystem.readText(taskFile);
+      if (source.includes("- [x] first task") && source.includes("- [x] second task")) {
+        return null;
+      }
+
+      return [{
+        task: firstTask,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup",
+      }, {
+        task: firstTask,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup",
+      }, {
+        task: secondTask,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup\n  - [ ] first task",
+      }];
+    });
+
+    dependencies.templateLoader.load = (templatePath: string) => {
+      if (templatePath.endsWith("execute.md")) {
+        return "{{task}}";
+      }
+      return null;
+    };
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({
+      verify: false,
+      runAll: true,
+      mode: "tui",
+    }));
+
+    expect(code).toBe(0);
+    const workerPrompts = vi.mocked(dependencies.workerExecutor.runWorker).mock.calls
+      .map(([request]) => request.prompt);
+    expect(workerPrompts.filter((prompt) => prompt === "first task")).toHaveLength(1);
+    expect(workerPrompts.filter((prompt) => prompt === "second task")).toHaveLength(1);
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "info",
+      message: `Skipping duplicate parallel sibling selection at ${taskFile}:2.`,
+    }));
+  });
+
+  it("skips parallel siblings that become checked mid-batch without failing completed siblings", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] parallel: setup",
+        "  - [ ] first task",
+        "  - [ ] second task",
+      ].join("\n") + "\n",
+    });
+    const firstTask = createTask(taskFile, "first task", { index: 1, line: 2, depth: 1 });
+    const secondTask = createTask(taskFile, "second task", { index: 2, line: 3, depth: 1 });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: firstTask,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      const source = fileSystem.readText(taskFile);
+      if (source.includes("- [x] first task") && source.includes("- [x] second task")) {
+        return null;
+      }
+
+      return [{
+        task: firstTask,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup",
+      }, {
+        task: secondTask,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup\n  - [ ] first task",
+      }];
+    });
+
+    dependencies.templateLoader.load = (templatePath: string) => {
+      if (templatePath.endsWith("execute.md")) {
+        return "{{task}}";
+      }
+      return null;
+    };
+
+    dependencies.workerExecutor.runWorker = vi.fn(async (request) => {
+      if (request.prompt === "first task") {
+        const lines = fileSystem.readText(taskFile).split("\n");
+        lines[2] = "  - [x] second task";
+        fileSystem.writeText(taskFile, lines.join("\n"));
+      }
+      return { exitCode: 0, stdout: "", stderr: "" };
+    });
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({
+      verify: false,
+      runAll: true,
+      mode: "tui",
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(1);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: "first task",
+      mode: "tui",
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "info",
+      message: `Skipping parallel sibling at ${taskFile}:3 because it is already checked.`,
+    }));
+    expect(fileSystem.readText(taskFile)).toContain("  - [x] first task");
+    expect(fileSystem.readText(taskFile)).toContain("  - [x] second task");
+  });
+
+  it("counts only successfully auto/completed children in mixed-result parallel batches", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] parallel: setup",
+        "  - [ ] auto: annotate setup",
+        "  - [ ] complete task",
+        "  - [ ] skip task",
+      ].join("\n") + "\n",
+    });
+    const autoTask = createTask(taskFile, "auto: annotate setup", { index: 1, line: 2, depth: 1 });
+    const completeTask = createTask(taskFile, "complete task", { index: 2, line: 3, depth: 1 });
+    const skipTask = createTask(taskFile, "skip task", { index: 3, line: 4, depth: 1 });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: autoTask,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      const source = fileSystem.readText(taskFile);
+      if (source.includes("- [x] auto: annotate setup")
+        && source.includes("- [x] complete task")
+        && source.includes("- [x] skip task")) {
+        return null;
+      }
+
+      return [{
+        task: autoTask,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup",
+      }, {
+        task: completeTask,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup\n  - [ ] auto: annotate setup",
+      }, {
+        task: skipTask,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup\n  - [ ] auto: annotate setup\n  - [ ] complete task",
+      }];
+    });
+
+    dependencies.toolResolver = {
+      resolve: (toolName) => {
+        if (toolName === "auto") {
+          return {
+            name: "auto",
+            kind: "handler",
+            frontmatter: { skipExecution: true, shouldVerify: false },
+            handler: async () => ({ skipExecution: true, shouldVerify: false }),
+          };
+        }
+        return undefined;
+      },
+      listKnownToolNames: () => ["auto"],
+    };
+
+    dependencies.templateLoader.load = (templatePath: string) => {
+      if (templatePath.endsWith("execute.md")) {
+        return "{{task}}";
+      }
+      return null;
+    };
+
+    dependencies.workerExecutor.runWorker = vi.fn(async (request) => {
+      if (request.prompt === "complete task") {
+        const lines = fileSystem.readText(taskFile).split("\n");
+        lines[3] = "  - [x] skip task";
+        fileSystem.writeText(taskFile, lines.join("\n"));
+      }
+      return { exitCode: 0, stdout: "", stderr: "" };
+    });
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({
+      verify: false,
+      runAll: true,
+      mode: "tui",
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(1);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: "complete task",
+      mode: "tui",
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "info",
+      message: `Skipping parallel sibling at ${taskFile}:4 because it is already checked.`,
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "success",
+      message: "All tasks completed (2 tasks total).",
+    }));
+    expect(fileSystem.readText(taskFile)).toContain("  - [x] auto: annotate setup");
+    expect(fileSystem.readText(taskFile)).toContain("  - [x] complete task");
+    expect(fileSystem.readText(taskFile)).toContain("  - [x] skip task");
+  });
+
+  it("does not reprocess already-completed siblings when retrying a failed parallel batch", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] parallel: setup",
+        "  - [ ] first task",
+        "  - [ ] second task",
+      ].join("\n") + "\n",
+    });
+    const firstTask = createTask(taskFile, "first task", { index: 1, line: 2, depth: 1 });
+    const secondTask = createTask(taskFile, "second task", { index: 2, line: 3, depth: 1 });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: firstTask,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      const source = fileSystem.readText(taskFile);
+      if (source.includes("- [x] first task") && source.includes("- [x] second task")) {
+        return null;
+      }
+
+      return [{
+        task: firstTask,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup",
+      }, {
+        task: secondTask,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup\n  - [ ] first task",
+      }];
+    });
+
+    dependencies.templateLoader.load = (templatePath: string) => {
+      if (templatePath.endsWith("execute.md")) {
+        return "{{task}}";
+      }
+      return null;
+    };
+
+    let secondTaskAttempts = 0;
+    dependencies.workerExecutor.runWorker = vi.fn(async (request) => {
+      if (request.prompt === "second task") {
+        secondTaskAttempts++;
+        if (secondTaskAttempts === 1) {
+          return { exitCode: 1, stdout: "", stderr: "first attempt failed" };
+        }
+      }
+      return { exitCode: 0, stdout: "", stderr: "" };
+    });
+
+    const runTask = createRunTaskExecution(dependencies);
+    const firstRunCode = await runTask(createOptions({
+      verify: false,
+      runAll: true,
+      mode: "tui",
+    }));
+
+    expect(firstRunCode).toBe(1);
+    expect(fileSystem.readText(taskFile)).toContain("  - [x] first task");
+    expect(fileSystem.readText(taskFile)).toContain("  - [ ] second task");
+
+    const retryRunCode = await runTask(createOptions({
+      verify: false,
+      runAll: true,
+      mode: "tui",
+    }));
+
+    expect(retryRunCode).toBe(0);
+    const workerPrompts = vi.mocked(dependencies.workerExecutor.runWorker).mock.calls
+      .map(([request]) => request.prompt);
+    expect(workerPrompts.filter((prompt) => prompt === "first task")).toHaveLength(1);
+    expect(workerPrompts.filter((prompt) => prompt === "second task")).toHaveLength(2);
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "info",
+      message: `Skipping parallel sibling at ${taskFile}:2 because it is already checked.`,
+    }));
+    expect(fileSystem.readText(taskFile)).toContain("  - [x] first task");
+    expect(fileSystem.readText(taskFile)).toContain("  - [x] second task");
+  });
+
+  it("keeps deferred commit aggregation deterministic for parallel children regardless of completion order", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] parallel: setup",
+        "  - [ ] first task",
+        "  - [ ] second task",
+      ].join("\n") + "\n",
+    });
+    const firstTask = createTask(taskFile, "first task", { index: 1, line: 2, depth: 1 });
+    const gitClient = createGitClientMock();
+    gitClient.run = vi.fn(async (args: string[]) => {
+      if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+        return "true";
+      }
+      if (args[0] === "status") {
+        return "";
+      }
+      if (args[0] === "rev-parse" && args[1] === "HEAD") {
+        return "abc123";
+      }
+      return "";
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task: firstTask,
+      fileSystem,
+      gitClient,
+    });
+
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      const source = fileSystem.readText(taskFile);
+      const runnableChildren = parseTasks(source, taskFile).filter((task) => !task.checked && task.depth === 1);
+      if (runnableChildren.length === 0) {
+        return null;
+      }
+
+      return runnableChildren.map((task) => ({
+        task,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup",
+      }));
+    });
+
+    dependencies.templateLoader.load = (templatePath: string) => {
+      if (templatePath.endsWith("execute.md")) {
+        return "{{task}}";
+      }
+      return null;
+    };
+
+    dependencies.workerExecutor.runWorker = vi.fn(async (request) => {
+      if (request.prompt === "first task") {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      return { exitCode: 0, stdout: "", stderr: "" };
+    });
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({
+      verify: false,
+      runAll: true,
+      commitAfterComplete: true,
+      commitMode: "file-done",
+      mode: "wait",
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(2);
+    const commitCalls = vi.mocked(gitClient.run).mock.calls
+      .filter(([args]) => args[0] === "commit");
+    expect(commitCalls).toHaveLength(1);
+    expect(commitCalls[0]?.[0]).toEqual([
+      "commit",
+      "-m",
+      "rundown: complete \"second task\" in tasks.md",
+    ]);
+  });
+
+  it("benchmarks representative parallel execution while preserving sequential pacing for non-parallel tasks", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const stepDelayMs = 200;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] parallel: setup",
+        "  - [ ] parallel child 1",
+        "  - [ ] parallel child 2",
+        "  - [ ] parallel child 3",
+        "- [ ] sequential task 1",
+        "- [ ] sequential task 2",
+      ].join("\n") + "\n",
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "parallel child 1", { index: 1, line: 2, depth: 1 }),
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      const source = fileSystem.readText(taskFile);
+      const parsed = parseTasks(source, taskFile);
+      const parent = parsed.find((task) => task.depth === 0 && task.text === "parallel: setup");
+      const parallelChildren = parsed
+        .filter((task) => task.depth === 1 && task.text.startsWith("parallel child "));
+      const runnableChildren = parallelChildren.filter((task) => !task.checked);
+      const allChildrenChecked = parallelChildren.length > 0 && runnableChildren.length === 0;
+
+      if (runnableChildren.length > 0) {
+        return runnableChildren.map((task) => ({
+          task,
+          source: "tasks.md",
+          contextBefore: "- [ ] parallel: setup",
+        }));
+      }
+
+      if (parent && !parent.checked && allChildrenChecked) {
+        return [{
+          task: parent,
+          source: "tasks.md",
+          contextBefore: "",
+        }];
+      }
+
+      const nextSequential = parsed.find(
+        (task) => task.depth === 0 && task.text.startsWith("sequential task ") && !task.checked,
+      );
+      if (!nextSequential) {
+        return null;
+      }
+
+      return [{
+        task: nextSequential,
+        source: "tasks.md",
+        contextBefore: "",
+      }];
+    });
+
+    dependencies.templateLoader.load = (templatePath: string) => {
+      if (templatePath.endsWith("execute.md")) {
+        return "{{task}}";
+      }
+      return null;
+    };
+
+    const taskStartTimes = new Map<string, number>();
+    dependencies.workerExecutor.runWorker = vi.fn(async (request) => {
+      taskStartTimes.set(request.prompt, Date.now());
+      await new Promise((resolve) => setTimeout(resolve, stepDelayMs));
+      return { exitCode: 0, stdout: "", stderr: "" };
+    });
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({
+      verify: false,
+      runAll: true,
+      mode: "wait",
+    }));
+
+    expect(code).toBe(0);
+    const workerPrompts = vi.mocked(dependencies.workerExecutor.runWorker).mock.calls
+      .map(([request]) => request.prompt);
+    expect(workerPrompts.filter((prompt) => prompt === "parallel child 1")).toHaveLength(1);
+    expect(workerPrompts.filter((prompt) => prompt === "parallel child 2")).toHaveLength(1);
+    expect(workerPrompts.filter((prompt) => prompt === "parallel child 3")).toHaveLength(1);
+    expect(workerPrompts.filter((prompt) => prompt === "sequential task 1")).toHaveLength(1);
+    expect(workerPrompts.filter((prompt) => prompt === "sequential task 2")).toHaveLength(1);
+
+    const parallelStarts = [
+      taskStartTimes.get("parallel child 1"),
+      taskStartTimes.get("parallel child 2"),
+      taskStartTimes.get("parallel child 3"),
+    ]
+      .filter((value): value is number => typeof value === "number")
+      .sort((left, right) => left - right);
+    const sequentialStarts = [
+      taskStartTimes.get("sequential task 1"),
+      taskStartTimes.get("sequential task 2"),
+    ]
+      .filter((value): value is number => typeof value === "number")
+      .sort((left, right) => left - right);
+
+    expect(parallelStarts).toHaveLength(3);
+    expect(sequentialStarts).toHaveLength(2);
+
+    const parallelStartSpreadMs = parallelStarts[2]! - parallelStarts[0]!;
+    const sequentialGapMs = sequentialStarts[1]! - sequentialStarts[0]!;
+    const parallelStartsBeforeSequential = parallelStarts.filter(
+      (startedAtMs) => startedAtMs < sequentialStarts[0]!,
+    ).length;
+
+    expect(parallelStartSpreadMs).toBeLessThan(stepDelayMs * 3);
+    expect(parallelStartsBeforeSequential).toBe(3);
+    expect(sequentialGapMs).toBeGreaterThanOrEqual(stepDelayMs - 40);
+
+    const latestParallelStartMs = parallelStarts[2]!;
+    expect(sequentialStarts[0]!).toBeGreaterThanOrEqual(latestParallelStartMs + stepDelayMs - 40);
+
+    expect(fileSystem.readText(taskFile)).toBe([
+      "- [x] parallel: setup",
+      "  - [x] parallel child 1",
+      "  - [x] parallel child 2",
+      "  - [x] parallel child 3",
+      "- [x] sequential task 1",
+      "- [x] sequential task 2",
+      "",
+    ].join("\n"));
+  });
+
+  it("continues selecting a single task when mode is not tui", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] parallel: setup",
+        "  - [ ] first task",
+        "  - [ ] second task",
+      ].join("\n") + "\n",
+    });
+    const firstTask = createTask(taskFile, "first task", { index: 1, line: 2, depth: 1 });
+    const secondTask = createTask(taskFile, "second task", { index: 2, line: 3, depth: 1 });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: firstTask,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    dependencies.taskSelector.selectNextTask = vi.fn()
+      .mockReturnValueOnce([{
+        task: firstTask,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup",
+      }, {
+        task: secondTask,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup\n  - [ ] first task",
+      }])
+      .mockReturnValueOnce(null);
+
+    dependencies.templateLoader.load = (templatePath: string) => {
+      if (templatePath.endsWith("execute.md")) {
+        return "{{task}}";
+      }
+      return null;
+    };
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({
+      verify: false,
+      mode: "wait",
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(1);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledWith(expect.objectContaining({ prompt: "first task" }));
+    expect(events.some((event) => event.kind === "info"
+      && event.message === "Parallel batch selected in TUI mode; executing tasks sequentially.")).toBe(false);
+  });
+
   it("pauses --all execution until interactive question input resolves", async () => {
     const cwd = "/workspace";
     const taskFile = `${cwd}/tasks.md`;
@@ -1639,11 +2497,11 @@ describe("run-task-execution helpers", () => {
       if (!next) {
         return null;
       }
-      return {
+      return [{
         task: next,
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     let resolvePrompt: ((value: { value: string; usedDefault: boolean; interactive: boolean }) => void) | undefined;
@@ -1728,11 +2586,11 @@ describe("run-task-execution helpers", () => {
       if (!next) {
         return null;
       }
-      return {
+      return [{
         task: next,
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     const promptResolvers: Array<(value: { value: string; usedDefault: boolean; interactive: boolean }) => void> = [];

@@ -1,5 +1,8 @@
 import { type Task } from "../domain/parser.js";
+import { parseTasks } from "../domain/parser.js";
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
+import { isParallelGroupTaskText } from "../domain/parallel-group.js";
+import { hasUncheckedDescendants } from "../domain/task-selection.js";
 import { runVerifyRepairLoop } from "./verify-repair-loop.js";
 import { handleTemplateCliFailure } from "./cli-block-handlers.js";
 import {
@@ -289,6 +292,38 @@ export async function completeTaskIteration(params: {
           usageLimitDetected ? RUN_REASON_USAGE_LIMIT_DETECTED : RUN_REASON_VERIFICATION_FAILED,
           2,
         ),
+        groupEnded: false,
+      };
+    }
+  }
+
+  {
+    const latestSource = dependencies.fileSystem.readText(task.file);
+    const latestTasks = parseTasks(latestSource, task.file);
+    const latestTask = latestTasks.find((candidate) => candidate.line === task.line && candidate.index === task.index)
+      ?? latestTasks.find((candidate) => candidate.line === task.line);
+    const isParallelGroupTask = latestTask
+      ? latestTask.intent === "parallel-group"
+        || isParallelGroupTaskText(latestTask.text, dependencies.toolResolver)
+      : task.intent === "parallel-group"
+        || isParallelGroupTaskText(task.text, dependencies.toolResolver);
+
+    if (isParallelGroupTask && latestTask && hasUncheckedDescendants(latestTask, latestTasks, { useChildren: true })) {
+      const message = "Parallel-group parent cannot auto-complete while unchecked descendants remain.";
+      emit({ kind: "error", message });
+      await afterTaskFailed(
+        dependencies,
+        task,
+        sourceText,
+        onFailCommand,
+        hideHookOutput,
+        extraTemplateVars,
+      );
+      return {
+        continueLoop: false,
+        forceRetryableFailure: false,
+        failureMessage: message,
+        exitCode: await failRun(1, "failed", message, 1),
         groupEnded: false,
       };
     }

@@ -3,7 +3,7 @@ import type { ToolResolverPort } from "./ports/tool-resolver-port.js";
 /**
  * Supported execution intents inferred from task wording.
  */
-export type TaskIntent = "verify-only" | "memory-capture" | "tool-expansion" | "fast-execution" | "execute-and-verify";
+export type TaskIntent = "verify-only" | "memory-capture" | "tool-expansion" | "fast-execution" | "parallel-group" | "execute-and-verify";
 
 /**
  * Decision payload returned after classifying task intent.
@@ -29,8 +29,19 @@ export interface TaskIntentDecision {
 const EXPLICIT_VERIFY_PREFIX = /^(verify|confirm|check)\s*:/i;
 // Prefix marker that requests memory capture execution semantics.
 const MEMORY_CAPTURE_PREFIX = /^(memory|memorize|remember|inventory)\s*:\s*/i;
+// Prefix marker that groups direct child tasks for parallel execution.
+const PARALLEL_GROUP_PREFIX = /^(parallel|concurrent|par)\s*:\s*/i;
 // Prefix marker that requests execution without verification.
 const FAST_EXECUTION_PREFIX = /^(fast|raw)\s*:/i;
+
+function extractParallelGroupPayload(taskText: string): string | null {
+  const prefixMatch = taskText.match(PARALLEL_GROUP_PREFIX);
+  if (!prefixMatch) {
+    return null;
+  }
+
+  return taskText.slice(prefixMatch[0].length).trim();
+}
 
 function extractMemoryCaptureParts(taskText: string): {
   payload: string;
@@ -105,6 +116,16 @@ export function classifyTaskIntent(taskText: string, toolResolver?: ToolResolver
       normalizedTaskText: memoryCapture.payload,
       hasEmptyPayload: memoryCapture.payload.length === 0,
       memoryCapturePrefix: memoryCapture.prefix,
+    };
+  }
+
+  const parallelPayload = extractParallelGroupPayload(normalized);
+  if (parallelPayload !== null) {
+    return {
+      intent: "parallel-group",
+      reason: "explicit parallel marker",
+      normalizedTaskText: parallelPayload,
+      hasEmptyPayload: parallelPayload.length === 0,
     };
   }
 

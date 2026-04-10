@@ -62,11 +62,13 @@ export function createNextTask(
     }
 
     // Select the next unchecked task according to the requested ordering mode.
-    const result = dependencies.taskSelector.selectNextTask(files, sortMode);
-    if (!result) {
+    const selection = dependencies.taskSelector.selectNextTask(files, sortMode);
+    if (!selection || selection.length === 0) {
       emit({ kind: "info", message: formatNoItemsFound("unchecked tasks") });
       return EXIT_CODE_NO_WORK;
     }
+
+    const result = selection[0]!;
 
     const totalTasksInFile = parseTasks(result.source, result.task.file).length;
     emit({

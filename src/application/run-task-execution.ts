@@ -20,6 +20,7 @@ import {
   maybeResetFileCheckboxes,
 } from "./checkbox-operations.js";
 import { parseTasks } from "../domain/parser.js";
+import { filterRunnable } from "../domain/task-selection.js";
 import {
   afterTaskComplete,
   finalizeRunArtifacts,
@@ -33,6 +34,7 @@ import { extractForceModifier } from "../domain/prefix-chain.js";
 import { applyTraceStatisticsDefaults } from "../domain/worker-config.js";
 import { createCachedCommandExecutor } from "./cached-command-executor.js";
 import { formatNoItemsFound, formatNoItemsFoundMatching, pluralize } from "./run-task-utils.js";
+import { isParallelGroupTaskText } from "../domain/parallel-group.js";
 import {
   getAutomationWorkerCommand,
   isOpenCodeWorkerCommand,
@@ -501,6 +503,83 @@ export function createRunTaskExecution(
       files: string[],
       emitCompletionMessage: boolean,
     ): Promise<number> => {
+      const refreshRunnableSelection = (
+        selected: TaskSelectionResult,
+      ):
+        | { kind: "runnable"; selection: TaskSelectionResult }
+        | { kind: "skip"; reason: string } => {
+        if (!dependencies.fileSystem.exists(selected.task.file)) {
+          return {
+            kind: "skip",
+            reason: "its source file no longer exists",
+          };
+        }
+
+        const refreshedSelection = dependencies.taskSelector.selectTaskByLocation(
+          selected.task.file,
+          selected.task.line,
+        );
+        if (!refreshedSelection) {
+          return {
+            kind: "skip",
+            reason: "it is no longer present at its original location",
+          };
+        }
+
+        if (refreshedSelection.task.checked) {
+          return {
+            kind: "skip",
+            reason: "it is already checked",
+          };
+        }
+
+        const source = dependencies.fileSystem.readText(refreshedSelection.task.file);
+        const allTasks = parseTasks(source, refreshedSelection.task.file);
+        const stillRunnable = filterRunnable(allTasks)
+          .some((candidate) => candidate.line === refreshedSelection.task.line);
+        if (!stillRunnable) {
+          return {
+            kind: "skip",
+            reason: "it is no longer runnable",
+          };
+        }
+
+        return {
+          kind: "runnable",
+          selection: refreshedSelection,
+        };
+      };
+
+      const hasParallelGroupAncestor = (task: TaskSelectionResult["task"]): boolean => {
+        if (!dependencies.fileSystem.exists(task.file)) {
+          return false;
+        }
+
+        const source = dependencies.fileSystem.readText(task.file);
+        const tasks = parseTasks(source, task.file);
+        const taskIndex = tasks.findIndex((candidate) => candidate.line === task.line);
+        if (taskIndex < 0) {
+          return false;
+        }
+
+        const selectedTask = tasks[taskIndex]!;
+        let currentDepth = selectedTask.depth;
+        for (let index = taskIndex - 1; index >= 0; index -= 1) {
+          const candidate = tasks[index]!;
+          if (candidate.depth >= currentDepth) {
+            continue;
+          }
+
+          if (candidate.intent === "parallel-group"
+            || isParallelGroupTaskText(candidate.text, dependencies.toolResolver)) {
+            return true;
+          }
+          currentDepth = candidate.depth;
+        }
+
+        return false;
+      };
+
       const countUncheckedTasks = (): number => files.reduce((count, file) => {
         if (!dependencies.fileSystem.exists(file)) {
           return count;
@@ -517,8 +596,8 @@ export function createRunTaskExecution(
       // eslint-disable-next-line no-constant-condition
       while (true) {
           // Select the next available task using the configured sort strategy.
-          const result = dependencies.taskSelector.selectNextTask(files, sortMode);
-          if (!result) {
+          const selection = dependencies.taskSelector.selectNextTask(files, sortMode);
+          if (!selection || selection.length === 0) {
             state.runCompleted = true;
             if (state.tasksCompleted > 0) {
               if (emitCompletionMessage) {
@@ -537,206 +616,260 @@ export function createRunTaskExecution(
             return EXIT_CODE_NO_WORK;
           }
 
-          const initialForceExtraction = extractForceModifier(result.task.text, dependencies.toolResolver);
-          const maxTaskAttempts = initialForceExtraction.isForce
-            ? initialForceExtraction.maxAttempts
-            : 1;
-          const forceTaskIdentity = {
-            filePath: result.task.file,
-            line: result.task.line,
-          };
-          let selectedTaskResult = result;
-          let activeForceExtraction = initialForceExtraction;
-          let attempt = 0;
-          let forceRetryMetadata: {
-            attemptNumber: number;
-            maxAttempts: number;
-            previousRunId: string;
-            previousExitCode: number;
-          } | undefined;
-          let iterationResult: Awaited<ReturnType<typeof runTaskIteration>> | undefined;
-
-          while (attempt < maxTaskAttempts) {
-            attempt++;
-            const isFinalAttempt = attempt >= maxTaskAttempts;
-
-            if (attempt > 1 && initialForceExtraction.isForce) {
-              totalTasks = countUncheckedTasks();
-              const refreshedSelection = dependencies.taskSelector.selectTaskByLocation(
-                forceTaskIdentity.filePath,
-                forceTaskIdentity.line,
-              );
-              if (!refreshedSelection) {
-                emit({
-                  kind: "error",
-                  message: "Force retry aborted: original task at "
-                    + forceTaskIdentity.filePath
-                    + ":"
-                    + forceTaskIdentity.line
-                    + " is no longer selectable.",
-                });
-                return EXIT_CODE_FAILURE;
-              }
-
-              selectedTaskResult = refreshedSelection;
-              activeForceExtraction = extractForceModifier(
-                refreshedSelection.task.text,
-                dependencies.toolResolver,
-              );
-
-              if (selectedTaskResult.task.checked) {
+          const shouldRunBatchSequentiallyForTui = selection.length > 1 && mode === "tui";
+          if (shouldRunBatchSequentiallyForTui) {
+            emit({
+              kind: "info",
+              message: "Parallel batch selected in TUI mode; executing tasks sequentially.",
+            });
+          }
+          const selectedBatch = shouldRunBatchSequentiallyForTui
+            ? selection
+            : [selection[0]!];
+          const selectedBatchWasParallel = selectedBatch.length > 1;
+          const dedupedBatch = selectedBatchWasParallel
+            ? selectedBatch.filter((candidate, index, batch) => {
+              const firstIndex = batch.findIndex((selected) => selected.task.file === candidate.task.file
+                && selected.task.line === candidate.task.line);
+              if (firstIndex !== index) {
                 emit({
                   kind: "info",
-                  message: "Force retry stopped: task is already checked at "
-                    + forceTaskIdentity.filePath
+                  message: "Skipping duplicate parallel sibling selection at "
+                    + candidate.task.file
                     + ":"
-                    + forceTaskIdentity.line
+                    + candidate.task.line
                     + ".",
                 });
-                state.tasksCompleted++;
-                iterationResult = {
-                  continueLoop: effectiveRunAll,
-                  exitCode: 0,
-                  forceRetryableFailure: false,
-                };
+                return false;
+              }
+              return true;
+            })
+            : selectedBatch;
+
+          for (const result of dedupedBatch) {
+            let batchSelection = result;
+            if (selectedBatchWasParallel) {
+              const refreshedSelection = refreshRunnableSelection(result);
+              if (refreshedSelection.kind === "skip") {
+                emit({
+                  kind: "info",
+                  message: "Skipping parallel sibling at "
+                    + result.task.file
+                    + ":"
+                    + result.task.line
+                    + " because "
+                    + refreshedSelection.reason
+                    + ".",
+                });
+                continue;
+              }
+              batchSelection = refreshedSelection.selection;
+            }
+
+            const initialForceExtraction = extractForceModifier(batchSelection.task.text, dependencies.toolResolver);
+            const maxTaskAttempts = initialForceExtraction.isForce
+              ? initialForceExtraction.maxAttempts
+              : 1;
+            const forceTaskIdentity = {
+              filePath: batchSelection.task.file,
+              line: batchSelection.task.line,
+            };
+            let selectedTaskResult = batchSelection;
+            let activeForceExtraction = initialForceExtraction;
+            let attempt = 0;
+            let forceRetryMetadata: {
+              attemptNumber: number;
+              maxAttempts: number;
+              previousRunId: string;
+              previousExitCode: number;
+            } | undefined;
+            let iterationResult: Awaited<ReturnType<typeof runTaskIteration>> | undefined;
+
+            while (attempt < maxTaskAttempts) {
+              attempt++;
+              const isFinalAttempt = attempt >= maxTaskAttempts;
+
+              if (attempt > 1 && initialForceExtraction.isForce) {
+                totalTasks = countUncheckedTasks();
+                const refreshedSelection = dependencies.taskSelector.selectTaskByLocation(
+                  forceTaskIdentity.filePath,
+                  forceTaskIdentity.line,
+                );
+                if (!refreshedSelection) {
+                  emit({
+                    kind: "error",
+                    message: "Force retry aborted: original task at "
+                      + forceTaskIdentity.filePath
+                      + ":"
+                      + forceTaskIdentity.line
+                      + " is no longer selectable.",
+                  });
+                  return EXIT_CODE_FAILURE;
+                }
+
+                selectedTaskResult = refreshedSelection;
+                activeForceExtraction = extractForceModifier(
+                  refreshedSelection.task.text,
+                  dependencies.toolResolver,
+                );
+
+                if (selectedTaskResult.task.checked) {
+                  emit({
+                    kind: "info",
+                    message: "Force retry stopped: task is already checked at "
+                      + forceTaskIdentity.filePath
+                      + ":"
+                      + forceTaskIdentity.line
+                      + ".",
+                  });
+                  state.tasksCompleted++;
+                  iterationResult = {
+                    continueLoop: effectiveRunAll,
+                    exitCode: 0,
+                    forceRetryableFailure: false,
+                  };
+                  break;
+                }
+              }
+
+              // Intermediate `force:` retries intentionally bypass `failRun()` so we
+              // do not run `finishRun()`/trace enrichment for attempts that will be
+              // discarded. Final attempt failures still flow through `failRun()`.
+              const attemptFailRun = initialForceExtraction.isForce && !isFinalAttempt
+                ? async (code: number): Promise<number> => code
+                : failRun;
+
+              // Execute one full task iteration and inspect control-flow instructions.
+              const suppressPerChildCommit = commitAfterComplete
+                && commitMode === "per-task"
+                && hasParallelGroupAncestor(selectedTaskResult.task);
+              iterationResult = await runTaskIteration({
+                dependencies,
+                emit,
+                state,
+                context: {
+                  source,
+                  fileSource: selectedTaskResult.source,
+                  taskIndex: currentTaskIndex,
+                  totalTasks,
+                  files,
+                  task: selectedTaskResult.task,
+                },
+                execution: {
+                  mode,
+                  verbose,
+                  taskIndex: currentTaskIndex,
+                  totalTasks,
+                  forceAttempts,
+                  forceStrippedTaskText: activeForceExtraction.isForce
+                    ? activeForceExtraction.strippedText
+                    : undefined,
+                  keepArtifacts,
+                  printPrompt,
+                  dryRun,
+                  dryRunSuppressesCliExpansion,
+                  cliExpansionEnabled,
+                  ignoreCliBlock,
+                  verify,
+                  noRepair,
+                  repairAttempts,
+                  forceExecute,
+                  showAgentOutput,
+                  hideHookOutput,
+                  trace,
+                  traceOnly,
+                  forceRetryMetadata,
+                },
+                worker: {
+                  workerPattern,
+                  loadedWorkerConfig,
+                },
+                verifyConfig: {
+                  configuredOnlyVerify,
+                  configuredShouldVerify,
+                  maxRepairAttempts,
+                  allowRepair,
+                },
+                completion: {
+                  effectiveRunAll,
+                  commitAfterComplete: suppressPerChildCommit ? false : commitAfterComplete,
+                  deferCommitUntilPostRun,
+                  commitMessageTemplate,
+                  onCompleteCommand,
+                  onFailCommand,
+                  extraTemplateVars,
+                  traceStatisticsConfig: loadedWorkerConfig?.traceStatistics,
+                },
+                prompts: {
+                  extraTemplateVars: templateVarsWithUserVariables,
+                  cliExecutionOptions,
+                  cliBlockExecutor,
+                  executionEnv: rundownVarEnv,
+                  nowIso,
+                },
+                traceConfig: {
+                  traceRunSession,
+                  pendingPreRunResetTraceEvents,
+                  roundContext: {
+                    currentRound,
+                    totalRounds: rounds,
+                  },
+                },
+                lifecycle: {
+                  failRun: attemptFailRun,
+                  finishRun,
+                  resetArtifacts,
+                },
+              });
+
+              const exitCode = iterationResult.exitCode ?? 0;
+              const didFail = !iterationResult.continueLoop && exitCode !== 0;
+              const shouldRetryForceAttempt = didFail
+                && initialForceExtraction.isForce
+                && iterationResult.forceRetryableFailure === true
+                && !isFinalAttempt;
+              if (!shouldRetryForceAttempt) {
+                if (!iterationResult.continueLoop) {
+                  return exitCode;
+                }
                 break;
               }
-            }
 
-            // Intermediate `force:` retries intentionally bypass `failRun()` so we
-            // do not run `finishRun()`/trace enrichment for attempts that will be
-            // discarded. Final attempt failures still flow through `failRun()`.
-            const attemptFailRun = initialForceExtraction.isForce && !isFinalAttempt
-              ? async (code: number): Promise<number> => code
-              : failRun;
-
-            // Execute one full task iteration and inspect control-flow instructions.
-            iterationResult = await runTaskIteration({
-              dependencies,
-              emit,
-              state,
-              context: {
-                source,
-                fileSource: selectedTaskResult.source,
-                taskIndex: currentTaskIndex,
-                totalTasks,
-                files,
-                task: selectedTaskResult.task,
-              },
-              execution: {
-                mode,
-                verbose,
-                taskIndex: currentTaskIndex,
-                totalTasks,
-                forceAttempts,
-                forceStrippedTaskText: activeForceExtraction.isForce
-                  ? activeForceExtraction.strippedText
-                  : undefined,
-                keepArtifacts,
-                printPrompt,
-                dryRun,
-                dryRunSuppressesCliExpansion,
-                cliExpansionEnabled,
-                ignoreCliBlock,
-                verify,
-                noRepair,
-                repairAttempts,
-                forceExecute,
-                showAgentOutput,
-                hideHookOutput,
-                trace,
-                traceOnly,
-                forceRetryMetadata,
-              },
-              worker: {
-                workerPattern,
-                loadedWorkerConfig,
-              },
-              verifyConfig: {
-                configuredOnlyVerify,
-                configuredShouldVerify,
-                maxRepairAttempts,
-                allowRepair,
-              },
-              completion: {
-                effectiveRunAll,
-                commitAfterComplete,
-                deferCommitUntilPostRun,
-                commitMessageTemplate,
-                onCompleteCommand,
-                onFailCommand,
-                extraTemplateVars,
-                traceStatisticsConfig: loadedWorkerConfig?.traceStatistics,
-              },
-              prompts: {
-                extraTemplateVars: templateVarsWithUserVariables,
-                cliExecutionOptions,
-                cliBlockExecutor,
-                executionEnv: rundownVarEnv,
-                nowIso,
-              },
-              traceConfig: {
-                traceRunSession,
-                pendingPreRunResetTraceEvents,
-                roundContext: {
-                  currentRound,
-                  totalRounds: rounds,
-                },
-              },
-              lifecycle: {
-                failRun: attemptFailRun,
-                finishRun,
-                resetArtifacts,
-              },
-            });
-
-            const exitCode = iterationResult.exitCode ?? 0;
-            const didFail = !iterationResult.continueLoop && exitCode !== 0;
-            const shouldRetryForceAttempt = didFail
-              && initialForceExtraction.isForce
-              && iterationResult.forceRetryableFailure === true
-              && !isFinalAttempt;
-            if (!shouldRetryForceAttempt) {
-              if (!iterationResult.continueLoop) {
-                return exitCode;
+              emit({
+                kind: "warn",
+                message: "Force retry "
+                  + (attempt + 1)
+                  + " of "
+                  + maxTaskAttempts
+                  + " — restarting task iteration from scratch",
+              });
+              const previousRunId = state.artifactContext?.runId ?? traceRunSession.getRunId();
+              forceRetryMetadata = typeof previousRunId === "string" && previousRunId.length > 0
+                ? {
+                  attemptNumber: attempt + 1,
+                  maxAttempts: maxTaskAttempts,
+                  previousRunId,
+                  previousExitCode: exitCode,
+                }
+                : undefined;
+              runFailed = false;
+              state.runCompleted = false;
+              dependencies.verificationStore.remove(selectedTaskResult.task);
+              state.deferredCommitContext = null;
+              resetArtifacts();
+              if (cacheCliBlocks) {
+                cliBlockExecutor = createCachedCommandExecutor(defaultCliBlockExecutor);
               }
-              break;
             }
 
-            emit({
-              kind: "warn",
-              message: "Force retry "
-                + (attempt + 1)
-                + " of "
-                + maxTaskAttempts
-                + " — restarting task iteration from scratch",
-            });
-            const previousRunId = state.artifactContext?.runId ?? traceRunSession.getRunId();
-            forceRetryMetadata = typeof previousRunId === "string" && previousRunId.length > 0
-              ? {
-                attemptNumber: attempt + 1,
-                maxAttempts: maxTaskAttempts,
-                previousRunId,
-                previousExitCode: exitCode,
-              }
-              : undefined;
-            runFailed = false;
-            state.runCompleted = false;
-            dependencies.verificationStore.remove(selectedTaskResult.task);
-            state.deferredCommitContext = null;
-            resetArtifacts();
-            if (cacheCliBlocks) {
-              cliBlockExecutor = createCachedCommandExecutor(defaultCliBlockExecutor);
+            if (!iterationResult) {
+              continue;
             }
-          }
 
-          if (!iterationResult) {
-            continue;
-          }
-
-          currentTaskIndex++;
-          if (!iterationResult.continueLoop) {
-            return iterationResult.exitCode ?? 0;
+            currentTaskIndex++;
+            if (!iterationResult.continueLoop) {
+              return iterationResult.exitCode ?? 0;
+            }
           }
         }
       };

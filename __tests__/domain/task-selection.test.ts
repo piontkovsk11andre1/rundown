@@ -176,6 +176,42 @@ describe("findRemainingSiblings", () => {
 
     expect(findRemainingSiblings(first, [first, secondChecked, thirdChecked])).toEqual([]);
   });
+
+  it("includes only direct runnable siblings under the same parent", () => {
+    const parallelParent = makeTask({ text: "parallel: setup", depth: 0, index: 0, line: 1, checked: false });
+    const groupA = makeTask({ text: "Group A", depth: 1, index: 1, line: 2, checked: false });
+    const a1 = makeTask({ text: "A1", depth: 2, index: 2, line: 3, checked: false });
+    const a1Descendant = makeTask({ text: "A1 detail", depth: 3, index: 3, line: 4, checked: false });
+    const a2 = makeTask({ text: "A2", depth: 2, index: 4, line: 5, checked: false });
+    const a3Checked = makeTask({ text: "A3", depth: 2, index: 5, line: 6, checked: true });
+    const groupB = makeTask({ text: "Group B", depth: 1, index: 6, line: 7, checked: false });
+    const b1Cousin = makeTask({ text: "B1", depth: 2, index: 7, line: 8, checked: false });
+
+    expect(
+      findRemainingSiblings(a1, [
+        parallelParent,
+        groupA,
+        a1,
+        a1Descendant,
+        a2,
+        a3Checked,
+        groupB,
+        b1Cousin,
+      ]),
+    ).toEqual([a2]);
+  });
+
+  it("does not include cousins from a different branch at the same depth", () => {
+    const parallelParent = makeTask({ text: "parallel: phase", depth: 0, index: 0, line: 1, checked: false });
+    const branchA = makeTask({ text: "Branch A", depth: 1, index: 1, line: 2, checked: false });
+    const branchATask = makeTask({ text: "A task", depth: 2, index: 2, line: 3, checked: false });
+    const branchB = makeTask({ text: "Branch B", depth: 1, index: 3, line: 4, checked: false });
+    const branchBTask = makeTask({ text: "B task", depth: 2, index: 4, line: 5, checked: false });
+
+    expect(findRemainingSiblings(branchATask, [parallelParent, branchA, branchATask, branchB, branchBTask])).toEqual(
+      [],
+    );
+  });
 });
 
 describe("findUncheckedDescendants", () => {

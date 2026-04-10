@@ -24,7 +24,7 @@ export interface TaskSelectorPort {
   /**
    * Selects the next task from the provided files using the configured sort mode.
    */
-  selectNextTask(files: string[], sortMode: SortMode): TaskSelectionResult | null;
+  selectNextTask(files: string[], sortMode: SortMode): TaskSelectionResult[] | null;
   /**
    * Selects a task by explicit file path and line location.
    */

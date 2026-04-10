@@ -11,6 +11,7 @@
 
 import fs from "node:fs";
 import { parseTasks, type Task } from "../domain/parser.js";
+import { isParallelGroupTaskText } from "../domain/parallel-group.js";
 import { filterRunnable } from "../domain/task-selection.js";
 import { sortFiles, type SortMode } from "../domain/sorting.js";
 import { getFileBirthtimeMs } from "./file-birthtime.js";
@@ -37,6 +38,42 @@ export interface SelectionResult {
   contextBefore: string;
 }
 
+function parentOfTask(task: Task, allTasks: Task[]): Task | null {
+  const taskIndex = allTasks.indexOf(task);
+  if (taskIndex <= 0) {
+    return null;
+  }
+
+  for (let index = taskIndex - 1; index >= 0; index -= 1) {
+    const candidate = allTasks[index]!;
+    if (candidate.depth < task.depth) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function nearestParallelAncestor(task: Task, allTasks: Task[]): Task | null {
+  let current = parentOfTask(task, allTasks);
+  while (current) {
+    if (isParallelGroupTask(current)) {
+      return current;
+    }
+    current = parentOfTask(current, allTasks);
+  }
+
+  return null;
+}
+
+function isParallelGroupTask(task: Task): boolean {
+  if (task.intent === "parallel-group") {
+    return true;
+  }
+
+  return isParallelGroupTaskText(task.text);
+}
+
 /**
  * Find the next runnable unchecked task across all given files.
  *
@@ -50,7 +87,7 @@ export interface SelectionResult {
 export function selectNextTask(
   files: string[],
   sortMode: SortMode = "name-sort",
-): SelectionResult | null {
+): SelectionResult[] | null {
   // Normalize traversal order so selection is deterministic.
   const sorted = sortFiles(files, sortMode, {
     getBirthtimeMs: (filePath) => getFileBirthtimeMs(filePath, selectorFileSystem),
@@ -59,16 +96,35 @@ export function selectNextTask(
   for (const file of sorted) {
     // Parse all tasks from the current source document.
     const source = fs.readFileSync(file, "utf-8");
+    const lines = source.split("\n");
     const tasks = parseTasks(source, file);
     // Restrict candidates to tasks that are currently executable.
     const runnable = filterRunnable(tasks);
 
     for (const task of runnable) {
+      const parallelAncestor = nearestParallelAncestor(task, tasks);
+      if (parallelAncestor) {
+        const runnableSet = new Set(runnable);
+        const siblingBatch = tasks.filter((candidate) => {
+          if (!runnableSet.has(candidate)) {
+            return false;
+          }
+          const candidateParent = parentOfTask(candidate, tasks);
+          return candidateParent === parallelAncestor;
+        });
+
+        if (siblingBatch.length > 0) {
+          return siblingBatch.map((candidate) => {
+            const contextBefore = lines.slice(0, candidate.line - 1).join("\n");
+            return { task: candidate, source, contextBefore };
+          });
+        }
+      }
+
       // Capture the file content that appears before the selected task.
-      const lines = source.split("\n");
       const contextBefore = lines.slice(0, task.line - 1).join("\n");
 
-      return { task, source, contextBefore };
+      return [{ task, source, contextBefore }];
     }
   }
 

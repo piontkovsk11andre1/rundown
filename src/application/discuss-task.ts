@@ -402,11 +402,13 @@ export function createDiscussTask(
         };
       } else {
         // Select a single unchecked task according to configured sort behavior.
-        const selectedTask = dependencies.taskSelector.selectNextTask(files, sortMode);
-        if (!selectedTask) {
+        const selectedBatch = dependencies.taskSelector.selectNextTask(files, sortMode);
+        if (!selectedBatch || selectedBatch.length === 0) {
           emit({ kind: "info", message: formatNoItemsFound("unchecked tasks") });
           return EXIT_CODE_NO_WORK;
         }
+
+        const selectedTask = selectedBatch[0]!;
 
         taskContext = resolveTaskContext(selectedTask);
       }

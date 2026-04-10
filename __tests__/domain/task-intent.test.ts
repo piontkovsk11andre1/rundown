@@ -93,6 +93,43 @@ describe("classifyTaskIntent", () => {
     expect(classifyTaskIntent("inventory: \r\n ", noToolResolver).hasEmptyPayload).toBe(true);
   });
 
+  it("classifies parallel aliases as parallel-group", () => {
+    const parallelDecision = classifyTaskIntent("parallel: setup all services", noToolResolver);
+    expect(parallelDecision.intent).toBe("parallel-group");
+    expect(parallelDecision.reason).toBe("explicit parallel marker");
+    expect(parallelDecision.normalizedTaskText).toBe("setup all services");
+    expect(parallelDecision.hasEmptyPayload).toBe(false);
+
+    const concurrentDecision = classifyTaskIntent("concurrent: preflight checks", noToolResolver);
+    expect(concurrentDecision.intent).toBe("parallel-group");
+    expect(concurrentDecision.normalizedTaskText).toBe("preflight checks");
+
+    const shortAliasDecision = classifyTaskIntent("par: prep artifacts", noToolResolver);
+    expect(shortAliasDecision.intent).toBe("parallel-group");
+    expect(shortAliasDecision.normalizedTaskText).toBe("prep artifacts");
+  });
+
+  it("matches parallel aliases case-insensitively with colon spacing", () => {
+    expect(classifyTaskIntent("PARALLEL : run setup", noToolResolver).intent).toBe("parallel-group");
+    expect(classifyTaskIntent("  ConCurRent   : configure deps", noToolResolver).intent).toBe("parallel-group");
+    expect(classifyTaskIntent("pAr:\tprepare cache", noToolResolver).intent).toBe("parallel-group");
+  });
+
+  it("trims parallel payload text and flags empty payloads", () => {
+    expect(classifyTaskIntent("  parallel:   setup workers  ", noToolResolver).normalizedTaskText).toBe("setup workers");
+    expect(classifyTaskIntent("concurrent:\n  warm caches", noToolResolver).normalizedTaskText).toBe("warm caches");
+
+    expect(classifyTaskIntent("parallel:", noToolResolver).hasEmptyPayload).toBe(true);
+    expect(classifyTaskIntent("concurrent:   ", noToolResolver).hasEmptyPayload).toBe(true);
+    expect(classifyTaskIntent("par :\n\t", noToolResolver).hasEmptyPayload).toBe(true);
+  });
+
+  it("does not classify non-prefix parallel text as parallel-group", () => {
+    expect(classifyTaskIntent("Run setup tasks in parallel across services", noToolResolver).intent).toBe("execute-and-verify");
+    expect(classifyTaskIntent("Use concurrent workers for preflight checks", noToolResolver).intent).toBe("execute-and-verify");
+    expect(classifyTaskIntent("Update parser output formatting", noToolResolver).intent).toBe("execute-and-verify");
+  });
+
   it("classifies fast: and raw: prefixes as fast-execution", () => {
     const fastDecision = classifyTaskIntent("fast: run release script", noToolResolver);
     expect(fastDecision.intent).toBe("fast-execution");
@@ -309,5 +346,19 @@ describe("classifyTaskIntent", () => {
     const memoryFirst = classifyTaskIntent("memory: fast: capture release notes", noToolResolver);
     expect(memoryFirst.intent).toBe("memory-capture");
     expect(memoryFirst.normalizedTaskText).toBe("fast: capture release notes");
+  });
+
+  it("parses parallel aliases in composed-prefix forms", () => {
+    const parallelThenFast = classifyTaskIntent("parallel: fast: run smoke checks", noToolResolver);
+    expect(parallelThenFast.intent).toBe("parallel-group");
+    expect(parallelThenFast.normalizedTaskText).toBe("fast: run smoke checks");
+
+    const verifyThenParallel = classifyTaskIntent("verify: parallel: run smoke checks", noToolResolver);
+    expect(verifyThenParallel.intent).toBe("verify-only");
+    expect(verifyThenParallel.normalizedTaskText).toBe("verify: parallel: run smoke checks");
+
+    const memoryThenParallel = classifyTaskIntent("memory: parallel: capture release notes", noToolResolver);
+    expect(memoryThenParallel.intent).toBe("memory-capture");
+    expect(memoryThenParallel.normalizedTaskText).toBe("parallel: capture release notes");
   });
 });

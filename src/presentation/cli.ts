@@ -6,7 +6,7 @@ import { DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS } from "../domain/ports/command-execu
 import { CONFIG_DIR_NAME } from "../domain/ports/config-dir-port.js";
 import { collectOption } from "./cli-options.js";
 import { drainAnimationQueue, resetCliOutputPortState, setCliOutputPortQuietMode } from "./output-port.js";
-import { registerLockReleaseSignalHandlers } from "./cli-lock-handlers.js";
+import { awaitLockReleaseShutdown, registerLockReleaseSignalHandlers } from "./cli-lock-handlers.js";
 import {
   configureCommanderOutputHandlers,
   createCliInvocationLogState,
@@ -665,6 +665,7 @@ export async function parseCliArgs(argv: string[]): Promise<void> {
     // Delegate command dispatch and argument validation to commander.
     await program.parseAsync(rundownArgs, { from: "user" });
   } finally {
+    await awaitLockReleaseShutdown();
     cleanupCallCliCacheArtifactAtTeardown(rewrittenArgv, runtimeState.invocationLogState);
   }
 }

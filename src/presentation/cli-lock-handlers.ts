@@ -13,6 +13,7 @@ type TaggedLockReleaseHandler = ((...args: unknown[]) => unknown) & {
 // Minimal cleanup surface required by lock-release shutdown handlers.
 interface LockReleaseApp {
   releaseAllLocks?: () => void;
+  awaitShutdown?: () => Promise<void>;
 }
 
 // Runtime dependencies injected by the caller and resolved lazily by handlers.
@@ -24,6 +25,8 @@ interface LockReleaseHandlerDependencies {
 
 interface LockReleaseHandlerState {
   dependencies: LockReleaseHandlerDependencies;
+  shutdownInProgress: Promise<void> | null;
+  shutdownError: unknown;
 }
 
 /**
@@ -44,6 +47,8 @@ function getLockReleaseHandlerState(): LockReleaseHandlerState {
         getAppForCleanup: () => undefined,
         resolveExitCodeForSignal: () => undefined,
       },
+      shutdownInProgress: null,
+      shutdownError: null,
     };
   }
 
@@ -62,10 +67,47 @@ function releaseHeldFileLocksBestEffort(getAppForCleanup: () => LockReleaseApp |
 }
 
 /**
+ * Waits for app-level in-flight shutdown work to finish before terminating.
+ */
+async function awaitAppShutdownBestEffort(getAppForCleanup: () => LockReleaseApp | undefined): Promise<void> {
+  try {
+    await getAppForCleanup()?.awaitShutdown?.();
+  } catch {
+    // best-effort shutdown coordination: never block process termination on failures
+  }
+}
+
+/**
  * Resolves the most recent lock-release dependencies used by all handlers.
  */
 function resolveLockReleaseHandlerDependencies(): LockReleaseHandlerDependencies {
   return getLockReleaseHandlerState().dependencies;
+}
+
+/**
+ * Runs coordinated signal shutdown exactly once and terminates with provided code.
+ */
+function startLockReleaseShutdownForSignal(signal: NodeJS.Signals): Promise<void> {
+  const state = getLockReleaseHandlerState();
+  if (state.shutdownInProgress) {
+    return state.shutdownInProgress;
+  }
+
+  state.shutdownInProgress = (async () => {
+    const dependencies = resolveLockReleaseHandlerDependencies();
+    await awaitAppShutdownBestEffort(dependencies.getAppForCleanup);
+    releaseHeldFileLocksBestEffort(dependencies.getAppForCleanup);
+    const defaultExitCode = signal === "SIGINT" ? 130 : 143;
+    try {
+      dependencies.terminate(dependencies.resolveExitCodeForSignal?.(signal) ?? defaultExitCode);
+    } catch (error) {
+      state.shutdownError = error;
+    }
+  })().finally(() => {
+    state.shutdownInProgress = null;
+  });
+
+  return state.shutdownInProgress;
 }
 
 /**
@@ -109,20 +151,14 @@ export function registerLockReleaseSignalHandlers({
 
   if (!hasRegisteredLockReleaseHandler("SIGINT")) {
     const sigintHandler = Object.assign(() => {
-      const dependencies = resolveLockReleaseHandlerDependencies();
-      // Exit code 130 indicates termination by Ctrl+C (SIGINT).
-      releaseHeldFileLocksBestEffort(dependencies.getAppForCleanup);
-      dependencies.terminate(dependencies.resolveExitCodeForSignal?.("SIGINT") ?? 130);
+      void startLockReleaseShutdownForSignal("SIGINT");
     }, { [LOCK_RELEASE_SIGNAL_HANDLER_MARKER]: true });
     process.on("SIGINT", sigintHandler);
   }
 
   if (!hasRegisteredLockReleaseHandler("SIGTERM")) {
     const sigtermHandler = Object.assign(() => {
-      const dependencies = resolveLockReleaseHandlerDependencies();
-      // Exit code 143 indicates termination by SIGTERM.
-      releaseHeldFileLocksBestEffort(dependencies.getAppForCleanup);
-      dependencies.terminate(dependencies.resolveExitCodeForSignal?.("SIGTERM") ?? 143);
+      void startLockReleaseShutdownForSignal("SIGTERM");
     }, { [LOCK_RELEASE_SIGNAL_HANDLER_MARKER]: true });
     process.on("SIGTERM", sigtermHandler);
   }
@@ -134,5 +170,21 @@ export function registerLockReleaseSignalHandlers({
       releaseHeldFileLocksBestEffort(dependencies.getAppForCleanup);
     }, { [LOCK_RELEASE_EXIT_HANDLER_MARKER]: true });
     process.on("exit", exitHandler);
+  }
+}
+
+/**
+ * Waits for active lock-release shutdown work and rethrows termination errors.
+ */
+export async function awaitLockReleaseShutdown(): Promise<void> {
+  const state = getLockReleaseHandlerState();
+  if (state.shutdownInProgress) {
+    await state.shutdownInProgress;
+  }
+
+  if (state.shutdownError) {
+    const error = state.shutdownError;
+    state.shutdownError = null;
+    throw error;
   }
 }

@@ -141,6 +141,51 @@ describe("createApp", () => {
     expect(fileLock.releaseAll).toHaveBeenCalledTimes(1);
   });
 
+  it("awaitShutdown waits for runs added while shutdown is already in progress", async () => {
+    let resolveFirstRun: (() => void) | undefined;
+    let resolveSecondRun: (() => void) | undefined;
+
+    const app = createApp({
+      useCaseFactories: {
+        runTask: () => {
+          let invocation = 0;
+          return async () => {
+            invocation += 1;
+            return new Promise<number>((resolve) => {
+              if (invocation === 1) {
+                resolveFirstRun = () => resolve(0);
+                return;
+              }
+
+              resolveSecondRun = () => resolve(0);
+            });
+          };
+        },
+      },
+    });
+
+    const firstRun = app.runTask({} as never);
+    const shutdownPromise = app.awaitShutdown?.() ?? Promise.resolve();
+
+    const secondRun = app.runTask({} as never);
+    resolveFirstRun?.();
+
+    let shutdownSettled = false;
+    void shutdownPromise.then(() => {
+      shutdownSettled = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(shutdownSettled).toBe(false);
+
+    resolveSecondRun?.();
+
+    await expect(firstRun).resolves.toBe(0);
+    await expect(secondRun).resolves.toBe(0);
+    await expect(shutdownPromise).resolves.toBeUndefined();
+  });
+
   it("exposes discussTask and wires fileLock into discuss factory", async () => {
     const fileLock: FileLock = {
       acquire: vi.fn(),
@@ -192,11 +237,11 @@ describe("createApp", () => {
           resolveSources: vi.fn(async () => ["tasks.md"]),
         },
         taskSelector: {
-          selectNextTask: vi.fn(() => ({
+          selectNextTask: vi.fn(() => [{
             source: "tasks.md",
             contextBefore: "",
             task,
-          })),
+          }]),
           selectTaskByLocation: vi.fn(() => null),
         },
       },

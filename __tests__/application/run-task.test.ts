@@ -220,7 +220,7 @@ describe("run-task orchestration", () => {
 
         const nextTask = tasks[selectCallCount];
         selectCallCount += 1;
-        return {
+        return [{
           task: {
             ...createTask(taskFile, nextTask.text),
             index: nextTask.index,
@@ -228,7 +228,7 @@ describe("run-task orchestration", () => {
           },
           source: "tasks.md",
           contextBefore: "",
-        };
+        }];
       });
 
       const code = await createRunTask(dependencies)(
@@ -593,11 +593,11 @@ describe("run-task orchestration", () => {
         return null;
       }
 
-      return {
+      return [{
         task: { ...createInlineTask(taskFile, "cli: echo hello"), index: 0, line: 1 },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
     const executeInlineCli = vi.spyOn(dependencies.workerExecutor, "executeInlineCli");
 
@@ -629,11 +629,11 @@ describe("run-task orchestration", () => {
         return null;
       }
 
-      return {
+      return [{
         task: { ...createInlineTask(taskFile, "cli: echo hello"), index: 0, line: 1 },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
     const executeInlineCli = vi.spyOn(dependencies.workerExecutor, "executeInlineCli");
 
@@ -665,11 +665,11 @@ describe("run-task orchestration", () => {
         return null;
       }
 
-      return {
+      return [{
         task: { ...createInlineTask(taskFile, "cli: echo hello"), index: 0, line: 1 },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     const code = await createRunTask(dependencies)(
@@ -761,11 +761,11 @@ describe("run-task orchestration", () => {
         return null;
       }
 
-      return {
+      return [{
         task: { ...createInlineTask(taskFile, "cli: echo hello"), index: 0, line: 1 },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     const code = await createRunTask(dependencies)(
@@ -800,11 +800,11 @@ describe("run-task orchestration", () => {
         return null;
       }
 
-      return {
+      return [{
         task: { ...createInlineTask(taskFile, "cli: echo hello"), index: 0, line: 1 },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     const code = await createRunTask(dependencies)(
@@ -868,11 +868,11 @@ describe("run-task orchestration", () => {
         return null;
       }
 
-      return {
+      return [{
         task: { ...createInlineTask(taskFile, "cli: echo hello"), index: 0, line: 1 },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
     dependencies.workerExecutor.executeInlineCli = vi.fn(async () => ({ exitCode: 9, stdout: "", stderr: "boom" }));
 
@@ -904,11 +904,11 @@ describe("run-task orchestration", () => {
         return null;
       }
 
-      return {
+      return [{
         task: { ...createInlineTask(taskFile, "cli: echo hello"), index: 0, line: 1 },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     const code = await createRunTask(dependencies)(
@@ -974,11 +974,11 @@ describe("run-task orchestration", () => {
         return null;
       }
 
-      return {
+      return [{
         task: { ...createInlineTask(taskFile, "cli: echo hello"), index: 0, line: 1 },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     const code = await createRunTask(dependencies)(
@@ -1017,11 +1017,11 @@ describe("run-task orchestration", () => {
         return null;
       }
 
-      return {
+      return [{
         task: { ...createInlineTask(taskFile, "cli: echo hello"), index: 0, line: 1 },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     const code = await createRunTask(dependencies)(
@@ -1063,11 +1063,11 @@ describe("run-task orchestration", () => {
     dependencies.taskSelector.selectNextTask = vi.fn(() => {
       selectCallCount += 1;
       if (selectCallCount === 1) {
-        return {
+        return [{
           task: { ...createInlineTask(taskFile, "cli: echo hello"), index: 0, line: 1 },
           source: "tasks.md",
           contextBefore: "",
-        };
+        }];
       }
 
       return null;
@@ -1115,7 +1115,7 @@ describe("run-task orchestration", () => {
 
       const nextTask = tasks[selectCallCount];
       selectCallCount += 1;
-      return {
+      return [{
         task: {
           ...createInlineTask(taskFile, nextTask.text),
           index: nextTask.index,
@@ -1123,7 +1123,7 @@ describe("run-task orchestration", () => {
         },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     const code = await createRunTask(dependencies)(
@@ -1146,6 +1146,139 @@ describe("run-task orchestration", () => {
     const secondWorkerOrder = vi.mocked(dependencies.workerExecutor.executeInlineCli).mock.invocationCallOrder[1];
     expect(secondWorkerOrder).toBeDefined();
     expect(firstCommitOrder).toBeLessThan(secondWorkerOrder as number);
+  });
+
+  it("defers per-task commits for parallel children until the parent sync point", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] parallel: setup",
+        "  - [ ] cli: echo one",
+        "  - [ ] cli: echo two",
+      ].join("\n") + "\n",
+    });
+    const parentTask = createTask(taskFile, "parallel: setup", { index: 0, line: 1, depth: 0 });
+    const firstChild = createInlineTask(taskFile, "cli: echo one", { index: 1, line: 2, depth: 1 });
+    const secondChild = createInlineTask(taskFile, "cli: echo two", { index: 2, line: 3, depth: 1 });
+    const { dependencies } = createDependencies({
+      cwd,
+      task: firstChild,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    dependencies.taskSelector.selectNextTask = vi.fn()
+      .mockReturnValueOnce([{
+        task: firstChild,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup",
+      }, {
+        task: secondChild,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup\n  - [ ] cli: echo one",
+      }])
+      .mockReturnValueOnce([{
+        task: parentTask,
+        source: "tasks.md",
+        contextBefore: "",
+      }])
+      .mockReturnValueOnce(null);
+
+    const code = await createRunTask(dependencies)(
+      createOptions({
+        verify: false,
+        runAll: true,
+        commitAfterComplete: true,
+        commitMode: "per-task",
+      }),
+    );
+
+    expect(code).toBe(0);
+    const commitIndices = vi.mocked(dependencies.gitClient.run).mock.calls
+      .map(([args], index) => ({ args, index }))
+      .filter((entry) => entry.args[0] === "commit")
+      .map((entry) => entry.index);
+    expect(commitIndices).toHaveLength(1);
+
+    const commitOrder = vi.mocked(dependencies.gitClient.run).mock.invocationCallOrder[commitIndices[0]];
+    const lastWorkerOrder = vi.mocked(dependencies.workerExecutor.executeInlineCli).mock.invocationCallOrder.at(-1);
+    expect(lastWorkerOrder).toBeDefined();
+    expect(commitOrder).toBeGreaterThan(lastWorkerOrder as number);
+  });
+
+  it("aggregates deferred file-done commit context deterministically for selected parallel children", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] parallel: setup",
+        "  - [ ] cli: echo one",
+        "  - [ ] cli: echo two",
+      ].join("\n") + "\n",
+    });
+    const firstChild = createInlineTask(taskFile, "cli: echo one", { index: 1, line: 2, depth: 1 });
+    const secondChild = createInlineTask(taskFile, "cli: echo two", { index: 2, line: 3, depth: 1 });
+    const { dependencies } = createDependencies({
+      cwd,
+      task: firstChild,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    let runCounter = 0;
+    dependencies.artifactStore.createContext = vi.fn((contextOptions) => {
+      runCounter += 1;
+      return {
+        runId: `run-${runCounter}`,
+        rootDir: path.join(cwd, ".rundown", "runs", `run-${runCounter}`),
+        cwd: contextOptions.cwd ?? cwd,
+        configDir: contextOptions.configDir,
+        keepArtifacts: contextOptions.keepArtifacts ?? false,
+        commandName: contextOptions.commandName,
+        workerCommand: contextOptions.workerCommand,
+        mode: contextOptions.mode,
+        transport: contextOptions.transport,
+        task: contextOptions.task,
+      };
+    });
+
+    dependencies.taskSelector.selectNextTask = vi.fn()
+      .mockReturnValueOnce([{
+        task: firstChild,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup",
+      }, {
+        task: secondChild,
+        source: "tasks.md",
+        contextBefore: "- [ ] parallel: setup\n  - [ ] cli: echo one",
+      }])
+      .mockReturnValueOnce(null);
+
+    const code = await createRunTask(dependencies)(
+      createOptions({
+        verify: false,
+        runAll: true,
+        mode: "tui",
+        commitAfterComplete: true,
+        commitMode: "file-done",
+        commitMessageTemplate: "done {{task}} @ {{file}}",
+      }),
+    );
+
+    expect(code).toBe(0);
+    expect(dependencies.gitClient.run).toHaveBeenCalledWith(
+      ["commit", "-m", "done cli: echo two @ tasks.md"],
+      cwd,
+    );
+
+    const callsWithCommitSha = vi.mocked(dependencies.artifactStore.finalize).mock.calls
+      .filter(([, finalizeOptions]) => {
+        const extra = finalizeOptions.extra as Record<string, unknown> | undefined;
+        return typeof extra?.["commitSha"] === "string";
+      });
+    expect(callsWithCommitSha).toHaveLength(1);
+    expect(callsWithCommitSha[0]?.[0]).toEqual(expect.objectContaining({ runId: "run-2" }));
   });
 
   it("defers --commit in run-all mode when commit mode is file-done", async () => {
@@ -1173,7 +1306,7 @@ describe("run-task orchestration", () => {
 
       const nextTask = tasks[selectCallCount];
       selectCallCount += 1;
-      return {
+      return [{
         task: {
           ...createInlineTask(taskFile, nextTask.text),
           index: nextTask.index,
@@ -1181,7 +1314,7 @@ describe("run-task orchestration", () => {
         },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     const code = await createRunTask(dependencies)(
@@ -1245,7 +1378,7 @@ describe("run-task orchestration", () => {
 
       const nextTask = tasks[selectCallCount];
       selectCallCount += 1;
-      return {
+      return [{
         task: {
           ...createInlineTask(taskFile, nextTask.text),
           index: nextTask.index,
@@ -1253,7 +1386,7 @@ describe("run-task orchestration", () => {
         },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     const code = await createRunTask(dependencies)(
@@ -1313,7 +1446,7 @@ describe("run-task orchestration", () => {
 
       const nextTask = tasks[selectCallCount];
       selectCallCount += 1;
-      return {
+      return [{
         task: {
           ...createInlineTask(taskFile, nextTask.text),
           index: nextTask.index,
@@ -1321,7 +1454,7 @@ describe("run-task orchestration", () => {
         },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     const code = await createRunTask(dependencies)(
@@ -1379,7 +1512,7 @@ describe("run-task orchestration", () => {
 
       const nextTask = tasks[selectCallCount];
       selectCallCount += 1;
-      return {
+      return [{
         task: {
           ...createInlineTask(taskFile, nextTask.text),
           index: nextTask.index,
@@ -1387,7 +1520,7 @@ describe("run-task orchestration", () => {
         },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     const code = await createRunTask(dependencies)(
@@ -1441,7 +1574,7 @@ describe("run-task orchestration", () => {
 
       const nextTask = tasks[selectCallCount];
       selectCallCount += 1;
-      return {
+      return [{
         task: {
           ...createInlineTask(taskFile, nextTask.text),
           index: nextTask.index,
@@ -1449,7 +1582,7 @@ describe("run-task orchestration", () => {
         },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     const code = await createRunTask(dependencies)(
@@ -1520,7 +1653,7 @@ describe("run-task orchestration", () => {
 
       const nextTask = tasks[selectCallCount];
       selectCallCount += 1;
-      return {
+      return [{
         task: {
           ...createInlineTask(taskFile, nextTask.text),
           index: nextTask.index,
@@ -1528,7 +1661,7 @@ describe("run-task orchestration", () => {
         },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
     dependencies.workerExecutor.executeInlineCli = vi
       .fn(async () => ({ exitCode: 0, stdout: "", stderr: "" }))
@@ -1574,7 +1707,7 @@ describe("run-task orchestration", () => {
 
       const nextTask = tasks[selectCallCount];
       selectCallCount += 1;
-      return {
+      return [{
         task: {
           ...createTask(taskFile, nextTask.text),
           index: nextTask.index,
@@ -1582,7 +1715,7 @@ describe("run-task orchestration", () => {
         },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     dependencies.taskVerification.verify = vi
@@ -1630,7 +1763,7 @@ describe("run-task orchestration", () => {
 
       const nextTask = tasks[selectCallCount];
       selectCallCount += 1;
-      return {
+      return [{
         task: {
           ...createTask(taskFile, nextTask.text),
           index: nextTask.index,
@@ -1638,7 +1771,7 @@ describe("run-task orchestration", () => {
         },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
 
     let workerCallCount = 0;
@@ -1690,7 +1823,7 @@ describe("run-task orchestration", () => {
 
       const nextTask = tasks[selectCallCount];
       selectCallCount += 1;
-      return {
+      return [{
         task: {
           ...createInlineTask(taskFile, nextTask.text),
           index: nextTask.index,
@@ -1698,7 +1831,7 @@ describe("run-task orchestration", () => {
         },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
     dependencies.workerExecutor.executeInlineCli = vi
       .fn(async () => ({ exitCode: 0, stdout: "", stderr: "" }))
@@ -1775,7 +1908,7 @@ describe("run-task orchestration", () => {
       }
       const current = tasks[selectCallCount];
       selectCallCount += 1;
-      return {
+      return [{
         task: {
           ...createInlineTask(taskFile, current.text),
           index: selectCallCount - 1,
@@ -1783,7 +1916,7 @@ describe("run-task orchestration", () => {
         },
         source: "tasks.md",
         contextBefore: "",
-      };
+      }];
     });
     dependencies.workerExecutor.executeInlineCli = vi.fn(async (command: string) => ({ exitCode: 0, stdout: command, stderr: "" }));
 
@@ -1811,19 +1944,19 @@ describe("run-task orchestration", () => {
     dependencies.taskSelector.selectNextTask = vi.fn(() => {
       if (count === 0) {
         count += 1;
-        return {
+        return [{
           task: { ...createInlineTask(taskFile, "cli: echo first"), index: 0, line: 1 },
           source: "tasks.md",
           contextBefore: "",
-        };
+        }];
       }
       if (count === 1) {
         count += 1;
-        return {
+        return [{
           task: { ...createInlineTask(taskFile, "cli: echo second"), index: 1, line: 2 },
           source: "tasks.md",
           contextBefore: "",
-        };
+        }];
       }
       return null;
     });

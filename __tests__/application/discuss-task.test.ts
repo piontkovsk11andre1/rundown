@@ -3123,11 +3123,11 @@ function createDependencies(options: {
       resolveSources: vi.fn(async () => [options.task.file]),
     },
     taskSelector: {
-      selectNextTask: vi.fn(() => ({
+      selectNextTask: vi.fn(() => [{
         task: options.task,
         source: options.source,
         contextBefore: options.contextBefore,
-      })),
+      }]),
       selectTaskByLocation: vi.fn(() => null),
     },
     workerExecutor: {

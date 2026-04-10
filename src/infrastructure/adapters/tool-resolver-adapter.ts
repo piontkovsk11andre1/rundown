@@ -342,6 +342,10 @@ function parseToolFrontmatterOverride(candidate: unknown): ToolFrontmatter | und
     parsed.shouldVerify = value.shouldVerify;
   }
 
+  if (typeof value.autoComplete === "boolean") {
+    parsed.autoComplete = value.autoComplete;
+  }
+
   if (typeof value.insertChildren === "boolean") {
     parsed.insertChildren = value.insertChildren;
   }
@@ -473,6 +477,12 @@ function parseFrontmatter(content: string):
           return { ok: false, error: `"shouldVerify" must be true or false, received "${value}".` };
         }
         frontmatter.shouldVerify = value === "true";
+        break;
+      case "autocomplete":
+        if (value !== "true" && value !== "false") {
+          return { ok: false, error: `"autoComplete" must be true or false, received "${value}".` };
+        }
+        frontmatter.autoComplete = value === "true";
         break;
       case "insertchildren":
         if (value !== "true" && value !== "false") {

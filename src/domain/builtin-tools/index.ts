@@ -4,6 +4,7 @@ import { verifyHandler } from "./verify.js";
 import { includeHandler } from "./include.js";
 import { profileHandler } from "./profile.js";
 import { forceHandler } from "./force.js";
+import { parallelHandler } from "./parallel.js";
 
 /**
  * Static registry of built-in tool definitions.
@@ -36,7 +37,25 @@ const BUILTIN_TOOLS: Record<string, ToolDefinition> = {
     name: "include",
     kind: "handler",
     handler: includeHandler,
-    frontmatter: { skipExecution: true, shouldVerify: false },
+    frontmatter: { skipExecution: true, autoComplete: true, shouldVerify: false },
+  },
+  parallel: {
+    name: "parallel",
+    kind: "handler",
+    handler: parallelHandler,
+    frontmatter: { skipExecution: true, autoComplete: true, shouldVerify: false },
+  },
+  concurrent: {
+    name: "concurrent",
+    kind: "handler",
+    handler: parallelHandler,
+    frontmatter: { skipExecution: true, autoComplete: true, shouldVerify: false },
+  },
+  par: {
+    name: "par",
+    kind: "handler",
+    handler: parallelHandler,
+    frontmatter: { skipExecution: true, autoComplete: true, shouldVerify: false },
   },
   end: {
     name: "end",

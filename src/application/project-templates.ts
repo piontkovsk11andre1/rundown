@@ -3,6 +3,9 @@ import {
   DEFAULT_DISCUSS_FINISHED_TEMPLATE,
   DEFAULT_HELP_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
+  DEFAULT_QUERY_AGGREGATION_TEMPLATE,
+  DEFAULT_QUERY_EXECUTION_TEMPLATE,
+  DEFAULT_QUERY_SEED_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
   DEFAULT_TASK_TEMPLATE,
@@ -31,6 +34,9 @@ export interface ProjectTemplates {
   plan: string;
   research: string;
   trace: string;
+  querySeed: string;
+  queryExecute: string;
+  queryAggregate: string;
 }
 
 /**
@@ -56,6 +62,9 @@ export function loadProjectTemplatesFromPorts(
       plan: DEFAULT_PLAN_TEMPLATE,
       research: DEFAULT_RESEARCH_TEMPLATE,
       trace: DEFAULT_TRACE_TEMPLATE,
+      querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
+      queryExecute: DEFAULT_QUERY_EXECUTION_TEMPLATE,
+      queryAggregate: DEFAULT_QUERY_AGGREGATION_TEMPLATE,
     };
   }
 
@@ -74,5 +83,14 @@ export function loadProjectTemplatesFromPorts(
     plan: templateLoader.load(pathOperations.join(dir, "plan.md")) ?? DEFAULT_PLAN_TEMPLATE,
     research: templateLoader.load(pathOperations.join(dir, "research.md")) ?? DEFAULT_RESEARCH_TEMPLATE,
     trace: templateLoader.load(pathOperations.join(dir, "trace.md")) ?? DEFAULT_TRACE_TEMPLATE,
+    querySeed:
+      templateLoader.load(pathOperations.join(dir, "query-seed.md")) ??
+      DEFAULT_QUERY_SEED_TEMPLATE,
+    queryExecute:
+      templateLoader.load(pathOperations.join(dir, "query-execute.md")) ??
+      DEFAULT_QUERY_EXECUTION_TEMPLATE,
+    queryAggregate:
+      templateLoader.load(pathOperations.join(dir, "query-aggregate.md")) ??
+      DEFAULT_QUERY_AGGREGATION_TEMPLATE,
   };
 }

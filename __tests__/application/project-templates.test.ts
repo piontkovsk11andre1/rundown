@@ -5,6 +5,9 @@ import {
   DEFAULT_DISCUSS_FINISHED_TEMPLATE,
   DEFAULT_HELP_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
+  DEFAULT_QUERY_AGGREGATION_TEMPLATE,
+  DEFAULT_QUERY_EXECUTION_TEMPLATE,
+  DEFAULT_QUERY_SEED_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
   DEFAULT_TASK_TEMPLATE,
@@ -29,6 +32,9 @@ describe("project-templates", () => {
       plan: DEFAULT_PLAN_TEMPLATE,
       research: DEFAULT_RESEARCH_TEMPLATE,
       trace: DEFAULT_TRACE_TEMPLATE,
+      querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
+      queryExecute: DEFAULT_QUERY_EXECUTION_TEMPLATE,
+      queryAggregate: DEFAULT_QUERY_AGGREGATION_TEMPLATE,
     });
     expect(templateLoader.load).not.toHaveBeenCalled();
   });
@@ -37,6 +43,9 @@ describe("project-templates", () => {
     const configDir = "/workspace/.rundown";
     const templateLoader: TemplateLoader = {
       load: vi.fn((filePath: string) => {
+        if (filePath.endsWith("query-execute.md")) {
+          return null;
+        }
         if (filePath.endsWith("execute.md")) {
           return "TASK";
         }
@@ -63,11 +72,17 @@ describe("project-templates", () => {
       plan: DEFAULT_PLAN_TEMPLATE,
       research: DEFAULT_RESEARCH_TEMPLATE,
       trace: DEFAULT_TRACE_TEMPLATE,
+      querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
+      queryExecute: DEFAULT_QUERY_EXECUTION_TEMPLATE,
+      queryAggregate: DEFAULT_QUERY_AGGREGATION_TEMPLATE,
     });
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "execute.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "help.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "research.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "trace.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-execute.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-aggregate.md"));
   });
 
   it("loads help template override from help.md", () => {
@@ -89,5 +104,36 @@ describe("project-templates", () => {
 
     expect(templates.help).toBe("HELP");
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "help.md"));
+  });
+
+  it("loads query template overrides from query-*.md files", () => {
+    const configDir = "/workspace/.rundown";
+    const templateLoader: TemplateLoader = {
+      load: vi.fn((filePath: string) => {
+        if (filePath.endsWith("query-seed.md")) {
+          return "QUERY_SEED";
+        }
+        if (filePath.endsWith("query-execute.md")) {
+          return "QUERY_EXECUTE";
+        }
+        if (filePath.endsWith("query-aggregate.md")) {
+          return "QUERY_AGGREGATE";
+        }
+        return null;
+      }),
+    };
+
+    const templates = loadProjectTemplatesFromPorts(
+      { configDir, isExplicit: false },
+      templateLoader,
+      path,
+    );
+
+    expect(templates.querySeed).toBe("QUERY_SEED");
+    expect(templates.queryExecute).toBe("QUERY_EXECUTE");
+    expect(templates.queryAggregate).toBe("QUERY_AGGREGATE");
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-execute.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-aggregate.md"));
   });
 });

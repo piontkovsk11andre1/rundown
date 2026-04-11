@@ -51,6 +51,7 @@ import {
   createResearchCommandAction,
   createReverifyCommandAction,
   createRevertCommandAction,
+  createUndoCommandAction,
   createRunCommandAction,
   createUnlockCommandAction,
 } from "./cli-command-actions.js";
@@ -259,6 +260,56 @@ program
   .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
   .allowUnknownOption(false)
   .action(withCliAction(createRevertCommandAction({ getApp })));
+
+program
+  .command("undo")
+  .description("Undo completed task runs using AI-generated reversal steps.")
+  .option("--run <id|latest>", "Choose artifact run id or 'latest'", "latest")
+  .option("--last <n>", "Undo the last N completed runs")
+  .option("--force", "Bypass clean-worktree safety check", false)
+  .option("--dry-run", "Show what would be undone without changing files", false)
+  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
+  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
+  .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
+  .allowUnknownOption(false)
+  .action(withCliAction(createUndoCommandAction({
+    getApp,
+    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
+  })));
+
+program
+  .command("migrate")
+  .description("Manage prediction migrations (currently supports down alias to undo).")
+  .argument("<action>", "Migration action: down")
+  .argument("[count]", "Optional number of runs to undo for down")
+  .option("--run <id|latest>", "Choose artifact run id or 'latest' for down", "latest")
+  .option("--force", "Bypass clean-worktree safety check for down", false)
+  .option("--dry-run", "Show what would be undone without changing files", false)
+  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
+  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
+  .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
+  .allowUnknownOption(false)
+  .action(withCliAction((action: string, count: string | undefined, opts: Record<string, string | string[] | boolean>) => {
+    if (action !== "down") {
+      throw new Error("Unsupported migrate action: " + action + ". Currently supported: down.");
+    }
+
+    if (count !== undefined && !/^\d+$/.test(count)) {
+      throw new Error("Invalid migrate down count: " + count + ". Must be a positive integer.");
+    }
+
+    const undoAction = createUndoCommandAction({
+      getApp,
+      getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
+    });
+
+    const undoOptions: Record<string, string | string[] | boolean> = {
+      ...opts,
+      ...(count !== undefined ? { last: count } : {}),
+    };
+
+    return undoAction(undoOptions);
+  }));
 
 program
   .command("next")

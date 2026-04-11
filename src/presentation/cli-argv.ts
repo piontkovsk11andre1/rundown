@@ -60,7 +60,10 @@ export function splitWorkerFromSeparator(argv: string[]): { rundownArgs: string[
 }
 
 /**
- * Rewrites the `all` command alias to `run --all`.
+ * Rewrites supported command aliases before option parsing.
+ *
+ * - `all` -> `run --all`
+ * - `migrate down [n]` -> `undo [--last n]`
  *
  * Rewriting applies only to the first positional command token before `--`.
  */
@@ -81,6 +84,15 @@ export function rewriteAllAlias(argv: string[]): string[] {
     // Replace only the command token and preserve all surrounding arguments.
     if (token === "all") {
       return [...argv.slice(0, i), "run", "--all", ...argv.slice(i + 1)];
+    }
+
+    if (token === "migrate" && argv[i + 1] === "down") {
+      const maybeCount = argv[i + 2];
+      if (typeof maybeCount === "string" && /^\d+$/.test(maybeCount)) {
+        return [...argv.slice(0, i), "undo", "--last", maybeCount, ...argv.slice(i + 3)];
+      }
+
+      return [...argv.slice(0, i), "undo", ...argv.slice(i + 2)];
     }
 
     // Stop after the first positional token once a non-alias command is found.

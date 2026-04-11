@@ -25,6 +25,7 @@ import { createUnlockTask, type UnlockTaskOptions } from "./application/unlock-t
 import { createInitProject, type InitProjectOptions } from "./application/init-project.js";
 import { createReverifyTask, type ReverifyTaskOptions } from "./application/reverify-task.js";
 import { createRevertTask, type RevertTaskOptions } from "./application/revert-task.js";
+import { createUndoTask, type UndoTaskOptions } from "./application/undo-task.js";
 import { createLogRuns, type LogRunsOptions } from "./application/log-runs.js";
 import {
   createManageArtifacts,
@@ -107,6 +108,7 @@ export type App = {
   cleanMemory: (options: CleanMemoryOptions) => Promise<number>;
   reverifyTask: (options: ReverifyTaskCommandOptions) => Promise<number>;
   revertTask: (options: RevertTaskOptions) => Promise<number>;
+  undoTask: (options: UndoTaskOptions) => Promise<number>;
   planTask: (options: PlanTaskCommandOptions) => Promise<number>;
   researchTask: (options: ResearchTaskCommandOptions) => Promise<number>;
   queryTask: (options: QueryTaskCommandOptions) => Promise<number>;
@@ -447,6 +449,18 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       pathOperations: ports.pathOperations,
       output: ports.output,
     }),
+    undoTask: (ports) => createUndoTask({
+      artifactStore: ports.artifactStore,
+      workerExecutor: ports.workerExecutor,
+      taskVerification: ports.taskVerification,
+      fileSystem: ports.fileSystem,
+      gitClient: ports.gitClient,
+      templateLoader: ports.templateLoader,
+      workingDirectory: ports.workingDirectory,
+      pathOperations: ports.pathOperations,
+      configDir: ports.configDir,
+      output: ports.output,
+    }),
     planTask: (ports) => {
       const runPlanTask = planTaskUseCase(ports);
 
@@ -629,6 +643,7 @@ function createAppFromFactories(
   const cleanMemory = factories.cleanMemory(ports);
   const reverifyTask = factories.reverifyTask(ports);
   const revertTask = factories.revertTask(ports);
+  const undoTask = factories.undoTask(ports);
   const planTask = factories.planTask(ports);
   const researchTask = factories.researchTask(ports);
   const queryTask = factories.queryTask(ports);
@@ -657,6 +672,7 @@ function createAppFromFactories(
     cleanMemory,
     reverifyTask,
     revertTask,
+    undoTask,
     planTask,
     researchTask,
     queryTask,

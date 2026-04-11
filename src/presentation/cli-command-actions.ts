@@ -875,6 +875,37 @@ export function createExploreCommandAction({
 }
 
 /**
+ * Creates the `undo` command action handler.
+ *
+ * The returned action resolves run selection and safety options before invoking
+ * the application `undoTask` use case.
+ */
+export function createUndoCommandAction({
+  getApp,
+  getWorkerFromSeparator,
+}: WorkerActionDependencies): (opts: CliOpts) => CliActionResult {
+  return (opts: CliOpts) => {
+    const targetRun = normalizeOptionalString(opts.run) ?? "latest";
+    const last = parseLastCount(opts.last as string | undefined);
+    const dryRun = Boolean(opts.dryRun as boolean | undefined);
+    const keepArtifacts = Boolean(opts.keepArtifacts as boolean | undefined);
+    const showAgentOutput = resolveShowAgentOutputOption(opts);
+    const force = Boolean(opts.force as boolean | undefined);
+    const workerPattern = resolveWorkerPattern(opts.worker, getWorkerFromSeparator);
+
+    return getApp().undoTask({
+      runId: targetRun,
+      last,
+      workerPattern,
+      force,
+      dryRun,
+      keepArtifacts,
+      showAgentOutput,
+    });
+  };
+}
+
+/**
  * Creates the `query` command action handler.
  */
 export function createQueryCommandAction({

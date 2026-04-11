@@ -3322,6 +3322,113 @@ describe("complete-task-iteration", () => {
     expect(failRun).toHaveBeenCalledWith(2, "verification-failed", "verification-failed", 2);
   });
 
+  it("emits a warning and still fails the run when writing fix annotation throws", async () => {
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] Ship release\n",
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    const emit = vi.fn();
+    const failRun = vi.fn(async () => 2);
+    const afterTaskFailedSpy = vi.spyOn(runLifecycleModule, "afterTaskFailed").mockResolvedValue();
+
+    vi.spyOn(verifyRepairLoopModule, "runVerifyRepairLoop").mockResolvedValue({
+      valid: false,
+      failureReason: "missing tests",
+    });
+    vi
+      .spyOn(checkboxOperationsModule, "writeFixAnnotationToFile")
+      .mockImplementation(() => {
+        throw new Error("simulated file I/O error");
+      });
+    vi.spyOn(checkboxOperationsModule, "checkTaskUsingFileSystem").mockImplementation(() => {});
+
+    const result = await completeTaskIteration({
+      dependencies,
+      emit,
+      state: {
+        traceWriter: dependencies.traceWriter,
+        deferredCommitContext: null,
+        tasksCompleted: 0,
+        runCompleted: false,
+      },
+      traceRunSession: createCompletionSession(),
+      failRun,
+      finishRun: vi.fn(async () => 0),
+      resetArtifacts: vi.fn(),
+      keepArtifacts: true,
+      effectiveRunAll: false,
+      commitAfterComplete: false,
+      deferCommitUntilPostRun: false,
+      commitMessageTemplate: undefined,
+      onCompleteCommand: undefined,
+      onFailCommand: undefined,
+      hideHookOutput: false,
+      maxRepairAttempts: 1,
+      allowRepair: true,
+      trace: false,
+      verbose: false,
+      cliBlockExecutor: dependencies.cliBlockExecutor!,
+      cliExpansionEnabled: true,
+      task,
+      sourceText: "- [ ] Ship release",
+      expandedSource: "- [ ] Ship release",
+      expandedContextBefore: "",
+      templates: {
+        task: "",
+        discuss: "",
+        research: "",
+        verify: "{{task}}",
+        repair: "{{task}}",
+        plan: "",
+        trace: "",
+      },
+      templateVarsWithTrace: {},
+      automationCommand: ["opencode", "run"],
+      automationWorkerPattern: inferWorkerPatternFromCommand(["opencode", "run"]),
+      shouldVerify: true,
+      runMode: "wait",
+      verificationPrompt: "verify",
+      artifactContext: {
+        runId: "run-complete",
+        rootDir: path.join(cwd, ".rundown", "runs", "run-complete"),
+        cwd,
+        keepArtifacts: true,
+        commandName: "run",
+      },
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      verificationFailureMessage: "Verification failed. Task not checked.",
+      verificationFailureRunReason: "Verification failed.",
+      extraTemplateVars: {},
+    });
+
+    expect(result).toEqual({
+      continueLoop: false,
+      exitCode: 2,
+      forceRetryableFailure: true,
+      groupEnded: false,
+      failureMessage: "Verification failed. Task not checked.\nmissing tests",
+    });
+    expect(emit).toHaveBeenCalledWith({
+      kind: "warn",
+      message: "Failed to write verification fix annotation: Error: simulated file I/O error",
+    });
+    expect(afterTaskFailedSpy).toHaveBeenCalledWith(
+      dependencies,
+      task,
+      "- [ ] Ship release",
+      undefined,
+      false,
+      {},
+    );
+    expect(failRun).toHaveBeenCalledWith(2, "verification-failed", "verification-failed", 2);
+    expect(afterTaskFailedSpy.mock.invocationCallOrder[0]).toBeLessThan(failRun.mock.invocationCallOrder[0] ?? 0);
+  });
+
   it("uses research-repair template for inline rundown research tasks", async () => {
     const inlineResearchTask = createInlineTask(
       task.file,

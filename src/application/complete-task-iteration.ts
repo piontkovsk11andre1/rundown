@@ -9,6 +9,7 @@ import {
   checkTaskUsingFileSystem,
   insertTraceStatisticsUsingFileSystem,
   skipRemainingSiblingsUsingFileSystem,
+  writeFixAnnotationToFile,
 } from "./checkbox-operations.js";
 import {
   afterTaskComplete,
@@ -315,6 +316,7 @@ export async function completeTaskIteration(params: {
       const surfacedFailureMessage = usageLimitDetected
         ? usageLimitFailureMessage
         : fullVerificationFailureMessage;
+      writeFixAnnotationToFile(task, failureReason, dependencies.fileSystem);
       // Surface verification details, trigger failure hooks, and terminate the run.
       emit({ kind: "error", message: surfacedFailureMessage });
       await afterTaskFailed(

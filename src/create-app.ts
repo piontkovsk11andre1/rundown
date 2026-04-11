@@ -623,7 +623,9 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       output: ports.output,
     }),
     startProject: (ports) => createStartProject({
+      fileSystem: ports.fileSystem,
       gitClient: ports.gitClient,
+      output: ports.output,
       pathOperations: ports.pathOperations,
       workingDirectory: ports.workingDirectory,
     }),

@@ -329,6 +329,67 @@ function createArtifactTraceWriter(ports: AppPorts, artifactContext: { rootDir: 
 }
 
 function createDefaultUseCaseFactories(): AppUseCaseFactories {
+  const runTaskUseCase = (ports: AppPorts) => createRunTask({
+    sourceResolver: ports.sourceResolver,
+    taskSelector: ports.taskSelector,
+    workerExecutor: ports.workerExecutor,
+    taskVerification: ports.taskVerification,
+    taskRepair: ports.taskRepair,
+    workingDirectory: ports.workingDirectory,
+    fileSystem: ports.fileSystem,
+    fileLock: ports.fileLock,
+    templateLoader: ports.templateLoader,
+    verificationStore: ports.verificationStore,
+    artifactStore: ports.artifactStore,
+    gitClient: ports.gitClient,
+    processRunner: ports.processRunner,
+    pathOperations: ports.pathOperations,
+    toolResolver: ports.toolResolver,
+    memoryResolver: ports.memoryResolver,
+    memoryWriter: ports.memoryWriter,
+    templateVarsLoader: ports.templateVarsLoader,
+    workerConfigPort: ports.workerConfigPort,
+    traceWriter: ports.traceWriter,
+    cliBlockExecutor: ports.cliBlockExecutor,
+    configDir: ports.configDir,
+    createTraceWriter: (trace, artifactContext) => {
+      if (!trace) {
+        return ports.traceWriter;
+      }
+
+      return createArtifactTraceWriter(ports, artifactContext);
+    },
+    output: ports.output,
+  });
+
+  const undoTaskUseCase = (ports: AppPorts) => createUndoTask({
+    artifactStore: ports.artifactStore,
+    workerExecutor: ports.workerExecutor,
+    taskVerification: ports.taskVerification,
+    fileSystem: ports.fileSystem,
+    gitClient: ports.gitClient,
+    templateLoader: ports.templateLoader,
+    workingDirectory: ports.workingDirectory,
+    pathOperations: ports.pathOperations,
+    configDir: ports.configDir,
+    output: ports.output,
+  });
+
+  const startProjectUseCase = (ports: AppPorts) => createStartProject({
+    fileSystem: ports.fileSystem,
+    gitClient: ports.gitClient,
+    output: ports.output,
+    pathOperations: ports.pathOperations,
+    workingDirectory: ports.workingDirectory,
+  });
+
+  const testSpecsUseCase = (ports: AppPorts) => createTestSpecs({
+    workerExecutor: ports.workerExecutor,
+    fileSystem: ports.fileSystem,
+    templateLoader: ports.templateLoader,
+    output: ports.output,
+  });
+
   const planTaskUseCase = (ports: AppPorts) => createPlanTask({
     workerExecutor: ports.workerExecutor,
     workingDirectory: ports.workingDirectory,
@@ -373,38 +434,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       },
       output: ports.output,
     }),
-    runTask: (ports) => createRunTask({
-      sourceResolver: ports.sourceResolver,
-      taskSelector: ports.taskSelector,
-      workerExecutor: ports.workerExecutor,
-      taskVerification: ports.taskVerification,
-      taskRepair: ports.taskRepair,
-      workingDirectory: ports.workingDirectory,
-      fileSystem: ports.fileSystem,
-      fileLock: ports.fileLock,
-      templateLoader: ports.templateLoader,
-      verificationStore: ports.verificationStore,
-      artifactStore: ports.artifactStore,
-      gitClient: ports.gitClient,
-      processRunner: ports.processRunner,
-      pathOperations: ports.pathOperations,
-      toolResolver: ports.toolResolver,
-      memoryResolver: ports.memoryResolver,
-      memoryWriter: ports.memoryWriter,
-      templateVarsLoader: ports.templateVarsLoader,
-      workerConfigPort: ports.workerConfigPort,
-      traceWriter: ports.traceWriter,
-      cliBlockExecutor: ports.cliBlockExecutor,
-      configDir: ports.configDir,
-      createTraceWriter: (trace, artifactContext) => {
-        if (!trace) {
-          return ports.traceWriter;
-        }
-
-        return createArtifactTraceWriter(ports, artifactContext);
-      },
-      output: ports.output,
-    }),
+    runTask: (ports) => runTaskUseCase(ports),
     validateMemory: (ports) => createValidateMemory({
       sourceResolver: ports.sourceResolver,
       memoryResolver: ports.memoryResolver,
@@ -461,18 +491,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       pathOperations: ports.pathOperations,
       output: ports.output,
     }),
-    undoTask: (ports) => createUndoTask({
-      artifactStore: ports.artifactStore,
-      workerExecutor: ports.workerExecutor,
-      taskVerification: ports.taskVerification,
-      fileSystem: ports.fileSystem,
-      gitClient: ports.gitClient,
-      templateLoader: ports.templateLoader,
-      workingDirectory: ports.workingDirectory,
-      pathOperations: ports.pathOperations,
-      configDir: ports.configDir,
-      output: ports.output,
-    }),
+    undoTask: (ports) => undoTaskUseCase(ports),
     migrateTask: (ports) => createMigrateTask({
       workerExecutor: ports.workerExecutor,
       fileSystem: ports.fileSystem,
@@ -482,57 +501,10 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       artifactStore: ports.artifactStore,
       interactiveInput: ports.interactiveInput,
       output: ports.output,
-      runTask: createRunTask({
-        sourceResolver: ports.sourceResolver,
-        taskSelector: ports.taskSelector,
-        workerExecutor: ports.workerExecutor,
-        taskVerification: ports.taskVerification,
-        taskRepair: ports.taskRepair,
-        workingDirectory: ports.workingDirectory,
-        fileSystem: ports.fileSystem,
-        fileLock: ports.fileLock,
-        templateLoader: ports.templateLoader,
-        verificationStore: ports.verificationStore,
-        artifactStore: ports.artifactStore,
-        gitClient: ports.gitClient,
-        processRunner: ports.processRunner,
-        pathOperations: ports.pathOperations,
-        toolResolver: ports.toolResolver,
-        memoryResolver: ports.memoryResolver,
-        memoryWriter: ports.memoryWriter,
-        templateVarsLoader: ports.templateVarsLoader,
-        workerConfigPort: ports.workerConfigPort,
-        traceWriter: ports.traceWriter,
-        cliBlockExecutor: ports.cliBlockExecutor,
-        configDir: ports.configDir,
-        createTraceWriter: (trace, artifactContext) => {
-          if (!trace) {
-            return ports.traceWriter;
-          }
-
-          return createArtifactTraceWriter(ports, artifactContext);
-        },
-        output: ports.output,
-      }),
-      undoTask: createUndoTask({
-        artifactStore: ports.artifactStore,
-        workerExecutor: ports.workerExecutor,
-        taskVerification: ports.taskVerification,
-        fileSystem: ports.fileSystem,
-        gitClient: ports.gitClient,
-        templateLoader: ports.templateLoader,
-        workingDirectory: ports.workingDirectory,
-        pathOperations: ports.pathOperations,
-        configDir: ports.configDir,
-        output: ports.output,
-      }),
+      runTask: runTaskUseCase(ports),
+      undoTask: undoTaskUseCase(ports),
     }),
-    testSpecs: (ports) => createTestSpecs({
-      workerExecutor: ports.workerExecutor,
-      fileSystem: ports.fileSystem,
-      templateLoader: ports.templateLoader,
-      output: ports.output,
-    }),
+    testSpecs: (ports) => testSpecsUseCase(ports),
     planTask: (ports) => {
       const runPlanTask = planTaskUseCase(ports);
 
@@ -558,38 +530,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       output: ports.output,
     }),
     queryTask: (ports) => createQueryTask({
-      runTask: createRunTask({
-        sourceResolver: ports.sourceResolver,
-        taskSelector: ports.taskSelector,
-        workerExecutor: ports.workerExecutor,
-        taskVerification: ports.taskVerification,
-        taskRepair: ports.taskRepair,
-        workingDirectory: ports.workingDirectory,
-        fileSystem: ports.fileSystem,
-        fileLock: ports.fileLock,
-        templateLoader: ports.templateLoader,
-        verificationStore: ports.verificationStore,
-        artifactStore: ports.artifactStore,
-        gitClient: ports.gitClient,
-        processRunner: ports.processRunner,
-        pathOperations: ports.pathOperations,
-        toolResolver: ports.toolResolver,
-        memoryResolver: ports.memoryResolver,
-        memoryWriter: ports.memoryWriter,
-        templateVarsLoader: ports.templateVarsLoader,
-        workerConfigPort: ports.workerConfigPort,
-        traceWriter: ports.traceWriter,
-        cliBlockExecutor: ports.cliBlockExecutor,
-        configDir: ports.configDir,
-        createTraceWriter: (trace, artifactContext) => {
-          if (!trace) {
-            return ports.traceWriter;
-          }
-
-          return createArtifactTraceWriter(ports, artifactContext);
-        },
-        output: ports.output,
-      }),
+      runTask: runTaskUseCase(ports),
       researchTask: createResearchTask({
         workerExecutor: ports.workerExecutor,
         cliBlockExecutor: ports.cliBlockExecutor,
@@ -605,29 +546,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
         configDir: ports.configDir,
         output: ports.output,
       }),
-      planTask: createPlanTask({
-        workerExecutor: ports.workerExecutor,
-        workingDirectory: ports.workingDirectory,
-        cliBlockExecutor: ports.cliBlockExecutor,
-        fileSystem: ports.fileSystem,
-        fileLock: ports.fileLock,
-        templateLoader: ports.templateLoader,
-        pathOperations: ports.pathOperations,
-        memoryResolver: ports.memoryResolver,
-        templateVarsLoader: ports.templateVarsLoader,
-        workerConfigPort: ports.workerConfigPort,
-        artifactStore: ports.artifactStore,
-        traceWriter: ports.traceWriter,
-        configDir: ports.configDir,
-        createTraceWriter: (trace, artifactContext) => {
-          if (!trace) {
-            return ports.traceWriter;
-          }
-
-          return createArtifactTraceWriter(ports, artifactContext);
-        },
-        output: ports.output,
-      }),
+      planTask: planTaskUseCase(ports),
       artifactStore: ports.artifactStore,
       fileSystem: ports.fileSystem,
       pathOperations: ports.pathOperations,
@@ -689,13 +608,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       pathOperations: ports.pathOperations,
       output: ports.output,
     }),
-    startProject: (ports) => createStartProject({
-      fileSystem: ports.fileSystem,
-      gitClient: ports.gitClient,
-      output: ports.output,
-      pathOperations: ports.pathOperations,
-      workingDirectory: ports.workingDirectory,
-    }),
+    startProject: (ports) => startProjectUseCase(ports),
     manageArtifacts: (ports) => createManageArtifacts({
       artifactStore: ports.artifactStore,
       directoryOpener: ports.directoryOpener,

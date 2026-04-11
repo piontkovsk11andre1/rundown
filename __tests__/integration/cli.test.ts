@@ -7409,6 +7409,29 @@ describe.sequential("CLI integration", () => {
     ].join("\n"));
   });
 
+  it("run writes fallback fix annotation when verification has no details", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    fs.writeFileSync(roadmapPath, "- [ ] Write docs\n", "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-repair",
+      "--",
+      "node",
+      "-e",
+      "const fs=require('node:fs');const p=process.argv[process.argv.length-1];const prompt=fs.readFileSync(p,'utf-8');if(prompt.includes('Verify whether the selected task is complete.')){console.log('NOT_OK:   ');process.exit(0);}process.exit(0);",
+    ], workspace);
+
+    expect(result.code).toBe(2);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+      "- [x] Write docs",
+      "  - fix: Verification failed (no details).",
+      "",
+    ].join("\n"));
+  });
+
   it("run surfaces the no-details verification sentinel in end-to-end console output", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");

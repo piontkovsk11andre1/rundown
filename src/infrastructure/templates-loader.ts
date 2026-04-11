@@ -17,6 +17,9 @@ import {
   DEFAULT_PLAN_TEMPLATE,
 } from "../domain/defaults.js";
 
+const DEFAULT_UNDO_TEMPLATE = DEFAULT_TASK_TEMPLATE;
+const DEFAULT_TEST_VERIFY_TEMPLATE = DEFAULT_VERIFY_TEMPLATE;
+
 export interface ProjectTemplates {
   // Template used by the execute phase.
   task: string;
@@ -34,6 +37,10 @@ export interface ProjectTemplates {
   research: string;
   // Template used by the trace phase.
   trace: string;
+  // Template used by the undo command.
+  undo: string;
+  // Template used by the test verification command.
+  testVerify: string;
 }
 
 /**
@@ -53,6 +60,8 @@ export interface ProjectTemplates {
  * - `.rundown/plan.md`
  * - `.rundown/research.md`
  * - `.rundown/trace.md`
+ * - `.rundown/undo.md`
+ * - `.rundown/test-verify.md`
  *
  * @param configDir Optional absolute or relative path to the project template directory.
  * @returns The resolved set of templates used by each execution phase.
@@ -69,6 +78,8 @@ export function loadProjectTemplates(configDir?: string): ProjectTemplates {
       plan: DEFAULT_PLAN_TEMPLATE,
       research: DEFAULT_RESEARCH_TEMPLATE,
       trace: DEFAULT_TRACE_TEMPLATE,
+      undo: DEFAULT_UNDO_TEMPLATE,
+      testVerify: DEFAULT_TEST_VERIFY_TEMPLATE,
     };
   }
 
@@ -84,6 +95,9 @@ export function loadProjectTemplates(configDir?: string): ProjectTemplates {
     plan: loadFile(path.join(configDir, "plan.md")) ?? DEFAULT_PLAN_TEMPLATE,
     research: loadFile(path.join(configDir, "research.md")) ?? DEFAULT_RESEARCH_TEMPLATE,
     trace: loadFile(path.join(configDir, "trace.md")) ?? DEFAULT_TRACE_TEMPLATE,
+    undo: loadFile(path.join(configDir, "undo.md")) ?? DEFAULT_UNDO_TEMPLATE,
+    testVerify:
+      loadFile(path.join(configDir, "test-verify.md")) ?? DEFAULT_TEST_VERIFY_TEMPLATE,
   };
 }
 

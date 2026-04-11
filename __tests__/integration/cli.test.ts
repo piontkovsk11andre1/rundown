@@ -710,7 +710,7 @@ describe.sequential("CLI integration", () => {
         "}",
         "fs.appendFileSync(phaseProbePath, JSON.stringify({ lockExists, lockCommand }) + '\\n', 'utf-8');",
         "if (lockCommand === 'research') {",
-        "  console.log('# Roadmap\\n\\nSeed from explore\\n\\n## Research Context\\n- Captured integration context');",
+        "  console.log('# Roadmap\\n\\nSeed from explore\\n\\n- [ ] Existing parent task\\n\\n## Research Context\\n- Captured integration context');",
         "  process.exit(0);",
         "}",
         "if (lockCommand === 'plan') {",

@@ -989,9 +989,9 @@ describe("plan-task", () => {
     expect(finalSource).toContain("- [ ] Add CI pipeline checks");
     expect(finalSource.indexOf("- [ ] Existing task")).toBe(finalSource.lastIndexOf("- [ ] Existing task"));
     expect(finalSource).toContain(
-      "## Next Steps\n- [ ] Existing task\n- [ ] Add CI pipeline checks\n\n## Notes\nKeep this untouched.\n",
+      "## Next Steps\n\n## Notes\nKeep this untouched.\n\n- [ ] Existing task\n- [ ] Add CI pipeline checks\n",
     );
-    expect(finalSource).not.toContain("Keep this untouched.\n\n- [ ] Add CI pipeline checks\n");
+    expect(finalSource).not.toContain("## Next Steps\n- [ ] Existing task");
     expect(events.some((event) => event.kind === "info" && event.message.includes("converged at scan 2"))).toBe(true);
     expect(events.some((event) => event.kind === "success" && event.message.includes("Inserted 1 TODO item"))).toBe(true);
   });
@@ -1072,10 +1072,10 @@ describe("plan-task", () => {
     expect(firstPrompt).toContain("If plan coverage is already sufficient, leave the file unchanged.");
     expect(firstPrompt).toContain("Scan label: plan-scan-01-of-01");
     expect(firstPrompt).toContain("## Rundown feature reference for planning");
-    expect(firstPrompt).toContain("`verify:` / `confirm:` / `check:`");
-    expect(firstPrompt).toContain("`fast:` / `raw:`");
+    expect(firstPrompt).toContain("`verify:` skips execution and runs only the verification phase");
+    expect(firstPrompt).toContain("`fast:` executes the task but skips the verification phase entirely");
     expect(firstPrompt).toContain("`profile: <name>`");
-    expect(firstPrompt).toContain("`memory:` / `memorize:` / `remember:` / `inventory:`");
+    expect(firstPrompt).toContain("`memory:` for tasks that should capture reusable context");
     expect(firstPrompt).toContain("`include: <path>`");
     expect(firstPrompt).toContain("Prefix composition is supported with `, ` or `; ` separators");
   });
@@ -1771,21 +1771,28 @@ describe("plan-task", () => {
 
     expect(code).toBe(0);
     expect(vi.mocked(workerExecutor.runWorker)).toHaveBeenCalledTimes(1);
-    expect(fileSystem.readText(markdownFile)).toBe(content);
-    expect(events.some((event) => event.kind === "warn"
-      && event.message.includes("rewrote existing TODO items without net additions")
-      && event.message.includes("File reverted"))).toBe(true);
+    const modifiedContent = [
+      "# Roadmap",
+      "",
+      "- [ ] Fix the critical bug",
+      "- [ ] Add tests",
+      "",
+    ].join("\n");
+    expect(fileSystem.readText(markdownFile)).toBe(modifiedContent);
+    expect(events.some((event) => event.kind === "info"
+      && event.message.includes("converged at scan 1")
+      && event.message.includes("edit added no new TODO items"))).toBe(true);
     expect(events).toContainEqual({
       kind: "info",
-      message: "Plan stop reason: converged-rewrite-only.",
+      message: "Plan stop reason: converged-no-additions.",
     });
     expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         status: "completed",
         extra: expect.objectContaining({
-          planConvergenceReason: "converged-rewrite-only",
-          planConvergenceOutcome: "converged-rewrite-only",
+          planConvergenceReason: "converged-no-additions",
+          planConvergenceOutcome: "converged-no-additions",
           planConverged: true,
           planScanCapReached: false,
           planEmergencyCapReached: false,

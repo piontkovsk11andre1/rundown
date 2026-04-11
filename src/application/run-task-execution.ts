@@ -337,6 +337,7 @@ export function createRunTaskExecution(
     let runFailed = false;
     let unexpectedError: unknown;
     let completedAllRoundsSuccessfully = false;
+    let postRunResetApplied = false;
     let resolvedFiles: string[] = [];
     const pendingPreRunResetTraceEvents: Array<{ file: string; resetCount: number; dryRun: boolean }> = [];
     // Defer commit until post-run lifecycle when reset-after is active or when
@@ -951,6 +952,21 @@ export function createRunTaskExecution(
       }
 
       if (state.deferredCommitContext && !runFailed && !unexpectedError) {
+        // Reset task checkboxes before committing so git captures the clean state.
+        if (resetAfter && state.runCompleted) {
+          for (const filePath of resolvedFiles) {
+            const resetCount = maybeResetFileCheckboxes(
+              filePath,
+              dependencies.fileSystem,
+              dryRun,
+              emit,
+              "post-run",
+            );
+            traceRunSession.emitResetPhase("post-run-reset", filePath, resetCount, dryRun);
+          }
+          postRunResetApplied = true;
+        }
+
         try {
           const deferredCompletionExtra = await afterTaskComplete(
             dependencies,
@@ -989,7 +1005,8 @@ export function createRunTaskExecution(
       throw error;
     } finally {
       // Reset task checkboxes after a successful run when post-run reset is requested.
-      if (resetAfter && state.runCompleted) {
+      // Skip if already applied before a deferred commit above.
+      if (resetAfter && state.runCompleted && !postRunResetApplied) {
         for (const filePath of resolvedFiles) {
           const resetCount = maybeResetFileCheckboxes(
             filePath,

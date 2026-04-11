@@ -16,7 +16,7 @@ import {
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import type { ExtraTemplateVars } from "../domain/template-vars.js";
 import { runWorker, type RunnerMode } from "./runner.js";
-import { verify } from "./verification.js";
+import { parseResolveResult, type ResolveResult, verify } from "./verification.js";
 import type { RuntimeArtifactsContext } from "./runtime-artifacts.js";
 import { createCliBlockExecutor } from "./cli-block-executor.js";
 
@@ -75,6 +75,116 @@ export interface RepairResult {
   repairStdout?: string;
   /** Raw stdout from the last verification worker run, when available. */
   verificationStdout?: string;
+}
+
+export interface ResolveAttemptRecord {
+  attempt: number;
+  repairStdout: string | undefined;
+  verificationStdout: string | undefined;
+  failureReason: string | null;
+}
+
+export interface ResolveOptions {
+  task: Task;
+  source: string;
+  contextBefore: string;
+  resolveTemplate: string;
+  workerPattern: ParsedWorkerPattern;
+  verificationFailureMessage: string;
+  executionStdout?: string;
+  repairAttemptHistory: ResolveAttemptRecord[];
+  mode?: RunnerMode;
+  onWorkerOutput?: (stdout: string, stderr: string) => void;
+  trace?: boolean;
+  cwd?: string;
+  configDir?: string;
+  templateVars?: ExtraTemplateVars;
+  executionEnv?: Record<string, string>;
+  artifactContext?: RuntimeArtifactsContext;
+  cliBlockExecutor?: CommandExecutor;
+  cliExecutionOptions?: CommandExecutionOptions;
+  cliExpansionEnabled?: boolean;
+}
+
+function normalizeResolveOutputText(value: string | undefined): string {
+  if (typeof value !== "string") {
+    return "(none)";
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : "(empty)";
+}
+
+function formatRepairAttemptHistory(records: ResolveAttemptRecord[]): string {
+  if (records.length === 0) {
+    return "- No repair attempts were recorded.";
+  }
+
+  return records.map((record) => {
+    const failureReason = record.failureReason ?? "Verification failed (no details).";
+    return "Attempt " + record.attempt + ":\n"
+      + "- Failure reason: " + failureReason + "\n"
+      + "- Repair stdout:\n" + normalizeResolveOutputText(record.repairStdout) + "\n"
+      + "- Verification stdout:\n" + normalizeResolveOutputText(record.verificationStdout);
+  }).join("\n\n");
+}
+
+export async function resolve(options: ResolveOptions): Promise<ResolveResult> {
+  const vars: TemplateVars = {
+    ...options.templateVars,
+    task: options.task.text,
+    file: options.task.file,
+    context: options.contextBefore,
+    taskIndex: options.task.index,
+    taskLine: options.task.line,
+    source: options.source,
+    verificationFailureMessage: options.verificationFailureMessage,
+    executionStdout: normalizeResolveOutputText(options.executionStdout),
+    repairAttemptHistory: formatRepairAttemptHistory(options.repairAttemptHistory),
+    ...buildTaskHierarchyTemplateVars(options.task),
+  };
+
+  const renderedPrompt = renderTemplate(options.resolveTemplate, vars);
+  const cliExpansionOptions = options.artifactContext?.keepArtifacts
+    ? {
+      ...options.cliExecutionOptions,
+      env: {
+        ...(options.cliExecutionOptions?.env ?? {}),
+        ...(options.executionEnv ?? {}),
+      },
+      artifactContext: options.artifactContext,
+      artifactPhase: "repair" as const,
+      artifactPhaseLabel: "cli-resolve-template",
+      artifactExtra: {
+        promptType: "resolve-template",
+        ...(options.cliExecutionOptions?.artifactExtra ?? {}),
+      },
+    }
+    : options.cliExecutionOptions;
+  const prompt = options.cliExpansionEnabled === false
+    ? renderedPrompt
+    : await expandCliBlocks(
+      renderedPrompt,
+      options.cliBlockExecutor ?? createCliBlockExecutor(),
+      options.cwd ?? process.cwd(),
+      cliExpansionOptions,
+    );
+
+  const runResult = await runWorker({
+    workerPattern: options.workerPattern,
+    prompt,
+    mode: options.mode ?? "wait",
+    trace: options.trace,
+    cwd: options.cwd,
+    env: options.executionEnv,
+    configDir: options.configDir,
+    artifactContext: options.artifactContext,
+    artifactPhase: "repair",
+    artifactExtra: { promptType: "resolve" },
+  });
+
+  options.onWorkerOutput?.(runResult.stdout, runResult.stderr);
+  return parseResolveResult(runResult.stdout);
 }
 
 /**

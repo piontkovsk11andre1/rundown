@@ -1,11 +1,17 @@
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EXIT_CODE_NO_WORK, EXIT_CODE_SUCCESS } from "../../src/domain/exit-codes.js";
+import {
+  EXIT_CODE_NO_WORK,
+  EXIT_CODE_SUCCESS,
+  EXIT_CODE_VERIFICATION_FAILURE,
+} from "../../src/domain/exit-codes.js";
 import type { ApplicationOutputEvent } from "../../src/domain/ports/output-port.js";
 import {
   createHelpCommandAction,
   createLoopCommandAction,
   createQueryCommandAction,
+  createReverifyCommandAction,
+  createRunCommandAction,
 } from "../../src/presentation/cli-command-actions.js";
 import type { CliApp } from "../../src/presentation/cli-app-init.js";
 import * as sleepModule from "../../src/infrastructure/cancellable-sleep.js";
@@ -315,5 +321,78 @@ describe("createQueryCommandAction", () => {
       mode: "wait",
       cliTemplateVarArgs: ["custom=value"],
     }));
+  });
+});
+
+describe("verification exit code propagation", () => {
+  it("returns verification exit code from run command action", async () => {
+    const runTask = vi.fn(async () => EXIT_CODE_VERIFICATION_FAILURE);
+    const app = { runTask } as unknown as CliApp;
+    const action = createRunCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      runnerModes: ["wait"],
+    });
+
+    const exitCode = await action("tasks.md", {
+      mode: "wait",
+      sort: "name-sort",
+      verify: true,
+      onlyVerify: false,
+      forceExecute: false,
+      forceAttempts: "2",
+      noRepair: false,
+      repairAttempts: "2",
+      resolveRepairAttempts: "1",
+      dryRun: false,
+      printPrompt: false,
+      keepArtifacts: false,
+      trace: false,
+      traceStats: false,
+      traceOnly: false,
+      varsFile: false,
+      var: [],
+      commit: false,
+      commitMode: "per-task",
+      showAgentOutput: false,
+      all: false,
+      redo: false,
+      resetAfter: false,
+      clean: false,
+      forceUnlock: false,
+      ignoreCliBlock: false,
+      cacheCliBlocks: false,
+      verbose: false,
+      worker: "opencode run",
+    });
+
+    expect(exitCode).toBe(EXIT_CODE_VERIFICATION_FAILURE);
+  });
+
+  it("returns verification exit code from reverify command action", async () => {
+    const reverifyTask = vi.fn(async () => EXIT_CODE_VERIFICATION_FAILURE);
+    const app = { reverifyTask } as unknown as CliApp;
+    const action = createReverifyCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+    });
+
+    const exitCode = await action({
+      run: "latest",
+      repairAttempts: "2",
+      resolveRepairAttempts: "1",
+      noRepair: false,
+      dryRun: false,
+      printPrompt: false,
+      keepArtifacts: false,
+      trace: false,
+      ignoreCliBlock: false,
+      var: [],
+      showAgentOutput: false,
+      verbose: false,
+      worker: "opencode run",
+    });
+
+    expect(exitCode).toBe(EXIT_CODE_VERIFICATION_FAILURE);
   });
 });

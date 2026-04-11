@@ -3429,6 +3429,176 @@ describe("complete-task-iteration", () => {
     expect(afterTaskFailedSpy.mock.invocationCallOrder[0]).toBeLessThan(failRun.mock.invocationCallOrder[0] ?? 0);
   });
 
+  it("returns exit code 2 when resolve outcome is unresolved", async () => {
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] Ship release\n",
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    const emit = vi.fn();
+    const failRun = vi.fn(async () => 2);
+    vi.spyOn(runLifecycleModule, "afterTaskFailed").mockResolvedValue();
+    vi.spyOn(checkboxOperationsModule, "checkTaskUsingFileSystem").mockImplementation(() => {});
+    vi.spyOn(checkboxOperationsModule, "writeFixAnnotationToFile").mockImplementation(() => {});
+    vi.spyOn(verifyRepairLoopModule, "runVerifyRepairLoop").mockResolvedValue({
+      valid: false,
+      failureReason: "Resolve phase could not diagnose the issue: contradictory repair outputs.",
+    });
+
+    const result = await completeTaskIteration({
+      dependencies,
+      emit,
+      state: {
+        traceWriter: dependencies.traceWriter,
+        deferredCommitContext: null,
+        tasksCompleted: 0,
+        runCompleted: false,
+      },
+      traceRunSession: createCompletionSession(),
+      failRun,
+      finishRun: vi.fn(async () => 0),
+      resetArtifacts: vi.fn(),
+      keepArtifacts: true,
+      effectiveRunAll: false,
+      commitAfterComplete: false,
+      deferCommitUntilPostRun: false,
+      commitMessageTemplate: undefined,
+      onCompleteCommand: undefined,
+      onFailCommand: undefined,
+      hideHookOutput: false,
+      maxRepairAttempts: 2,
+      maxResolveRepairAttempts: 1,
+      allowRepair: true,
+      trace: false,
+      verbose: false,
+      cliBlockExecutor: dependencies.cliBlockExecutor!,
+      cliExpansionEnabled: true,
+      task,
+      sourceText: "- [ ] Ship release",
+      expandedSource: "- [ ] Ship release",
+      expandedContextBefore: "",
+      templates: {
+        task: "",
+        discuss: "",
+        research: "",
+        verify: "{{task}}",
+        repair: "{{task}}",
+        resolve: "{{task}}",
+        plan: "",
+        trace: "",
+      },
+      templateVarsWithTrace: {},
+      automationCommand: ["opencode", "run"],
+      automationWorkerPattern: inferWorkerPatternFromCommand(["opencode", "run"]),
+      shouldVerify: true,
+      runMode: "wait",
+      verificationPrompt: "verify",
+      artifactContext: {
+        runId: "run-complete",
+        rootDir: path.join(cwd, ".rundown", "runs", "run-complete"),
+        cwd,
+        keepArtifacts: true,
+        commandName: "run",
+      },
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      verificationFailureMessage: "Verification failed. Task not checked.",
+      verificationFailureRunReason: "verification-failed",
+      extraTemplateVars: {},
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(failRun).toHaveBeenCalledWith(2, "verification-failed", "verification-failed", 2);
+  });
+
+  it("returns exit code 2 when resolve-informed repairs are exhausted", async () => {
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] Ship release\n",
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    const emit = vi.fn();
+    const failRun = vi.fn(async () => 2);
+    vi.spyOn(runLifecycleModule, "afterTaskFailed").mockResolvedValue();
+    vi.spyOn(checkboxOperationsModule, "checkTaskUsingFileSystem").mockImplementation(() => {});
+    vi.spyOn(checkboxOperationsModule, "writeFixAnnotationToFile").mockImplementation(() => {});
+    vi.spyOn(verifyRepairLoopModule, "runVerifyRepairLoop").mockResolvedValue({
+      valid: false,
+      failureReason: "Resolve-informed repair attempts exhausted after 1 attempt(s).",
+    });
+
+    const result = await completeTaskIteration({
+      dependencies,
+      emit,
+      state: {
+        traceWriter: dependencies.traceWriter,
+        deferredCommitContext: null,
+        tasksCompleted: 0,
+        runCompleted: false,
+      },
+      traceRunSession: createCompletionSession(),
+      failRun,
+      finishRun: vi.fn(async () => 0),
+      resetArtifacts: vi.fn(),
+      keepArtifacts: true,
+      effectiveRunAll: false,
+      commitAfterComplete: false,
+      deferCommitUntilPostRun: false,
+      commitMessageTemplate: undefined,
+      onCompleteCommand: undefined,
+      onFailCommand: undefined,
+      hideHookOutput: false,
+      maxRepairAttempts: 2,
+      maxResolveRepairAttempts: 1,
+      allowRepair: true,
+      trace: false,
+      verbose: false,
+      cliBlockExecutor: dependencies.cliBlockExecutor!,
+      cliExpansionEnabled: true,
+      task,
+      sourceText: "- [ ] Ship release",
+      expandedSource: "- [ ] Ship release",
+      expandedContextBefore: "",
+      templates: {
+        task: "",
+        discuss: "",
+        research: "",
+        verify: "{{task}}",
+        repair: "{{task}}",
+        resolve: "{{task}}",
+        plan: "",
+        trace: "",
+      },
+      templateVarsWithTrace: {},
+      automationCommand: ["opencode", "run"],
+      automationWorkerPattern: inferWorkerPatternFromCommand(["opencode", "run"]),
+      shouldVerify: true,
+      runMode: "wait",
+      verificationPrompt: "verify",
+      artifactContext: {
+        runId: "run-complete",
+        rootDir: path.join(cwd, ".rundown", "runs", "run-complete"),
+        cwd,
+        keepArtifacts: true,
+        commandName: "run",
+      },
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      verificationFailureMessage: "Verification failed. Task not checked.",
+      verificationFailureRunReason: "verification-failed",
+      extraTemplateVars: {},
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(failRun).toHaveBeenCalledWith(2, "verification-failed", "verification-failed", 2);
+  });
+
   it("stacks fix annotations across consecutive verification failures without checkbox reset", async () => {
     const fileSystem = createInMemoryFileSystem({
       [task.file]: "- [ ] Ship release\n",

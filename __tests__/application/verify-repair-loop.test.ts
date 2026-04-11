@@ -797,6 +797,150 @@ describe("verify-repair-loop output", () => {
     });
   });
 
+  it("runs resolve-informed repair with diagnosis from resolve phase and succeeds", async () => {
+    const output = {
+      emit: vi.fn(),
+    };
+
+    const repair = vi.fn()
+      .mockResolvedValueOnce({ valid: false, attempts: 1, repairStdout: "repair-1", verificationStdout: "verify-1" })
+      .mockResolvedValueOnce({ valid: false, attempts: 1, repairStdout: "repair-2", verificationStdout: "verify-2" })
+      .mockResolvedValueOnce({ valid: true, attempts: 1, repairStdout: "resolve-repair-1", verificationStdout: "resolve-verify-ok" });
+    const resolve = vi.fn(async () => ({
+      resolved: true,
+      diagnosis: "Root cause: validator checks stale context snapshot.",
+    }));
+    const verificationStoreRead = vi.fn()
+      .mockReturnValueOnce("initial failure")
+      .mockReturnValueOnce("initial failure")
+      .mockReturnValueOnce("repair failed 1")
+      .mockReturnValueOnce("repair failed 2");
+
+    const result = await runVerifyRepairLoop({
+      taskVerification: {
+        verify: vi.fn(async () => ({ valid: false, stdout: "NOT_OK: initial failure" })),
+      },
+      taskRepair: {
+        repair,
+        resolve,
+      },
+      verificationStore: {
+        write: vi.fn(),
+        read: verificationStoreRead,
+        remove: vi.fn(),
+      },
+      traceWriter: {
+        write: vi.fn(),
+        flush: vi.fn(),
+      },
+      output,
+    }, {
+      task: createTask(),
+      source: "- [ ] ship release",
+      contextBefore: "",
+      verifyTemplate: "{{task}}",
+      repairTemplate: "{{task}}",
+      resolveTemplate: "{{task}}",
+      executionStdout: "execution output",
+      workerPattern: inferWorkerPatternFromCommand(["opencode", "run"]),
+      maxRepairAttempts: 2,
+      maxResolveRepairAttempts: 1,
+      allowRepair: true,
+      templateVars: {},
+      artifactContext: { runId: "run-resolve-success" },
+      trace: false,
+    });
+
+    expect(result).toEqual({
+      valid: true,
+      failureReason: null,
+    });
+    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(resolve).toHaveBeenCalledWith(expect.objectContaining({
+      verificationFailureMessage: "repair failed 2",
+      executionStdout: "execution output",
+      repairAttemptHistory: [
+        {
+          attempt: 1,
+          repairStdout: "repair-1",
+          verificationStdout: "verify-1",
+          failureReason: "repair failed 1",
+        },
+        {
+          attempt: 2,
+          repairStdout: "repair-2",
+          verificationStdout: "verify-2",
+          failureReason: "repair failed 2",
+        },
+      ],
+    }));
+    expect(repair).toHaveBeenCalledTimes(3);
+    expect(repair.mock.calls[2]?.[0]).toEqual(expect.objectContaining({
+      templateVars: expect.objectContaining({
+        resolvedDiagnosis: "Root cause: validator checks stale context snapshot.",
+      }),
+    }));
+  });
+
+  it("returns unresolved resolve failure without running resolve-informed repair", async () => {
+    const output = {
+      emit: vi.fn(),
+    };
+
+    const repair = vi.fn()
+      .mockResolvedValueOnce({ valid: false, attempts: 1, repairStdout: "repair-1", verificationStdout: "verify-1" })
+      .mockResolvedValueOnce({ valid: false, attempts: 1, repairStdout: "repair-2", verificationStdout: "verify-2" });
+    const resolve = vi.fn(async () => ({
+      resolved: false,
+      diagnosis: "Cannot diagnose due to contradictory attempt outputs.",
+    }));
+
+    const result = await runVerifyRepairLoop({
+      taskVerification: {
+        verify: vi.fn(async () => ({ valid: false, stdout: "NOT_OK: initial failure" })),
+      },
+      taskRepair: {
+        repair,
+        resolve,
+      },
+      verificationStore: {
+        write: vi.fn(),
+        read: vi.fn(() => "repair failed"),
+        remove: vi.fn(),
+      },
+      traceWriter: {
+        write: vi.fn(),
+        flush: vi.fn(),
+      },
+      output,
+    }, {
+      task: createTask(),
+      source: "- [ ] ship release",
+      contextBefore: "",
+      verifyTemplate: "{{task}}",
+      repairTemplate: "{{task}}",
+      resolveTemplate: "{{task}}",
+      workerPattern: inferWorkerPatternFromCommand(["opencode", "run"]),
+      maxRepairAttempts: 2,
+      maxResolveRepairAttempts: 2,
+      allowRepair: true,
+      templateVars: {},
+      artifactContext: { runId: "run-resolve-unresolved" },
+      trace: false,
+    });
+
+    expect(result).toEqual({
+      valid: false,
+      failureReason: "Cannot diagnose due to contradictory attempt outputs.",
+    });
+    expect(repair).toHaveBeenCalledTimes(2);
+    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(output.emit).toHaveBeenCalledWith({
+      kind: "error",
+      message: "Resolve phase could not diagnose the issue: Cannot diagnose due to contradictory attempt outputs.",
+    });
+  });
+
   it("applies resolve-informed repair attempt limit and emits exhaustion message", async () => {
     const output = {
       emit: vi.fn(),

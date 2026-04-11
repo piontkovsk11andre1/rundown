@@ -200,9 +200,10 @@ export function writeFixAnnotationToFile(task: Task, failureReason: string | nul
     try {
       checkedSource = markChecked(source, task);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      const expectedPrefix = `Could not find unchecked checkbox on line ${task.line} in `;
-      if (!message.startsWith(expectedPrefix)) {
+      const lines = source.split(/\r?\n/);
+      const taskLine = lines[task.line - 1] ?? "";
+      const taskLineAlreadyChecked = /\[[xX]\]/.test(taskLine);
+      if (!taskLineAlreadyChecked) {
         throw error;
       }
     }

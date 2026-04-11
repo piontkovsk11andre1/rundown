@@ -176,6 +176,29 @@ interface QueryActionDependencies extends WorkerActionDependencies {
   queryModes: readonly ProcessRunMode[];
 }
 
+type MigrateAction =
+  | "up"
+  | "down"
+  | "snapshot"
+  | "backlog"
+  | "context"
+  | "review"
+  | "user-experience"
+  | "user-session";
+
+interface MigrateCommandOptions {
+  action?: MigrateAction;
+  downCount?: number;
+  dir?: string;
+  confirm: boolean;
+  workerPattern: ParsedWorkerPattern;
+  keepArtifacts: boolean;
+  showAgentOutput: boolean;
+  runId?: string;
+}
+
+type MigrateCommandHandler = (options: MigrateCommandOptions) => CliActionResult;
+
 function resolveWorkerPattern(
   worker: string | string[] | boolean | undefined,
   getWorkerFromSeparator: () => string[] | undefined,
@@ -929,6 +952,47 @@ export function createStartCommandAction({
 }
 
 /**
+ * Creates the `migrate` command action handler.
+ *
+ * The returned action validates migrate action routing and forwards the request
+ * to the application `migrateTask` use case.
+ */
+export function createMigrateCommandAction({
+  getApp,
+  getWorkerFromSeparator,
+}: WorkerActionDependencies): (
+  action: string | undefined,
+  count: string | undefined,
+  opts: CliOpts,
+) => CliActionResult {
+  return (action: string | undefined, count: string | undefined, opts: CliOpts) => {
+    const normalizedAction = normalizeOptionalString(action);
+    if (normalizedAction !== undefined && !isMigrateAction(normalizedAction)) {
+      throw new Error(
+        "Invalid migrate action: "
+          + normalizedAction
+          + ". Allowed: up, down, snapshot, backlog, context, review, user-experience, user-session.",
+      );
+    }
+
+    if (count !== undefined && normalizedAction !== "down") {
+      throw new Error("The optional [count] argument is only supported for `migrate down [n]`.");
+    }
+
+    return resolveMigrateCommandHandler(getApp())({
+      action: normalizedAction,
+      downCount: parseLastCount(count),
+      dir: normalizeOptionalString(opts.dir),
+      confirm: Boolean(opts.confirm as boolean | undefined),
+      workerPattern: resolveWorkerPattern(opts.worker, getWorkerFromSeparator),
+      keepArtifacts: Boolean(opts.keepArtifacts as boolean | undefined),
+      showAgentOutput: resolveShowAgentOutputOption(opts),
+      runId: normalizeOptionalString(opts.run),
+    });
+  };
+}
+
+/**
  * Creates the `query` command action handler.
  */
 export function createQueryCommandAction({
@@ -1566,4 +1630,30 @@ function resolveLogCommandHandler(appInstance: CliApp): LogCommandHandler {
 
   // Surface a clear runtime error when log support is absent.
   throw new Error("The `log` command is not available in this build.");
+}
+
+/**
+ * Resolves the active migrate command implementation for the current app build.
+ */
+function resolveMigrateCommandHandler(appInstance: CliApp): MigrateCommandHandler {
+  const maybeMigrateHandler = appInstance as CliApp & {
+    migrateTask?: MigrateCommandHandler;
+  };
+
+  if (typeof maybeMigrateHandler.migrateTask === "function") {
+    return maybeMigrateHandler.migrateTask;
+  }
+
+  throw new Error("The `migrate` command is not available in this build.");
+}
+
+function isMigrateAction(value: string): value is MigrateAction {
+  return value === "up"
+    || value === "down"
+    || value === "snapshot"
+    || value === "backlog"
+    || value === "context"
+    || value === "review"
+    || value === "user-experience"
+    || value === "user-session";
 }

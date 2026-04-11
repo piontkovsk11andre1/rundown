@@ -42,6 +42,7 @@ import {
   createListCommandAction,
   createLogCommandAction,
   createMakeCommandAction,
+  createMigrateCommandAction,
   createMemoryViewCommandAction,
   createMemoryCleanCommandAction,
   createMemoryValidateCommandAction,
@@ -305,37 +306,23 @@ program
 
 program
   .command("migrate")
-  .description("Manage prediction migrations (currently supports down alias to undo).")
-  .argument("<action>", "Migration action: down")
+  .description("Generate and manage prediction migrations.")
+  .argument(
+    "[action]",
+    "Migration action: up | down [n] | snapshot | backlog | context | review | user-experience | user-session",
+  )
   .argument("[count]", "Optional number of runs to undo for down")
+  .option("--dir <path>", "Migrations directory (default: ./migrations)", "./migrations")
+  .option("--confirm", "Show generated content and confirm before writing files", false)
   .option("--run <id|latest>", "Choose artifact run id or 'latest' for down", "latest")
-  .option("--force", "Bypass clean-worktree safety check for down", false)
-  .option("--dry-run", "Show what would be undone without changing files", false)
   .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
   .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
   .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
   .allowUnknownOption(false)
-  .action(withCliAction((action: string, count: string | undefined, opts: Record<string, string | string[] | boolean>) => {
-    if (action !== "down") {
-      throw new Error("Unsupported migrate action: " + action + ". Currently supported: down.");
-    }
-
-    if (count !== undefined && !/^\d+$/.test(count)) {
-      throw new Error("Invalid migrate down count: " + count + ". Must be a positive integer.");
-    }
-
-    const undoAction = createUndoCommandAction({
-      getApp,
-      getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
-    });
-
-    const undoOptions: Record<string, string | string[] | boolean> = {
-      ...opts,
-      ...(count !== undefined ? { last: count } : {}),
-    };
-
-    return undoAction(undoOptions);
-  }));
+  .action(withCliAction(createMigrateCommandAction({
+    getApp,
+    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
+  })));
 
 program
   .command("next")

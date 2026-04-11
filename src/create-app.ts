@@ -26,6 +26,7 @@ import { createInitProject, type InitProjectOptions } from "./application/init-p
 import { createReverifyTask, type ReverifyTaskOptions } from "./application/reverify-task.js";
 import { createRevertTask, type RevertTaskOptions } from "./application/revert-task.js";
 import { createUndoTask, type UndoTaskOptions } from "./application/undo-task.js";
+import { createMigrateTask, type MigrateTaskOptions } from "./application/migrate-task.js";
 import {
   createStartProject,
   type StartProjectOptions,
@@ -49,6 +50,7 @@ import type {
   MemoryReaderPort,
   MemoryResolverPort,
   MemoryWriterPort,
+  InteractiveInputPort,
   ToolResolverPort,
   ProcessRunner,
   PathOperationsPort,
@@ -113,6 +115,7 @@ export type App = {
   reverifyTask: (options: ReverifyTaskCommandOptions) => Promise<number>;
   revertTask: (options: RevertTaskOptions) => Promise<number>;
   undoTask: (options: UndoTaskOptions) => Promise<number>;
+  migrateTask: (options: MigrateTaskOptions) => Promise<number>;
   planTask: (options: PlanTaskCommandOptions) => Promise<number>;
   researchTask: (options: ResearchTaskCommandOptions) => Promise<number>;
   queryTask: (options: QueryTaskCommandOptions) => Promise<number>;
@@ -219,6 +222,7 @@ export interface AppPorts {
   memoryReader: MemoryReaderPort;
   toolResolver: ToolResolverPort;
   memoryWriter?: MemoryWriterPort;
+  interactiveInput: InteractiveInputPort;
   workerConfigPort: WorkerConfigPort;
   templateVarsLoader: TemplateVarsLoaderPort;
   traceWriter: TraceWriterPort;
@@ -255,7 +259,7 @@ function createAppPorts(overrides: Partial<AppPorts> = {}): AppPorts {
     fileSystem,
     pathOperations,
   });
-  const interactiveInput = createTerminalInteractiveInputAdapter();
+  const interactiveInput = overrides.interactiveInput ?? createTerminalInteractiveInputAdapter();
   const toolResolver = overrides.toolResolver ?? createToolResolverAdapter({
     fileSystem,
     pathOperations,
@@ -291,6 +295,7 @@ function createAppPorts(overrides: Partial<AppPorts> = {}): AppPorts {
     memoryResolver,
     memoryReader,
     memoryWriter,
+    interactiveInput,
     workerConfigPort: overrides.workerConfigPort ?? createWorkerConfigAdapter(),
     templateVarsLoader: overrides.templateVarsLoader ?? createFsTemplateVarsLoaderAdapter(),
     traceWriter: overrides.traceWriter ?? createNoopTraceWriter(),
@@ -465,6 +470,60 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       pathOperations: ports.pathOperations,
       configDir: ports.configDir,
       output: ports.output,
+    }),
+    migrateTask: (ports) => createMigrateTask({
+      workerExecutor: ports.workerExecutor,
+      fileSystem: ports.fileSystem,
+      templateLoader: ports.templateLoader,
+      sourceResolver: ports.sourceResolver,
+      workerConfigPort: ports.workerConfigPort,
+      artifactStore: ports.artifactStore,
+      interactiveInput: ports.interactiveInput,
+      output: ports.output,
+      runTask: createRunTask({
+        sourceResolver: ports.sourceResolver,
+        taskSelector: ports.taskSelector,
+        workerExecutor: ports.workerExecutor,
+        taskVerification: ports.taskVerification,
+        taskRepair: ports.taskRepair,
+        workingDirectory: ports.workingDirectory,
+        fileSystem: ports.fileSystem,
+        fileLock: ports.fileLock,
+        templateLoader: ports.templateLoader,
+        verificationStore: ports.verificationStore,
+        artifactStore: ports.artifactStore,
+        gitClient: ports.gitClient,
+        processRunner: ports.processRunner,
+        pathOperations: ports.pathOperations,
+        toolResolver: ports.toolResolver,
+        memoryResolver: ports.memoryResolver,
+        memoryWriter: ports.memoryWriter,
+        templateVarsLoader: ports.templateVarsLoader,
+        workerConfigPort: ports.workerConfigPort,
+        traceWriter: ports.traceWriter,
+        cliBlockExecutor: ports.cliBlockExecutor,
+        configDir: ports.configDir,
+        createTraceWriter: (trace, artifactContext) => {
+          if (!trace) {
+            return ports.traceWriter;
+          }
+
+          return createArtifactTraceWriter(ports, artifactContext);
+        },
+        output: ports.output,
+      }),
+      undoTask: createUndoTask({
+        artifactStore: ports.artifactStore,
+        workerExecutor: ports.workerExecutor,
+        taskVerification: ports.taskVerification,
+        fileSystem: ports.fileSystem,
+        gitClient: ports.gitClient,
+        templateLoader: ports.templateLoader,
+        workingDirectory: ports.workingDirectory,
+        pathOperations: ports.pathOperations,
+        configDir: ports.configDir,
+        output: ports.output,
+      }),
     }),
     planTask: (ports) => {
       const runPlanTask = planTaskUseCase(ports);
@@ -656,6 +715,7 @@ function createAppFromFactories(
   const reverifyTask = factories.reverifyTask(ports);
   const revertTask = factories.revertTask(ports);
   const undoTask = factories.undoTask(ports);
+  const migrateTask = factories.migrateTask(ports);
   const planTask = factories.planTask(ports);
   const researchTask = factories.researchTask(ports);
   const queryTask = factories.queryTask(ports);
@@ -686,6 +746,7 @@ function createAppFromFactories(
     reverifyTask,
     revertTask,
     undoTask,
+    migrateTask,
     planTask,
     researchTask,
     queryTask,

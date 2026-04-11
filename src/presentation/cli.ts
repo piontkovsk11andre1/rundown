@@ -53,6 +53,7 @@ import {
   createRevertCommandAction,
   createUndoCommandAction,
   createRunCommandAction,
+  createStartCommandAction,
   createUnlockCommandAction,
 } from "./cli-command-actions.js";
 
@@ -277,6 +278,29 @@ program
   .action(withCliAction(createUndoCommandAction({
     getApp,
     getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
+  })));
+
+program
+  .command("start")
+  .description("Scaffold a new prediction project directory.")
+  .argument("<description>", "Seed description for Design.md")
+  .option("--dir <path>", "Target project directory (default: current working directory)")
+  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
+  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
+  .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
+  .option("--force-unlock", "Break stale source lockfiles before acquiring phase locks", false)
+  .option("--vars-file [path]", DEFAULT_VARS_FILE_HELP)
+  .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
+  .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
+  .option("--ignore-cli-block", "Disable execution of `cli` fenced blocks during prompt expansion")
+  .option(
+    "--cli-block-timeout <ms>",
+    "Timeout in milliseconds for executing `cli` fenced blocks (0 disables timeout)",
+    String(DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS),
+  )
+  .allowUnknownOption(false)
+  .action(withCliAction(createStartCommandAction({
+    getApp,
   })));
 
 program

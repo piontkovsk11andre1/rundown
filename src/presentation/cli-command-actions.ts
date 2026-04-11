@@ -913,6 +913,22 @@ export function createUndoCommandAction({
 }
 
 /**
+ * Creates the `start` command action handler.
+ *
+ * The returned action initializes a scaffold project directory from a description.
+ */
+export function createStartCommandAction({
+  getApp,
+}: Pick<WorkerActionDependencies, "getApp">): (description: string, opts: CliOpts) => CliActionResult {
+  return (description: string, opts: CliOpts) => {
+    return getApp().startProject({
+      description,
+      dir: normalizeOptionalString(opts.dir),
+    });
+  };
+}
+
+/**
  * Creates the `query` command action handler.
  */
 export function createQueryCommandAction({

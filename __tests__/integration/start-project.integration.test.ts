@@ -139,6 +139,24 @@ async function runCli(args: string[], cwd: string): Promise<{
     if (
       typeof error === "object"
       && error !== null
+      && "code" in error
+      && typeof (error as { code?: unknown }).code === "number"
+      && "message" in error
+      && typeof (error as { message?: unknown }).message === "string"
+      && (error as { message: string }).message.startsWith("CLI exited with code ")
+    ) {
+      return {
+        code: (error as { code: number }).code,
+        logs,
+        errors,
+        stdoutWrites,
+        stderrWrites,
+      };
+    }
+
+    if (
+      typeof error === "object"
+      && error !== null
       && "__cliExit" in error
       && (error as { __cliExit?: unknown }).__cliExit === true
     ) {

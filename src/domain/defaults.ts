@@ -447,6 +447,8 @@ Edit the source Markdown file directly to improve plan coverage.
 
 Review the document and evaluate whether existing TODO items fully cover the described workload. If coverage gaps exist, append new items.
 
+Never invent TODO items based on examples, sample output, or hypothetical scenarios found in the document. TODO items must address the actual work described by the document — not illustrative content. If you cannot determine the real workload from the document, do not add any items.
+
 ## Rundown feature reference for planning
 
 Use built-in prefixes when they improve execution quality:

@@ -9,7 +9,9 @@ import {
   DEFAULT_RESEARCH_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
   DEFAULT_TASK_TEMPLATE,
+  DEFAULT_TEST_VERIFY_TEMPLATE,
   DEFAULT_TRACE_TEMPLATE,
+  DEFAULT_UNDO_TEMPLATE,
   DEFAULT_VERIFY_TEMPLATE,
 } from "../../src/domain/defaults.js";
 import { CONFIG_DIR_NAME } from "../../src/domain/ports/config-dir-port.js";
@@ -59,6 +61,8 @@ describe("loadProjectTemplates", () => {
     expect(templates.plan).toBe("PLAN");
     expect(templates.research).toBe("RESEARCH");
     expect(templates.trace).toBe(DEFAULT_TRACE_TEMPLATE);
+    expect(templates.undo).toBe(DEFAULT_UNDO_TEMPLATE);
+    expect(templates.testVerify).toBe(DEFAULT_TEST_VERIFY_TEMPLATE);
   });
 
   it("falls back to defaults when templates are missing", () => {
@@ -74,6 +78,8 @@ describe("loadProjectTemplates", () => {
     expect(templates.plan).toBe(DEFAULT_PLAN_TEMPLATE);
     expect(templates.research).toBe(DEFAULT_RESEARCH_TEMPLATE);
     expect(templates.trace).toBe(DEFAULT_TRACE_TEMPLATE);
+    expect(templates.undo).toBe(DEFAULT_UNDO_TEMPLATE);
+    expect(templates.testVerify).toBe(DEFAULT_TEST_VERIFY_TEMPLATE);
   });
 
   it("loads explicit execute/verify/repair files with precedence", () => {
@@ -93,6 +99,20 @@ describe("loadProjectTemplates", () => {
     expect(templates.plan).toBe(DEFAULT_PLAN_TEMPLATE);
     expect(templates.research).toBe(DEFAULT_RESEARCH_TEMPLATE);
     expect(templates.trace).toBe(DEFAULT_TRACE_TEMPLATE);
+    expect(templates.undo).toBe(DEFAULT_UNDO_TEMPLATE);
+    expect(templates.testVerify).toBe(DEFAULT_TEST_VERIFY_TEMPLATE);
+  });
+
+  it("loads undo.md and test-verify.md when present", () => {
+    const cwd = makeTempDir();
+    const configDir = path.join(cwd, CONFIG_DIR_NAME);
+    writeTemplate(configDir, "undo.md", "UNDO");
+    writeTemplate(configDir, "test-verify.md", "TEST VERIFY");
+
+    const templates = loadProjectTemplates(configDir);
+
+    expect(templates.undo).toBe("UNDO");
+    expect(templates.testVerify).toBe("TEST VERIFY");
   });
 
   it("loads trace.md when present", () => {

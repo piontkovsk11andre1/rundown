@@ -29,6 +29,14 @@ describe("init-project", () => {
       "/workspace/.rundown/vars.json",
       "{}\n",
     );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/.rundown/undo.md",
+      expect.any(String),
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/.rundown/test-verify.md",
+      expect.any(String),
+    );
   });
 
   it("creates templates inside explicit --config-dir target", async () => {
@@ -59,6 +67,14 @@ describe("init-project", () => {
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
       "/workspace/config/.rundown-custom/vars.json",
       "{}\n",
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/config/.rundown-custom/undo.md",
+      expect.any(String),
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/config/.rundown-custom/test-verify.md",
+      expect.any(String),
     );
   });
 

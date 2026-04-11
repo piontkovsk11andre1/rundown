@@ -380,6 +380,16 @@ Do not modify the source Markdown task file or change its checkbox state.
 `;
 
 /**
+ * Default undo prompt template used by the undo command.
+ */
+export const DEFAULT_UNDO_TEMPLATE = DEFAULT_TASK_TEMPLATE;
+
+/**
+ * Default test verification prompt template used by the test command.
+ */
+export const DEFAULT_TEST_VERIFY_TEMPLATE = DEFAULT_VERIFY_TEMPLATE;
+
+/**
  * Default repair-phase prompt template used after a failed verification result.
  */
 export const DEFAULT_REPAIR_TEMPLATE = `\

@@ -6,6 +6,8 @@ import {
   DEFAULT_REPAIR_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_TASK_TEMPLATE,
+  DEFAULT_TEST_VERIFY_TEMPLATE,
+  DEFAULT_UNDO_TEMPLATE,
   DEFAULT_VERIFY_TEMPLATE,
   DEFAULT_VARS_FILE_CONTENT,
 } from "../domain/defaults.js";
@@ -108,6 +110,8 @@ export function createInitProject(
     write("plan.md", DEFAULT_PLAN_TEMPLATE);
     write("research.md", DEFAULT_RESEARCH_TEMPLATE);
     write("trace.md", DEFAULT_TRACE_TEMPLATE);
+    write("undo.md", DEFAULT_UNDO_TEMPLATE);
+    write("test-verify.md", DEFAULT_TEST_VERIFY_TEMPLATE);
     write("vars.json", DEFAULT_VARS_FILE_CONTENT);
 
     // Generate config content: embed worker(s) when provided, otherwise use default.
@@ -145,4 +149,3 @@ export function createInitProject(
     return 0;
   };
 }
-

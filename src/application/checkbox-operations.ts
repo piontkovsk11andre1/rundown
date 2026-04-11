@@ -193,6 +193,13 @@ export function checkTaskUsingFileSystem(task: Task, fileSystem: FileSystem): vo
  */
 export function writeFixAnnotationToFile(task: Task, failureReason: string | null, fileSystem: FileSystem): void {
   const reason = failureReason?.trim().length ? failureReason.trim() : "Verification failed (no details).";
+  const reasonLines = reason
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const annotationLines = reasonLines.length > 0
+    ? reasonLines.map((line) => `fix: ${line}`)
+    : ["fix: Verification failed (no details)."];
 
   withSerializedFileMutation(task.file, () => {
     const source = fileSystem.readText(task.file);
@@ -207,7 +214,7 @@ export function writeFixAnnotationToFile(task: Task, failureReason: string | nul
         throw error;
       }
     }
-    const updated = insertSubitems(checkedSource, task, [`fix: ${reason}`]);
+    const updated = insertSubitems(checkedSource, task, annotationLines);
     fileSystem.writeText(task.file, updated);
   });
 }

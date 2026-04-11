@@ -147,7 +147,7 @@ describe("checkbox-operations", () => {
     ].join("\r\n"));
   });
 
-  it("preserves newline characters in fix annotation reason", () => {
+  it("preserves multi-line reasons as multiple indented fix sub-items", () => {
     const fileSystem = createFileSystem({
       "todo.md": "- [ ] First task\n- [ ] Second task\n",
     });
@@ -158,7 +158,7 @@ describe("checkbox-operations", () => {
     expect(fileSystem.readText("todo.md")).toBe([
       "- [x] First task",
       "  - fix: failed line one",
-      "failed line two",
+      "  - fix: failed line two",
       "- [ ] Second task",
       "",
     ].join("\n"));

@@ -17,6 +17,77 @@ import {
   createTask,
 } from "./run-task-test-helpers.js";
 
+function createGitClientWithCommittableChangesMock(cwd: string) {
+  let statusCallCount = 0;
+  return {
+    run: vi.fn(async (args: string[]) => {
+      if (args[0] === "rev-parse" && args[1] === "--show-toplevel") {
+        return cwd;
+      }
+      if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+        return "true";
+      }
+      if (args[0] === "check-ignore") {
+        throw new Error("not ignored");
+      }
+      if (args[0] === "status") {
+        statusCallCount += 1;
+        return statusCallCount === 1 ? "" : " M tasks.md";
+      }
+      if (args[0] === "rev-parse" && args[1] === "HEAD") {
+        return "true";
+      }
+      return "";
+    }),
+  };
+}
+
+function createGitClientWithNoCommittableChangesMock(cwd: string) {
+  return {
+    run: vi.fn(async (args: string[]) => {
+      if (args[0] === "rev-parse" && args[1] === "--show-toplevel") {
+        return cwd;
+      }
+      if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+        return "true";
+      }
+      if (args[0] === "check-ignore") {
+        throw new Error("not ignored");
+      }
+      if (args[0] === "status") {
+        return "";
+      }
+      return "";
+    }),
+  };
+}
+
+function createGitClientWithOnlyUntrackedChangesAfterRunMock(cwd: string) {
+  let statusCallCount = 0;
+  return {
+    run: vi.fn(async (args: string[]) => {
+      if (args[0] === "rev-parse" && args[1] === "--show-toplevel") {
+        return cwd;
+      }
+      if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+        return "true";
+      }
+      if (args[0] === "check-ignore") {
+        throw new Error("not ignored");
+      }
+      if (args[0] === "status") {
+        statusCallCount += 1;
+        // Initial cleanliness gate should pass; deferred commit preflight sees only unrelated untracked files.
+        if (args.includes("--untracked-files=no")) {
+          return "";
+        }
+        return statusCallCount === 1 ? "" : "?? scratch/unrelated.txt";
+      }
+      return "";
+    }),
+  };
+}
+
 describe("run-task orchestration", () => {
   it("returns configuration error when --only-verify is combined with reset flags", async () => {
     const cwd = "/workspace";
@@ -934,7 +1005,7 @@ describe("run-task orchestration", () => {
       cwd,
       task: createInlineTask(taskFile, "cli: echo hello"),
       fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] cli: echo hello\n" }),
-      gitClient: createGitClientMock(),
+      gitClient: createGitClientWithCommittableChangesMock(cwd),
     });
 
     const code = await createRunTask(dependencies)(
@@ -965,7 +1036,7 @@ describe("run-task orchestration", () => {
       cwd,
       task: createInlineTask(taskFile, "cli: echo hello"),
       fileSystem,
-      gitClient: createGitClientMock(),
+      gitClient: createGitClientWithCommittableChangesMock(cwd),
     });
 
     dependencies.taskSelector.selectNextTask = vi.fn(() => {
@@ -1008,7 +1079,7 @@ describe("run-task orchestration", () => {
       cwd,
       task: createInlineTask(taskFile, "cli: echo hello"),
       fileSystem,
-      gitClient: createGitClientMock(),
+      gitClient: createGitClientWithCommittableChangesMock(cwd),
     });
 
     dependencies.taskSelector.selectNextTask = vi.fn(() => {
@@ -1100,7 +1171,7 @@ describe("run-task orchestration", () => {
       cwd,
       task: createInlineTask(taskFile, "cli: echo one"),
       fileSystem,
-      gitClient: createGitClientMock(),
+      gitClient: createGitClientWithCommittableChangesMock(cwd),
     });
 
     let selectCallCount = 0;
@@ -1165,7 +1236,7 @@ describe("run-task orchestration", () => {
       cwd,
       task: firstChild,
       fileSystem,
-      gitClient: createGitClientMock(),
+      gitClient: createGitClientWithCommittableChangesMock(cwd),
     });
 
     dependencies.taskSelector.selectNextTask = vi.fn()
@@ -1187,6 +1258,7 @@ describe("run-task orchestration", () => {
 
     const code = await createRunTask(dependencies)(
       createOptions({
+        mode: "tui",
         verify: false,
         runAll: true,
         commitAfterComplete: true,
@@ -1223,7 +1295,7 @@ describe("run-task orchestration", () => {
       cwd,
       task: firstChild,
       fileSystem,
-      gitClient: createGitClientMock(),
+      gitClient: createGitClientWithCommittableChangesMock(cwd),
     });
 
     let runCounter = 0;
@@ -1291,7 +1363,7 @@ describe("run-task orchestration", () => {
       cwd,
       task: createInlineTask(taskFile, "cli: echo one"),
       fileSystem,
-      gitClient: createGitClientMock(),
+      gitClient: createGitClientWithCommittableChangesMock(cwd),
     });
 
     let selectCallCount = 0;
@@ -1339,12 +1411,13 @@ describe("run-task orchestration", () => {
     expect(commitOrder).toBeGreaterThan(lastWorkerOrder as number);
   });
 
-  it("keeps deferred file-done commit failures non-fatal", async () => {
+  it("fails run when deferred file-done commit fails", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");
     const fileSystem = createInMemoryFileSystem({
       [taskFile]: "- [ ] cli: echo one\n- [ ] cli: echo two\n",
     });
+    let statusCallCount = 0;
     const gitClient = {
       run: vi.fn(async (args: string[]) => {
         if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
@@ -1352,6 +1425,10 @@ describe("run-task orchestration", () => {
         }
         if (args[0] === "rev-parse" && args[1] === "--show-toplevel") {
           return cwd;
+        }
+        if (args[0] === "status") {
+          statusCallCount += 1;
+          return statusCallCount === 1 ? "" : " M tasks.md";
         }
         if (args[0] === "commit") {
           throw new Error("commit blocked");
@@ -1398,10 +1475,124 @@ describe("run-task orchestration", () => {
       }),
     );
 
-    expect(code).toBe(0);
+    expect(code).toBe(1);
     expect(gitClient.run).toHaveBeenCalledWith(expect.arrayContaining(["commit"]), cwd);
-    expect(events).toContainEqual({ kind: "warn", message: "--commit failed: Error: commit blocked" });
+    expect(events).toContainEqual({ kind: "error", message: "--commit failed: Error: commit blocked" });
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "group-end",
+      status: "failure",
+      message: "--commit failed: Error: commit blocked",
+    }));
     expect(dependencies.fileLock.releaseAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("succeeds when deferred file-done commit has no changes and logs skip messaging", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] cli: echo one\n- [ ] cli: echo two\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createInlineTask(taskFile, "cli: echo one"),
+      fileSystem,
+      gitClient: createGitClientWithNoCommittableChangesMock(cwd),
+    });
+
+    let selectCallCount = 0;
+    const tasks = [
+      { text: "cli: echo one", line: 1, index: 0 },
+      { text: "cli: echo two", line: 2, index: 1 },
+    ];
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      if (selectCallCount >= tasks.length) {
+        return null;
+      }
+
+      const nextTask = tasks[selectCallCount];
+      selectCallCount += 1;
+      return [{
+        task: {
+          ...createInlineTask(taskFile, nextTask.text),
+          index: nextTask.index,
+          line: nextTask.line,
+        },
+        source: "tasks.md",
+        contextBefore: "",
+      }];
+    });
+
+    const code = await createRunTask(dependencies)(
+      createOptions({
+        verify: false,
+        runAll: true,
+        commitAfterComplete: true,
+        commitMode: "file-done",
+      }),
+    );
+
+    expect(code).toBe(0);
+    const commitCalls = vi.mocked(dependencies.gitClient.run).mock.calls.filter(([args]) => args[0] === "commit");
+    expect(commitCalls).toHaveLength(0);
+    expect(events).toContainEqual({
+      kind: "info",
+      message: "--commit: skipped - no changes to commit (working tree clean).",
+    });
+  });
+
+  it("skips deferred file-done commit when only unrelated untracked files exist after task execution", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] cli: echo one\n- [ ] cli: echo two\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createInlineTask(taskFile, "cli: echo one"),
+      fileSystem,
+      gitClient: createGitClientWithOnlyUntrackedChangesAfterRunMock(cwd),
+    });
+
+    let selectCallCount = 0;
+    const tasks = [
+      { text: "cli: echo one", line: 1, index: 0 },
+      { text: "cli: echo two", line: 2, index: 1 },
+    ];
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      if (selectCallCount >= tasks.length) {
+        return null;
+      }
+
+      const nextTask = tasks[selectCallCount];
+      selectCallCount += 1;
+      return [{
+        task: {
+          ...createInlineTask(taskFile, nextTask.text),
+          index: nextTask.index,
+          line: nextTask.line,
+        },
+        source: "tasks.md",
+        contextBefore: "",
+      }];
+    });
+
+    const code = await createRunTask(dependencies)(
+      createOptions({
+        verify: false,
+        runAll: true,
+        commitAfterComplete: true,
+        commitMode: "file-done",
+      }),
+    );
+
+    expect(code).toBe(0);
+    const gitCommands = vi.mocked(dependencies.gitClient.run).mock.calls.map(([args]) => args[0]);
+    expect(gitCommands).not.toContain("add");
+    expect(gitCommands).not.toContain("commit");
+    expect(events).toContainEqual({
+      kind: "info",
+      message: "--commit: skipped - no changes to commit (working tree clean).",
+    });
   });
 
   it("uses standard commit templating and git excludes for deferred file-done final commit", async () => {
@@ -1410,6 +1601,7 @@ describe("run-task orchestration", () => {
     const fileSystem = createInMemoryFileSystem({
       [taskFile]: "- [ ] cli: echo one\n- [ ] cli: echo two\n",
     });
+    let statusCallCount = 0;
     const gitClient = {
       run: vi.fn(async (args: string[]) => {
         if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
@@ -1420,6 +1612,10 @@ describe("run-task orchestration", () => {
         }
         if (args[0] === "check-ignore") {
           throw new Error("not ignored");
+        }
+        if (args[0] === "status") {
+          statusCallCount += 1;
+          return statusCallCount === 1 ? "" : " M tasks.md";
         }
         if (args[0] === "rev-parse" && args[1] === "HEAD") {
           return "sha-final";
@@ -1497,7 +1693,7 @@ describe("run-task orchestration", () => {
       cwd,
       task: createInlineTask(taskFile, "cli: echo one"),
       fileSystem,
-      gitClient: createGitClientMock(),
+      gitClient: createGitClientWithCommittableChangesMock(cwd),
     });
 
     let selectCallCount = 0;
@@ -1559,7 +1755,7 @@ describe("run-task orchestration", () => {
       cwd,
       task: createInlineTask(taskFile, "cli: echo one"),
       fileSystem,
-      gitClient: createGitClientMock(),
+      gitClient: createGitClientWithCommittableChangesMock(cwd),
     });
 
     let selectCallCount = 0;
@@ -1607,7 +1803,7 @@ describe("run-task orchestration", () => {
       cwd,
       task: createInlineTask(taskFile, "cli: echo hello"),
       fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] cli: echo hello\n" }),
-      gitClient: createGitClientMock(),
+      gitClient: createGitClientWithCommittableChangesMock(cwd),
     });
 
     const code = await createRunTask(dependencies)(

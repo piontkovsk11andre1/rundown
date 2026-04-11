@@ -12,6 +12,7 @@ import {
 } from "./checkbox-operations.js";
 import {
   afterTaskComplete,
+  OnCompleteCommitError,
   afterTaskFailed,
   OnCompleteHookError,
 } from "./run-lifecycle.js";
@@ -459,6 +460,22 @@ export async function completeTaskIteration(params: {
         continueLoop: false,
         forceRetryableFailure: false,
         exitCode: await failRun(1, "failed", error.message, error.exitCode),
+        groupEnded: true,
+      };
+    }
+    if (error instanceof OnCompleteCommitError) {
+      await afterTaskFailed(
+        dependencies,
+        task,
+        sourceText,
+        onFailCommand,
+        hideHookOutput,
+        extraTemplateVars,
+      );
+      return {
+        continueLoop: false,
+        forceRetryableFailure: false,
+        exitCode: await failRun(1, "failed", error.message, 1),
         groupEnded: true,
       };
     }

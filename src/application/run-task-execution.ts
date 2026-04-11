@@ -23,6 +23,7 @@ import { parseTasks } from "../domain/parser.js";
 import { filterRunnable } from "../domain/task-selection.js";
 import {
   afterTaskComplete,
+  OnCompleteCommitError,
   finalizeRunArtifacts,
 } from "./run-lifecycle.js";
 import {
@@ -942,6 +943,37 @@ export function createRunTaskExecution(
         });
       }
 
+      if (state.deferredCommitContext && !runFailed && !unexpectedError) {
+        try {
+          const deferredCompletionExtra = await afterTaskComplete(
+            dependencies,
+            state.deferredCommitContext.task,
+            state.deferredCommitContext.source,
+            true,
+            commitMessageTemplate,
+            undefined,
+            hideHookOutput,
+            extraTemplateVars,
+          );
+
+          if (deferredCompletionExtra) {
+            dependencies.artifactStore.finalize(state.deferredCommitContext.artifactContext, {
+              status: "completed",
+              preserve: keepArtifacts,
+              extra: deferredCompletionExtra,
+            });
+          }
+          state.deferredCommitContext = null;
+        } catch (error) {
+          if (error instanceof OnCompleteCommitError) {
+            emit({ kind: "group-end", status: "failure", message: error.message });
+            state.deferredCommitContext = null;
+            return await failRun(1, "failed", error.message, 1);
+          }
+          throw error;
+        }
+      }
+
       completedAllRoundsSuccessfully = true;
       return EXIT_CODE_SUCCESS;
     } catch (error) {
@@ -960,29 +992,6 @@ export function createRunTaskExecution(
             "post-run",
           );
           traceRunSession.emitResetPhase("post-run-reset", filePath, resetCount, dryRun);
-        }
-      }
-
-      // Run deferred commit after all iterations and post-run reset actions finish,
-      // but only when the full run completed successfully.
-      if (state.deferredCommitContext && completedAllRoundsSuccessfully && !runFailed && !unexpectedError) {
-        const deferredCompletionExtra = await afterTaskComplete(
-          dependencies,
-          state.deferredCommitContext.task,
-          state.deferredCommitContext.source,
-          true,
-          commitMessageTemplate,
-          undefined,
-          hideHookOutput,
-          extraTemplateVars,
-        );
-
-        if (deferredCompletionExtra) {
-          dependencies.artifactStore.finalize(state.deferredCommitContext.artifactContext, {
-            status: "completed",
-            preserve: keepArtifacts,
-            extra: deferredCompletionExtra,
-          });
         }
       }
 

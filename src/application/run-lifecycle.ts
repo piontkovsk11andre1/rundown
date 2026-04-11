@@ -45,6 +45,13 @@ export class OnCompleteHookError extends Error {
   }
 }
 
+export class OnCompleteCommitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OnCompleteCommitError";
+  }
+}
+
 /**
  * Executes the optional failure hook after a task iteration fails.
  *
@@ -126,7 +133,7 @@ export async function afterTaskComplete(
       } else {
         // Build and create a commit tied to the completed task.
         const message = buildCommitMessage(task, cwd, commitMessageTemplate, dependencies.pathOperations);
-        await commitCheckedTaskWithGitClient(
+        const commitResult = await commitCheckedTaskWithGitClient(
           dependencies.gitClient,
           task,
           cwd,
@@ -134,16 +141,22 @@ export async function afterTaskComplete(
           dependencies.configDir,
           dependencies.pathOperations,
         );
-        // Capture commit details so they can be attached to preserved artifacts.
-        const commitSha = (await dependencies.gitClient.run(["rev-parse", "HEAD"], cwd)).trim();
-        artifactExtra = {
-          commitSha,
-          commitMessage: message,
-        };
-        emit({ kind: "success", message: "Committed: " + message });
+        if (commitResult.kind === "skipped-no-changes") {
+          emit({ kind: "info", message: "--commit: skipped - no changes to commit (working tree clean)." });
+        } else {
+          // Capture commit details so they can be attached to preserved artifacts.
+          const commitSha = (await dependencies.gitClient.run(["rev-parse", "HEAD"], cwd)).trim();
+          artifactExtra = {
+            commitSha,
+            commitMessage: message,
+          };
+          emit({ kind: "success", message: "Committed: " + message });
+        }
       }
     } catch (error) {
-      emit({ kind: "warn", message: "--commit failed: " + String(error) });
+      const message = "--commit failed: " + String(error);
+      emit({ kind: "error", message });
+      throw new OnCompleteCommitError(message);
     }
   }
 

@@ -2228,12 +2228,14 @@ describe("run-task-execution helpers", () => {
     });
     const firstTask = createTask(taskFile, "first task", { index: 1, line: 2, depth: 1 });
     const gitClient = createGitClientMock();
+    let statusCallCount = 0;
     gitClient.run = vi.fn(async (args: string[]) => {
       if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
         return "true";
       }
       if (args[0] === "status") {
-        return "";
+        statusCallCount += 1;
+        return statusCallCount === 1 ? "" : " M tasks.md";
       }
       if (args[0] === "rev-parse" && args[1] === "HEAD") {
         return "abc123";

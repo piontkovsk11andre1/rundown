@@ -57,11 +57,34 @@ export async function commitCheckedTaskWithGitClient(
   message: string,
   configDir: ConfigDirResult | undefined,
   pathOperations: PathOperationsPort,
-): Promise<void> {
+): Promise<{ kind: "committed" } | { kind: "skipped-no-changes" }> {
   // Reuse the same exclusion rules used by status checks to keep behavior consistent.
   const excludes = await resolveGitArtifactAndLockExcludes(gitClient, cwd, configDir, pathOperations);
+
+  // Skip no-op commit attempts when there are no candidate changes to stage.
+  const statusOutput = await gitClient.run(
+    ["status", "--porcelain", "--untracked-files=no", "--", ":/", ...excludes],
+    cwd,
+  );
+  if (statusOutput.trim().length === 0) {
+    return { kind: "skipped-no-changes" };
+  }
+
   await gitClient.run(["add", "-A", "--", ":/", ...excludes], cwd);
-  await gitClient.run(["commit", "-m", message], cwd);
+  try {
+    await gitClient.run(["commit", "-m", message], cwd);
+    return { kind: "committed" };
+  } catch (error) {
+    if (isNoOpCommitError(error)) {
+      return { kind: "skipped-no-changes" };
+    }
+    throw error;
+  }
+}
+
+function isNoOpCommitError(error: unknown): boolean {
+  const message = String(error).toLowerCase();
+  return message.includes("nothing to commit") || message.includes("nothing added to commit");
 }
 
 /**

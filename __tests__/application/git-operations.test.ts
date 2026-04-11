@@ -71,6 +71,9 @@ describe("git-operations", () => {
         if (args[0] === "check-ignore") {
           throw new Error("not ignored");
         }
+        if (args[0] === "status") {
+          return " M tasks.md";
+        }
         return "";
       }),
     };
@@ -90,17 +93,32 @@ describe("git-operations", () => {
       subItems: [],
     };
 
-    await commitCheckedTaskWithGitClient(
+    await expect(commitCheckedTaskWithGitClient(
       gitClient,
       task,
       "/repo",
       "done",
       { configDir: "/repo/.rundown", isExplicit: false },
       pathOperations,
-    );
+    )).resolves.toEqual({ kind: "committed" });
 
     expect(gitClient.run).toHaveBeenNthCalledWith(
       3,
+      [
+        "status",
+        "--porcelain",
+        "--untracked-files=no",
+        "--",
+        ":/",
+        ":(top,exclude).rundown/runs/**",
+        ":(top,exclude).rundown/logs/**",
+        ":(top,exclude).rundown/*.lock",
+        ":(glob,exclude)**/.rundown/*.lock",
+      ],
+      "/repo",
+    );
+    expect(gitClient.run).toHaveBeenNthCalledWith(
+      4,
       [
         "add",
         "-A",
@@ -113,7 +131,138 @@ describe("git-operations", () => {
       ],
       "/repo",
     );
-    expect(gitClient.run).toHaveBeenNthCalledWith(4, ["commit", "-m", "done"], "/repo");
+    expect(gitClient.run).toHaveBeenNthCalledWith(5, ["commit", "-m", "done"], "/repo");
+  });
+
+  it("skips commit when no committable changes are present", async () => {
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse" && args[1] === "--show-toplevel") {
+          return "/repo";
+        }
+        if (args[0] === "check-ignore") {
+          throw new Error("not ignored");
+        }
+        if (args[0] === "status") {
+          return "";
+        }
+        return "";
+      }),
+    };
+    const task: Task = {
+      text: "noop",
+      checked: true,
+      index: 0,
+      line: 1,
+      column: 1,
+      offsetStart: 0,
+      offsetEnd: 4,
+      file: "/repo/tasks.md",
+      isInlineCli: true,
+      cliCommand: "echo noop",
+      depth: 0,
+      children: [],
+      subItems: [],
+    };
+
+    await expect(commitCheckedTaskWithGitClient(
+      gitClient,
+      task,
+      "/repo",
+      "done",
+      { configDir: "/repo/.rundown", isExplicit: false },
+      pathOperations,
+    )).resolves.toEqual({ kind: "skipped-no-changes" });
+
+    const executedCommands = vi.mocked(gitClient.run).mock.calls.map(([args]) => args[0]);
+    expect(executedCommands).not.toContain("add");
+    expect(executedCommands).not.toContain("commit");
+  });
+
+  it("normalizes git no-op commit response when preflight misses", async () => {
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse" && args[1] === "--show-toplevel") {
+          return "/repo";
+        }
+        if (args[0] === "check-ignore") {
+          throw new Error("not ignored");
+        }
+        if (args[0] === "status") {
+          return " M tasks.md";
+        }
+        if (args[0] === "commit") {
+          throw new Error("nothing to commit, working tree clean");
+        }
+        return "";
+      }),
+    };
+    const task: Task = {
+      text: "noop fallback",
+      checked: true,
+      index: 0,
+      line: 1,
+      column: 1,
+      offsetStart: 0,
+      offsetEnd: 13,
+      file: "/repo/tasks.md",
+      isInlineCli: false,
+      depth: 0,
+      children: [],
+      subItems: [],
+    };
+
+    await expect(commitCheckedTaskWithGitClient(
+      gitClient,
+      task,
+      "/repo",
+      "done",
+      { configDir: "/repo/.rundown", isExplicit: false },
+      pathOperations,
+    )).resolves.toEqual({ kind: "skipped-no-changes" });
+  });
+
+  it("does not normalize non-no-op commit errors", async () => {
+    const gitClient: GitClient = {
+      run: vi.fn(async (args: string[]) => {
+        if (args[0] === "rev-parse" && args[1] === "--show-toplevel") {
+          return "/repo";
+        }
+        if (args[0] === "check-ignore") {
+          throw new Error("not ignored");
+        }
+        if (args[0] === "status") {
+          return " M tasks.md";
+        }
+        if (args[0] === "commit") {
+          throw new Error("pre-commit hook failed");
+        }
+        return "";
+      }),
+    };
+    const task: Task = {
+      text: "commit failure",
+      checked: true,
+      index: 0,
+      line: 1,
+      column: 1,
+      offsetStart: 0,
+      offsetEnd: 14,
+      file: "/repo/tasks.md",
+      isInlineCli: false,
+      depth: 0,
+      children: [],
+      subItems: [],
+    };
+
+    await expect(commitCheckedTaskWithGitClient(
+      gitClient,
+      task,
+      "/repo",
+      "done",
+      { configDir: "/repo/.rundown", isExplicit: false },
+      pathOperations,
+    )).rejects.toThrow("pre-commit hook failed");
   });
 
   it("formats commit message template variables", () => {

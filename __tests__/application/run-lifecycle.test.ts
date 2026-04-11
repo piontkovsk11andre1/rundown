@@ -114,6 +114,166 @@ describe("run-lifecycle", () => {
     expect(options.env.RUNDOWN_TASK).toBe("Ship release");
   });
 
+  it("logs informational skip when commit has no changes", async () => {
+    const emit = vi.fn();
+    const gitClientRun = vi.fn(async (args: string[]) => {
+      if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+        return "true";
+      }
+      if (args[0] === "rev-parse" && args[1] === "--show-toplevel") {
+        return "/workspace";
+      }
+      if (args[0] === "check-ignore") {
+        throw new Error("not ignored");
+      }
+      if (args[0] === "status") {
+        return "";
+      }
+      return "";
+    });
+
+    const result = await afterTaskComplete(
+      {
+        workingDirectory: { cwd: vi.fn(() => "/workspace") },
+        output: { emit },
+        processRunner: { run: vi.fn() },
+        pathOperations: {
+          resolve: vi.fn((value: string) => value),
+          join: vi.fn(),
+          dirname: vi.fn(),
+          relative: vi.fn((from: string, to: string) => to.replace(`${from}/`, "")),
+          isAbsolute: vi.fn(),
+        },
+        gitClient: { run: gitClientRun },
+        configDir: { configDir: "/workspace/.rundown", isExplicit: false },
+      },
+      task,
+      "# Tasks",
+      true,
+      "done: {{task}}",
+      undefined,
+      true,
+      {},
+    );
+
+    expect(result).toBeUndefined();
+    expect(emit).toHaveBeenCalledWith({
+      kind: "info",
+      message: "--commit: skipped - no changes to commit (working tree clean).",
+    });
+  });
+
+  it("keeps normal commit behavior when committable changes exist", async () => {
+    const emit = vi.fn();
+    const gitClientRun = vi.fn(async (args: string[]) => {
+      if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+        return "true";
+      }
+      if (args[0] === "rev-parse" && args[1] === "--show-toplevel") {
+        return "/workspace";
+      }
+      if (args[0] === "check-ignore") {
+        throw new Error("not ignored");
+      }
+      if (args[0] === "status") {
+        return " M tasks.md";
+      }
+      if (args[0] === "rev-parse" && args[1] === "HEAD") {
+        return "abc123";
+      }
+      return "";
+    });
+
+    const result = await afterTaskComplete(
+      {
+        workingDirectory: { cwd: vi.fn(() => "/workspace") },
+        output: { emit },
+        processRunner: { run: vi.fn() },
+        pathOperations: {
+          resolve: vi.fn((value: string) => value),
+          join: vi.fn(),
+          dirname: vi.fn(),
+          relative: vi.fn((from: string, to: string) => to.replace(`${from}/`, "")),
+          isAbsolute: vi.fn(),
+        },
+        gitClient: { run: gitClientRun },
+        configDir: { configDir: "/workspace/.rundown", isExplicit: false },
+      },
+      task,
+      "# Tasks",
+      true,
+      "done: {{task}}",
+      undefined,
+      true,
+      {},
+    );
+
+    expect(result).toEqual({
+      commitSha: "abc123",
+      commitMessage: "done: Ship release",
+    });
+    expect(emit).toHaveBeenCalledWith({
+      kind: "success",
+      message: "Committed: done: Ship release",
+    });
+    expect(emit).not.toHaveBeenCalledWith({
+      kind: "info",
+      message: "--commit: skipped - no changes to commit (working tree clean).",
+    });
+    expect(gitClientRun).toHaveBeenCalledWith(["commit", "-m", "done: Ship release"], "/workspace");
+  });
+
+  it("throws and emits error for real commit failures", async () => {
+    const emit = vi.fn();
+    const gitClientRun = vi.fn(async (args: string[]) => {
+      if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+        return "true";
+      }
+      if (args[0] === "rev-parse" && args[1] === "--show-toplevel") {
+        return "/workspace";
+      }
+      if (args[0] === "check-ignore") {
+        throw new Error("not ignored");
+      }
+      if (args[0] === "status") {
+        return " M tasks.md";
+      }
+      if (args[0] === "commit") {
+        throw new Error("hook rejected commit");
+      }
+      return "";
+    });
+
+    await expect(afterTaskComplete(
+      {
+        workingDirectory: { cwd: vi.fn(() => "/workspace") },
+        output: { emit },
+        processRunner: { run: vi.fn() },
+        pathOperations: {
+          resolve: vi.fn((value: string) => value),
+          join: vi.fn(),
+          dirname: vi.fn(),
+          relative: vi.fn((from: string, to: string) => to.replace(`${from}/`, "")),
+          isAbsolute: vi.fn(),
+        },
+        gitClient: { run: gitClientRun },
+        configDir: { configDir: "/workspace/.rundown", isExplicit: false },
+      },
+      task,
+      "# Tasks",
+      true,
+      "done: {{task}}",
+      undefined,
+      true,
+      {},
+    )).rejects.toThrow("--commit failed: Error: hook rejected commit");
+
+    expect(emit).toHaveBeenCalledWith({
+      kind: "error",
+      message: "--commit failed: Error: hook rejected commit",
+    });
+  });
+
   describe("finalizeRunArtifacts", () => {
     it("finalizes runtime artifacts and emits the saved path when preserved", () => {
       const emit = vi.fn();

@@ -801,6 +801,10 @@ describe("verify-repair-loop output", () => {
     const output = {
       emit: vi.fn(),
     };
+    const traceWriter = {
+      write: vi.fn(),
+      flush: vi.fn(),
+    };
 
     const repair = vi.fn()
       .mockResolvedValueOnce({ valid: false, attempts: 1, repairStdout: "repair-1", verificationStdout: "verify-1" })
@@ -813,7 +817,10 @@ describe("verify-repair-loop output", () => {
     const verificationStoreRead = vi.fn()
       .mockReturnValueOnce("initial failure")
       .mockReturnValueOnce("initial failure")
+      .mockReturnValueOnce("initial failure")
       .mockReturnValueOnce("repair failed 1")
+      .mockReturnValueOnce("repair failed 1")
+      .mockReturnValueOnce("repair failed 2")
       .mockReturnValueOnce("repair failed 2");
 
     const result = await runVerifyRepairLoop({
@@ -829,10 +836,7 @@ describe("verify-repair-loop output", () => {
         read: verificationStoreRead,
         remove: vi.fn(),
       },
-      traceWriter: {
-        write: vi.fn(),
-        flush: vi.fn(),
-      },
+      traceWriter,
       output,
     }, {
       task: createTask(),
@@ -848,7 +852,7 @@ describe("verify-repair-loop output", () => {
       allowRepair: true,
       templateVars: {},
       artifactContext: { runId: "run-resolve-success" },
-      trace: false,
+      trace: true,
     });
 
     expect(result).toEqual({
@@ -880,11 +884,30 @@ describe("verify-repair-loop output", () => {
         resolvedDiagnosis: "Root cause: validator checks stale context snapshot.",
       }),
     }));
+    expect(traceWriter.write).toHaveBeenCalledWith(expect.objectContaining({
+      event_type: "resolve.attempt",
+      payload: expect.objectContaining({
+        exhausted_repair_attempts: 2,
+        max_repair_attempts: 2,
+        previous_failure: "repair failed 2",
+      }),
+    }));
+    expect(traceWriter.write).toHaveBeenCalledWith(expect.objectContaining({
+      event_type: "resolve.outcome",
+      payload: {
+        resolved: true,
+        diagnosis: "Root cause: validator checks stale context snapshot.",
+      },
+    }));
   });
 
   it("returns unresolved resolve failure without running resolve-informed repair", async () => {
     const output = {
       emit: vi.fn(),
+    };
+    const traceWriter = {
+      write: vi.fn(),
+      flush: vi.fn(),
     };
 
     const repair = vi.fn()
@@ -908,10 +931,7 @@ describe("verify-repair-loop output", () => {
         read: vi.fn(() => "repair failed"),
         remove: vi.fn(),
       },
-      traceWriter: {
-        write: vi.fn(),
-        flush: vi.fn(),
-      },
+      traceWriter,
       output,
     }, {
       task: createTask(),
@@ -926,7 +946,7 @@ describe("verify-repair-loop output", () => {
       allowRepair: true,
       templateVars: {},
       artifactContext: { runId: "run-resolve-unresolved" },
-      trace: false,
+      trace: true,
     });
 
     expect(result).toEqual({
@@ -939,6 +959,21 @@ describe("verify-repair-loop output", () => {
       kind: "error",
       message: "Resolve phase could not diagnose the issue: Cannot diagnose due to contradictory attempt outputs.",
     });
+    expect(traceWriter.write).toHaveBeenCalledWith(expect.objectContaining({
+      event_type: "resolve.attempt",
+      payload: expect.objectContaining({
+        exhausted_repair_attempts: 2,
+        max_repair_attempts: 2,
+        previous_failure: "repair failed",
+      }),
+    }));
+    expect(traceWriter.write).toHaveBeenCalledWith(expect.objectContaining({
+      event_type: "resolve.outcome",
+      payload: {
+        resolved: false,
+        diagnosis: "Cannot diagnose due to contradictory attempt outputs.",
+      },
+    }));
   });
 
   it("applies resolve-informed repair attempt limit and emits exhaustion message", async () => {

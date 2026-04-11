@@ -41,6 +41,8 @@ export type TraceEventType =
   | "usage.limit_detected"
   | "repair.attempt"
   | "repair.outcome"
+  | "resolve.attempt"
+  | "resolve.outcome"
   | "task.completed"
   | "task.failed"
   | "run.completed";
@@ -408,6 +410,23 @@ export interface RepairOutcomePayload {
 }
 
 /**
+ * Payload emitted before the resolve phase starts.
+ */
+export interface ResolveAttemptPayload {
+  exhausted_repair_attempts: number;
+  max_repair_attempts: number;
+  previous_failure: string | null;
+}
+
+/**
+ * Payload emitted after resolve produces an outcome.
+ */
+export interface ResolveOutcomePayload {
+  resolved: boolean;
+  diagnosis: string | null;
+}
+
+/**
  * Payload for `task.completed` events.
  */
 export interface TaskCompletedPayload {
@@ -566,6 +585,14 @@ export type RepairAttemptEvent = TraceEventBase<"repair.attempt", RepairAttemptP
  */
 export type RepairOutcomeEvent = TraceEventBase<"repair.outcome", RepairOutcomePayload>;
 /**
+ * Strongly typed event shape for `resolve.attempt`.
+ */
+export type ResolveAttemptEvent = TraceEventBase<"resolve.attempt", ResolveAttemptPayload>;
+/**
+ * Strongly typed event shape for `resolve.outcome`.
+ */
+export type ResolveOutcomeEvent = TraceEventBase<"resolve.outcome", ResolveOutcomePayload>;
+/**
  * Strongly typed event shape for `task.completed`.
  */
 export type TaskCompletedEvent = TraceEventBase<"task.completed", TaskCompletedPayload>;
@@ -608,6 +635,8 @@ export type TraceEvent =
   | UsageLimitDetectedEvent
   | RepairAttemptEvent
   | RepairOutcomeEvent
+  | ResolveAttemptEvent
+  | ResolveOutcomeEvent
   | TaskCompletedEvent
   | TaskFailedEvent
   | RunCompletedEvent;
@@ -1136,6 +1165,44 @@ export function createRepairOutcomeEvent(input: {
     timestamp: input.timestamp,
     run_id: input.run_id,
     event_type: "repair.outcome",
+    payload: input.payload,
+  });
+}
+
+/**
+ * Creates a `resolve.attempt` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `resolve.attempt` event.
+ */
+export function createResolveAttemptEvent(input: {
+  timestamp: string;
+  run_id: string;
+  payload: ResolveAttemptPayload;
+}): ResolveAttemptEvent {
+  return createTraceEvent({
+    timestamp: input.timestamp,
+    run_id: input.run_id,
+    event_type: "resolve.attempt",
+    payload: input.payload,
+  });
+}
+
+/**
+ * Creates a `resolve.outcome` trace event.
+ *
+ * @param input Required metadata and payload for the event.
+ * @returns Typed `resolve.outcome` event.
+ */
+export function createResolveOutcomeEvent(input: {
+  timestamp: string;
+  run_id: string;
+  payload: ResolveOutcomePayload;
+}): ResolveOutcomeEvent {
+  return createTraceEvent({
+    timestamp: input.timestamp,
+    run_id: input.run_id,
+    event_type: "resolve.outcome",
     payload: input.payload,
   });
 }

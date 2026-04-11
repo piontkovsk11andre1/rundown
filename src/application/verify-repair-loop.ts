@@ -13,6 +13,8 @@ import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import {
   createRepairAttemptEvent,
   createRepairOutcomeEvent,
+  createResolveAttemptEvent,
+  createResolveOutcomeEvent,
   createUsageLimitDetectedEvent,
   createVerificationEfficiencyEvent,
   createVerificationResultEvent,
@@ -229,6 +231,39 @@ export async function runVerifyRepairLoop(
         execution_stdout: payload.executionStdout,
         matched_phase: payload.matchedPhase,
         matched_stdout: payload.matchedStdout,
+      },
+    }));
+  };
+
+  // Emits metadata when the resolve phase begins.
+  const emitResolveAttempt = (previousFailure: string | null, exhaustedRepairAttempts: number): void => {
+    if (!input.trace || !runId) {
+      return;
+    }
+
+    dependencies.traceWriter.write(createResolveAttemptEvent({
+      timestamp: new Date().toISOString(),
+      run_id: runId,
+      payload: {
+        exhausted_repair_attempts: exhaustedRepairAttempts,
+        max_repair_attempts: input.maxRepairAttempts,
+        previous_failure: previousFailure,
+      },
+    }));
+  };
+
+  // Emits resolved/unresolved status after the resolve phase completes.
+  const emitResolveOutcome = (resolved: boolean, diagnosis: string | null): void => {
+    if (!input.trace || !runId) {
+      return;
+    }
+
+    dependencies.traceWriter.write(createResolveOutcomeEvent({
+      timestamp: new Date().toISOString(),
+      run_id: runId,
+      payload: {
+        resolved,
+        diagnosis,
       },
     }));
   };
@@ -594,6 +629,7 @@ export async function runVerifyRepairLoop(
 
   let resolveDiagnosis = seededResolveDiagnosis;
   if (!resolveDiagnosis && input.maxRepairAttempts >= 2 && input.resolveTemplate && dependencies.taskRepair.resolve) {
+    emitResolveAttempt(previousFailure, attempts);
     emit({
       kind: "warn",
       message: "Repair phase exhausted; running resolve phase to diagnose root cause.",
@@ -619,6 +655,8 @@ export async function runVerifyRepairLoop(
       cliExecutionOptions: input.cliExecutionOptions,
       cliExpansionEnabled: input.cliExpansionEnabled,
     });
+
+    emitResolveOutcome(resolveResult.resolved, resolveResult.diagnosis);
 
     const resolveFailureReason = resolveResult.diagnosis ?? "Resolve phase returned no diagnosis.";
     if (!resolveResult.resolved) {

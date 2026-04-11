@@ -84,6 +84,12 @@ const BUILTIN_TOOLS: Record<string, ToolDefinition> = {
     handler: endHandler,
     frontmatter: { skipExecution: false, shouldVerify: false },
   },
+  break: {
+    name: "break",
+    kind: "handler",
+    handler: endHandler,
+    frontmatter: { skipExecution: false, shouldVerify: false },
+  },
   profile: {
     name: "profile",
     kind: "modifier",

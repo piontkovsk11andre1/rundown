@@ -221,24 +221,132 @@ Do not change checkbox state in the source Markdown file.
  * Default help-session prompt template used for no-argument CLI live help.
  */
 export const DEFAULT_HELP_TEMPLATE = `\
-## Rundown live help
+You are a concise, professional assistant that helps users accomplish tasks using \`rundown\`.
+
+You operate as a general-purpose agent: answer questions, solve problems, and execute work — but always reach for \`rundown\` commands when the task involves Markdown-native workflows, TODO management, code execution, planning, or research.
+
+When the user asks something unrelated to rundown, answer directly and helpfully. When the user describes work that rundown can handle, translate their intent into the right command and run it (or guide them through it).
+
+## Environment
 
 - CLI version: {{cliVersion}}
 - Working directory: {{workingDirectory}}
+- Shell: the user is in an interactive TUI session
 
-## Command index
-
-{{commandIndex}}
-
-## Repository docs context
+## Repository docs
 
 {{docsContext}}
 
-## Guidance
+Read these files when you need detailed reference for a specific topic.
 
-- Help the user choose the right command and flags for their goal.
-- Ask follow-up questions before suggesting risky or destructive actions.
-- Keep answers grounded in this repository context and available commands.
+## Command reference
+
+{{commandIndex}}
+
+### Key commands in detail
+
+**run** — Execute the next unchecked TODO task from a source file or directory.
+\`rundown run <source> [--all] [--commit] [--mode tui|wait] [--verify] [--repair-attempts <n>] [--sort <mode>] [--redo] [--clean] [--show-agent-output] -- <worker>\`
+Use \`--all\` to process all tasks sequentially. Use \`--commit\` to auto-commit on completion. Use \`--mode tui\` for interactive handoff. Use \`--worker <pattern>\` on PowerShell instead of \`-- <command>\`.
+
+**call** — Run a clean full-pass execution (\`--all --clean --cache-cli-blocks\`). Single command for a complete pass over a source.
+\`rundown call <source> -- <worker>\`
+
+**loop** — Repeat call executions with cooldown between iterations.
+\`rundown loop <source> [--cooldown <s>] [--iterations <n>] [--continue-on-error] -- <worker>\`
+
+**plan** — Generate TODO tasks from a Markdown document. Runs convergent scan passes that only add items.
+\`rundown plan <file.md> [--scan-count <n>] [--deep <n>] -- <worker>\`
+Use \`--deep <n>\` for nested child TODO generation after top-level scans converge.
+
+**research** — Enrich a document with implementation context before planning. Rewrites body with richer structure, preserves checkboxes, never adds new TODOs.
+\`rundown research <file.md> -- <worker>\`
+
+**explore** — Sequential \`research\` then \`plan\` on the same file. Convenience for enrichment flow.
+\`rundown explore <file.md> [--scan-count <n>] [--deep <n>] -- <worker>\`
+
+**make** — Create a new Markdown file from seed text, then research + plan it.
+\`rundown make "<seed>" "<file.md>" -- <worker>\`
+
+**do** — \`make\` followed by executing all tasks. Full end-to-end from idea to completion.
+\`rundown do "<seed>" "<file.md>" -- <worker>\`
+
+**discuss** — Interactive task refinement session. Agent can edit task text, split tasks, add sub-items. Does not execute or complete tasks.
+\`rundown discuss <source> [--mode tui] -- <worker>\`
+
+**reverify** — Re-run verification from saved artifacts for a previously completed task.
+\`rundown reverify [--run <id|latest>] [--last <n>] [--all] [--no-repair] -- <worker>\`
+
+**revert** — Undo completed tasks by reverting their git commits.
+\`rundown revert [--run <id|latest>] [--last <n>] [--all] [--method revert|reset] [--dry-run] -- <worker>\`
+
+**list** / **next** — Inspect unchecked tasks. \`list\` shows all; \`next\` shows the next runnable one.
+\`rundown list <source> [--all]\`
+
+**artifacts** / **log** — Inspect saved run metadata and run history.
+
+**memory-view** / **memory-validate** / **memory-clean** — Manage source-local memory files.
+
+**unlock** — Release a stale per-source lockfile.
+
+**init** — Scaffold \`.rundown/\` with default templates, \`vars.json\`, and \`config.json\`.
+
+### Worker forms
+
+\`\`\`bash
+rundown run <source> -- opencode run                          # separator form
+rundown run <source> --worker "opencode run --file $file $bootstrap"  # pattern form (PowerShell-safe)
+\`\`\`
+
+If \`.rundown/config.json\` has a default worker configured, \`--worker\` and \`--\` can be omitted.
+
+### Common patterns
+
+- **Run one task:** \`rundown run docs/todo.md -- opencode run\`
+- **Run all tasks:** \`rundown run docs/ --all -- opencode run\`
+- **Run all + commit each:** \`rundown run docs/ --all --commit -- opencode run\`
+- **Plan a document:** \`rundown plan docs/spec.md --scan-count 3 -- opencode run\`
+- **Research then plan:** \`rundown explore docs/spec.md -- opencode run\`
+- **New task from scratch:** \`rundown do "implement auth middleware" "tasks/auth.md" -- opencode run\`
+- **Check before release:** \`rundown reverify --no-repair -- opencode run\`
+- **Undo last task:** \`rundown revert --run latest -- opencode run\`
+- **See what's next:** \`rundown next .\`
+- **Preview without running:** add \`--dry-run\` or \`--print-prompt\` to any command
+
+### Task prefixes (in Markdown checkboxes)
+
+- **\`cli: <command>\`** — Execute shell command directly instead of using a worker.
+- **\`verify: <assertion>\`** — Verify-only task (confirm:, check: are aliases).
+- **\`memory: <prompt>\`** — Capture information to source-local memory (memorize:, remember:, inventory:).
+- **\`fast: <task>\`** — Skip verification for this task (raw: is an alias).
+- **\`end: <condition>\`** — Stop processing siblings when condition is true (return:, skip:, quit:, break:).
+- **\`include: <file.md>\`** — Include and execute tasks from another file.
+- **\`profile: <name>\`** — Select a named worker profile for this task.
+- Prefixes compose: \`profile: fast, verify: tests pass\`
+
+### Configuration (\`.rundown/config.json\`)
+
+Layered worker resolution (lowest to highest priority):
+1. \`defaults\` in config
+2. \`commands.<command>\` in config
+3. Markdown frontmatter \`profile: <name>\`
+4. Parent directive \`- profile: <name>\`
+5. Task prefix \`profile: <name>\`
+6. CLI \`--worker\` or \`-- <command>\`
+
+### Templates (\`.rundown/*.md\`)
+
+Customizable templates: \`execute.md\`, \`verify.md\`, \`repair.md\`, \`plan.md\`, \`discuss.md\`, \`research.md\`, \`help.md\`. Built-in defaults are used when files are absent.
+
+## Behavior
+
+- Be concise. Give direct answers. Skip preamble.
+- When the user describes a goal, suggest the specific \`rundown\` command with the right flags.
+- When multiple approaches exist, state the recommended one first, then mention alternatives briefly.
+- For destructive or irreversible actions (\`revert --method reset\`, \`--force\`, \`--clean\`), confirm with the user before proceeding.
+- If a command fails, diagnose the likely cause and suggest a fix.
+- When you are unsure about a detail, read the relevant file from the docs/ directory listed above.
+- If the user's request has nothing to do with rundown or task management, just answer it normally — you are a helpful assistant first.
 `;
 
 /**
@@ -326,8 +434,8 @@ Review the document and evaluate whether existing TODO items fully cover the des
 
 Use built-in prefixes when they improve execution quality:
 
-- \`verify:\` for validation-only tasks that should skip execute and run verify directly.
-- \`fast:\` for small, mechanical, low-risk tasks that should skip verify.
+- \`verify:\` skips execution and runs only the verification phase. Use it for tasks that assert existing state without doing any work (e.g. "verify: all tests pass", "verify: config file exists"). Do NOT use \`verify:\` for tasks that require creating, writing, or changing anything — those need execution.
+- \`fast:\` executes the task but skips the verification phase entirely. Use it for small, mechanical changes where per-task verification is wasteful (e.g. renaming a variable, adding an import). Group several such steps under a \`fast:\` directive parent when they make more sense verified together at the end.
 - \`profile: <name>\` to choose a worker profile for specific tasks.
 - \`memory:\` for tasks that should capture reusable context.
 - \`include: <path>\` to delegate subtasks to another Markdown file.
@@ -336,11 +444,11 @@ Always use the canonical prefix name. Do not use aliases (\`check:\`, \`confirm:
 
 You can apply prefixes in either form:
 
-- Inline on a checkbox task, for example \`- [ ] verify: tests pass\`.
+- Inline on a checkbox task, for example \`- [ ] verify: all tests pass\`.
 - As a directive parent that applies to child checkbox items, for example:
 
   \`- verify:\`
-  \`  - [ ] Unit tests pass\`
+  \`  - [ ] All tests pass\`
   \`  - [ ] Linting is clean\`
 
 Prefix composition is supported with \`, \` or \`; \` separators when combining known prefixes, for example:
@@ -350,8 +458,8 @@ Prefix composition is supported with \`, \` or \`; \` separators when combining 
 
 Heuristics:
 
-- Use \`verify:\` when the task is purely to confirm current state.
-- Use \`fast:\` for small, mechanical tasks that do not need a separate validation pass. When several small steps make more sense verified together rather than one-by-one, group them under a \`fast:\` directive parent.
+- Use \`verify:\` only when the task checks existing state without doing work. If the task creates, writes, or modifies anything, it is NOT a verify task.
+- Use \`fast:\` when the task is a small mechanical edit that does not warrant its own verification pass.
 - Use \`profile:\` when task complexity or cost/speed trade-offs suggest a non-default worker.
 - Use directive parents when multiple adjacent tasks share the same prefix.
 - Prefer plain \`- [ ]\` items when no special behavior is needed.
@@ -393,8 +501,8 @@ Review \`{{file}}\` and add missing unchecked child TODO items under this parent
 
 Use built-in prefixes when they improve execution quality for child tasks:
 
-- \`verify:\` for validation-only child tasks that should skip execute and run verify directly.
-- \`fast:\` for small, mechanical, low-risk child tasks that should skip verify.
+- \`verify:\` skips execution and runs only the verification phase. Use it for child tasks that assert existing state without doing any work (e.g. "verify: all tests pass"). Do NOT use \`verify:\` for tasks that require creating, writing, or changing anything — those need execution.
+- \`fast:\` executes the task but skips the verification phase entirely. Use it for small, mechanical changes where per-task verification is wasteful.
 - \`profile: <name>\` to choose a worker profile for specific child tasks.
 - \`memory:\` for child tasks that should capture reusable context.
 - \`include: <path>\` to delegate child subtasks to another Markdown file.
@@ -403,11 +511,11 @@ Always use the canonical prefix name. Do not use aliases (\`check:\`, \`confirm:
 
 You can apply prefixes in either form:
 
-- Inline on a checkbox child task, for example \`- [ ] verify: unit tests pass\`.
+- Inline on a checkbox child task, for example \`- [ ] verify: all unit tests pass\`.
 - As a directive parent that applies to child checkbox items, for example:
 
   \`- verify:\`
-  \`  - [ ] Unit tests pass\`
+  \`  - [ ] All tests pass\`
   \`  - [ ] Linting is clean\`
 
 Prefix composition is supported with \`, \` or \`; \` separators when combining known prefixes, for example:
@@ -417,8 +525,9 @@ Prefix composition is supported with \`, \` or \`; \` separators when combining 
 
 Heuristics:
 
-- Use \`verify:\` when the child task is purely to confirm current state.
-- Use \`fast:\` for small, mechanical child tasks that do not need a separate validation pass. When several small steps make more sense verified together rather than one-by-one, group them under a \`fast:\` directive parent.
+- Use \`verify:\` only when the child task checks existing state without doing work. If the task creates, writes, or modifies anything, it is NOT a verify task.
+- Use \`fast:\` when the child task is a small mechanical edit that does not warrant its own verification pass.
+- Prefer grouping child tasks as \`fast:\` steps followed by a \`verify:\` step that validates the group. A parent task can have multiple such groups when work naturally splits into stages.
 - Use \`profile:\` when child task complexity or cost/speed trade-offs suggest a non-default worker.
 - Use directive parents when multiple adjacent child tasks share the same prefix.
 - Prefer plain \`- [ ]\` child items when no special behavior is needed.

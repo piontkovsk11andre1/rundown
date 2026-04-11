@@ -253,7 +253,7 @@ describe("classifyTaskIntent", () => {
 
   it("classifies end control-flow prefixes through generic tool resolution", () => {
     const toolResolver: ToolResolverPort = {
-      resolve: (toolName) => ["end", "return", "skip", "quit"].includes(toolName)
+      resolve: (toolName) => ["end", "return", "skip", "quit", "break"].includes(toolName)
         ? {
           name: toolName,
           kind: "handler",
@@ -261,7 +261,7 @@ describe("classifyTaskIntent", () => {
           template: "{{payload}}",
         }
         : undefined,
-      listKnownToolNames: () => ["end", "return", "skip", "quit"],
+      listKnownToolNames: () => ["end", "return", "skip", "quit", "break"],
     };
 
     const canonicalEnd = classifyTaskIntent("end: no more output to process", toolResolver);
@@ -280,6 +280,10 @@ describe("classifyTaskIntent", () => {
     const aliasQuit = classifyTaskIntent("quit: condition reached", toolResolver);
     expect(aliasQuit.intent).toBe("tool-expansion");
     expect(aliasQuit.toolName).toBe("quit");
+
+    const aliasBreak = classifyTaskIntent("break: loop exit condition", toolResolver);
+    expect(aliasBreak.intent).toBe("tool-expansion");
+    expect(aliasBreak.toolName).toBe("break");
   });
 
   it("keeps built-in verify prefix precedence over tool resolver", () => {

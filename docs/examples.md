@@ -391,5 +391,5 @@ What happens:
 4. `profile:` applies as a modifier and composes with downstream handler tools.
 5. `include:` executes tasks from a cloned artifacts copy of the target markdown file and auto-checks include on success.
 6. When mixed explicit intent prefixes appear in task text, the first explicit prefix wins (`verify: fast: ...` is verify-only; `fast: verify: ...` is fast-execution).
-7. `end:` / `return:` / `skip:` / `quit:` share the same control-flow handler and can short-circuit remaining sibling tasks when the condition is satisfied.
+7. `end:` / `return:` / `skip:` / `quit:` / `break:` share the same control-flow handler and can short-circuit remaining sibling tasks when the condition is satisfied.
 8. Unknown prefixes are treated as normal task text and do not fail resolution.

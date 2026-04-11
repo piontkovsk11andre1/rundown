@@ -769,7 +769,7 @@ Built-in handler aliases:
 - Verify-only: `verify:`, `confirm:`, `check:`
 - Memory capture: `memory:`, `memorize:`, `remember:`, `inventory:`
 - Fast execution (skip verification): `fast:`, `raw:`
-- End control flow (skip remaining siblings when condition is true): `end:`, `return:`, `skip:`, `quit:`
+- End control flow (skip remaining siblings when condition is true): `end:`, `return:`, `skip:`, `quit:`, `break:`
 - Include markdown file execution: `include:`
 
 Built-in modifier:

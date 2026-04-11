@@ -15,6 +15,10 @@ import {
 } from "./application/clean-memory.js";
 import { createPlanTask, type PlanTaskOptions as PlanTaskUseCaseOptions } from "./application/plan-task.js";
 import { createResearchTask, type ResearchTaskOptions as ResearchTaskUseCaseOptions } from "./application/research-task.js";
+import {
+  createQueryTask,
+  type QueryTaskOptions as QueryTaskUseCaseOptions,
+} from "./application/query-task.js";
 import { createListTasks, type ListTasksOptions } from "./application/list-tasks.js";
 import { createNextTask, type NextTaskOptions } from "./application/next-task.js";
 import { createUnlockTask, type UnlockTaskOptions } from "./application/unlock-task.js";
@@ -105,6 +109,7 @@ export type App = {
   revertTask: (options: RevertTaskOptions) => Promise<number>;
   planTask: (options: PlanTaskCommandOptions) => Promise<number>;
   researchTask: (options: ResearchTaskCommandOptions) => Promise<number>;
+  queryTask: (options: QueryTaskCommandOptions) => Promise<number>;
   unlockTask: (options: UnlockTaskOptions) => Promise<number>;
   listTasks: (options: ListTasksOptions) => Promise<number>;
   nextTask: (options: NextTaskOptions) => Promise<number>;
@@ -151,6 +156,30 @@ export interface ResearchTaskCommandOptions {
   ignoreCliBlock: boolean;
   cliBlockTimeoutMs?: number;
   configDirOption?: string;
+  verbose?: boolean;
+}
+
+export interface QueryTaskCommandOptions {
+  queryText: string;
+  dir: string;
+  format: QueryTaskUseCaseOptions["format"];
+  output?: string;
+  skipResearch: boolean;
+  mode: QueryTaskUseCaseOptions["mode"];
+  workerPattern: QueryTaskUseCaseOptions["workerPattern"];
+  showAgentOutput: boolean;
+  dryRun: boolean;
+  printPrompt: boolean;
+  keepArtifacts: boolean;
+  varsFileOption: string | boolean | undefined;
+  cliTemplateVarArgs: string[];
+  trace: boolean;
+  forceUnlock: boolean;
+  ignoreCliBlock: boolean;
+  cliBlockTimeoutMs?: number;
+  scanCount?: number;
+  maxItems?: number;
+  deep?: number;
   verbose?: boolean;
 }
 
@@ -439,6 +468,9 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       configDir: ports.configDir,
       output: ports.output,
     }),
+    queryTask: (ports) => createQueryTask({
+      output: ports.output,
+    }),
     unlockTask: (ports) => createUnlockTask({
       fileLock: ports.fileLock,
       fileSystem: ports.fileSystem,
@@ -520,6 +552,7 @@ function createAppFromFactories(
   const revertTask = factories.revertTask(ports);
   const planTask = factories.planTask(ports);
   const researchTask = factories.researchTask(ports);
+  const queryTask = factories.queryTask(ports);
   const unlockTask = factories.unlockTask(ports);
   const listTasks = factories.listTasks(ports);
   const nextTask = factories.nextTask(ports);
@@ -547,6 +580,7 @@ function createAppFromFactories(
     revertTask,
     planTask,
     researchTask,
+    queryTask,
     unlockTask,
     listTasks,
     nextTask,

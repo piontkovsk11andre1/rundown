@@ -47,6 +47,7 @@ import {
   createMemoryValidateCommandAction,
   createNextCommandAction,
   createPlanCommandAction,
+  createQueryCommandAction,
   createResearchCommandAction,
   createReverifyCommandAction,
   createRevertCommandAction,
@@ -59,6 +60,7 @@ const PLANNER_MODES: readonly ProcessRunMode[] = ["wait"];
 const DISCUSS_MODES: readonly ProcessRunMode[] = ["wait", "tui"];
 const RESEARCH_MODES: readonly ProcessRunMode[] = ["wait", "tui"];
 const EXPLORE_MODES: readonly ProcessRunMode[] = ["wait"];
+const QUERY_MODES: readonly ProcessRunMode[] = ["wait"];
 const MAKE_MODES: readonly ProcessRunMode[] = ["wait"];
 const DO_MODES: readonly ProcessRunMode[] = ["wait"];
 const LOOP_MODES: readonly ProcessRunMode[] = ["wait"];
@@ -404,6 +406,49 @@ program
     getApp,
     getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
     makeModes: MAKE_MODES,
+  })));
+
+program
+  .command("query")
+  .description("Research the codebase, plan investigation steps, and execute a query workflow.")
+  .argument("<text>", "Natural-language query text")
+  .option("--dir <path>", "Target directory to analyze", process.cwd())
+  .option("--format <format>", "Output format: markdown, json, yn, success-error", "markdown")
+  .option("--output <file>", "Write final query output to file instead of stdout")
+  .option("--skip-research", "Skip research phase and start from planning", false)
+  .option("--mode <mode>", "Query mode: wait", "wait")
+  .option(
+    "--scan-count <n>",
+    "Max clean-session TODO coverage scans for the plan phase (omit for convergence-driven unlimited mode)",
+  )
+  .option("--max-items <n>", "Cap the total number of TODO items added across all scans (default: no limit)")
+  .option(
+    "--deep <n>",
+    "Additional nested planning depth passes after top-level scans for the plan phase (default: 0)",
+    String(DEFAULT_PLAN_DEEP),
+  )
+  .option("--dry-run", "Show what would run for query orchestration without executing workers", false)
+  .option("--print-prompt", "Print rendered query prompts and exit", false)
+  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
+  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
+  .option("-v, --verbose", "Show detailed per-task run diagnostics (within grouped output)", false)
+  .option("-q, --quiet", "Suppress info-level output (info, success, progress, grouped status)", false)
+  .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
+  .option("--force-unlock", "Break stale source lockfiles before acquiring phase locks", false)
+  .option("--vars-file [path]", DEFAULT_VARS_FILE_HELP)
+  .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
+  .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
+  .option("--ignore-cli-block", "Disable execution of `cli` fenced blocks during prompt expansion")
+  .option(
+    "--cli-block-timeout <ms>",
+    "Timeout in milliseconds for executing `cli` fenced blocks (0 disables timeout)",
+    String(DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS),
+  )
+  .allowUnknownOption(false)
+  .action(withCliAction(createQueryCommandAction({
+    getApp,
+    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
+    queryModes: QUERY_MODES,
   })));
 
 program

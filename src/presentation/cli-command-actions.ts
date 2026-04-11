@@ -5,6 +5,7 @@ import { EXIT_CODE_NO_WORK, EXIT_CODE_SUCCESS } from "../domain/exit-codes.js";
 import {
   normalizeOptionalString,
   parseCliBlockTimeout,
+  parseQueryOutputFormat,
   parseForceAttempts,
   parseLastCount,
   parseLimitCount,
@@ -37,7 +38,10 @@ import {
   type ParsedWorkerPattern,
 } from "../domain/worker-pattern.js";
 import type { CliApp } from "./cli-app-init.js";
-import type { ResearchCommandInvocationOptions } from "./cli-invocation-types.js";
+import type {
+  QueryCommandInvocationOptions,
+  ResearchCommandInvocationOptions,
+} from "./cli-invocation-types.js";
 
 type CliActionResult = number | Promise<number>;
 type CliOpts = Record<string, string | string[] | boolean>;
@@ -165,6 +169,10 @@ interface ExploreActionDependencies extends WorkerActionDependencies {
 
 interface DoActionDependencies extends WorkerActionDependencies {
   makeModes: readonly ProcessRunMode[];
+}
+
+interface QueryActionDependencies extends WorkerActionDependencies {
+  queryModes: readonly ProcessRunMode[];
 }
 
 function resolveWorkerPattern(
@@ -863,6 +871,50 @@ export function createExploreCommandAction({
       maxItems,
       verbose,
     });
+  };
+}
+
+/**
+ * Creates the `query` command action handler.
+ */
+export function createQueryCommandAction({
+  getApp,
+  getWorkerFromSeparator,
+  queryModes,
+}: QueryActionDependencies): (queryText: string, opts: CliOpts) => CliActionResult {
+  return (queryText: string, opts: CliOpts) => {
+    const mode = parseRunnerMode(opts.mode as string | undefined, queryModes);
+    const sharedRuntimeOptions = resolveSharedWorkerRuntimeOptions(opts, getWorkerFromSeparator);
+    const format = parseQueryOutputFormat(opts.format as string | undefined);
+    const output = normalizeOptionalString(opts.output);
+    const dir = path.resolve(normalizeOptionalString(opts.dir) ?? process.cwd());
+
+    const request: QueryCommandInvocationOptions = {
+      queryText,
+      dir,
+      format,
+      output,
+      skipResearch: Boolean(opts.skipResearch as boolean | undefined),
+      mode,
+      workerPattern: sharedRuntimeOptions.workerPattern,
+      showAgentOutput: sharedRuntimeOptions.showAgentOutput,
+      dryRun: Boolean(opts.dryRun as boolean | undefined),
+      printPrompt: Boolean(opts.printPrompt as boolean | undefined),
+      keepArtifacts: sharedRuntimeOptions.keepArtifacts,
+      varsFileOption: sharedRuntimeOptions.varsFileOption,
+      cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,
+      trace: sharedRuntimeOptions.trace,
+      forceUnlock: sharedRuntimeOptions.forceUnlock,
+      ignoreCliBlock: sharedRuntimeOptions.ignoreCliBlock,
+      cliBlockTimeoutMs: sharedRuntimeOptions.cliBlockTimeoutMs,
+      scanCount: parseScanCount(opts.scanCount as string | undefined),
+      maxItems: parseMaxItems(opts.maxItems as string | undefined),
+      deep: parsePlanDeep(opts.deep as string | undefined),
+      verbose: resolveVerboseOption(opts),
+      configDirOption: sharedRuntimeOptions.configDirOption,
+    };
+
+    return getApp().queryTask(request);
   };
 }
 

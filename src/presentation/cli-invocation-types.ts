@@ -66,3 +66,18 @@ export interface ResearchCommandInvocationOptions extends WorkerCommandInvocatio
   source: string;
   verbose?: boolean;
 }
+
+/**
+ * Normalized invocation payload for the `query` command.
+ */
+export interface QueryCommandInvocationOptions extends WorkerCommandInvocationOptions {
+  queryText: string;
+  dir: string;
+  format: "markdown" | "json" | "yn" | "success-error";
+  output?: string;
+  skipResearch: boolean;
+  scanCount?: number;
+  maxItems?: number;
+  deep?: number;
+  verbose?: boolean;
+}

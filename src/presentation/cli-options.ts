@@ -10,6 +10,9 @@ import fs from "node:fs";
 
 type CliOptionMap = Record<string, string | string[] | boolean>;
 
+export const QUERY_OUTPUT_FORMATS = ["markdown", "json", "yn", "success-error"] as const;
+export type QueryOutputFormatOption = (typeof QUERY_OUTPUT_FORMATS)[number];
+
 export interface SharedWorkerRuntimeOptions {
   keepArtifacts: boolean;
   showAgentOutput: boolean;
@@ -482,6 +485,13 @@ export function parseRevertMethod(value: string | undefined): "revert" | "reset"
  */
 export function parseCommitMode(value: string | undefined): "per-task" | "file-done" {
   return parseEnumOption(value, "commit-mode", COMMIT_MODES, "per-task");
+}
+
+/**
+ * Parses output format for the `query` command.
+ */
+export function parseQueryOutputFormat(value: string | undefined): QueryOutputFormatOption {
+  return parseEnumOption(value, "format", QUERY_OUTPUT_FORMATS, "markdown");
 }
 
 /**

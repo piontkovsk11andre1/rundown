@@ -9,6 +9,10 @@ const COMMAND_SPECIFIC_REPAIR_TEMPLATE_FILES: Record<string, string> = {
   research: "research-repair.md",
 };
 
+const COMMAND_SPECIFIC_RESOLVE_TEMPLATE_FILES: Record<string, string> = {
+  research: "research-resolve.md",
+};
+
 const RUNDOWN_SUBCOMMAND_PATTERN = /(?:^|\s)(?:\S*[\\/])?rundown(?:\.(?:cmd|ps1|bat|exe))?\s+([a-z0-9-]+)/i;
 
 /**
@@ -46,6 +50,52 @@ export function resolveRepairTemplateForTask(params: {
 
   return templateLoader.load(pathOperations.join(configDir.configDir, repairTemplateFile))
     ?? defaultRepairTemplate;
+}
+
+/**
+ * Resolves the effective resolve template for a task.
+ *
+ * Fallback order:
+ * 1) command-specific resolve template (for inline `rundown <command>` tasks)
+ * 2) project-level `.rundown/resolve.md`
+ * 3) built-in default resolve template provided by caller
+ */
+export function resolveResolveTemplateForTask(params: {
+  task: Task;
+  configDir: ConfigDirResult | undefined;
+  templateLoader: TemplateLoader;
+  pathOperations: PathOperationsPort;
+  defaultResolveTemplate: string;
+}): string {
+  const {
+    task,
+    configDir,
+    templateLoader,
+    pathOperations,
+    defaultResolveTemplate,
+  } = params;
+
+  if (!configDir?.configDir) {
+    return defaultResolveTemplate;
+  }
+
+  if (task.isInlineCli) {
+    const command = extractRundownSubcommand(task.cliCommand ?? "");
+    if (command) {
+      const resolveTemplateFile = COMMAND_SPECIFIC_RESOLVE_TEMPLATE_FILES[command];
+      if (resolveTemplateFile) {
+        const commandSpecificTemplate = templateLoader.load(
+          pathOperations.join(configDir.configDir, resolveTemplateFile),
+        );
+        if (commandSpecificTemplate !== null) {
+          return commandSpecificTemplate;
+        }
+      }
+    }
+  }
+
+  return templateLoader.load(pathOperations.join(configDir.configDir, "resolve.md"))
+    ?? defaultResolveTemplate;
 }
 
 export function extractRundownSubcommand(command: string): string | null {

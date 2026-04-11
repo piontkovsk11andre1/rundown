@@ -5,6 +5,7 @@ import {
   normalizeRepairPathForDisplay,
   resolveInlineRundownTargetArtifactPath,
   resolveRepairTemplateForTask,
+  resolveResolveTemplateForTask,
   serializeSelectedTaskMetadata,
 } from "../../src/application/repair-template-resolution.js";
 import type { Task } from "../../src/domain/parser.js";
@@ -78,6 +79,93 @@ describe("repair-template-resolution", () => {
 
     expect(resolved).toBe("DEFAULT REPAIR");
     expect(templateLoader.load).not.toHaveBeenCalled();
+  });
+
+  it("uses command-specific resolve template when available", () => {
+    const task = createInlineTask("cli: rundown research \"topic.md\"");
+    const templateLoader: TemplateLoader = {
+      load: vi.fn((templatePath: string) => {
+        if (templatePath.endsWith(path.join(".rundown", "research-resolve.md"))) {
+          return "RESEARCH RESOLVE";
+        }
+        return null;
+      }),
+    };
+
+    const resolved = resolveResolveTemplateForTask({
+      task,
+      configDir: { configDir: path.join("/workspace", ".rundown"), isExplicit: false },
+      templateLoader,
+      pathOperations: path,
+      defaultResolveTemplate: "DEFAULT RESOLVE",
+    });
+
+    expect(resolved).toBe("RESEARCH RESOLVE");
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join("/workspace", ".rundown", "research-resolve.md"));
+  });
+
+  it("falls back to .rundown/resolve.md when command-specific resolve template is missing", () => {
+    const task = createInlineTask("cli: rundown research \"topic.md\"");
+    const templateLoader: TemplateLoader = {
+      load: vi.fn((templatePath: string) => {
+        if (templatePath.endsWith(path.join(".rundown", "resolve.md"))) {
+          return "PROJECT RESOLVE";
+        }
+        return null;
+      }),
+    };
+
+    const resolved = resolveResolveTemplateForTask({
+      task,
+      configDir: { configDir: path.join("/workspace", ".rundown"), isExplicit: false },
+      templateLoader,
+      pathOperations: path,
+      defaultResolveTemplate: "DEFAULT RESOLVE",
+    });
+
+    expect(resolved).toBe("PROJECT RESOLVE");
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join("/workspace", ".rundown", "research-resolve.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join("/workspace", ".rundown", "resolve.md"));
+  });
+
+  it("falls back to default resolve template when project overrides are unavailable", () => {
+    const task = createInlineTask("cli: rundown research \"topic.md\"");
+    const templateLoader: TemplateLoader = {
+      load: vi.fn(() => null),
+    };
+
+    const resolved = resolveResolveTemplateForTask({
+      task,
+      configDir: { configDir: path.join("/workspace", ".rundown"), isExplicit: false },
+      templateLoader,
+      pathOperations: path,
+      defaultResolveTemplate: "DEFAULT RESOLVE",
+    });
+
+    expect(resolved).toBe("DEFAULT RESOLVE");
+  });
+
+  it("uses .rundown/resolve.md fallback for non-inline tasks", () => {
+    const task = createTask("General resolve behavior");
+    const templateLoader: TemplateLoader = {
+      load: vi.fn((templatePath: string) => {
+        if (templatePath.endsWith(path.join(".rundown", "resolve.md"))) {
+          return "PROJECT RESOLVE";
+        }
+        return null;
+      }),
+    };
+
+    const resolved = resolveResolveTemplateForTask({
+      task,
+      configDir: { configDir: path.join("/workspace", ".rundown"), isExplicit: false },
+      templateLoader,
+      pathOperations: path,
+      defaultResolveTemplate: "DEFAULT RESOLVE",
+    });
+
+    expect(resolved).toBe("PROJECT RESOLVE");
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join("/workspace", ".rundown", "resolve.md"));
   });
 
   it("resolves research artifact path from inline rundown research command", () => {

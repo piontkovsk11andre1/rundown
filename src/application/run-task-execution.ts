@@ -795,6 +795,7 @@ export function createRunTaskExecution(
                   trace,
                   traceOnly,
                   forceRetryMetadata,
+                  persistFailureAnnotation: !initialForceExtraction.isForce || isFinalAttempt,
                 },
                 worker: {
                   workerPattern,

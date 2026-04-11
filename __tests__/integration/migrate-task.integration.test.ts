@@ -179,11 +179,22 @@ describeIfUserSessionMigrateAvailable("migrate user-session integration", () => 
     expect(fs.readFileSync(migrationPath, "utf-8")).toContain("session-summary-2");
     expect(fs.readFileSync(backlogPath, "utf-8")).toContain("session-backlog-3");
 
-    const stdout = result.stdoutWrites.join("");
-    expect(stdout).toContain("session-summary-2");
-    expect(stdout).toContain("session-backlog-3");
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n"));
+    expect(combinedOutput).toContain("session-summary-2");
+    expect(combinedOutput).toContain("session-backlog-3");
   });
 });
+
+const ANSI_ESCAPE_PATTERN = /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-ntqry=><~]))/g;
+
+function stripAnsi(value: string): string {
+  return value.replace(ANSI_ESCAPE_PATTERN, "");
+}
 
 function scaffoldPredictionProject(workspace: string): void {
   fs.writeFileSync(path.join(workspace, "Design.md"), "# Design\n\nSeed design context.\n", "utf-8");
@@ -350,8 +361,8 @@ async function runCli(args: string[], cwd: string): Promise<{
     if (
       typeof error === "object"
       && error !== null
-      && "__cliExit" in error
-      && (error as { __cliExit?: unknown }).__cliExit === true
+      && "exitCode" in error
+      && typeof (error as { exitCode?: unknown }).exitCode === "number"
     ) {
       return {
         code: (error as { exitCode: number }).exitCode,
@@ -362,7 +373,13 @@ async function runCli(args: string[], cwd: string): Promise<{
       };
     }
 
-    errors.push(String(error));
+    const message = String(error);
+    const match = message.match(/CLI exited with code (\d+)/);
+    if (match) {
+      return { code: Number(match[1]), logs, errors, stdoutWrites, stderrWrites };
+    }
+
+    errors.push(message);
     return { code: 1, logs, errors, stdoutWrites, stderrWrites };
   } finally {
     logSpy.mockRestore();

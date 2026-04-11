@@ -87,6 +87,7 @@ interface IterationExecutionOptions {
     previousRunId: string;
     previousExitCode: number;
   };
+  persistFailureAnnotation?: boolean;
 }
 
 interface IterationWorkerConfig {
@@ -657,6 +658,7 @@ export async function runTaskIteration(params: {
     skipRemainingSiblingsReason: dispatchResult.skipRemainingSiblingsReason,
     toolExpansionInsertedChildCount: dispatchResult.toolExpansionInsertedChildCount,
     failOnCompleteHookError: execution.forceStrippedTaskText !== undefined,
+    persistFailureAnnotation: execution.persistFailureAnnotation,
     traceStatisticsConfig: completion.traceStatisticsConfig,
     currentRound: traceConfig.roundContext.currentRound,
     totalRounds: traceConfig.roundContext.totalRounds,

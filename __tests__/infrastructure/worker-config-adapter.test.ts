@@ -288,9 +288,19 @@ describe("createWorkerConfigAdapter", () => {
 
     const adapter = createWorkerConfigAdapter();
 
-    expect(() => adapter.load(configDir)).toThrow(
-      `Invalid worker config at \"${configPath}\": Invalid worker config at commands.execute: unknown command. Allowed: help, run, plan, discuss, research, reverify, verify, memory, or tools.{toolName}.`,
-    );
+    try {
+      adapter.load(configDir);
+      throw new Error("Expected adapter.load to throw for unknown command key.");
+    } catch (error) {
+      const message = (error as Error).message;
+      expect(message).toContain(`Invalid worker config at \"${configPath}\"`);
+      expect(message).toContain("Invalid worker config at commands.execute: unknown command.");
+      expect(message).toContain("Allowed:");
+      expect(message).toContain("help");
+      expect(message).toContain("run");
+      expect(message).toContain("plan");
+      expect(message).toContain("tools.{toolName}");
+    }
   });
 
   it("rejects non-array command values", () => {

@@ -7369,7 +7369,7 @@ describe.sequential("CLI integration", () => {
     expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: __rundown_missing_command__");
   });
 
-  it("run returns 2 on verification failure and skips completion side effects", async () => {
+  it("run returns 2 on verification failure, skips completion side effects, and writes fix annotation", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");
     fs.writeFileSync(roadmapPath, "- [ ] cli: echo hello\n", "utf-8");
@@ -7399,7 +7399,11 @@ describe.sequential("CLI integration", () => {
     expect(result.errors.some((line) => line.includes("Verification failed"))).toBe(true);
     expect(result.logs.some((line) => line.includes("Committed:"))).toBe(false);
     expect(result.logs.some((line) => line.includes("hook-ran"))).toBe(false);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: echo hello");
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+      "- [x] cli: echo hello",
+      "  - fix: Verification worker returned empty output. Expected OK or a short failure reason.",
+      "",
+    ].join("\n"));
   });
 
   it("run surfaces verification reason after failed repair attempts", async () => {
@@ -7423,7 +7427,11 @@ describe.sequential("CLI integration", () => {
     expect(result.errors.some((line) => line.includes("Last validation error: release validation still failing"))).toBe(true);
     const stderrOutput = stripAnsi([...result.errors, ...result.stderrWrites].join("\n"));
     expect(stderrOutput.includes("release validation still failing")).toBe(true);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] Write docs");
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+      "- [x] Write docs",
+      "  - fix: release validation still failing",
+      "",
+    ].join("\n"));
   });
 
   it("run writes checked task with fix annotation when verification fails", async () => {
@@ -7515,7 +7523,11 @@ describe.sequential("CLI integration", () => {
     expect(result.errors.some((line) => line.includes("Verification failed (no details)."))).toBe(true);
     const stderrOutput = stripAnsi([...result.errors, ...result.stderrWrites].join("\n"));
     expect(stderrOutput.includes("Verification failed (no details).")).toBe(true);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] Write docs");
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+      "- [x] Write docs",
+      "  - fix: Verification failed (no details).",
+      "",
+    ].join("\n"));
   });
 
   it("run forwards --commit-message template when used with --commit", async () => {

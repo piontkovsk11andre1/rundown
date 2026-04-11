@@ -87,21 +87,20 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
     expect(combinedOutput).toMatch(/ok|pass/i);
   });
 
-  it("rundown test new --mode tui writes a slugged spec in specs/", async () => {
+  it("rundown test new writes a slugged spec in specs/", async () => {
     const workspace = makeTempWorkspace();
     scaffoldPredictedState(workspace);
 
     const result = await runCli([
       "test",
       "new",
-      "--mode",
-      "tui",
+      "User can export reports",
       "--dir",
       "specs",
       "--",
       "node",
       "-e",
-      "console.log('User can export reports');process.exit(0);",
+      "console.log('OK');process.exit(0);",
     ], workspace);
 
     expect(result.code).toBe(0);
@@ -118,25 +117,23 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
     expect(combinedOutput).toContain("user-can-export-reports.md");
   });
 
-  it("rundown test new --mode tui handles cancellation without writing a spec", async () => {
+  it("rundown test new without prompt fails without writing a spec", async () => {
     const workspace = makeTempWorkspace();
     scaffoldPredictedState(workspace);
 
     const result = await runCli([
       "test",
       "new",
-      "--mode",
-      "tui",
       "--dir",
       "specs",
       "--",
       "node",
       "-e",
-      "console.error('cancelled by user');process.exit(130);",
+      "console.log('OK');process.exit(0);",
     ], workspace);
 
     expect(result.code).not.toBe(0);
-    expect(fs.readdirSync(path.join(workspace, "specs"))).toEqual([]);
+    expect(fs.existsSync(path.join(workspace, "specs"))).toBe(false);
 
     const combinedOutput = stripAnsi([
       ...result.logs,
@@ -144,7 +141,7 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
       ...result.stdoutWrites,
       ...result.stderrWrites,
     ].join("\n"));
-    expect(combinedOutput).toMatch(/cancel|canceled|cancelled/i);
+    expect(combinedOutput).toContain("Missing assertion text for `test new`.");
   });
 });
 
@@ -221,8 +218,8 @@ async function runCli(args: string[], cwd: string): Promise<{
     if (
       typeof error === "object"
       && error !== null
-      && "__cliExit" in error
-      && (error as { __cliExit?: unknown }).__cliExit === true
+      && "exitCode" in error
+      && typeof (error as { exitCode?: unknown }).exitCode === "number"
     ) {
       return {
         code: (error as { exitCode: number }).exitCode,
@@ -233,7 +230,13 @@ async function runCli(args: string[], cwd: string): Promise<{
       };
     }
 
-    errors.push(String(error));
+    const message = String(error);
+    const match = message.match(/CLI exited with code (\d+)/);
+    if (match) {
+      return { code: Number(match[1]), logs, errors, stdoutWrites, stderrWrites };
+    }
+
+    errors.push(message);
     return { code: 1, logs, errors, stdoutWrites, stderrWrites };
   } finally {
     logSpy.mockRestore();

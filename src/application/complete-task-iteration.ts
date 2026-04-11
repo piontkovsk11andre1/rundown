@@ -129,6 +129,7 @@ export async function completeTaskIteration(params: {
   skipRemainingSiblingsReason?: string;
   toolExpansionInsertedChildCount?: number;
   failOnCompleteHookError?: boolean;
+  persistFailureAnnotation?: boolean;
   traceStatisticsConfig?: TraceStatisticsConfig;
   currentRound?: number;
   totalRounds?: number;
@@ -188,6 +189,7 @@ export async function completeTaskIteration(params: {
     skipRemainingSiblingsReason,
     toolExpansionInsertedChildCount,
     failOnCompleteHookError,
+    persistFailureAnnotation = true,
     traceStatisticsConfig,
     currentRound = 1,
     totalRounds = 1,
@@ -328,10 +330,12 @@ export async function completeTaskIteration(params: {
       const surfacedFailureMessage = usageLimitDetected
         ? usageLimitFailureMessage
         : fullVerificationFailureMessage;
-      try {
-        writeFixAnnotationToFile(task, failureReason, dependencies.fileSystem);
-      } catch (error) {
-        emit({ kind: "warn", message: "Failed to write verification fix annotation: " + String(error) });
+      if (persistFailureAnnotation) {
+        try {
+          writeFixAnnotationToFile(task, failureReason, dependencies.fileSystem);
+        } catch (error) {
+          emit({ kind: "warn", message: "Failed to write verification fix annotation: " + String(error) });
+        }
       }
       // Surface verification details, trigger failure hooks, and terminate the run.
       emit({ kind: "error", message: surfacedFailureMessage });

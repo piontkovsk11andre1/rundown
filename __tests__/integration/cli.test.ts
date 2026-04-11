@@ -894,6 +894,173 @@ describe.sequential("CLI integration", () => {
     ]);
   });
 
+  it("query --format json writes aggregated output to --output file", async () => {
+    const workspace = makeTempWorkspace();
+    const analysisDir = path.join(workspace, "analysis-json");
+    const workerScriptPath = path.join(workspace, "query-json-worker.cjs");
+    const outputPath = path.join(workspace, "result", "query.json");
+
+    fs.mkdirSync(analysisDir, { recursive: true });
+    fs.writeFileSync(path.join(analysisDir, "service.ts"), "export const authEnabled = true;\n", "utf-8");
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        "const promptPath = process.argv[process.argv.length - 1];",
+        "const prompt = fs.readFileSync(promptPath, 'utf-8');",
+        "const sourceMatch = prompt.match(/## Source file\\s+`([^`]+)`/m);",
+        "const sourcePath = sourceMatch ? sourceMatch[1] : '';",
+        "if (prompt.includes('Research and enrich the source document with implementation context.')) {",
+        "  const source = fs.readFileSync(sourcePath, 'utf-8');",
+        "  if (source.includes('## Research Context')) {",
+        "    console.log(source);",
+        "  } else {",
+        "    console.log(source.trimEnd() + '\\n\\n## Research Context\\n\\n- Located auth module\\n');",
+        "  }",
+        "  process.exit(0);",
+        "}",
+        "if (prompt.includes('Edit the source Markdown file directly to improve plan coverage.')) {",
+        "  const source = fs.readFileSync(sourcePath, 'utf-8');",
+        "  let updated = source;",
+        "  if (!updated.includes('- [ ] Capture auth findings')) {",
+        "    updated = updated.trimEnd() + '\\n\\n- [ ] Capture auth findings\\n';",
+        "  }",
+        "  fs.writeFileSync(sourcePath, updated.endsWith('\\n') ? updated : `${updated}\\n`, 'utf-8');",
+        "  process.exit(0);",
+        "}",
+        "if (prompt.includes('You are executing one step of a query investigation plan.')) {",
+        "  const stepPathMatch = prompt.match(/`([^`]*step-[^`]+\\.md)`/);",
+        "  if (!stepPathMatch) {",
+        "    process.exit(96);",
+        "  }",
+        "  fs.writeFileSync(stepPathMatch[1], '# Evidence\\n\\n- Verified service.ts exports authEnabled\\n', 'utf-8');",
+        "  process.exit(0);",
+        "}",
+        "process.exit(95);",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "query",
+      "explain authentication flow",
+      "--dir",
+      analysisDir,
+      "--format",
+      "json",
+      "--output",
+      outputPath,
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(fs.existsSync(outputPath)).toBe(true);
+    const parsed = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as {
+      query: string;
+      steps: Array<{ title: string; content: string }>;
+      output: string;
+    };
+    expect(parsed.query).toBe("explain authentication flow");
+    expect(parsed.steps[0]?.title).toBe("Evidence");
+    expect(parsed.steps[0]?.content).toContain("service.ts");
+    expect(parsed.output).toContain("## Step 1: Evidence");
+  });
+
+  it("query emits yn verdict and honors success-error exit code with --output", async () => {
+    const workspace = makeTempWorkspace();
+    const analysisDir = path.join(workspace, "analysis-verdicts");
+    const ynWorkerScriptPath = path.join(workspace, "query-yn-worker.cjs");
+    const successErrorWorkerScriptPath = path.join(workspace, "query-success-error-worker.cjs");
+    const successErrorOutputPath = path.join(workspace, "result", "success-error.txt");
+
+    fs.mkdirSync(analysisDir, { recursive: true });
+    fs.writeFileSync(path.join(analysisDir, "service.ts"), "export const authEnabled = true;\n", "utf-8");
+
+    const baseScriptLines = [
+      "const fs = require('node:fs');",
+      "const promptPath = process.argv[process.argv.length - 1];",
+      "const prompt = fs.readFileSync(promptPath, 'utf-8');",
+      "const sourceMatch = prompt.match(/## Source file\\s+`([^`]+)`/m);",
+      "const sourcePath = sourceMatch ? sourceMatch[1] : '';",
+      "if (prompt.includes('Research and enrich the source document with implementation context.')) {",
+      "  const source = fs.readFileSync(sourcePath, 'utf-8');",
+      "  if (source.includes('## Research Context')) {",
+      "    console.log(source);",
+      "  } else {",
+      "    console.log(source.trimEnd() + '\\n\\n## Research Context\\n\\n- Added context\\n');",
+      "  }",
+      "  process.exit(0);",
+      "}",
+      "if (prompt.includes('Edit the source Markdown file directly to improve plan coverage.')) {",
+      "  const source = fs.readFileSync(sourcePath, 'utf-8');",
+      "  let updated = source;",
+      "  if (!updated.includes('- [ ] Assess auth verdict')) {",
+      "    updated = updated.trimEnd() + '\\n\\n- [ ] Assess auth verdict\\n';",
+      "  }",
+      "  fs.writeFileSync(sourcePath, updated.endsWith('\\n') ? updated : `${updated}\\n`, 'utf-8');",
+      "  process.exit(0);",
+      "}",
+      "if (prompt.includes('You are executing one step of a query investigation plan.')) {",
+      "  const stepPathMatch = prompt.match(/`([^`]*step-[^`]+\\.md)`/);",
+      "  if (!stepPathMatch) {",
+      "    process.exit(96);",
+      "  }",
+      "  fs.writeFileSync(stepPathMatch[1], '# Verdict\\n\\n__VERDICT__\\n', 'utf-8');",
+      "  process.exit(0);",
+      "}",
+      "process.exit(95);",
+      "",
+    ];
+
+    fs.writeFileSync(
+      ynWorkerScriptPath,
+      baseScriptLines.join("\n").replace("__VERDICT__", "Y"),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      successErrorWorkerScriptPath,
+      baseScriptLines.join("\n").replace("__VERDICT__", "failure: missing coverage"),
+      "utf-8",
+    );
+
+    const ynResult = await runCli([
+      "query",
+      "is auth enabled?",
+      "--dir",
+      analysisDir,
+      "--format",
+      "yn",
+      "--worker",
+      "node",
+      ynWorkerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(ynResult.code).toBe(0);
+    const ynOutput = [...ynResult.logs, ...ynResult.stdoutWrites, ...ynResult.stderrWrites].join("\n");
+    expect(ynOutput).toContain("Y");
+
+    const successErrorResult = await runCli([
+      "query",
+      "does migration cover all breaking changes?",
+      "--dir",
+      analysisDir,
+      "--format",
+      "success-error",
+      "--output",
+      successErrorOutputPath,
+      "--worker",
+      "node",
+      successErrorWorkerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(successErrorResult.code).toBe(1);
+    expect(fs.existsSync(successErrorOutputPath)).toBe(true);
+    expect(fs.readFileSync(successErrorOutputPath, "utf-8")).toBe("failure: missing coverage");
+  });
+
   it("explore forwards --scan-count, --deep, and --max-items to the plan phase only", async () => {
     const workspace = makeTempWorkspace();
     const sourceName = "roadmap.md";

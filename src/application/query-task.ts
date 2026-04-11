@@ -10,6 +10,12 @@ import { renderTemplate, type TemplateVars } from "../domain/template.js";
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import type { ProcessRunMode, ArtifactStore, FileSystem, PathOperationsPort, WorkingDirectoryPort } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
+import {
+  aggregateQueryOutput,
+  formatQueryOutput,
+  resolveQueryExitCode,
+  writeQueryOutput,
+} from "./query-output.js";
 import type { PlanTaskOptions } from "./plan-task.js";
 import type { ResearchTaskOptions } from "./research-task.js";
 import type { RunTaskOptions } from "./run-task.js";
@@ -86,6 +92,8 @@ export function createQueryTask(
       });
       finalized = true;
     };
+
+    let exitCode = EXIT_CODE_SUCCESS;
 
     try {
       dependencies.fileSystem.mkdir(runContext.rootDir, { recursive: true });
@@ -209,13 +217,27 @@ export function createQueryTask(
         return runCode;
       }
 
+      if (fileMode) {
+        const aggregatedOutput = await aggregateQueryOutput(workdirPath, {
+          fileSystem: dependencies.fileSystem,
+          pathOperations: dependencies.pathOperations,
+        });
+        const formattedOutput = formatQueryOutput(aggregatedOutput, options.format, options.queryText);
+        await writeQueryOutput(formattedOutput, options.output, {
+          fileSystem: dependencies.fileSystem,
+          pathOperations: dependencies.pathOperations,
+          output: dependencies.output,
+        });
+        exitCode = resolveQueryExitCode(options.format, formattedOutput);
+      }
+
       finish("completed");
     } catch (error) {
       finish("failed");
       throw error;
     }
 
-    return EXIT_CODE_SUCCESS;
+    return exitCode;
   };
 }
 
@@ -234,6 +256,7 @@ function selectQuerySeedTemplate(format: QueryOutputFormat): string {
 function shouldUseFileMode(options: QueryTaskOptions): boolean {
   return options.output !== undefined
     || options.format === "json"
+    || options.format === "yn"
     || options.format === "success-error";
 }
 

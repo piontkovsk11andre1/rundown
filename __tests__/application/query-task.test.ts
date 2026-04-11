@@ -124,6 +124,38 @@ describe("query-task", () => {
     expect(events).toContainEqual({ kind: "info", message: "Query phase 1/3 skipped: research" });
     expect(events).toContainEqual({ kind: "info", message: "Query phase 3/3: execute (stream mode)" });
   });
+
+  it("aggregates file-mode output and returns failure exit code for success-error verdict", async () => {
+    const { dependencies, fileSystem, runTask } = createDependencies({ cwd: "/workspace" });
+    const queryTask = createQueryTask(dependencies);
+
+    vi.mocked(fileSystem.readdir).mockReturnValue([
+      { name: "step-1.md", isFile: true, isDirectory: false },
+    ]);
+    vi.mocked(fileSystem.readText).mockImplementation((filePath: string) => {
+      if (/step-1\.md$/.test(filePath)) {
+        return "# Verdict\n\nfailure: coverage missing";
+      }
+      return "";
+    });
+
+    const code = await queryTask(createOptions({
+      format: "success-error",
+      output: "/tmp/query/result.txt",
+      showAgentOutput: false,
+    }));
+
+    expect(code).toBe(1);
+    expect(runTask).toHaveBeenCalledWith(expect.objectContaining({
+      taskTemplateOverride: DEFAULT_QUERY_EXECUTION_TEMPLATE,
+      showAgentOutput: false,
+    }));
+    expect(vi.mocked(fileSystem.mkdir)).toHaveBeenCalledWith("/tmp/query", { recursive: true });
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/tmp/query/result.txt",
+      "failure: coverage missing",
+    );
+  });
 });
 
 function createDependencies(options: { cwd: string }): {

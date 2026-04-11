@@ -1,9 +1,11 @@
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EXIT_CODE_NO_WORK, EXIT_CODE_SUCCESS } from "../../src/domain/exit-codes.js";
 import type { ApplicationOutputEvent } from "../../src/domain/ports/output-port.js";
 import {
   createHelpCommandAction,
   createLoopCommandAction,
+  createQueryCommandAction,
 } from "../../src/presentation/cli-command-actions.js";
 import type { CliApp } from "../../src/presentation/cli-app-init.js";
 import * as sleepModule from "../../src/infrastructure/cancellable-sleep.js";
@@ -273,5 +275,45 @@ describe("createHelpCommandAction", () => {
     expect(exitCode).toBe(EXIT_CODE_SUCCESS);
     expect(helpTask).toHaveBeenCalledTimes(1);
     expect(outputHelp).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("createQueryCommandAction", () => {
+  it("forwards --skip-research and normalized options to queryTask", async () => {
+    const queryTask = vi.fn(async () => 0);
+    const app = { queryTask } as unknown as CliApp;
+    const action = createQueryCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      queryModes: ["wait"],
+    });
+
+    const exitCode = await action("check auth flow", {
+      dir: "./src",
+      format: "markdown",
+      output: "./result.md",
+      skipResearch: true,
+      mode: "wait",
+      dryRun: false,
+      printPrompt: false,
+      keepArtifacts: false,
+      trace: false,
+      forceUnlock: false,
+      ignoreCliBlock: false,
+      worker: "opencode run",
+      var: ["custom=value"],
+    });
+
+    expect(exitCode).toBe(0);
+    expect(queryTask).toHaveBeenCalledTimes(1);
+    expect(queryTask).toHaveBeenCalledWith(expect.objectContaining({
+      queryText: "check auth flow",
+      dir: path.resolve("./src"),
+      format: "markdown",
+      output: "./result.md",
+      skipResearch: true,
+      mode: "wait",
+      cliTemplateVarArgs: ["custom=value"],
+    }));
   });
 });

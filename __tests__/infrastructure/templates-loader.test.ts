@@ -5,6 +5,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_DISCUSS_TEMPLATE,
   DEFAULT_DISCUSS_FINISHED_TEMPLATE,
+  DEFAULT_MIGRATE_BACKLOG_TEMPLATE,
+  DEFAULT_MIGRATE_CONTEXT_TEMPLATE,
+  DEFAULT_MIGRATE_REVIEW_TEMPLATE,
+  DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
+  DEFAULT_MIGRATE_TEMPLATE,
+  DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
@@ -63,6 +69,12 @@ describe("loadProjectTemplates", () => {
     expect(templates.trace).toBe(DEFAULT_TRACE_TEMPLATE);
     expect(templates.undo).toBe(DEFAULT_UNDO_TEMPLATE);
     expect(templates.testVerify).toBe(DEFAULT_TEST_VERIFY_TEMPLATE);
+    expect(templates.migrate).toBe(DEFAULT_MIGRATE_TEMPLATE);
+    expect(templates.migrateContext).toBe(DEFAULT_MIGRATE_CONTEXT_TEMPLATE);
+    expect(templates.migrateSnapshot).toBe(DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE);
+    expect(templates.migrateBacklog).toBe(DEFAULT_MIGRATE_BACKLOG_TEMPLATE);
+    expect(templates.migrateReview).toBe(DEFAULT_MIGRATE_REVIEW_TEMPLATE);
+    expect(templates.migrateUx).toBe(DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE);
   });
 
   it("falls back to defaults when templates are missing", () => {
@@ -80,6 +92,12 @@ describe("loadProjectTemplates", () => {
     expect(templates.trace).toBe(DEFAULT_TRACE_TEMPLATE);
     expect(templates.undo).toBe(DEFAULT_UNDO_TEMPLATE);
     expect(templates.testVerify).toBe(DEFAULT_TEST_VERIFY_TEMPLATE);
+    expect(templates.migrate).toBe(DEFAULT_MIGRATE_TEMPLATE);
+    expect(templates.migrateContext).toBe(DEFAULT_MIGRATE_CONTEXT_TEMPLATE);
+    expect(templates.migrateSnapshot).toBe(DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE);
+    expect(templates.migrateBacklog).toBe(DEFAULT_MIGRATE_BACKLOG_TEMPLATE);
+    expect(templates.migrateReview).toBe(DEFAULT_MIGRATE_REVIEW_TEMPLATE);
+    expect(templates.migrateUx).toBe(DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE);
   });
 
   it("loads explicit execute/verify/repair files with precedence", () => {
@@ -101,6 +119,12 @@ describe("loadProjectTemplates", () => {
     expect(templates.trace).toBe(DEFAULT_TRACE_TEMPLATE);
     expect(templates.undo).toBe(DEFAULT_UNDO_TEMPLATE);
     expect(templates.testVerify).toBe(DEFAULT_TEST_VERIFY_TEMPLATE);
+    expect(templates.migrate).toBe(DEFAULT_MIGRATE_TEMPLATE);
+    expect(templates.migrateContext).toBe(DEFAULT_MIGRATE_CONTEXT_TEMPLATE);
+    expect(templates.migrateSnapshot).toBe(DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE);
+    expect(templates.migrateBacklog).toBe(DEFAULT_MIGRATE_BACKLOG_TEMPLATE);
+    expect(templates.migrateReview).toBe(DEFAULT_MIGRATE_REVIEW_TEMPLATE);
+    expect(templates.migrateUx).toBe(DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE);
   });
 
   it("loads undo.md and test-verify.md when present", () => {
@@ -123,6 +147,26 @@ describe("loadProjectTemplates", () => {
     const templates = loadProjectTemplates(configDir);
 
     expect(templates.trace).toBe("TRACE");
+  });
+
+  it("loads migrate templates when present", () => {
+    const cwd = makeTempDir();
+    const configDir = path.join(cwd, CONFIG_DIR_NAME);
+    writeTemplate(configDir, "migrate.md", "MIGRATE");
+    writeTemplate(configDir, "migrate-context.md", "MIGRATE CONTEXT");
+    writeTemplate(configDir, "migrate-snapshot.md", "MIGRATE SNAPSHOT");
+    writeTemplate(configDir, "migrate-backlog.md", "MIGRATE BACKLOG");
+    writeTemplate(configDir, "migrate-review.md", "MIGRATE REVIEW");
+    writeTemplate(configDir, "migrate-ux.md", "MIGRATE UX");
+
+    const templates = loadProjectTemplates(configDir);
+
+    expect(templates.migrate).toBe("MIGRATE");
+    expect(templates.migrateContext).toBe("MIGRATE CONTEXT");
+    expect(templates.migrateSnapshot).toBe("MIGRATE SNAPSHOT");
+    expect(templates.migrateBacklog).toBe("MIGRATE BACKLOG");
+    expect(templates.migrateReview).toBe("MIGRATE REVIEW");
+    expect(templates.migrateUx).toBe("MIGRATE UX");
   });
 
   it("loads discuss.md when present", () => {

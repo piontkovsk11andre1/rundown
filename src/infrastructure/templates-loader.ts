@@ -9,6 +9,12 @@ import path from "node:path";
 import {
   DEFAULT_DISCUSS_TEMPLATE,
   DEFAULT_DISCUSS_FINISHED_TEMPLATE,
+  DEFAULT_MIGRATE_BACKLOG_TEMPLATE,
+  DEFAULT_MIGRATE_CONTEXT_TEMPLATE,
+  DEFAULT_MIGRATE_REVIEW_TEMPLATE,
+  DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
+  DEFAULT_MIGRATE_TEMPLATE,
+  DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE,
   DEFAULT_TEST_VERIFY_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
   DEFAULT_TRACE_TEMPLATE,
@@ -40,6 +46,18 @@ export interface ProjectTemplates {
   undo: string;
   // Template used by the test verification command.
   testVerify: string;
+  // Template used to propose the next migration.
+  migrate: string;
+  // Template used to generate incremental migration context.
+  migrateContext: string;
+  // Template used to generate migration snapshots.
+  migrateSnapshot: string;
+  // Template used to generate migration backlog satellites.
+  migrateBacklog: string;
+  // Template used to generate migration review satellites.
+  migrateReview: string;
+  // Template used to generate migration UX satellites.
+  migrateUx: string;
 }
 
 /**
@@ -61,6 +79,12 @@ export interface ProjectTemplates {
  * - `.rundown/trace.md`
  * - `.rundown/undo.md`
  * - `.rundown/test-verify.md`
+ * - `.rundown/migrate.md`
+ * - `.rundown/migrate-context.md`
+ * - `.rundown/migrate-snapshot.md`
+ * - `.rundown/migrate-backlog.md`
+ * - `.rundown/migrate-review.md`
+ * - `.rundown/migrate-ux.md`
  *
  * @param configDir Optional absolute or relative path to the project template directory.
  * @returns The resolved set of templates used by each execution phase.
@@ -79,6 +103,12 @@ export function loadProjectTemplates(configDir?: string): ProjectTemplates {
       trace: DEFAULT_TRACE_TEMPLATE,
       undo: DEFAULT_UNDO_TEMPLATE,
       testVerify: DEFAULT_TEST_VERIFY_TEMPLATE,
+      migrate: DEFAULT_MIGRATE_TEMPLATE,
+      migrateContext: DEFAULT_MIGRATE_CONTEXT_TEMPLATE,
+      migrateSnapshot: DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
+      migrateBacklog: DEFAULT_MIGRATE_BACKLOG_TEMPLATE,
+      migrateReview: DEFAULT_MIGRATE_REVIEW_TEMPLATE,
+      migrateUx: DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE,
     };
   }
 
@@ -97,6 +127,22 @@ export function loadProjectTemplates(configDir?: string): ProjectTemplates {
     undo: loadFile(path.join(configDir, "undo.md")) ?? DEFAULT_UNDO_TEMPLATE,
     testVerify:
       loadFile(path.join(configDir, "test-verify.md")) ?? DEFAULT_TEST_VERIFY_TEMPLATE,
+    migrate: loadFile(path.join(configDir, "migrate.md")) ?? DEFAULT_MIGRATE_TEMPLATE,
+    migrateContext:
+      loadFile(path.join(configDir, "migrate-context.md")) ??
+      DEFAULT_MIGRATE_CONTEXT_TEMPLATE,
+    migrateSnapshot:
+      loadFile(path.join(configDir, "migrate-snapshot.md")) ??
+      DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
+    migrateBacklog:
+      loadFile(path.join(configDir, "migrate-backlog.md")) ??
+      DEFAULT_MIGRATE_BACKLOG_TEMPLATE,
+    migrateReview:
+      loadFile(path.join(configDir, "migrate-review.md")) ??
+      DEFAULT_MIGRATE_REVIEW_TEMPLATE,
+    migrateUx:
+      loadFile(path.join(configDir, "migrate-ux.md")) ??
+      DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE,
   };
 }
 

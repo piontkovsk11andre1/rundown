@@ -196,6 +196,21 @@ describe("checkbox-operations", () => {
     ].join("\n"));
   });
 
+  it("still inserts fix annotation when task is already checked", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": "- [x] First task\n- [ ] Second task\n",
+    });
+    const task = createTask({ text: "First task", line: 1, checked: true });
+
+    expect(() => writeFixAnnotationToFile(task, "failed", fileSystem)).not.toThrow();
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [x] First task",
+      "  - fix: failed",
+      "- [ ] Second task",
+      "",
+    ].join("\n"));
+  });
+
   it("serializes re-entrant checkbox updates on the same file without losing writes", () => {
     const filePath = "todo.md";
     const taskOne = createTask({ text: "First task", line: 1, index: 0, file: filePath });

@@ -196,7 +196,16 @@ export function writeFixAnnotationToFile(task: Task, failureReason: string | nul
 
   withSerializedFileMutation(task.file, () => {
     const source = fileSystem.readText(task.file);
-    const checkedSource = markChecked(source, task);
+    let checkedSource = source;
+    try {
+      checkedSource = markChecked(source, task);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      const expectedPrefix = `Could not find unchecked checkbox on line ${task.line} in `;
+      if (!message.startsWith(expectedPrefix)) {
+        throw error;
+      }
+    }
     const updated = insertSubitems(checkedSource, task, [`fix: ${reason}`]);
     fileSystem.writeText(task.file, updated);
   });

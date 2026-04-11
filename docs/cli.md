@@ -51,6 +51,73 @@ rundown --help
 
 ## Main commands
 
+### `rundown start <description>`
+
+Scaffold a prediction-oriented project workspace.
+
+`start` creates a design-first project structure and prepares migration/spec workflows:
+
+- `Design.md`
+- `AGENTS.md`
+- `migrations/`
+- `migrations/0001-initialize.md`
+- `specs/`
+- `.rundown/`
+
+Synopsis:
+
+```bash
+rundown start "<description>" [--dir <path>] -- <command>
+rundown start "<description>" [--dir <path>] --worker <pattern>
+```
+
+Options:
+
+| Option | Description | Default |
+|---|---|---|
+| `--dir <path>` | Target directory for scaffold output. | current working directory |
+| `--worker <pattern>` | Worker pattern override (alternative to `-- <command>`). | unset |
+
+### `rundown migrate [action]`
+
+Generate and manage prediction migrations.
+
+Without an action, `migrate` generates the next migration proposal based on design and migration context.
+
+Synopsis:
+
+```bash
+rundown migrate [action] [options] -- <command>
+rundown migrate [action] [options] --worker <pattern>
+```
+
+Actions:
+
+- omitted: generate next migration
+- `up`: execute migration tasks (`run-all` style)
+- `down [n]`: alias of `rundown undo [--last n]`
+- `snapshot`: generate `NNNN--snapshot.md`
+- `backlog`: generate `NNNN--backlog.md`
+- `context`: (re)generate `NNNN--context.md`
+- `review`: generate `NNNN--review.md`
+- `user-experience`: generate `NNNN--user-experience.md`
+- `user-session`: interactive migration discussion session
+
+Options:
+
+| Option | Description | Default |
+|---|---|---|
+| `--dir <path>` | Migration directory to operate on. | `./migrations` |
+| `--confirm` | Print generated content and ask before each write. Non-TTY uses default yes. | off |
+| `--worker <pattern>` | Worker pattern override (alternative to `-- <command>`). | unset |
+
+Migration file naming:
+
+- step migration: `0007-implement-feature.md`
+- satellite artifact: `0007--snapshot.md`
+
+Single dash identifies a migration step; double dash identifies a satellite artifact type for the same migration position.
+
 ### `rundown run <source>`
 
 Scan a file, directory, or glob, select the next runnable task, execute it, verify it, optionally repair it, and mark it complete only after verification succeeds.
@@ -294,6 +361,57 @@ rundown revert --last 3 --method revert -- opencode run
 rundown revert --all --dry-run --worker "opencode run --file $file $bootstrap"
 rundown revert --last 2 --method reset -- opencode run
 ```
+
+### `rundown undo`
+
+Undo completed task runs using AI-generated reversal actions from execution artifacts.
+
+Unlike `revert`, `undo` is semantic (artifact/context driven) rather than commit-level git history reversal.
+
+Synopsis:
+
+```bash
+rundown undo [options] -- <command>
+rundown undo [options] --worker <pattern>
+```
+
+Options:
+
+| Option | Description | Default |
+|---|---|---|
+| `--run <id|latest>` | Target artifact run id or `latest`. | `latest` |
+| `--last <n>` | Undo the last `n` completed runs. | `1` |
+| `--force` | Bypass clean-worktree safety checks. | off |
+| `--dry-run` | Show what would be undone without changing files. | off |
+| `--keep-artifacts` | Preserve undo run artifacts under `<config-dir>/runs/`. | off |
+| `--worker <pattern>` | Worker pattern override (alternative to `-- <command>`). | unset |
+
+### `rundown test [action]`
+
+Verify assertion specs against the predicted migration state.
+
+`test` checks whether assertions hold for the planned state (design + migration context + latest snapshot), not whether the current repository implementation already satisfies them.
+
+Synopsis:
+
+```bash
+rundown test [action] [options] -- <command>
+rundown test [action] [options] --worker <pattern>
+```
+
+Actions:
+
+- omitted: verify all specs in the specs directory
+- `new <assertion>`: create a new assertion spec file
+
+Options:
+
+| Option | Description | Default |
+|---|---|---|
+| `--dir <path>` | Specs directory. | `./specs` |
+| `--run` | For `test new`, create then immediately verify the new spec. | off |
+| `--mode <tui|wait>` | For `test new`, choose interactive or non-interactive assertion authoring mode. | `wait` |
+| `--worker <pattern>` | Worker pattern override (alternative to `-- <command>`). | unset |
 
 ### `rundown plan <markdown-file>`
 

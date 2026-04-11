@@ -16,6 +16,28 @@ The workflow is intentionally simple:
 
 This makes the checkbox a consequence of successful work, not a guess.
 
+## Prediction workflow model
+
+In addition to execute/verify task running, rundown supports a prediction-oriented migration workflow:
+
+- `start` bootstraps a design-first project workspace.
+- `migrate` advances a numbered migration track and generates satellite artifacts.
+- `undo` semantically reverses prior task outcomes using saved artifacts.
+- `test` verifies assertion specs against predicted migration state.
+
+Prediction migration naming convention:
+
+- migration step: `0007-implement-feature.md`
+- satellite artifact: `0007--snapshot.md`
+
+The double-dash split distinguishes sequential migration steps from generated satellite files at the same migration number.
+
+Predicted-state test semantics:
+
+- `rundown test` evaluates whether an assertion is true in the predicted plan state built from migration context.
+- It does not execute implementation tests against runtime code.
+- This keeps test signals aligned with planning/migration intent before implementation is fully applied.
+
 ## Output boundary
 
 Application use-cases are output-agnostic.

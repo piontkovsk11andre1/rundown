@@ -142,9 +142,30 @@ rundown plan roadmap.md --scan-count 3 -- opencode run
 rundown reverify -- opencode run
 rundown revert --dry-run --worker "opencode run --file $file"
 rundown revert --method reset --force --run latest
+rundown start "Ship a migration-driven auth flow" --dir ./predict-auth -- opencode run
+rundown migrate --dir ./predict-auth/migrations -- opencode run
+rundown migrate snapshot --dir ./predict-auth/migrations -- opencode run
+rundown test --dir ./predict-auth/specs -- opencode run
+rundown undo --last 1 -- opencode run
 ```
 
 Note: `rundown revert` only works for tasks originally executed with both `--commit` and `--keep-artifacts`.
+
+## Prediction workflow commands
+
+`rundown` also supports a migration-style prediction loop for long-horizon planning:
+
+- `start` scaffolds a prediction project with `Design.md`, `AGENTS.md`, `migrations/`, `specs/`, and `.rundown/`.
+- `migrate` generates the next migration or a satellite artifact (`context`, `snapshot`, `backlog`, `review`, `user-experience`).
+- `undo` semantically reverses previously completed work from task artifacts (AI-level undo, not git-commit revert).
+- `test` verifies spec assertions against the predicted migration state (design + migration context), not the current implementation files.
+
+Naming convention used by prediction migrations:
+
+- migration files: `0007-implement-feature.md`
+- satellite files: `0007--snapshot.md`
+
+This double-dash split is intentional: single dash means migration step, double dash means satellite artifact at that migration position.
 
 Plan migration note: `rundown plan` now operates on the entire markdown file and no longer supports `--at file:line` task targeting.
 

@@ -98,6 +98,9 @@ export type { TaskVerificationOptions, TaskVerificationPort, TaskVerificationRes
 /** Repair flow options, result payload, and adapter contract. */
 export type {
   TaskRepairOptions,
+  TaskResolveAttemptRecord,
+  TaskResolveOptions,
+  TaskResolveResult,
   TaskRepairResult,
   TaskRepairPort,
 } from "./task-repair-port.js";

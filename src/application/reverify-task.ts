@@ -44,6 +44,7 @@ import {
   normalizeRepairPathForDisplay,
   resolveInlineRundownTargetArtifactPath,
   resolveRepairTemplateForTask,
+  resolveResolveTemplateForTask,
   serializeSelectedTaskMetadata,
 } from "./repair-template-resolution.js";
 import type {
@@ -293,6 +294,13 @@ export function createReverifyTask(
         pathOperations: dependencies.pathOperations,
         defaultRepairTemplate: templates.repair,
       });
+      const resolvedResolveTemplate = resolveResolveTemplateForTask({
+        task: taskContext.task,
+        configDir: dependencies.configDir,
+        templateLoader: dependencies.templateLoader,
+        pathOperations: dependencies.pathOperations,
+        defaultResolveTemplate: templates.resolve,
+      });
       const cliBlockExecutor = dependencies.cliBlockExecutor;
       const promptContext = buildReverifyPromptContext(
         taskContext,
@@ -507,6 +515,7 @@ export function createReverifyTask(
           contextBefore: taskContext.contextBefore,
           verifyTemplate: expandedVerificationPrompt,
           repairTemplate: expandedRepairPrompt,
+          resolveTemplate: resolvedResolveTemplate,
           workerPattern: effectiveWorkerPattern,
           configDir: dependencies.configDir?.configDir,
           maxRepairAttempts: runBehavior.maxRepairAttempts,

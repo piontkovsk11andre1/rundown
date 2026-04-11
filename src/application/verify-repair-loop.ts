@@ -44,6 +44,7 @@ export interface VerifyRepairLoopInput {
   contextBefore: string;
   verifyTemplate: string;
   repairTemplate: string;
+  resolveTemplate?: string;
   executionStdout?: string;
   workerPattern: ParsedWorkerPattern;
   configDir?: string;
@@ -89,11 +90,6 @@ export interface RepairAttemptRecord {
   failureReason: string | null;
 }
 
-export interface ResolveResult {
-  resolved: boolean;
-  diagnosis: string | null;
-}
-
 interface RepairValidationErrorClassification {
   contentShapeValidationError: string;
   taskStateValidationError: string;
@@ -132,7 +128,7 @@ export async function runVerifyRepairLoop(
     : 1;
   const formatResolveRepairAttempt = (attemptNumber: number): string => "Resolve-informed repair attempt "
     + attemptNumber + " of " + maxResolveRepairAttempts;
-  const resolveDiagnosis = typeof input.templateVars.resolvedDiagnosis === "string"
+  const seededResolveDiagnosis = typeof input.templateVars.resolvedDiagnosis === "string"
     && input.templateVars.resolvedDiagnosis.trim().length > 0
     ? input.templateVars.resolvedDiagnosis.trim()
     : null;
@@ -594,6 +590,56 @@ export async function runVerifyRepairLoop(
     });
 
     previousFailure = repairFailureReason ?? "Verification failed (no details).";
+  }
+
+  let resolveDiagnosis = seededResolveDiagnosis;
+  if (!resolveDiagnosis && input.maxRepairAttempts >= 2 && input.resolveTemplate && dependencies.taskRepair.resolve) {
+    emit({
+      kind: "warn",
+      message: "Repair phase exhausted; running resolve phase to diagnose root cause.",
+    });
+
+    const resolveResult = await dependencies.taskRepair.resolve({
+      task: input.task,
+      source: input.source,
+      contextBefore: input.contextBefore,
+      resolveTemplate: input.resolveTemplate,
+      workerPattern: input.workerPattern,
+      verificationFailureMessage: previousFailure,
+      executionStdout: input.executionStdout,
+      repairAttemptHistory,
+      mode: "wait",
+      configDir: input.configDir,
+      templateVars: buildRepairTemplateVars(previousFailure, null),
+      executionEnv: input.executionEnv,
+      artifactContext: input.artifactContext,
+      onWorkerOutput: emitWorkerOutput,
+      trace: input.trace,
+      cliBlockExecutor: input.cliBlockExecutor,
+      cliExecutionOptions: input.cliExecutionOptions,
+      cliExpansionEnabled: input.cliExpansionEnabled,
+    });
+
+    const resolveFailureReason = resolveResult.diagnosis ?? "Resolve phase returned no diagnosis.";
+    if (!resolveResult.resolved) {
+      cumulativeFailureReasons.push(resolveFailureReason);
+      emitRepairOutcome(false, totalRepairAttempts);
+      emitVerificationEfficiency();
+      emit({
+        kind: "error",
+        message: "Resolve phase could not diagnose the issue: " + resolveFailureReason,
+      });
+      return {
+        valid: false,
+        failureReason: resolveFailureReason,
+      };
+    }
+
+    resolveDiagnosis = resolveFailureReason;
+    emit({
+      kind: "info",
+      message: "Resolve phase identified a diagnosis; running resolve-informed repair.",
+    });
   }
 
   if (resolveDiagnosis && maxResolveRepairAttempts > 0) {

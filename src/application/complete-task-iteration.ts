@@ -41,6 +41,7 @@ import {
   normalizeRepairPathForDisplay,
   resolveInlineRundownTargetArtifactPath,
   resolveRepairTemplateForTask,
+  resolveResolveTemplateForTask,
   serializeSelectedTaskMetadata,
 } from "./repair-template-resolution.js";
 
@@ -203,6 +204,13 @@ export async function completeTaskIteration(params: {
       pathOperations: dependencies.pathOperations,
       defaultRepairTemplate: templates.repair,
     });
+    const resolvedResolveTemplate = resolveResolveTemplateForTask({
+      task: taskForVerification,
+      configDir: dependencies.configDir,
+      templateLoader: dependencies.templateLoader,
+      pathOperations: dependencies.pathOperations,
+      defaultResolveTemplate: templates.resolve,
+    });
     const controllingTaskPath = dependencies.pathOperations.resolve(taskForVerification.file);
     const controllingTaskFile = task.file;
     const targetArtifactPath = resolveInlineRundownTargetArtifactPath({
@@ -252,6 +260,7 @@ export async function completeTaskIteration(params: {
         contextBefore: expandedContextBefore,
         verifyTemplate: templates.verify,
         repairTemplate: resolvedRepairTemplate,
+        resolveTemplate: resolvedResolveTemplate,
         executionStdout,
         workerPattern: automationWorkerPattern,
         configDir: dependencies.configDir?.configDir,

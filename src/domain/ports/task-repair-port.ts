@@ -62,6 +62,40 @@ export interface TaskRepairResult {
   verificationStdout?: string;
 }
 
+export interface TaskResolveAttemptRecord {
+  attempt: number;
+  repairStdout: string | undefined;
+  verificationStdout: string | undefined;
+  failureReason: string | null;
+}
+
+export interface TaskResolveOptions {
+  task: Task;
+  source: string;
+  contextBefore: string;
+  resolveTemplate: string;
+  workerPattern: ParsedWorkerPattern;
+  verificationFailureMessage: string;
+  executionStdout?: string;
+  repairAttemptHistory: TaskResolveAttemptRecord[];
+  mode?: ProcessRunMode;
+  onWorkerOutput?: (stdout: string, stderr: string) => void;
+  trace?: boolean;
+  cwd?: string;
+  configDir?: string;
+  templateVars?: Record<string, unknown>;
+  executionEnv?: Record<string, string>;
+  artifactContext?: unknown;
+  cliBlockExecutor?: CommandExecutor;
+  cliExecutionOptions?: CommandExecutionOptions;
+  cliExpansionEnabled?: boolean;
+}
+
+export interface TaskResolveResult {
+  resolved: boolean;
+  diagnosis: string | null;
+}
+
 /**
  * Contract for services that attempt to repair failing tasks.
  */
@@ -70,4 +104,5 @@ export interface TaskRepairPort {
    * Executes the repair workflow and returns validation status and attempt count.
    */
   repair(options: TaskRepairOptions): Promise<TaskRepairResult>;
+  resolve?(options: TaskResolveOptions): Promise<TaskResolveResult>;
 }

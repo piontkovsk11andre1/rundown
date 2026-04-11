@@ -176,12 +176,12 @@ describeIfUserSessionMigrateAvailable("migrate user-session integration", () => 
     const migrationPath = path.join(workspace, "migrations", "0001-initialize.md");
     const backlogPath = path.join(workspace, "migrations", "0001--backlog.md");
 
-    expect(fs.readFileSync(migrationPath, "utf-8")).toContain("session-summary-1");
-    expect(fs.readFileSync(backlogPath, "utf-8")).toContain("session-backlog-2");
+    expect(fs.readFileSync(migrationPath, "utf-8")).toContain("session-summary-2");
+    expect(fs.readFileSync(backlogPath, "utf-8")).toContain("session-backlog-3");
 
     const stdout = result.stdoutWrites.join("");
-    expect(stdout).toContain("session-summary-1");
-    expect(stdout).toContain("session-backlog-2");
+    expect(stdout).toContain("session-summary-2");
+    expect(stdout).toContain("session-backlog-3");
   });
 });
 
@@ -234,14 +234,20 @@ function buildUserSessionBacklogWorkerScript(): string {
     "}",
     "fs.writeFileSync(markerPath,String(sequence));",
     "if(sequence===1){",
+    "  console.log('# Session Discussion');",
+    "  console.log('');",
+    "  console.log('session-discussion-1');",
+    "  process.exit(0);",
+    "}",
+    "if(sequence===2){",
     "  console.log('# Session Summary');",
     "  console.log('');",
-    "  console.log('session-summary-1');",
+    "  console.log('session-summary-2');",
     "  process.exit(0);",
     "}",
     "console.log('# Backlog');",
     "console.log('');",
-    "console.log('session-backlog-2');",
+    "console.log('session-backlog-3');",
     "process.exit(0);",
   ].join("\n");
 }

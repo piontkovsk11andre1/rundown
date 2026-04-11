@@ -330,34 +330,44 @@ async function runUserSession(input: {
     throw new Error("No migration exists for user-session.");
   }
 
-  const sessionPrompt = [
-    "Summarize the latest user-session discussion for this migration.",
-    "",
-    "Migration:",
-    dependencies.fileSystem.readText(latestMigration.filePath),
-  ].join("\n");
-
-  const sessionResult = await dependencies.workerExecutor.runWorker({
+  const migrationSource = dependencies.fileSystem.readText(latestMigration.filePath);
+  const discussionResult = await dependencies.workerExecutor.runWorker({
     workerPattern,
-    prompt: sessionPrompt,
+    prompt: buildUserSessionDiscussPrompt(latestMigration.filePath, migrationSource),
+    mode: "tui",
+    captureOutput: true,
+    cwd: process.cwd(),
+    artifactContext,
+    artifactPhase: "worker",
+    artifactPhaseLabel: "migrate-user-session-discuss",
+  });
+  if ((discussionResult.exitCode ?? 1) !== 0) {
+    throw new Error("Worker failed during migrate user-session discussion.");
+  }
+
+  const summaryResult = await dependencies.workerExecutor.runWorker({
+    workerPattern,
+    prompt: buildUserSessionSummaryPrompt({
+      migrationFilePath: latestMigration.filePath,
+      migrationSource,
+      discussionStdout: discussionResult.stdout,
+      discussionStderr: discussionResult.stderr,
+    }),
     mode: "wait",
     cwd: process.cwd(),
     artifactContext,
     artifactPhase: "worker",
-    artifactPhaseLabel: "migrate-user-session",
+    artifactPhaseLabel: "migrate-user-session-summary",
   });
-  if ((sessionResult.exitCode ?? 1) !== 0) {
-    throw new Error("Worker failed to generate user-session summary.");
+  if ((summaryResult.exitCode ?? 1) !== 0) {
+    throw new Error("Worker failed to summarize migrate user-session discussion.");
   }
-  if (showAgentOutput && sessionResult.stderr.length > 0) {
-    emit({ kind: "stderr", text: sessionResult.stderr });
+  if (showAgentOutput && summaryResult.stderr.length > 0) {
+    emit({ kind: "stderr", text: summaryResult.stderr });
   }
 
-  const updatedMigration = dependencies.fileSystem.readText(latestMigration.filePath)
-    + (dependencies.fileSystem.readText(latestMigration.filePath).endsWith("\n") ? "" : "\n")
-    + "\n"
-    + sessionResult.stdout.trim()
-    + "\n";
+  const currentMigrationSource = dependencies.fileSystem.readText(latestMigration.filePath);
+  const updatedMigration = mergeUserSessionSummary(currentMigrationSource, summaryResult.stdout.trim());
 
   if (confirm) {
     const approved = await confirmBeforeWrite(
@@ -385,6 +395,78 @@ async function runUserSession(input: {
     confirm,
     showAgentOutput,
   });
+}
+
+function buildUserSessionDiscussPrompt(migrationFilePath: string, migrationSource: string): string {
+  return [
+    "Run an interactive migration user-session in TUI mode.",
+    "",
+    "Goals:",
+    "- Discuss the latest migration with the user.",
+    "- Ask clarifying questions about scope, constraints, and acceptance criteria.",
+    "- Gather decisions and unresolved questions.",
+    "",
+    "When the user exits the TUI session, the CLI will ask for a separate summary.",
+    "Do not rewrite files in this step.",
+    "",
+    "Migration file:",
+    migrationFilePath,
+    "",
+    "Migration source:",
+    migrationSource,
+  ].join("\n");
+}
+
+function buildUserSessionSummaryPrompt(input: {
+  migrationFilePath: string;
+  migrationSource: string;
+  discussionStdout: string;
+  discussionStderr: string;
+}): string {
+  return [
+    "Summarize the completed migration user-session discussion.",
+    "",
+    "Return Markdown only. Keep it concise and actionable.",
+    "Include:",
+    "- decisions made",
+    "- open questions",
+    "- concrete follow-up tasks",
+    "",
+    "Use this heading exactly:",
+    "## User session summary",
+    "",
+    "Migration file:",
+    input.migrationFilePath,
+    "",
+    "Migration source before summary append:",
+    input.migrationSource,
+    "",
+    "Discussion stdout transcript:",
+    input.discussionStdout || "(empty)",
+    "",
+    "Discussion stderr transcript:",
+    input.discussionStderr || "(empty)",
+  ].join("\n");
+}
+
+function mergeUserSessionSummary(currentMigrationSource: string, summary: string): string {
+  const normalizedSummary = summary.endsWith("\n") ? summary : summary + "\n";
+  const summaryHeading = "## User session summary";
+  const sectionPattern = /^## User session summary\s*[\s\S]*?(?=^##\s+|\s*$)/m;
+
+  if (sectionPattern.test(currentMigrationSource)) {
+    const replaced = currentMigrationSource.replace(sectionPattern, normalizedSummary.trimEnd());
+    return replaced.endsWith("\n") ? replaced : replaced + "\n";
+  }
+
+  const base = currentMigrationSource.endsWith("\n")
+    ? currentMigrationSource
+    : currentMigrationSource + "\n";
+  const summaryBlock = normalizedSummary.startsWith(summaryHeading)
+    ? normalizedSummary
+    : `${summaryHeading}\n\n${normalizedSummary}`;
+
+  return `${base}\n${summaryBlock}`;
 }
 
 async function generateNextMigration(input: {

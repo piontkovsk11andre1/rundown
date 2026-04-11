@@ -174,6 +174,19 @@ export function parseRepairAttempts(value: string | undefined): number {
 }
 
 /**
+ * Parses how many resolve-informed repair retries should be attempted.
+ */
+export function parseResolveRepairAttempts(value: string | undefined): number {
+  return parseIntOption(value, {
+    optionName: "resolve-repair-attempts",
+    defaultValue: 1,
+    allowUndefined: false,
+    integerLabel: "non-negative integer",
+    safeIntegerLabel: "safe non-negative integer",
+  });
+}
+
+/**
  * Parses default outer retry attempts for force-prefixed tasks.
  */
 export function parseForceAttempts(value: string | undefined): number {

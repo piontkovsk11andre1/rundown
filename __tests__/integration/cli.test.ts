@@ -2396,6 +2396,7 @@ describe.sequential("CLI integration", () => {
     expect(compactHelpOutput).toContain("--run <id|latest> Choose artifact run id or 'latest'");
     expect(compactHelpOutput).toContain("--oldest-first Process selected runs in oldest-first order");
     expect(compactHelpOutput).toContain("--repair-attempts <n> Max repair attempts on verification failure");
+    expect(compactHelpOutput).toContain("--resolve-repair-attempts <n> Max resolve-informed repair attempts after diagnosis");
     expect(compactHelpOutput).toContain("--no-repair Disable repair even when repair attempts are set");
   });
 

@@ -1588,6 +1588,7 @@ describe("CLI reverify option normalization", () => {
 
     expect(call.noRepair).toBe(false);
     expect(call.repairAttempts).toBe(1);
+    expect(call.resolveRepairAttempts).toBe(1);
   });
 
   it("passes reverify options to application layer", async () => {
@@ -1598,6 +1599,8 @@ describe("CLI reverify option normalization", () => {
       "run-123",
       "--repair-attempts",
       "2",
+      "--resolve-repair-attempts",
+      "3",
       "--no-repair",
       "--dry-run",
       "--print-prompt",
@@ -1612,6 +1615,7 @@ describe("CLI reverify option normalization", () => {
     expect(call.all).toBe(false);
     expect(call.oldestFirst).toBe(false);
     expect(call.repairAttempts).toBe(2);
+    expect(call.resolveRepairAttempts).toBe(3);
     expect(call.noRepair).toBe(true);
     expect(call.dryRun).toBe(true);
     expect(call.printPrompt).toBe(true);
@@ -1759,6 +1763,23 @@ describe("CLI reverify option normalization", () => {
 
     expect(reverifyTask).not.toHaveBeenCalled();
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid --repair-attempts value: two"));
+  });
+
+  it("logs a CLI error and exits with code 1 on invalid resolve repair attempts", async () => {
+    const reverifyTask = vi.fn(async () => 0);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await invokeReverifyAndExpectExit([
+      "reverify",
+      "--resolve-repair-attempts",
+      "two",
+      "--worker",
+      "opencode",
+      "run",
+    ], reverifyTask);
+
+    expect(reverifyTask).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid --resolve-repair-attempts value: two"));
   });
 
   it("logs a CLI error and exits with code 1 on invalid force-attempts", async () => {

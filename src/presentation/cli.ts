@@ -227,6 +227,7 @@ program
   .option("--all", "Re-verify all completed runs", false)
   .option("--oldest-first", "Process selected runs in oldest-first order", false)
   .option("--repair-attempts <n>", "Max repair attempts on verification failure", "1")
+  .option("--resolve-repair-attempts <n>", "Max resolve-informed repair attempts after diagnosis", "1")
   .option("--no-repair", "Disable repair even when repair attempts are set")
   .option("--dry-run", "Show what would be executed without running it", false)
   .option("--print-prompt", "Print the rendered verify prompt and exit", false)
@@ -525,6 +526,7 @@ program
     String(DEFAULT_FORCE_ATTEMPTS),
   )
   .option("--repair-attempts <n>", "Max repair attempts on verification failure", "1")
+  .option("--resolve-repair-attempts <n>", "Max resolve-informed repair attempts after diagnosis", "1")
   .option("--no-repair", "Disable repair even when repair attempts are set")
   .option("--dry-run", "Show what would run for bootstrap and execution without executing workers", false)
   .option("--print-prompt", "Print rendered prompts and exit", false)
@@ -872,6 +874,7 @@ function configureRunLikeCommandOptions(command: Command): Command {
       String(DEFAULT_FORCE_ATTEMPTS),
     )
     .option("--repair-attempts <n>", "Max repair attempts on verification failure", "1")
+    .option("--resolve-repair-attempts <n>", "Max resolve-informed repair attempts after diagnosis", "1")
     .option("--no-repair", "Disable repair even when repair attempts are set")
     .option("--dry-run", "Show what would be executed without running it", false)
     .option("--print-prompt", "Print the rendered prompt and exit", false)

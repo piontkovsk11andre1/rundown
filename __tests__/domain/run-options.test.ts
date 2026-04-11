@@ -13,6 +13,7 @@ describe("resolveRunBehavior", () => {
       onlyVerify: true,
       allowRepair: false,
       maxRepairAttempts: 0,
+      maxResolveRepairAttempts: 1,
     });
   });
 
@@ -27,6 +28,7 @@ describe("resolveRunBehavior", () => {
       onlyVerify: false,
       allowRepair: false,
       maxRepairAttempts: 3,
+      maxResolveRepairAttempts: 1,
     });
   });
 
@@ -41,6 +43,23 @@ describe("resolveRunBehavior", () => {
       onlyVerify: false,
       allowRepair: true,
       maxRepairAttempts: 2,
+      maxResolveRepairAttempts: 1,
+    });
+  });
+
+  it("parses explicit resolve-repair attempts", () => {
+    expect(resolveRunBehavior({
+      verify: true,
+      onlyVerify: false,
+      noRepair: false,
+      repairAttempts: 2,
+      resolveRepairAttempts: 4,
+    })).toEqual({
+      shouldVerify: true,
+      onlyVerify: false,
+      allowRepair: true,
+      maxRepairAttempts: 2,
+      maxResolveRepairAttempts: 4,
     });
   });
 });

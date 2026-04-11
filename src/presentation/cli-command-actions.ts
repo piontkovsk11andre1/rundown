@@ -13,6 +13,7 @@ import {
   parseLoopIterations,
   parseMaxItems,
   parseRepairAttempts,
+  parseResolveRepairAttempts,
   parseRevertMethod,
   parseRounds,
   parseRunnerMode,
@@ -216,6 +217,7 @@ export function createRunCommandAction({
     const forceAttempts = parseForceAttempts(opts.forceAttempts as string | undefined);
     const noRepair = resolveNoRepairFlag(opts);
     const repairAttempts = parseRepairAttempts(opts.repairAttempts as string | undefined);
+    const resolveRepairAttempts = parseResolveRepairAttempts(opts.resolveRepairAttempts as string | undefined);
     const dryRun = opts.dryRun as boolean;
     const printPrompt = opts.printPrompt as boolean;
     const revertable = Boolean(opts.revertable as boolean | undefined);
@@ -259,6 +261,7 @@ export function createRunCommandAction({
       forceAttempts,
       noRepair,
       repairAttempts,
+      resolveRepairAttempts,
       dryRun,
       printPrompt,
       keepArtifacts,
@@ -334,6 +337,7 @@ export function createLoopCommandAction({
     const forceAttempts = parseForceAttempts(opts.forceAttempts as string | undefined);
     const noRepair = resolveNoRepairFlag(opts);
     const repairAttempts = parseRepairAttempts(opts.repairAttempts as string | undefined);
+    const resolveRepairAttempts = parseResolveRepairAttempts(opts.resolveRepairAttempts as string | undefined);
     const dryRun = Boolean(opts.dryRun as boolean | undefined);
     const printPrompt = Boolean(opts.printPrompt as boolean | undefined);
     const traceOnly = Boolean(opts.traceOnly as boolean | undefined);
@@ -384,6 +388,7 @@ export function createLoopCommandAction({
             forceAttempts,
             noRepair,
             repairAttempts,
+            resolveRepairAttempts,
             dryRun,
             printPrompt,
             keepArtifacts: sharedRuntimeOptions.keepArtifacts || revertable,
@@ -589,6 +594,7 @@ export function createReverifyCommandAction({
     const all = Boolean(opts.all as boolean | undefined);
     const oldestFirst = Boolean(opts.oldestFirst as boolean | undefined);
     const repairAttempts = parseRepairAttempts(opts.repairAttempts as string | undefined);
+    const resolveRepairAttempts = parseResolveRepairAttempts(opts.resolveRepairAttempts as string | undefined);
     const noRepair = resolveNoRepairFlag(opts);
     const dryRun = opts.dryRun as boolean;
     const printPrompt = opts.printPrompt as boolean;
@@ -611,6 +617,7 @@ export function createReverifyCommandAction({
       oldestFirst,
       workerPattern,
       repairAttempts,
+      resolveRepairAttempts,
       noRepair,
       dryRun,
       printPrompt,
@@ -1225,6 +1232,7 @@ export function createDoCommandAction({
     const forceAttempts = parseForceAttempts(opts.forceAttempts as string | undefined);
     const noRepair = resolveNoRepairFlag(opts);
     const repairAttempts = parseRepairAttempts(opts.repairAttempts as string | undefined);
+    const resolveRepairAttempts = parseResolveRepairAttempts(opts.resolveRepairAttempts as string | undefined);
     const traceOnly = Boolean(opts.traceOnly as boolean | undefined);
     const revertable = Boolean(opts.revertable as boolean | undefined);
     const commitAfterComplete = Boolean(opts.commit as boolean | undefined) || revertable;
@@ -1278,6 +1286,7 @@ export function createDoCommandAction({
       forceAttempts,
       noRepair,
       repairAttempts,
+      resolveRepairAttempts,
       dryRun,
       printPrompt,
       keepArtifacts: sharedRuntimeOptions.keepArtifacts || revertable,

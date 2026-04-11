@@ -10,6 +10,8 @@ export interface RunBehaviorInput {
   noRepair: boolean;
   // Maximum number of repair retries requested by the user.
   repairAttempts: number;
+  // Maximum number of resolve-informed repair retries requested by the user.
+  resolveRepairAttempts?: number;
 }
 
 /**
@@ -24,6 +26,8 @@ export interface RunBehavior {
   allowRepair: boolean;
   // Effective repair-attempt ceiling after normalization.
   maxRepairAttempts: number;
+  // Effective resolve-informed repair-attempt ceiling after normalization.
+  maxResolveRepairAttempts: number;
 }
 
 /**
@@ -53,6 +57,11 @@ export function resolveRunBehavior(input: RunBehaviorInput): RunBehavior {
   const maxRepairAttempts = Number.isFinite(input.repairAttempts) && input.repairAttempts > 0
     ? Math.floor(input.repairAttempts)
     : 0;
+  const resolveRepairAttempts = input.resolveRepairAttempts ?? 1;
+  const maxResolveRepairAttempts = Number.isFinite(resolveRepairAttempts)
+    && resolveRepairAttempts > 0
+    ? Math.floor(resolveRepairAttempts)
+    : 1;
   // Preserve explicit verify-only mode.
   const onlyVerify = input.onlyVerify;
   // Verify when requested directly or implied by verify-only mode.
@@ -65,6 +74,7 @@ export function resolveRunBehavior(input: RunBehaviorInput): RunBehavior {
     onlyVerify,
     allowRepair,
     maxRepairAttempts,
+    maxResolveRepairAttempts,
   };
 }
 

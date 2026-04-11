@@ -114,6 +114,7 @@ export interface ReverifyTaskOptions {
   oldestFirst?: boolean;
   workerPattern: ParsedWorkerPattern;
   repairAttempts: number;
+  resolveRepairAttempts?: number;
   noRepair: boolean;
   dryRun: boolean;
   printPrompt: boolean;
@@ -144,6 +145,7 @@ export function createReverifyTask(
       oldestFirst,
       workerPattern,
       repairAttempts,
+      resolveRepairAttempts = 1,
       noRepair,
       dryRun,
       printPrompt,
@@ -394,6 +396,7 @@ export function createReverifyTask(
         onlyVerify: true,
         noRepair: noRepair,
         repairAttempts,
+        resolveRepairAttempts,
       });
 
       // Create a fresh artifact context for this reverify invocation.
@@ -507,6 +510,7 @@ export function createReverifyTask(
           workerPattern: effectiveWorkerPattern,
           configDir: dependencies.configDir?.configDir,
           maxRepairAttempts: runBehavior.maxRepairAttempts,
+          maxResolveRepairAttempts: runBehavior.maxResolveRepairAttempts,
           allowRepair: runBehavior.allowRepair,
           templateVars: templateVarsWithUserVariables,
           executionEnv: rundownVarEnv,

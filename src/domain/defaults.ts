@@ -246,7 +246,7 @@ Read these files when you need detailed reference for a specific topic.
 ### Key commands in detail
 
 **run** — Execute the next unchecked TODO task from a source file or directory.
-\`rundown run <source> [--all] [--commit] [--mode tui|wait] [--verify] [--repair-attempts <n>] [--sort <mode>] [--redo] [--clean] [--show-agent-output] -- <worker>\`
+\`rundown run <source> [--all] [--commit] [--mode tui|wait] [--verify] [--repair-attempts <n>] [--resolve-repair-attempts <n>] [--sort <mode>] [--redo] [--clean] [--show-agent-output] -- <worker>\`
 Use \`--all\` to process all tasks sequentially. Use \`--commit\` to auto-commit on completion. Use \`--mode tui\` for interactive handoff. Use \`--worker <pattern>\` on PowerShell instead of \`-- <command>\`.
 
 **call** — Run a clean full-pass execution (\`--all --clean --cache-cli-blocks\`). Single command for a complete pass over a source.

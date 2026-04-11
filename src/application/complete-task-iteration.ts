@@ -97,6 +97,7 @@ export async function completeTaskIteration(params: {
   extraTemplateVars: ExtraTemplateVars;
   hideHookOutput: boolean;
   maxRepairAttempts: number;
+  maxResolveRepairAttempts?: number;
   allowRepair: boolean;
   trace: boolean;
   verbose: boolean;
@@ -155,6 +156,7 @@ export async function completeTaskIteration(params: {
     extraTemplateVars,
     hideHookOutput,
     maxRepairAttempts,
+    maxResolveRepairAttempts = 1,
     allowRepair,
     trace,
     verbose,
@@ -254,6 +256,7 @@ export async function completeTaskIteration(params: {
         workerPattern: automationWorkerPattern,
         configDir: dependencies.configDir?.configDir,
         maxRepairAttempts,
+        maxResolveRepairAttempts,
         allowRepair,
         templateVars: templateVarsWithTrace,
         executionEnv,

@@ -48,6 +48,7 @@ export interface VerifyRepairLoopInput {
   workerPattern: ParsedWorkerPattern;
   configDir?: string;
   maxRepairAttempts: number;
+  maxResolveRepairAttempts: number;
   allowRepair: boolean;
   templateVars: Record<string, unknown>;
   lastValidationError?: string;

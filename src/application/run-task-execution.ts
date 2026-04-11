@@ -130,6 +130,7 @@ export interface RunTaskOptions {
   forceAttempts: number;
   noRepair: boolean;
   repairAttempts: number;
+  resolveRepairAttempts?: number;
   dryRun: boolean;
   printPrompt: boolean;
   keepArtifacts: boolean;
@@ -188,6 +189,7 @@ export function createRunTaskExecution(
       forceAttempts,
       noRepair,
       repairAttempts,
+      resolveRepairAttempts = 1,
       dryRun,
       printPrompt,
       keepArtifacts,
@@ -280,12 +282,19 @@ export function createRunTaskExecution(
     }
 
     // Resolve effective verification/repair behavior from CLI flags.
-    const runBehavior = resolveRunBehavior({ verify, onlyVerify, noRepair, repairAttempts });
+    const runBehavior = resolveRunBehavior({
+      verify,
+      onlyVerify,
+      noRepair,
+      repairAttempts,
+      resolveRepairAttempts,
+    });
     void forceAttempts;
     const configuredShouldVerify = runBehavior.shouldVerify;
     const configuredOnlyVerify = runBehavior.onlyVerify;
     const allowRepair = runBehavior.allowRepair;
     const maxRepairAttempts = runBehavior.maxRepairAttempts;
+    const maxResolveRepairAttempts = runBehavior.maxResolveRepairAttempts;
 
     // Load template variables from optional file and merge CLI-provided overrides.
     const varsFilePath = resolveTemplateVarsFilePath(varsFileOption, dependencies.configDir?.configDir);
@@ -795,6 +804,7 @@ export function createRunTaskExecution(
                   configuredOnlyVerify,
                   configuredShouldVerify,
                   maxRepairAttempts,
+                  maxResolveRepairAttempts,
                   allowRepair,
                 },
                 completion: {

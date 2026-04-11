@@ -98,6 +98,7 @@ interface IterationVerifyConfig {
   configuredOnlyVerify: boolean;
   configuredShouldVerify: boolean;
   maxRepairAttempts: number;
+  maxResolveRepairAttempts?: number;
   allowRepair: boolean;
 }
 
@@ -620,6 +621,7 @@ export async function runTaskIteration(params: {
     extraTemplateVars: completion.extraTemplateVars,
     hideHookOutput: execution.hideHookOutput,
     maxRepairAttempts: verifyConfig.maxRepairAttempts,
+    maxResolveRepairAttempts: verifyConfig.maxResolveRepairAttempts ?? 1,
     allowRepair: verifyConfig.allowRepair,
     trace: execution.trace,
     traceOnly: execution.traceOnly,

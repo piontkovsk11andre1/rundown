@@ -26,6 +26,11 @@ interface VerificationResult {
   stdout?: string;
 }
 
+export interface ResolveResult {
+  resolved: boolean;
+  diagnosis: string | null;
+}
+
 /**
  * Strip surrounding backticks from a verdict line.
  *
@@ -49,6 +54,65 @@ function extractVerdictLine(stdout: string): { verdict: string; hasPreamble: boo
   }
 
   return { verdict: stripBackticks(lines.at(-1)!), hasPreamble: lines.length > 1 };
+}
+
+/**
+ * Parse resolve worker stdout into a structured diagnosis verdict.
+ *
+ * Accepts either:
+ * - `RESOLVED: <diagnosis>`
+ * - `UNRESOLVED: <reason>`
+ *
+ * The last non-empty line is treated as authoritative so preamble chatter
+ * does not break parsing. Malformed output is downgraded into an unresolved
+ * result with an explicit parser failure reason.
+ */
+export function parseResolveResult(stdout: string): ResolveResult {
+  const trimmedStdout = stdout.trim();
+  if (trimmedStdout.length === 0) {
+    return {
+      resolved: false,
+      diagnosis: "Resolve worker returned empty output. Expected RESOLVED: <diagnosis> or UNRESOLVED: <reason>.",
+    };
+  }
+
+  const { verdict } = extractVerdictLine(trimmedStdout);
+  const resolvedPrefix = /^RESOLVED\s*:\s*/i;
+  if (resolvedPrefix.test(verdict)) {
+    const diagnosis = verdict.replace(resolvedPrefix, "").trim();
+    if (diagnosis.length === 0) {
+      return {
+        resolved: false,
+        diagnosis: "Resolve worker returned malformed output: RESOLVED verdict is missing a diagnosis.",
+      };
+    }
+
+    return {
+      resolved: true,
+      diagnosis,
+    };
+  }
+
+  const unresolvedPrefix = /^UNRESOLVED\s*:\s*/i;
+  if (unresolvedPrefix.test(verdict)) {
+    const reason = verdict.replace(unresolvedPrefix, "").trim();
+    if (reason.length === 0) {
+      return {
+        resolved: false,
+        diagnosis: "Resolve worker returned malformed output: UNRESOLVED verdict is missing a reason.",
+      };
+    }
+
+    return {
+      resolved: false,
+      diagnosis: reason,
+    };
+  }
+
+  return {
+    resolved: false,
+    diagnosis: "Resolve worker returned malformed output. Expected RESOLVED: <diagnosis> or UNRESOLVED: <reason> on the final non-empty line.",
+  };
 }
 
 /**

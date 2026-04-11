@@ -12,6 +12,7 @@ vi.mock("../../src/infrastructure/runner.js", () => ({
 }));
 
 import {
+  parseResolveResult,
   verify,
 } from "../../src/infrastructure/verification.js";
 
@@ -497,5 +498,42 @@ describe("verify", () => {
 
     expect(result.valid).toBe(true);
     expect(result.formatWarning).toBeUndefined();
+  });
+});
+
+describe("parseResolveResult", () => {
+  it("parses RESOLVED verdicts", () => {
+    expect(parseResolveResult("RESOLVED: missing test fixture path in setup")).toEqual({
+      resolved: true,
+      diagnosis: "missing test fixture path in setup",
+    });
+  });
+
+  it("parses UNRESOLVED verdicts", () => {
+    expect(parseResolveResult("UNRESOLVED: not enough context from worker output")).toEqual({
+      resolved: false,
+      diagnosis: "not enough context from worker output",
+    });
+  });
+
+  it("uses the last non-empty line when preamble is present", () => {
+    expect(parseResolveResult("I analyzed the outputs.\n\nRESOLVED: stale cache causes repeated failure")).toEqual({
+      resolved: true,
+      diagnosis: "stale cache causes repeated failure",
+    });
+  });
+
+  it("handles malformed output with explicit parser failure reason", () => {
+    expect(parseResolveResult("diagnosis: maybe rate limited")).toEqual({
+      resolved: false,
+      diagnosis: "Resolve worker returned malformed output. Expected RESOLVED: <diagnosis> or UNRESOLVED: <reason> on the final non-empty line.",
+    });
+  });
+
+  it("handles empty output as malformed", () => {
+    expect(parseResolveResult("\n\n")).toEqual({
+      resolved: false,
+      diagnosis: "Resolve worker returned empty output. Expected RESOLVED: <diagnosis> or UNRESOLVED: <reason>.",
+    });
   });
 });

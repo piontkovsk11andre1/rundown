@@ -3229,12 +3229,15 @@ describe("complete-task-iteration", () => {
     });
     const emit = vi.fn();
     const failRun = vi.fn(async () => 2);
+    const afterTaskFailedSpy = vi.spyOn(runLifecycleModule, "afterTaskFailed").mockResolvedValue();
+    const writeFixAnnotationSpy = vi
+      .spyOn(checkboxOperationsModule, "writeFixAnnotationToFile")
+      .mockImplementation(() => {});
 
     vi.spyOn(verifyRepairLoopModule, "runVerifyRepairLoop").mockResolvedValue({
       valid: false,
       failureReason: "missing tests",
     });
-    vi.spyOn(runLifecycleModule, "afterTaskFailed").mockResolvedValue();
     vi.spyOn(checkboxOperationsModule, "checkTaskUsingFileSystem").mockImplementation(() => {});
 
     const result = await completeTaskIteration({
@@ -3305,6 +3308,17 @@ describe("complete-task-iteration", () => {
       kind: "error",
       message: "Verification failed. Task not checked.\nmissing tests",
     });
+    expect(writeFixAnnotationSpy).toHaveBeenCalledWith(task, "missing tests", dependencies.fileSystem);
+    expect(afterTaskFailedSpy).toHaveBeenCalledWith(
+      dependencies,
+      task,
+      "- [ ] Ship release",
+      undefined,
+      false,
+      {},
+    );
+    expect(writeFixAnnotationSpy.mock.invocationCallOrder[0]).toBeLessThan(afterTaskFailedSpy.mock.invocationCallOrder[0] ?? 0);
+    expect(afterTaskFailedSpy.mock.invocationCallOrder[0]).toBeLessThan(failRun.mock.invocationCallOrder[0] ?? 0);
     expect(failRun).toHaveBeenCalledWith(2, "verification-failed", "verification-failed", 2);
   });
 

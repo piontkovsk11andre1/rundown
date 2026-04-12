@@ -395,11 +395,12 @@ export function reconcilePendingPredictedItemsAtomically(input: {
   const writeFiles: PredictionTrackedFile[] = [];
   for (const migrationNumber of targetPendingMigrationNumbers) {
     const item = itemByMigrationNumber.get(migrationNumber)!;
+    const stableMigrationName = getStablePendingMigrationName(currentMigrations, migrationNumber, item.migrationName);
     const migrationPrefix = getPreferredPrefixForMigration(currentFiles, migrationNumber, "migration") ?? defaultPrefix;
     const snapshotPrefix = getPreferredPrefixForMigration(currentFiles, migrationNumber, "snapshot") ?? defaultPrefix;
     const migrationPath = joinPrefixAndFileName(
       migrationPrefix,
-      `${String(migrationNumber).padStart(4, "0")}-${item.migrationName}.md`,
+      `${String(migrationNumber).padStart(4, "0")}-${stableMigrationName}.md`,
     );
     const snapshotPath = joinPrefixAndFileName(snapshotPrefix, `${String(migrationNumber).padStart(4, "0")}--snapshot.md`);
 
@@ -422,6 +423,7 @@ export function reconcilePendingPredictedItemsAtomically(input: {
   );
   for (const migrationNumber of targetPendingMigrationNumbers) {
     const item = itemByMigrationNumber.get(migrationNumber)!;
+    const stableMigrationName = getStablePendingMigrationName(currentMigrations, migrationNumber, item.migrationName);
     const existing = migrationByNumber.get(migrationNumber);
     if (existing?.isApplied) {
       throw new Error(
@@ -431,7 +433,7 @@ export function reconcilePendingPredictedItemsAtomically(input: {
 
     migrationByNumber.set(migrationNumber, {
       number: migrationNumber,
-      name: item.migrationName,
+      name: stableMigrationName,
       isApplied: false,
     });
   }
@@ -446,6 +448,19 @@ export function reconcilePendingPredictedItemsAtomically(input: {
       writeFiles: sortTrackedFiles(writeFiles),
     },
   };
+}
+
+function getStablePendingMigrationName(
+  currentMigrations: readonly PredictionTrackedMigration[],
+  migrationNumber: number,
+  fallbackName: string,
+): string {
+  const existing = currentMigrations.find((migration) => migration.number === migrationNumber);
+  if (existing && !existing.isApplied && existing.name.trim().length > 0) {
+    return existing.name;
+  }
+
+  return fallbackName;
 }
 
 function buildFileChangeCandidate(

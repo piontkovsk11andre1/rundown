@@ -770,18 +770,18 @@ describe("prediction-reconciliation", () => {
 
     expect(reconciled.patch.writeFiles.map((file) => file.relativePath)).toEqual([
       "migrations/0002--snapshot.md",
-      "migrations/0002-feature-a-replanned.md",
+      "migrations/0002-feature-a.md",
       "migrations/0003--snapshot.md",
-      "migrations/0003-feature-b-replanned.md",
+      "migrations/0003-feature-b.md",
     ]);
     expect(reconciled.files.some((file) => file.relativePath === "migrations/0001-initialize.md")).toBe(true);
     expect(reconciled.files.some((file) => file.relativePath === "migrations/0002--context.md")).toBe(true);
-    expect(reconciled.files.some((file) => file.relativePath === "migrations/0002-feature-a.md")).toBe(false);
-    expect(reconciled.files.some((file) => file.relativePath === "migrations/0003-feature-b.md")).toBe(false);
+    expect(reconciled.files.some((file) => file.relativePath === "migrations/0002-feature-a.md")).toBe(true);
+    expect(reconciled.files.some((file) => file.relativePath === "migrations/0003-feature-b.md")).toBe(true);
     expect(reconciled.migrations).toEqual([
       { number: 1, name: "initialize", isApplied: true },
-      { number: 2, name: "feature-a-replanned", isApplied: false },
-      { number: 3, name: "feature-b-replanned", isApplied: false },
+      { number: 2, name: "feature-a", isApplied: false },
+      { number: 3, name: "feature-b", isApplied: false },
     ]);
   });
 
@@ -875,10 +875,10 @@ describe("prediction-reconciliation", () => {
     ]);
     expect(reconciled.files.some((file) => file.relativePath === "migrations/0001-initialize.md")).toBe(true);
     expect(reconciled.files.some((file) => file.relativePath === "migrations/0002-feature-a.md")).toBe(true);
-    expect(reconciled.files.some((file) => file.relativePath === "migrations/0003-feature-b.md")).toBe(false);
-    expect(reconciled.files.some((file) => file.relativePath === "migrations/0004-feature-c.md")).toBe(false);
-    expect(reconciled.files.some((file) => file.relativePath === "migrations/0003-feature-b-hotfix-reconciled.md")).toBe(true);
-    expect(reconciled.files.some((file) => file.relativePath === "migrations/0004-feature-c-reconciled.md")).toBe(true);
+    expect(reconciled.files.some((file) => file.relativePath === "migrations/0003-feature-b.md")).toBe(true);
+    expect(reconciled.files.some((file) => file.relativePath === "migrations/0004-feature-c.md")).toBe(true);
+    expect(reconciled.files.some((file) => file.relativePath === "migrations/0003-feature-b-hotfix-reconciled.md")).toBe(false);
+    expect(reconciled.files.some((file) => file.relativePath === "migrations/0004-feature-c-reconciled.md")).toBe(false);
   });
 
   it("rewrites only the specified pending subset during reconciliation", () => {
@@ -953,15 +953,124 @@ describe("prediction-reconciliation", () => {
     ]);
     expect(reconciled.patch.writeFiles.map((file) => file.relativePath)).toEqual([
       "migrations/0003--snapshot.md",
-      "migrations/0003-feature-b-rewritten.md",
+      "migrations/0003-feature-b.md",
     ]);
     expect(reconciled.files.some((file) => file.relativePath === "migrations/0002-feature-a.md")).toBe(true);
     expect(reconciled.files.some((file) => file.relativePath === "migrations/0004-feature-c.md")).toBe(true);
     expect(reconciled.migrations).toEqual([
       { number: 1, name: "initialize", isApplied: true },
       { number: 2, name: "feature-a", isApplied: false },
-      { number: 3, name: "feature-b-rewritten", isApplied: false },
+      { number: 3, name: "feature-b", isApplied: false },
       { number: 4, name: "feature-c", isApplied: false },
+    ]);
+  });
+
+  it("preserves existing pending migration slugs during repeated reconciliation", () => {
+    const current: PredictionInputs = {
+      migrations: [
+        { number: 1, name: "initialize", isApplied: true },
+        { number: 2, name: "feature-a", isApplied: false },
+        { number: 3, name: "feature-b", isApplied: false },
+      ],
+      files: [
+        {
+          relativePath: "migrations/0002-feature-a.md",
+          migrationNumber: 2,
+          kind: "migration",
+          content: "- [ ] keep slug stable\n",
+        },
+        {
+          relativePath: "migrations/0002--snapshot.md",
+          migrationNumber: 2,
+          kind: "snapshot",
+          content: "# Snapshot 0002\n",
+        },
+        {
+          relativePath: "migrations/0003-feature-b.md",
+          migrationNumber: 3,
+          kind: "migration",
+          content: "- [ ] keep slug stable\n",
+        },
+        {
+          relativePath: "migrations/0003--snapshot.md",
+          migrationNumber: 3,
+          kind: "snapshot",
+          content: "# Snapshot 0003\n",
+        },
+      ],
+    };
+
+    const reconciled = reconcilePendingPredictedItemsAtomically({
+      current,
+      plan: {
+        startMigrationNumber: 2,
+        pendingMigrationNumbers: [2, 3],
+        items: [
+          {
+            migrationNumber: 2,
+            migrationName: "feature-a-new-worker-name",
+            migrationContent: "# 0002 feature-a\n",
+            snapshotContent: "# Snapshot 0002 refreshed\n",
+          },
+          {
+            migrationNumber: 3,
+            migrationName: "feature-b-new-worker-name",
+            migrationContent: "# 0003 feature-b\n",
+            snapshotContent: "# Snapshot 0003 refreshed\n",
+          },
+        ],
+        fallback: null,
+      },
+    });
+
+    expect(reconciled.patch.writeFiles.map((file) => file.relativePath)).toEqual([
+      "migrations/0002--snapshot.md",
+      "migrations/0002-feature-a.md",
+      "migrations/0003--snapshot.md",
+      "migrations/0003-feature-b.md",
+    ]);
+    expect(reconciled.migrations).toEqual([
+      { number: 1, name: "initialize", isApplied: true },
+      { number: 2, name: "feature-a", isApplied: false },
+      { number: 3, name: "feature-b", isApplied: false },
+    ]);
+
+    const secondPass = reconcilePendingPredictedItemsAtomically({
+      current: {
+        migrations: reconciled.migrations,
+        files: reconciled.files,
+      },
+      plan: {
+        startMigrationNumber: 2,
+        pendingMigrationNumbers: [2, 3],
+        items: [
+          {
+            migrationNumber: 2,
+            migrationName: "feature-a-another-worker-name",
+            migrationContent: "# 0002 feature-a second pass\n",
+            snapshotContent: "# Snapshot 0002 second pass\n",
+          },
+          {
+            migrationNumber: 3,
+            migrationName: "feature-b-another-worker-name",
+            migrationContent: "# 0003 feature-b second pass\n",
+            snapshotContent: "# Snapshot 0003 second pass\n",
+          },
+        ],
+        fallback: null,
+      },
+    });
+
+    expect(secondPass.patch.writeFiles.map((file) => file.relativePath)).toEqual([
+      "migrations/0002--snapshot.md",
+      "migrations/0002-feature-a.md",
+      "migrations/0003--snapshot.md",
+      "migrations/0003-feature-b.md",
+    ]);
+    expect(secondPass.migrations).toEqual([
+      { number: 1, name: "initialize", isApplied: true },
+      { number: 2, name: "feature-a", isApplied: false },
+      { number: 3, name: "feature-b", isApplied: false },
     ]);
   });
 

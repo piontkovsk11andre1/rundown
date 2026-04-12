@@ -476,10 +476,12 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     ], workspace);
 
     expect(result.code).toBe(0);
-    expect(fs.existsSync(path.join(workspace, "migrations", "0002-feature-a.md"))).toBe(false);
-    expect(fs.existsSync(path.join(workspace, "migrations", "0003-feature-b.md"))).toBe(false);
-    expect(fs.existsSync(path.join(workspace, "migrations", "0002-slug-worker-reconciled-a.md"))).toBe(true);
-    expect(fs.existsSync(path.join(workspace, "migrations", "0003-slug-worker-reconciled-b.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0002-feature-a.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0003-feature-b.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0002-slug-worker-reconciled-a.md"))).toBe(false);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0003-slug-worker-reconciled-b.md"))).toBe(false);
+    expect(fs.readFileSync(path.join(workspace, "migrations", "0002-feature-a.md"), "utf-8")).toContain("slug-worker-reconciled-a");
+    expect(fs.readFileSync(path.join(workspace, "migrations", "0003-feature-b.md"), "utf-8")).toContain("slug-worker-reconciled-b");
   });
 
   it("reconciles pending predictions before migrate up after a manual mid-run TODO change", async () => {
@@ -545,10 +547,12 @@ describeIfMigrateAvailable("migrate-task integration", () => {
 
     expect(result.code).toBe(0);
 
-    expect(fs.existsSync(path.join(workspace, "migrations", "0002-feature-a.md"))).toBe(false);
-    expect(fs.existsSync(path.join(workspace, "migrations", "0003-feature-b.md"))).toBe(false);
-    expect(fs.existsSync(path.join(workspace, "migrations", "0002-feature-a-reconciled.md"))).toBe(true);
-    expect(fs.existsSync(path.join(workspace, "migrations", "0003-feature-b-reconciled.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0002-feature-a.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0003-feature-b.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0002-feature-a-reconciled.md"))).toBe(false);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0003-feature-b-reconciled.md"))).toBe(false);
+    expect(fs.readFileSync(path.join(workspace, "migrations", "0002-feature-a.md"), "utf-8")).toContain("feature-a-reconciled");
+    expect(fs.readFileSync(path.join(workspace, "migrations", "0003-feature-b.md"), "utf-8")).toContain("feature-b-reconciled");
     expect(fs.readFileSync(path.join(workspace, "migrations", "0001-initialize.md"), "utf-8")).toContain("hotfix added mid-run");
 
     const markerPath = path.join(workspace, ".migrate-up-reconcile.seq");

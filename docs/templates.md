@@ -307,6 +307,15 @@ When command execution is enabled, rundown expands each `cli` block into XML bef
 
 Source files are expanded before task parsing; templates are expanded after template variables are rendered.
 
+For `run`/`discuss`/`plan`/`reverify`/`research` flows that stage worker input as `prompt.md`, the staged prompt file receives the same expanded XML content. Prompt-file handling is not a separate variant; it uses the same source/template `cli` expansion pipeline and options.
+
+Ordering and failure semantics are unchanged in prompt files:
+
+- commands run in block order,
+- failures emit `<command exit_code="...">` with captured output,
+- expansion continues after a failed command (non-fatal at source level),
+- template-level fatal behavior remains controlled by the existing template failure handlers.
+
 Expanded form:
 
 ````md

@@ -578,6 +578,35 @@ describe("checkbox-operations", () => {
     });
   });
 
+  it("reports dry-run stale runtime cleanup intent when reset would remove annotations", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [x] A",
+        "  - fix: generated annotation",
+        "  - skipped: generated annotation",
+      ].join("\n"),
+    });
+    const emit = vi.fn();
+
+    const count = maybeResetFileCheckboxes("todo.md", fileSystem, true, emit, "post-run");
+
+    expect(count).toBe(1);
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [x] A",
+      "  - fix: generated annotation",
+      "  - skipped: generated annotation",
+    ].join("\n"));
+    expect(emit).toHaveBeenNthCalledWith(1, {
+      kind: "info",
+      message: "Dry run — would reset checkboxes (post-run) in: todo.md",
+    });
+    expect(emit).toHaveBeenNthCalledWith(2, {
+      kind: "info",
+      message: "Dry run — would also remove stale runtime annotations in: todo.md",
+    });
+    expect(emit).toHaveBeenCalledTimes(2);
+  });
+
   it("resets checkboxes and emits count in normal mode", () => {
     const fileSystem = createFileSystem({
       "todo.md": "- [x] A\n- [ ] B\n",

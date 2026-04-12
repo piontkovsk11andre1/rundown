@@ -445,6 +445,13 @@ export function maybeResetFileCheckboxes(
 
   if (dryRun) {
     emit({ kind: "info", message: `Dry run — would reset checkboxes (${phase}) in: ${file}` });
+    if (resetCount > 0) {
+      const normalized = resetAllCheckboxes(source, file);
+      const cleaned = stripRuntimeStaleAnnotationsFromSource(normalized, file);
+      if (cleaned !== normalized) {
+        emit({ kind: "info", message: `Dry run — would also remove stale runtime annotations in: ${file}` });
+      }
+    }
     return resetCount;
   }
 

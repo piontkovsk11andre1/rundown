@@ -107,6 +107,14 @@ describe("builtin-tools/for-loop", () => {
       "for-item: That",
       "for-item: Omg",
     ]);
+    expect(context.emit).toHaveBeenCalledWith({
+      kind: "info",
+      message: "For loop baked 3 unique items from payload: This, That, Omg",
+    });
+    expect(context.emit).toHaveBeenCalledWith({
+      kind: "info",
+      message: "For loop current item: This",
+    });
   });
 
   it("reuses existing for-item metadata when present", async () => {

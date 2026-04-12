@@ -35,7 +35,7 @@ import type { TraceStatisticsConfig } from "../domain/worker-config.js";
 import { formatStatisticsLines } from "../domain/trace-statistics.js";
 import type { RunTaskDependencies } from "./run-task-execution.js";
 import { pluralize } from "./run-task-utils.js";
-import { isForLoopTaskText } from "../domain/for-loop.js";
+import { getForCurrentValue, getForItemValues, isForLoopTaskText } from "../domain/for-loop.js";
 import {
   RUN_REASON_VERIFICATION_FAILED,
   RUN_REASON_USAGE_LIMIT_DETECTED,
@@ -421,11 +421,17 @@ export async function completeTaskIteration(params: {
 
   const isLoopTask = isForLoopTaskText(task.text);
   if (isLoopTask) {
+    const completedLoopItem = getForCurrentValue(task.subItems);
+    const loopItemCount = forLoopItems?.length ?? getForItemValues(task.subItems).length;
+
     if (forLoopItems && forLoopItems.length > 0) {
       syncForLoopMetadataItemsUsingFileSystem(task, forLoopItems, dependencies.fileSystem);
     }
 
     if (forLoopAdvanced) {
+      if (completedLoopItem) {
+        emit({ kind: "info", message: "Loop item completed: " + completedLoopItem + "." });
+      }
       emit({
         kind: "info",
         message: "Loop advanced to item: " + forLoopAdvanced.current
@@ -438,6 +444,9 @@ export async function completeTaskIteration(params: {
 
     const completionTransition = advanceForLoopUsingFileSystem(task, dependencies.fileSystem);
     if (completionTransition.advanced && completionTransition.current) {
+      if (completedLoopItem) {
+        emit({ kind: "info", message: "Loop item completed: " + completedLoopItem + "." });
+      }
       emit({
         kind: "info",
         message: "Loop advanced to item: " + completionTransition.current
@@ -446,6 +455,18 @@ export async function completeTaskIteration(params: {
       state.tasksCompleted++;
       resetArtifacts();
       return { continueLoop: true, groupEnded: false };
+    }
+
+    if (completionTransition.completed) {
+      if (completedLoopItem) {
+        emit({ kind: "info", message: "Loop item completed: " + completedLoopItem + "." });
+      }
+      emit({
+        kind: "info",
+        message: "Loop completed after " + loopItemCount + " "
+          + pluralize(loopItemCount, "item", "items")
+          + "; marking parent task complete.",
+      });
     }
   }
 

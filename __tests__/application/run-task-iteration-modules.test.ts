@@ -5021,10 +5021,11 @@ describe("complete-task-iteration", () => {
     };
     const checkTaskSpy = vi.spyOn(checkboxOperationsModule, "checkTaskUsingFileSystem");
     const resetArtifacts = vi.fn();
+    const emit = vi.fn();
 
     const result = await completeTaskIteration({
       dependencies,
-      emit: vi.fn(),
+      emit,
       state,
       traceRunSession: createCompletionSession(),
       failRun: vi.fn(async () => 1),
@@ -5080,6 +5081,14 @@ describe("complete-task-iteration", () => {
     expect(checkTaskSpy).not.toHaveBeenCalled();
     expect(resetArtifacts).toHaveBeenCalledTimes(1);
     expect(state.tasksCompleted).toBe(1);
+    expect(emit).toHaveBeenCalledWith({
+      kind: "info",
+      message: "Loop item completed: Alpha.",
+    });
+    expect(emit).toHaveBeenCalledWith({
+      kind: "info",
+      message: "Loop advanced to item: Beta (0 remaining).",
+    });
     expect(fileSystem.readText(loopTask.file)).toBe([
       "- [ ] for: Alpha, Beta",
       "  - for-item: Alpha",
@@ -5138,10 +5147,11 @@ describe("complete-task-iteration", () => {
     };
     const finishRun = vi.fn(async () => 0);
     const resetArtifacts = vi.fn();
+    const emit = vi.fn();
 
     const result = await completeTaskIteration({
       dependencies,
-      emit: vi.fn(),
+      emit,
       state,
       traceRunSession: createCompletionSession(),
       failRun: vi.fn(async () => 1),
@@ -5196,6 +5206,14 @@ describe("complete-task-iteration", () => {
     expect(result).toEqual({ continueLoop: false, exitCode: 0, groupEnded: true });
     expect(finishRun).toHaveBeenCalledWith(0, "completed", true, undefined, undefined);
     expect(resetArtifacts).not.toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledWith({
+      kind: "info",
+      message: "Loop item completed: Beta.",
+    });
+    expect(emit).toHaveBeenCalledWith({
+      kind: "info",
+      message: "Loop completed after 2 items; marking parent task complete.",
+    });
     expect(fileSystem.readText(loopTask.file)).toBe([
       "- [x] for: Alpha, Beta",
       "  - for-item: Alpha",

@@ -9,6 +9,7 @@ import type { ApplicationOutputEvent } from "../../src/domain/ports/output-port.
 import {
   createHelpCommandAction,
   createLoopCommandAction,
+  createMigrateCommandAction,
   createQueryCommandAction,
   createReverifyCommandAction,
   createRunCommandAction,
@@ -416,5 +417,68 @@ describe("createWorkerHealthCommandAction", () => {
     expect(exitCode).toBe(0);
     expect(viewWorkerHealthStatus).toHaveBeenCalledTimes(1);
     expect(viewWorkerHealthStatus).toHaveBeenCalledWith({ json: true });
+  });
+});
+
+describe("createMigrateCommandAction", () => {
+  it("forwards explicit --slug-worker override separately from --worker", async () => {
+    const migrateTask = vi.fn(async () => 0);
+    const app = { migrateTask } as unknown as CliApp;
+    const action = createMigrateCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+    });
+
+    const exitCode = await action("up", undefined, {
+      dir: "migrations",
+      worker: "opencode run --model gpt-5.3-codex",
+      slugWorker: "opencode run --model gpt-5.3-mini",
+    });
+
+    expect(exitCode).toBe(0);
+    expect(migrateTask).toHaveBeenCalledTimes(1);
+    expect(migrateTask).toHaveBeenCalledWith(expect.objectContaining({
+      action: "up",
+      dir: "migrations",
+      workerPattern: {
+        command: ["opencode", "run", "--model", "gpt-5.3-codex"],
+        usesBootstrap: false,
+        usesFile: false,
+        appendFile: true,
+      },
+      slugWorkerPattern: {
+        command: ["opencode", "run", "--model", "gpt-5.3-mini"],
+        usesBootstrap: false,
+        usesFile: false,
+        appendFile: true,
+      },
+    }));
+  });
+
+  it("does not pass slugWorkerPattern when --slug-worker is omitted", async () => {
+    const migrateTask = vi.fn(async () => 0);
+    const app = { migrateTask } as unknown as CliApp;
+    const action = createMigrateCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+    });
+
+    const exitCode = await action(undefined, undefined, {
+      dir: "migrations",
+      worker: "opencode run --model gpt-5.3-codex",
+    });
+
+    expect(exitCode).toBe(0);
+    expect(migrateTask).toHaveBeenCalledTimes(1);
+    const request = (migrateTask as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[0] as
+      | Record<string, unknown>
+      | undefined;
+    expect(request?.workerPattern).toEqual({
+      command: ["opencode", "run", "--model", "gpt-5.3-codex"],
+      usesBootstrap: false,
+      usesFile: false,
+      appendFile: true,
+    });
+    expect(request?.slugWorkerPattern).toBeUndefined();
   });
 });

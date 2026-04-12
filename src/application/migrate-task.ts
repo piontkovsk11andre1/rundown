@@ -74,6 +74,7 @@ export interface MigrateTaskOptions {
   label?: string;
   confirm?: boolean;
   workerPattern: ParsedWorkerPattern;
+  slugWorkerPattern?: ParsedWorkerPattern;
   keepArtifacts?: boolean;
   showAgentOutput?: boolean;
   runId?: string;
@@ -238,6 +239,7 @@ export function createMigrateTask(
     const resolvedSlugWorker = resolveWorkerPatternForInvocation({
       commandName: "migrate-slug",
       workerConfig: loadedWorkerConfig,
+      cliWorkerPattern: options.slugWorkerPattern,
       fallbackWorkerCommand: resolvedWorker.workerCommand,
       emit,
       mode: "wait",

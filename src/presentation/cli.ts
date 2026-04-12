@@ -331,6 +331,7 @@ const migrateCommand = program
   .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
   .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
   .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
+  .option("--slug-worker <pattern>", "Optional migration slug worker override (for naming/reconciliation only)")
   .allowUnknownOption(false)
   .action(withCliAction(createMigrateCommandAction({
     getApp,

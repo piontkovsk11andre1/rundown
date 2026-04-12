@@ -218,6 +218,7 @@ interface MigrateCommandOptions {
   label?: string;
   confirm: boolean;
   workerPattern: ParsedWorkerPattern;
+  slugWorkerPattern?: ParsedWorkerPattern;
   keepArtifacts: boolean;
   showAgentOutput: boolean;
   runId?: string;
@@ -1011,8 +1012,13 @@ export function createMigrateCommandAction({
   action: string | undefined,
   count: string | undefined,
   opts: CliOpts,
-) => CliActionResult {
+  ) => CliActionResult {
   return (action: string | undefined, count: string | undefined, opts: CliOpts) => {
+    const workerPattern = resolveWorkerPattern(opts.worker, getWorkerFromSeparator);
+    const slugWorkerPattern = typeof opts.slugWorker === "string"
+      ? resolveWorkerPattern(opts.slugWorker, getWorkerFromSeparator)
+      : undefined;
+
     const normalizedAction = normalizeOptionalString(action);
     if (normalizedAction !== undefined && !isMigrateAction(normalizedAction)) {
       throw new Error(
@@ -1032,7 +1038,8 @@ export function createMigrateCommandAction({
       dir: normalizeOptionalString(opts.dir),
       label: normalizeOptionalString(opts.label),
       confirm: Boolean(opts.confirm as boolean | undefined),
-      workerPattern: resolveWorkerPattern(opts.worker, getWorkerFromSeparator),
+      workerPattern,
+      ...(slugWorkerPattern ? { slugWorkerPattern } : {}),
       keepArtifacts: Boolean(opts.keepArtifacts as boolean | undefined),
       showAgentOutput: resolveShowAgentOutputOption(opts),
       runId: normalizeOptionalString(opts.run),

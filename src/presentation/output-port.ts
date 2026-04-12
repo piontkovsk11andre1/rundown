@@ -498,7 +498,14 @@ export const cliOutputPort: ApplicationOutputPort = {
         return;
       case "stderr":
         flushProgressLine();
-        process.stderr.write(withGroupPrefixMultiline(event.text));
+        {
+          const formatted = withGroupPrefixMultiline(event.text);
+          if (formatted.length === 0) {
+            return;
+          }
+
+          process.stderr.write(formatted.endsWith("\n") ? formatted : `${formatted}\n`);
+        }
         return;
       default:
         return;

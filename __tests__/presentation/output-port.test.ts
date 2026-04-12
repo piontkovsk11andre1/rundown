@@ -639,6 +639,92 @@ describe("cliOutputPort", () => {
     }
   });
 
+  it("keeps grouped stderr output readable by terminating non-newline lines", () => {
+    const hadIsTTY = Object.prototype.hasOwnProperty.call(process.stdout, "isTTY");
+    const previousIsTTY = (process.stdout as { isTTY?: boolean }).isTTY;
+    Object.defineProperty(process.stdout, "isTTY", {
+      configurable: true,
+      writable: true,
+      value: true,
+    });
+
+    const previousCi = process.env.CI;
+    delete process.env.CI;
+
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      cliOutputPort.emit({ kind: "group-start", label: "Inline CLI task" });
+      cliOutputPort.emit({ kind: "stderr", text: "inline failure detail" });
+      cliOutputPort.emit({ kind: "group-end", status: "failure", message: "failed" });
+
+      expect(stderrSpy).toHaveBeenCalledTimes(1);
+      expect(stripAnsi(stderrSpy.mock.calls[0]?.[0] as string)).toBe("│  inline failure detail\n");
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(stripAnsi(errorSpy.mock.calls[0]?.[0] as string)).toBe("└ ✖ Failed — failed");
+    } finally {
+      if (previousCi === undefined) {
+        delete process.env.CI;
+      } else {
+        process.env.CI = previousCi;
+      }
+
+      if (hadIsTTY) {
+        Object.defineProperty(process.stdout, "isTTY", {
+          configurable: true,
+          writable: true,
+          value: previousIsTTY,
+        });
+      } else {
+        Reflect.deleteProperty(process.stdout, "isTTY");
+      }
+    }
+  });
+
+  it("prefixes grouped stderr lines in non-TTY mode and preserves multiline breaks", () => {
+    const hadIsTTY = Object.prototype.hasOwnProperty.call(process.stdout, "isTTY");
+    const previousIsTTY = (process.stdout as { isTTY?: boolean }).isTTY;
+    Object.defineProperty(process.stdout, "isTTY", {
+      configurable: true,
+      writable: true,
+      value: false,
+    });
+
+    const previousCi = process.env.CI;
+    delete process.env.CI;
+
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      cliOutputPort.emit({ kind: "group-start", label: "Inline CLI task" });
+      cliOutputPort.emit({ kind: "stderr", text: "line-1\nline-2\n" });
+      cliOutputPort.emit({ kind: "group-end", status: "failure", message: "failed" });
+
+      expect(stderrSpy).toHaveBeenCalledTimes(1);
+      expect(stripAnsi(stderrSpy.mock.calls[0]?.[0] as string)).toBe("    line-1\n    line-2\n");
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(stripAnsi(errorSpy.mock.calls[0]?.[0] as string)).toBe("✖ Failed — failed");
+    } finally {
+      if (previousCi === undefined) {
+        delete process.env.CI;
+      } else {
+        process.env.CI = previousCi;
+      }
+
+      if (hadIsTTY) {
+        Object.defineProperty(process.stdout, "isTTY", {
+          configurable: true,
+          writable: true,
+          value: previousIsTTY,
+        });
+      } else {
+        Reflect.deleteProperty(process.stdout, "isTTY");
+      }
+    }
+  });
+
   it("renders warn events to stderr", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);

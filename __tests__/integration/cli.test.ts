@@ -7351,7 +7351,11 @@ describe.sequential("CLI integration", () => {
   it("run returns 1 on execution failure and skips completion side effects", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");
-    fs.writeFileSync(roadmapPath, "- [ ] cli: __rundown_missing_command__\n", "utf-8");
+    fs.writeFileSync(
+      roadmapPath,
+      "- [ ] cli: node -e \"console.error('inline-cli-fail-detail'); process.exit(1)\"\n",
+      "utf-8",
+    );
 
     const result = await runCli([
       "run",
@@ -7364,9 +7368,16 @@ describe.sequential("CLI integration", () => {
 
     expect(result.code).toBe(1);
     expect(result.errors.some((line) => line.includes("Inline CLI exited with code"))).toBe(true);
+    const combinedFailureOutput = stripAnsi([
+      ...result.errors,
+      ...result.stderrWrites,
+      ...result.stdoutWrites,
+    ].join("\n"));
+    expect(combinedFailureOutput.includes("inline-cli-fail-detail")).toBe(true);
     expect(result.logs.some((line) => line.includes("Committed:"))).toBe(false);
     expect(result.logs.some((line) => line.includes("hook-ran"))).toBe(false);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: __rundown_missing_command__");
+    expect(fs.readFileSync(roadmapPath, "utf-8"))
+      .toContain("- [ ] cli: node -e \"console.error('inline-cli-fail-detail'); process.exit(1)\"");
   });
 
   it("run returns 2 on verification failure, skips completion side effects, and writes fix annotation", async () => {
@@ -8615,7 +8626,11 @@ describe.sequential("CLI integration", () => {
   it("run --all stops on failure and preserves failure exit code", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");
-    fs.writeFileSync(roadmapPath, "- [ ] cli: echo ok\n- [ ] cli: exit 1\n- [ ] cli: echo unreachable\n", "utf-8");
+    fs.writeFileSync(
+      roadmapPath,
+      "- [ ] cli: echo ok\n- [ ] cli: node -e \"console.error('run-all-inline-cli-failed'); process.exit(1)\"\n- [ ] cli: echo unreachable\n",
+      "utf-8",
+    );
 
     const result = await runCli([
       "run",
@@ -8625,10 +8640,16 @@ describe.sequential("CLI integration", () => {
     ], workspace);
 
     expect(result.code).toBe(1);
+    const combinedFailureOutput = stripAnsi([
+      ...result.errors,
+      ...result.stderrWrites,
+      ...result.stdoutWrites,
+    ].join("\n"));
+    expect(combinedFailureOutput.includes("run-all-inline-cli-failed")).toBe(true);
     expect(result.logs.filter((line) => line.includes("Task checked:")).length).toBe(1);
     const content = fs.readFileSync(roadmapPath, "utf-8");
     expect(content).toContain("- [x] cli: echo ok\n");
-    expect(content).toContain("- [ ] cli: exit 1\n");
+    expect(content).toContain("- [ ] cli: node -e \"console.error('run-all-inline-cli-failed'); process.exit(1)\"\n");
     expect(content).toContain("- [ ] cli: echo unreachable\n");
   });
 

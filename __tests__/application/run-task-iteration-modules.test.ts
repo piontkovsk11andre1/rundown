@@ -1530,6 +1530,67 @@ describe("task-execution-dispatch", () => {
     expect(events.some((event) => event.kind === "info" && event.message.includes("Executing inline CLI:"))).toBe(true);
   });
 
+  it("emits inline cli failure stdout/stderr even when show-agent-output is disabled", async () => {
+    const task = createInlineTask(path.join(cwd, "tasks.md"), "cli: npm test");
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] cli: npm test\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    dependencies.workerExecutor.executeInlineCli = vi.fn(async () => ({
+      exitCode: 9,
+      stdout: "inline fail out",
+      stderr: "inline fail err",
+    }));
+
+    const result = await dispatchTaskExecution({
+      dependencies,
+      emit: (event) => events.push(event),
+      files: [task.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "wait",
+      transport: "file",
+      keepArtifacts: true,
+      showAgentOutput: false,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "execute-and-verify",
+      task,
+      prompt: "prompt",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      trace: true,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+    });
+
+    expect(result).toEqual({
+      kind: "execution-failed",
+      executionFailureMessage: "Inline CLI exited with code 9",
+      executionFailureRunReason: "Inline CLI exited with a non-zero code.",
+      executionFailureExitCode: 9,
+      forceRetryableFailure: true,
+    });
+    expect(events).toContainEqual({ kind: "text", text: "inline fail out" });
+    expect(events).toContainEqual({ kind: "stderr", text: "inline fail err" });
+  });
+
   it("returns detached for detached worker mode", async () => {
     const task = createTask(path.join(cwd, "tasks.md"), "Ship release");
     const fileSystem = createInMemoryFileSystem({

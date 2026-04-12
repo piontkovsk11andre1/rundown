@@ -193,6 +193,22 @@ export async function dispatchTaskExecution(params: {
     }
   };
 
+  // Inline CLI failures should always surface captured command output so users
+  // can diagnose without rerunning with --show-agent-output.
+  const emitInlineCliFailureOutput = (stdout: string, stderr: string): void => {
+    if (showAgentOutput) {
+      return;
+    }
+
+    if (stdout) {
+      emit({ kind: "text", text: stdout });
+    }
+
+    if (stderr) {
+      emit({ kind: "stderr", text: stderr });
+    }
+  };
+
   // Unified prefix chain dispatch: when a prefix chain with tools is detected,
   // route through the tool execution pipeline instead of legacy intent branches.
   if (prefixChain && (prefixChain.handler || prefixChain.modifiers.length > 0)) {
@@ -333,6 +349,7 @@ export async function dispatchTaskExecution(params: {
 
     // Abort the iteration when the inline command exits non-zero.
     if (cliResult.exitCode !== 0) {
+      emitInlineCliFailureOutput(cliResult.stdout, cliResult.stderr);
       return {
         kind: "execution-failed",
         executionFailureMessage: "Inline CLI exited with code " + cliResult.exitCode,

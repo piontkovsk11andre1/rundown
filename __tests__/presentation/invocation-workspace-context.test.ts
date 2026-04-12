@@ -58,6 +58,43 @@ describe("resolveInvocationWorkspaceContext", () => {
     });
   });
 
+  it("falls back to invocation dir when workspace.link target is empty", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-invocation-workspace-"));
+    tempDirs.push(root);
+
+    const invocationDir = path.join(root, "linked");
+    fs.mkdirSync(path.join(invocationDir, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(invocationDir, ".rundown", "workspace.link"), "   \n", "utf-8");
+
+    const context = resolveInvocationWorkspaceContext(invocationDir);
+
+    expect(context).toEqual({
+      invocationDir: path.resolve(invocationDir),
+      workspaceDir: path.resolve(invocationDir),
+      workspaceLinkPath: "",
+      isLinkedWorkspace: false,
+    });
+  });
+
+  it("falls back to invocation dir when workspace.link target is absolute", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-invocation-workspace-"));
+    tempDirs.push(root);
+
+    const invocationDir = path.join(root, "linked");
+    const absoluteTarget = path.join(root, "source-workspace");
+    fs.mkdirSync(path.join(invocationDir, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(invocationDir, ".rundown", "workspace.link"), absoluteTarget, "utf-8");
+
+    const context = resolveInvocationWorkspaceContext(invocationDir);
+
+    expect(context).toEqual({
+      invocationDir: path.resolve(invocationDir),
+      workspaceDir: path.resolve(invocationDir),
+      workspaceLinkPath: "",
+      isLinkedWorkspace: false,
+    });
+  });
+
   it("falls back to invocation dir when workspace.link points to a stale file target", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-invocation-workspace-"));
     tempDirs.push(root);

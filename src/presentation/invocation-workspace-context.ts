@@ -31,6 +31,10 @@ export function resolveInvocationWorkspaceContext(cwd: string = process.cwd()): 
     };
   }
 
+  return createNonLinkedWorkspaceContext(invocationDir);
+}
+
+function createNonLinkedWorkspaceContext(invocationDir: string): InvocationWorkspaceContext {
   return {
     invocationDir,
     workspaceDir: invocationDir,

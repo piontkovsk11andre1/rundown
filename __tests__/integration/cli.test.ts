@@ -5309,6 +5309,64 @@ describe.sequential("CLI integration", () => {
     expect(readWorkspaceContextValue(staleLinkOutput, "workspaceDir")).toBe(path.resolve(staleLinkInvocationDir));
     expect(readWorkspaceContextValue(staleLinkOutput, "workspaceLinkPath")).toBe("");
     expect(readWorkspaceContextValue(staleLinkOutput, "isLinkedWorkspace")).toBe("false");
+
+    const emptyLinkSandbox = makeTempWorkspace();
+    const emptyLinkInvocationDir = path.join(emptyLinkSandbox, "empty-linked-invocation");
+    fs.mkdirSync(path.join(emptyLinkInvocationDir, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(emptyLinkInvocationDir, ".rundown", "workspace.link"), "   \n", "utf-8");
+    fs.writeFileSync(path.join(emptyLinkInvocationDir, "roadmap.md"), "- [ ] Capture workspace context\n", "utf-8");
+
+    const emptyLinkResult = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--print-prompt",
+      "--worker",
+      "opencode",
+      "run",
+    ], emptyLinkInvocationDir);
+
+    const emptyLinkOutput = [
+      ...emptyLinkResult.logs,
+      ...emptyLinkResult.errors,
+      ...emptyLinkResult.stdoutWrites,
+      ...emptyLinkResult.stderrWrites,
+    ].join("\n");
+    expect(emptyLinkResult.code).toBe(0);
+    expect(readWorkspaceContextValue(emptyLinkOutput, "invocationDir")).toBe(path.resolve(emptyLinkInvocationDir));
+    expect(readWorkspaceContextValue(emptyLinkOutput, "workspaceDir")).toBe(path.resolve(emptyLinkInvocationDir));
+    expect(readWorkspaceContextValue(emptyLinkOutput, "workspaceLinkPath")).toBe("");
+    expect(readWorkspaceContextValue(emptyLinkOutput, "isLinkedWorkspace")).toBe("false");
+
+    const absoluteLinkSandbox = makeTempWorkspace();
+    const absoluteLinkInvocationDir = path.join(absoluteLinkSandbox, "absolute-linked-invocation");
+    const absoluteLinkTargetDir = path.join(absoluteLinkSandbox, "source-workspace");
+    fs.mkdirSync(path.join(absoluteLinkInvocationDir, ".rundown"), { recursive: true });
+    fs.mkdirSync(absoluteLinkTargetDir, { recursive: true });
+    fs.writeFileSync(path.join(absoluteLinkInvocationDir, ".rundown", "workspace.link"), path.resolve(absoluteLinkTargetDir), "utf-8");
+    fs.writeFileSync(path.join(absoluteLinkInvocationDir, "roadmap.md"), "- [ ] Capture workspace context\n", "utf-8");
+
+    const absoluteLinkResult = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--print-prompt",
+      "--worker",
+      "opencode",
+      "run",
+    ], absoluteLinkInvocationDir);
+
+    const absoluteLinkOutput = [
+      ...absoluteLinkResult.logs,
+      ...absoluteLinkResult.errors,
+      ...absoluteLinkResult.stdoutWrites,
+      ...absoluteLinkResult.stderrWrites,
+    ].join("\n");
+    expect(absoluteLinkResult.code).toBe(0);
+    expect(readWorkspaceContextValue(absoluteLinkOutput, "invocationDir")).toBe(path.resolve(absoluteLinkInvocationDir));
+    expect(readWorkspaceContextValue(absoluteLinkOutput, "workspaceDir")).toBe(path.resolve(absoluteLinkInvocationDir));
+    expect(readWorkspaceContextValue(absoluteLinkOutput, "workspaceLinkPath")).toBe("");
+    expect(readWorkspaceContextValue(absoluteLinkOutput, "isLinkedWorkspace")).toBe("false");
   });
 
   it("run --config-dir uses templates from the specified directory", async () => {

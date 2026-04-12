@@ -25,8 +25,8 @@ export function resolveInvocationWorkspaceContext(cwd: string = process.cwd()): 
   if (resolution.status === "resolved") {
     return {
       invocationDir,
-      workspaceDir: resolution.workspaceRoot,
-      workspaceLinkPath: resolution.linkPath,
+      workspaceDir: pathOperations.resolve(resolution.workspaceRoot),
+      workspaceLinkPath: pathOperations.resolve(resolution.linkPath),
       isLinkedWorkspace: true,
     };
   }

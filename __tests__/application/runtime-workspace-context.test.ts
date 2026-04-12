@@ -68,6 +68,26 @@ describe("resolveRuntimeWorkspaceContext", () => {
       isLinkedWorkspace: true,
     });
   });
+
+  it("normalizes invocation/workspace/link paths to absolute values", () => {
+    const context = resolveRuntimeWorkspaceContext(
+      {
+        executionCwd: "/workspace/exec",
+        invocationDir: "/workspace/linked/./nested/..",
+        workspaceDir: "/workspace/real/./src/..",
+        workspaceLinkPath: "./.rundown/../.rundown/workspace.link",
+        isLinkedWorkspace: true,
+      },
+      pathOperations,
+    );
+
+    expect(context).toEqual({
+      invocationDir: path.resolve("/workspace/linked"),
+      workspaceDir: path.resolve("/workspace/real"),
+      workspaceLinkPath: path.resolve("/workspace/linked/.rundown/workspace.link"),
+      isLinkedWorkspace: true,
+    });
+  });
 });
 
 describe("buildWorkspaceContextTemplateVars", () => {

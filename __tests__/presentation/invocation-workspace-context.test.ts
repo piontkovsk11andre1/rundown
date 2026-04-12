@@ -40,6 +40,31 @@ describe("resolveInvocationWorkspaceContext", () => {
     });
   });
 
+  it("normalizes linked workspace context paths to absolute values", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-invocation-workspace-"));
+    tempDirs.push(root);
+
+    const invocationDir = path.join(root, "linked", "nested", "..", "nested");
+    const invocationDirResolved = path.join(root, "linked", "nested");
+    const workspaceDir = path.join(root, "source", "real");
+    fs.mkdirSync(path.join(invocationDirResolved, ".rundown"), { recursive: true });
+    fs.mkdirSync(workspaceDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(invocationDirResolved, ".rundown", "workspace.link"),
+      "../../source/./real",
+      "utf-8",
+    );
+
+    const context = resolveInvocationWorkspaceContext(invocationDir);
+
+    expect(context).toEqual({
+      invocationDir: path.resolve(invocationDir),
+      workspaceDir: path.resolve(workspaceDir),
+      workspaceLinkPath: path.resolve(invocationDir, ".rundown", "workspace.link"),
+      isLinkedWorkspace: true,
+    });
+  });
+
   it("falls back to invocation dir for invalid or absent links", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-invocation-workspace-"));
     tempDirs.push(root);

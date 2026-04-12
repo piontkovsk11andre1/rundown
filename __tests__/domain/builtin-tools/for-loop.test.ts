@@ -130,6 +130,57 @@ describe("builtin-tools/for-loop", () => {
     ]);
   });
 
+  it("deduplicates payload items while preserving first-seen order", async () => {
+    const context = createContext({
+      payload: "This, That, This, Omg, That",
+    });
+
+    const result = await forLoopHandler(context);
+
+    expect(result.childTasks).toEqual([
+      "for-item: This",
+      "for-item: That",
+      "for-item: Omg",
+    ]);
+  });
+
+  it("escapes markdown-sensitive metadata text in baked for-item lines", async () => {
+    const context = createContext({
+      payload: "use * wildcard, keep `code`, path\\to\\file, [brackets], <html>",
+    });
+
+    const result = await forLoopHandler(context);
+
+    expect(result.childTasks).toEqual([
+      "for-item: use \\* wildcard",
+      "for-item: keep \\`code\\`",
+      "for-item: path\\\\to\\\\file",
+      "for-item: \\[brackets\\]",
+      "for-item: \\<html\\>",
+    ]);
+  });
+
+  it("deduplicates existing for-item metadata values", async () => {
+    const context = createContext({
+      task: {
+        ...createContext().task,
+        subItems: [
+          { text: "for-item: Existing A", line: 2, depth: 1 },
+          { text: "for-item: Existing A", line: 3, depth: 1 },
+          { text: "for-item: Existing B", line: 4, depth: 1 },
+        ],
+      },
+      payload: "Ignored, values",
+    });
+
+    const result = await forLoopHandler(context);
+
+    expect(result.childTasks).toEqual([
+      "for-item: Existing A",
+      "for-item: Existing B",
+    ]);
+  });
+
   it("returns an error when loop task has no checkbox children", async () => {
     const context = createContext({
       task: {

@@ -1,7 +1,14 @@
 import { markChecked, markTasksChecked, resetAllCheckboxes } from "../domain/checkbox.js";
 import { computeChildIndent, insertSubitems } from "../domain/planner.js";
 import { parseTasks, type Task } from "../domain/parser.js";
-import { getForCurrentValue, getForItemValues, isForLoopTaskText } from "../domain/for-loop.js";
+import {
+  formatForLoopCurrentMetadataLine,
+  formatForLoopItemMetadataLine,
+  getForCurrentValue,
+  getForItemValues,
+  isForLoopTaskText,
+  parseForItemValue,
+} from "../domain/for-loop.js";
 import { findRemainingSiblings, findUncheckedDescendants } from "../domain/task-selection.js";
 import type { FileSystem } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
@@ -347,9 +354,9 @@ function rewriteForLoopMetadataLines(lines: string[], loopTask: Task, nextCurren
     }
 
     const childText = (bulletMatch[1] ?? "").trim();
-    const forItem = childText.match(/^for-item\s*:\s*(.*)$/i);
-    if (forItem) {
-      existingForItems.push((forItem[1] ?? "").trim());
+    const forItem = parseForItemValue(childText);
+    if (forItem !== undefined) {
+      existingForItems.push(forItem);
       metadataIndices.push(index);
       continue;
     }
@@ -367,9 +374,9 @@ function rewriteForLoopMetadataLines(lines: string[], loopTask: Task, nextCurren
     }
   }
 
-  const metadataLines = existingForItems.map((value) => `${childIndent}- for-item: ${value}`);
+  const metadataLines = existingForItems.map((value) => `${childIndent}- ${formatForLoopItemMetadataLine(value)}`);
   if (nextCurrent !== undefined) {
-    metadataLines.push(`${childIndent}- for-current: ${nextCurrent}`);
+    metadataLines.push(`${childIndent}- ${formatForLoopCurrentMetadataLine(nextCurrent)}`);
   }
 
   let insertionIndex = parentLineIndex + 1;

@@ -1,5 +1,5 @@
 import type { ToolHandlerFn } from "../ports/tool-handler-port.js";
-import { getForItemValues, getForCurrentValue } from "../for-loop.js";
+import { formatForLoopItemMetadataLine, getForCurrentValue, resolveForLoopItems } from "../for-loop.js";
 
 /**
  * Built-in for-each loop handler.
@@ -26,18 +26,10 @@ export const forLoopHandler: ToolHandlerFn = async (context) => {
     };
   }
 
-  const existingItems = getForItemValues(context.task.subItems)
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
-  const bakedItems = existingItems.length > 0
-    ? existingItems
-    : payload
-      .split(/[\r\n,]+/)
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
+  const { items: bakedItems, source: itemSource } = resolveForLoopItems(context.task.subItems, payload);
 
   if (bakedItems.length === 0) {
-    context.emit({ kind: "warn", message: "For loop resolved zero items; completing without iteration." });
+    context.emit({ kind: "warn", message: "For loop resolved zero unique items; completing without iteration." });
     return {
       skipExecution: true,
       shouldVerify: false,
@@ -45,11 +37,11 @@ export const forLoopHandler: ToolHandlerFn = async (context) => {
   }
 
   const existingCurrent = getForCurrentValue(context.task.subItems);
-  const metadataLines = bakedItems.map((item) => `for-item: ${item}`);
+  const metadataLines = bakedItems.map((item) => formatForLoopItemMetadataLine(item));
 
   context.emit({
     kind: "info",
-    message: "For loop baked " + bakedItems.length + " items: " + bakedItems.join(", "),
+    message: "For loop baked " + bakedItems.length + " unique items from " + itemSource + ": " + bakedItems.join(", "),
   });
   context.emit({ kind: "info", message: "For loop current item: " + (existingCurrent ?? bakedItems[0] ?? "") });
 

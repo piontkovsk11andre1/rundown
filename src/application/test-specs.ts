@@ -17,6 +17,7 @@ import type {
 } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
+import { resolveDesignContext } from "./design-context.js";
 
 interface TestRunResult {
   ok: boolean;
@@ -242,14 +243,13 @@ function stripBackticks(value: string): string {
 }
 
 function buildTestContext(fileSystem: FileSystem, projectRoot: string): TestContext {
-  const designPath = path.join(projectRoot, "Design.md");
   const migrationsDir = path.join(projectRoot, "migrations");
 
   const state = readMigrationState(fileSystem, migrationsDir);
   const latestSnapshot = getLatestSatellitePath(state, "snapshot");
 
   return {
-    design: fileSystem.exists(designPath) ? fileSystem.readText(designPath) : "",
+    design: resolveDesignContext(fileSystem, projectRoot).design,
     latestContext: state.latestContext ? fileSystem.readText(state.latestContext.filePath) : "",
     latestSnapshot: latestSnapshot ? fileSystem.readText(latestSnapshot) : "",
     migrationHistory: state.migrations.map((migration) => "- " + path.basename(migration.filePath)).join("\n"),

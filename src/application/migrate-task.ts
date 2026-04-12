@@ -42,6 +42,7 @@ import {
   type PredictionTrackedFileKind,
 } from "../domain/prediction-reconciliation.js";
 import { resolveWorkspaceLink } from "../domain/workspace-link.js";
+import { resolveDesignContext } from "./design-context.js";
 
 type MigrateAction =
   | "up"
@@ -964,10 +965,7 @@ function buildTemplateVars(
   const latestBacklog = state.latestBacklog;
   const latestSnapshot = getLatestSatellitePath(state, "snapshot");
 
-  const designPath = path.join(projectRoot, "Design.md");
-  const design = fileSystem.exists(designPath)
-    ? fileSystem.readText(designPath)
-    : "";
+  const design = resolveDesignContext(fileSystem, projectRoot).design;
 
   const historyLines = state.migrations.map((migration) => {
     const fileName = path.basename(migration.filePath);

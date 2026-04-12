@@ -1,5 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { serializeGlobalOutputLogEntry } from "../../src/domain/global-output-log.js";
+import {
+  sanitizeGlobalOutputLogEntry,
+  serializeGlobalOutputLogEntry,
+} from "../../src/domain/global-output-log.js";
+
+const STABLE_ENTRY_KEYS = [
+  "argv",
+  "command",
+  "cwd",
+  "kind",
+  "level",
+  "message",
+  "pid",
+  "session_id",
+  "stream",
+  "ts",
+  "version",
+] as const;
 
 describe("global output log serialization", () => {
   it("serializes a single JSON object per line", () => {
@@ -22,19 +39,7 @@ describe("global output log serialization", () => {
 
     const parsed = JSON.parse(line.trim()) as Record<string, unknown>;
     expect(parsed["message"]).toBe("hello");
-    expect(Object.keys(parsed).sort()).toEqual([
-      "argv",
-      "command",
-      "cwd",
-      "kind",
-      "level",
-      "message",
-      "pid",
-      "session_id",
-      "stream",
-      "ts",
-      "version",
-    ]);
+    expect(Object.keys(parsed).sort()).toEqual(STABLE_ENTRY_KEYS);
   });
 
   it("strips ANSI escape codes from all string fields", () => {
@@ -65,6 +70,7 @@ describe("global output log serialization", () => {
     expect(parsed["level"]).toBe("error");
     expect(parsed["stream"]).toBe("stderr");
     expect(parsed["kind"]).toBe("error");
+    expect(Object.keys(parsed).sort()).toEqual(STABLE_ENTRY_KEYS);
   });
 
   it("keeps multi-line message content escaped within one JSONL line", () => {
@@ -87,5 +93,39 @@ describe("global output log serialization", () => {
 
     const parsed = JSON.parse(line.trim()) as Record<string, unknown>;
     expect(parsed["message"]).toBe("parent line\n  child line");
+  });
+
+  it("sanitizes all string fields at domain level", () => {
+    const ansiRed = "\u001b[31m";
+    const ansiReset = "\u001b[0m";
+
+    const sanitized = sanitizeGlobalOutputLogEntry({
+      ts: `${ansiRed}2026-03-27T00:00:00.000Z${ansiReset}`,
+      level: `${ansiRed}warn${ansiReset}` as unknown as "warn",
+      stream: `${ansiRed}stderr${ansiReset}` as unknown as "stderr",
+      kind: `${ansiRed}group-end${ansiReset}` as unknown as "group-end",
+      message: `${ansiRed}group failed${ansiReset}`,
+      command: `${ansiRed}run${ansiReset}`,
+      argv: [`${ansiRed}run${ansiReset}`, `${ansiRed}tasks.md${ansiReset}`],
+      cwd: `${ansiRed}/workspace${ansiReset}`,
+      pid: 1001,
+      version: `${ansiRed}1.0.0${ansiReset}`,
+      session_id: `${ansiRed}session-4${ansiReset}`,
+    });
+
+    expect(sanitized).toEqual({
+      ts: "2026-03-27T00:00:00.000Z",
+      level: "warn",
+      stream: "stderr",
+      kind: "group-end",
+      message: "group failed",
+      command: "run",
+      argv: ["run", "tasks.md"],
+      cwd: "/workspace",
+      pid: 1001,
+      version: "1.0.0",
+      session_id: "session-4",
+    });
+    expect(Object.keys(sanitized).sort()).toEqual(STABLE_ENTRY_KEYS);
   });
 });

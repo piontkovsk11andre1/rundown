@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { createNodeFileSystem } from "../infrastructure/adapters/fs-file-system.js";
 import { createGlobalOutputLogWriter } from "../infrastructure/adapters/global-output-log-writer.js";
-import { globalOutputLogFilePath } from "../infrastructure/runtime-artifacts.js";
+import { GLOBAL_OUTPUT_LOG_RELATIVE_PATH } from "../infrastructure/runtime-artifacts.js";
 import { CONFIG_DIR_NAME } from "../domain/ports/config-dir-port.js";
 import type { ApplicationOutputEvent } from "../domain/ports/output-port.js";
 import { withLoggedOutputContext, type LoggedOutputContext } from "./logged-output-port.js";
@@ -56,7 +56,7 @@ export function createCliInvocationLogState(
   return {
     // Persist logs in the global output file under the invocation config directory.
     writer: createGlobalOutputLogWriter(
-      globalOutputLogFilePath(resolvedConfigDir),
+      path.join(resolvedConfigDir, GLOBAL_OUTPUT_LOG_RELATIVE_PATH),
       createNodeFileSystem(),
     ),
     context,

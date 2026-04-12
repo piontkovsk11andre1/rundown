@@ -9144,6 +9144,64 @@ describe.sequential("CLI integration", () => {
     expect(lifecycle.filter((line) => line === "Do that|Beta").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("run trusts manual for-item metadata and preserves stale for-current during single-pass execution", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "for-loop-manual-metadata-worker.cjs");
+    const lifecycleLogPath = path.join(workspace, "for-loop-manual-metadata.log");
+
+    fs.writeFileSync(roadmapPath, [
+      "- [ ] for: Payload Alpha, Payload Beta",
+      "  - for-item: Manual One",
+      "  - for-item: Manual Two",
+      "  - for-current: Missing Cursor",
+      "  - [ ] Do once",
+      "",
+    ].join("\n"), "utf-8");
+
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        "const promptPath = process.argv[process.argv.length - 1];",
+        "const prompt = fs.readFileSync(promptPath, 'utf-8');",
+        "const selectedTaskMatch = prompt.match(/## Selected task\\n\\n(.+)/);",
+        "const selectedTask = selectedTaskMatch ? selectedTaskMatch[1].trim() : '';",
+        `const sourcePath = ${JSON.stringify(roadmapPath.replace(/\\/g, "/"))};`,
+        `const lifecycleLogPath = ${JSON.stringify(lifecycleLogPath.replace(/\\/g, "/"))};`,
+        "const source = fs.readFileSync(sourcePath, 'utf-8');",
+        "const currentMatch = source.match(/for-current\\s*:\\s*(.+)/i);",
+        "const current = currentMatch ? currentMatch[1].trim() : 'none';",
+        "if (selectedTask === 'Do once') {",
+        "  fs.appendFileSync(lifecycleLogPath, `${selectedTask}|${current}\\n`, 'utf-8');",
+        "}",
+        "process.exit(0);",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(fs.readFileSync(lifecycleLogPath, "utf-8").trim()).toBe("Do once|Missing Cursor");
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+      "- [ ] for: Payload Alpha, Payload Beta",
+      "  - for-item: Manual One",
+      "  - for-item: Manual Two",
+      "  - for-current: Missing Cursor",
+      "  - [x] Do once",
+      "",
+    ].join("\n"));
+  });
+
   it("run fails fast for loop parents without checkbox children, including resume-style reruns", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");
@@ -9208,6 +9266,49 @@ describe.sequential("CLI integration", () => {
       "  - for-current: Beta",
       "",
     ].join("\n"));
+  });
+
+  it("run fails fast when a loop has only metadata/plain sub-items and no checkbox children", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "for-loop-no-checkbox-children-worker.cjs");
+    const workerProbePath = path.join(workspace, "for-loop-no-checkbox-children.probe");
+
+    const source = [
+      "- [ ] for: Alpha, Beta",
+      "  - for-item: Alpha",
+      "  - for-item: Beta",
+      "  - for-current: Alpha",
+      "  - note: metadata only",
+      "",
+    ].join("\n");
+
+    fs.writeFileSync(roadmapPath, source, "utf-8");
+    fs.writeFileSync(
+      workerScriptPath,
+      [
+        "const fs = require('node:fs');",
+        `const probePath = ${JSON.stringify(workerProbePath.replace(/\\/g, "/"))};`,
+        "fs.appendFileSync(probePath, 'worker-invoked\\n', 'utf-8');",
+        "process.exit(0);",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(1);
+    expect(result.errors.some((line) => line.includes("For loop task requires nested checkbox child tasks."))).toBe(true);
+    expect(fs.existsSync(workerProbePath)).toBe(false);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe(source);
   });
 
   it("run --redo --all resets checked tasks before execution and runs all tasks", async () => {

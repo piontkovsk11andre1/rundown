@@ -284,8 +284,8 @@ program
 
 program
   .command("start")
-  .description("Scaffold a new prediction project directory.")
-  .argument("<description>", "Seed description for Design.md")
+  .description("Scaffold a new prediction project with a docs/current/ design workspace.")
+  .argument("<description>", "Seed description for docs/current/Design.md")
   .option("--dir <path>", "Target project directory (default: current working directory)")
   .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
   .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
@@ -303,11 +303,21 @@ program
   .allowUnknownOption(false)
   .action(withCliAction(createStartCommandAction({
     getApp,
-  })));
+  })))
+  .addHelpText(
+    "after",
+    [
+      "",
+      "Design docs workflow:",
+      "  - Active draft edits live in docs/current/ (default primary file: docs/current/Design.md)",
+      "  - Historical snapshots are stored under docs/rev.N/ as immutable revisions",
+      "  - Legacy root Design.md remains supported as a compatibility fallback",
+    ].join("\n"),
+  );
 
-program
+const migrateCommand = program
   .command("migrate")
-  .description("Generate and manage prediction migrations.")
+  .description("Generate and manage revision-aware prediction migrations.")
   .argument(
     "[action]",
     "Migration action: up | down [n] | save | snapshot | backlog | context | review | user-experience | user-session",
@@ -324,6 +334,17 @@ program
     getApp,
     getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
   })));
+
+migrateCommand.addHelpText(
+  "after",
+  [
+    "",
+    "Revision-aware behavior:",
+    "  - Reads design context from docs/current/** (with legacy root Design.md fallback)",
+    "  - `migrate save` snapshots docs/current/ to the next docs/rev.N/ directory",
+    "  - Migration generation includes revision diff context from previous revision vs current draft",
+  ].join("\n"),
+);
 
 program
   .command("test")

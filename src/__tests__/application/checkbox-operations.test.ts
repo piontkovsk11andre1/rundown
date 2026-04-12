@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { insertTraceStatisticsUsingFileSystem } from "../../application/checkbox-operations.ts";
+import {
+  advanceForLoopUsingFileSystem,
+  insertTraceStatisticsUsingFileSystem,
+} from "../../application/checkbox-operations.ts";
+import { parseTasks } from "../../domain/parser.ts";
 import type { Task } from "../../domain/parser.ts";
 import type { FileSystem } from "../../domain/ports/file-system.ts";
 
@@ -142,6 +146,81 @@ describe("insertTraceStatisticsUsingFileSystem", () => {
       "- [x] Parent task",
       "  - total time: 3s",
       "    - execution: 2s",
+      "- [ ] Next task",
+    ].join("\n"));
+  });
+});
+
+describe("advanceForLoopUsingFileSystem", () => {
+  function resolveLoopTask(fileSystem: InMemoryFileSystem, file: string): Task {
+    const tasks = parseTasks(fileSystem.readText(file), file);
+    const loopTask = tasks.find((task) => task.text.toLowerCase().startsWith("for:"));
+    if (!loopTask) {
+      throw new Error("Loop task not found in test source.");
+    }
+
+    return loopTask;
+  }
+
+  it("resets children before setting initial for-current cursor", () => {
+    const file = "task.md";
+    const source = [
+      "- [ ] for: All controllers",
+      "  - for-item: This",
+      "  - for-item: That",
+      "  - [x] Do this",
+      "  - [x] Do that",
+      "- [ ] Next task",
+    ].join("\n");
+    const fileSystem = new InMemoryFileSystem({ [file]: source });
+
+    const transition = advanceForLoopUsingFileSystem(resolveLoopTask(fileSystem, file), fileSystem);
+
+    expect(transition).toEqual({
+      advanced: true,
+      completed: false,
+      current: "This",
+      remainingItems: 1,
+    });
+    expect(fileSystem.readText(file)).toBe([
+      "- [ ] for: All controllers",
+      "  - for-item: This",
+      "  - for-item: That",
+      "  - for-current: This",
+      "  - [ ] Do this",
+      "  - [ ] Do that",
+      "- [ ] Next task",
+    ].join("\n"));
+  });
+
+  it("advances to next item by atomically resetting children and updating for-current", () => {
+    const file = "task.md";
+    const source = [
+      "- [ ] for: All controllers",
+      "  - for-item: This",
+      "  - for-item: That",
+      "  - for-current: This",
+      "  - [x] Do this",
+      "  - [x] Do that",
+      "- [ ] Next task",
+    ].join("\n");
+    const fileSystem = new InMemoryFileSystem({ [file]: source });
+
+    const transition = advanceForLoopUsingFileSystem(resolveLoopTask(fileSystem, file), fileSystem);
+
+    expect(transition).toEqual({
+      advanced: true,
+      completed: false,
+      current: "That",
+      remainingItems: 0,
+    });
+    expect(fileSystem.readText(file)).toBe([
+      "- [ ] for: All controllers",
+      "  - for-item: This",
+      "  - for-item: That",
+      "  - for-current: That",
+      "  - [ ] Do this",
+      "  - [ ] Do that",
       "- [ ] Next task",
     ].join("\n"));
   });

@@ -459,8 +459,18 @@ export function advanceForLoopUsingFileSystem(
     const nextIndex = currentIndex + 1;
 
     if (currentValue === undefined && nextIndex < itemValues.length) {
+      const sourceAfterReset = resetForLoopChildTasks(source, latestLoopTask, loopTask.file);
+      source = sourceAfterReset;
+
+      const tasksAfterReset = parseTasks(source, loopTask.file);
+      const latestLoopAfterReset = findTaskByIdentity(tasksAfterReset, latestLoopTask)
+        ?? findTaskByIdentity(tasksAfterReset, loopTask);
+      if (!latestLoopAfterReset) {
+        return;
+      }
+
       const initialCurrent = itemValues[nextIndex]!;
-      const updatedSource = setForCurrentMetadata(source, latestLoopTask, initialCurrent);
+      const updatedSource = setForCurrentMetadata(source, latestLoopAfterReset, initialCurrent);
       if (updatedSource !== source) {
         fileSystem.writeText(loopTask.file, updatedSource);
       }

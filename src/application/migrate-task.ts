@@ -12,6 +12,7 @@ import {
   parseMigrationFilename,
 } from "../domain/migration-parser.js";
 import type { SatelliteType } from "../domain/migration-types.js";
+import { parseTasks } from "../domain/parser.js";
 import type {
   ArtifactStore,
   FileSystem,
@@ -29,6 +30,17 @@ import {
   EXIT_CODE_FAILURE,
   EXIT_CODE_SUCCESS,
 } from "../domain/exit-codes.js";
+import {
+  createPredictionBaseline,
+  createPredictionReconciliationEntryPoint,
+  detectStalePendingPredictions,
+  reResolvePendingPredictionSequence,
+  reconcilePendingPredictedItemsAtomically,
+  type PredictionBaseline,
+  type PredictionInputs,
+  type PredictionTrackedFile,
+  type PredictionTrackedFileKind,
+} from "../domain/prediction-reconciliation.js";
 
 type MigrateAction =
   | "up"
@@ -149,7 +161,15 @@ export function createMigrateTask(
         throw new Error("migrate up requires runTask dependency.");
       }
 
-      return dependencies.runTask({
+      await reconcilePendingMigrationPredictions({
+        dependencies,
+        migrationsDir,
+        workerPattern: resolvedWorker.workerPattern,
+        artifactContext: undefined,
+        showAgentOutput: Boolean(options.showAgentOutput),
+      });
+
+      const runExitCode = await dependencies.runTask({
         source: migrationsDir,
         mode: "wait",
         workerPattern: resolvedWorker.workerPattern,
@@ -179,6 +199,9 @@ export function createMigrateTask(
         ignoreCliBlock: false,
         verbose: false,
       });
+
+      persistPredictionBaselineSnapshot(dependencies.fileSystem, migrationsDir);
+      return runExitCode;
     }
 
     if (action === "down") {
@@ -312,6 +335,235 @@ export function createMigrateTask(
       return EXIT_CODE_FAILURE;
     }
   };
+}
+
+function persistPredictionBaselineSnapshot(fileSystem: FileSystem, migrationsDir: string): void {
+  const predictionInputs = readPredictionInputs(fileSystem, migrationsDir);
+  const baseline = createPredictionBaseline(predictionInputs);
+  savePredictionBaseline(fileSystem, migrationsDir, baseline);
+}
+
+async function reconcilePendingMigrationPredictions(input: {
+  dependencies: MigrateTaskDependencies;
+  migrationsDir: string;
+  workerPattern: ParsedWorkerPattern;
+  artifactContext: ReturnType<ArtifactStore["createContext"]> | undefined;
+  showAgentOutput: boolean;
+}): Promise<void> {
+  const { dependencies, migrationsDir, workerPattern, artifactContext, showAgentOutput } = input;
+  const emit = dependencies.output.emit.bind(dependencies.output);
+  const predictionInputs = readPredictionInputs(dependencies.fileSystem, migrationsDir);
+  const baseline = loadPredictionBaseline(dependencies.fileSystem, migrationsDir);
+
+  if (!baseline) {
+    savePredictionBaseline(dependencies.fileSystem, migrationsDir, createPredictionBaseline(predictionInputs));
+    return;
+  }
+
+  const staleness = detectStalePendingPredictions({
+    baseline,
+    current: predictionInputs,
+  });
+
+  if (!staleness.isStale) {
+    savePredictionBaseline(dependencies.fileSystem, migrationsDir, createPredictionBaseline(predictionInputs));
+    return;
+  }
+
+  const entryPoint = createPredictionReconciliationEntryPoint({
+    baseline,
+    current: predictionInputs,
+    staleness,
+  });
+
+  try {
+    const plan = await reResolvePendingPredictionSequence({
+      entryPoint,
+      current: predictionInputs,
+      invokeWorker: async (prompt: string) => {
+        const workerResult = await dependencies.workerExecutor.runWorker({
+          workerPattern,
+          prompt,
+          mode: "wait",
+          cwd: process.cwd(),
+          artifactContext,
+          artifactPhase: "worker",
+          artifactPhaseLabel: "migrate-up-reconciliation",
+        });
+
+        if (showAgentOutput && workerResult.stderr.length > 0) {
+          emit({ kind: "stderr", text: workerResult.stderr });
+        }
+
+        if ((workerResult.exitCode ?? 1) !== 0) {
+          throw new Error("Worker failed during migrate prediction reconciliation.");
+        }
+
+        return workerResult.stdout;
+      },
+    });
+
+    if (plan.fallback) {
+      emit({
+        kind: "warn",
+        message:
+          "Prediction reconciliation fallback ("
+          + plan.fallback.reason
+          + "): "
+          + plan.fallback.message,
+      });
+      savePredictionBaseline(dependencies.fileSystem, migrationsDir, createPredictionBaseline(predictionInputs));
+      return;
+    }
+
+    const reconciled = reconcilePendingPredictedItemsAtomically({
+      current: predictionInputs,
+      plan,
+    });
+    applyPendingPredictionPatch(
+      dependencies.fileSystem,
+      path.dirname(migrationsDir),
+      reconciled.patch.removeRelativePaths,
+      reconciled.patch.writeFiles,
+    );
+    persistPredictionBaselineSnapshot(dependencies.fileSystem, migrationsDir);
+  } catch (error) {
+    emit({
+      kind: "warn",
+      message:
+        "Prediction reconciliation skipped due to error: "
+        + (error instanceof Error ? error.message : String(error)),
+    });
+    savePredictionBaseline(dependencies.fileSystem, migrationsDir, createPredictionBaseline(predictionInputs));
+  }
+}
+
+function applyPendingPredictionPatch(
+  fileSystem: FileSystem,
+  projectRoot: string,
+  removeRelativePaths: readonly string[],
+  writeFiles: readonly PredictionTrackedFile[],
+): void {
+  for (const relativePath of removeRelativePaths) {
+    const absolutePath = path.resolve(projectRoot, relativePath);
+    if (fileSystem.exists(absolutePath)) {
+      fileSystem.unlink(absolutePath);
+    }
+  }
+
+  for (const file of writeFiles) {
+    const absolutePath = path.resolve(projectRoot, file.relativePath);
+    const directoryPath = path.dirname(absolutePath);
+    if (!fileSystem.exists(directoryPath)) {
+      fileSystem.mkdir(directoryPath, { recursive: true });
+    }
+    fileSystem.writeText(absolutePath, file.content);
+  }
+}
+
+function readPredictionInputs(fileSystem: FileSystem, migrationsDir: string): PredictionInputs {
+  const migrationFiles = fileSystem.readdir(migrationsDir)
+    .filter((entry) => entry.isFile)
+    .map((entry) => path.join(migrationsDir, entry.name))
+    .filter((filePath) => parseMigrationFilename(path.basename(filePath)) !== null);
+  const state = parseMigrationDirectory(migrationFiles, migrationsDir);
+  const projectRoot = path.dirname(migrationsDir);
+
+  const migrations = state.migrations.map((migration) => {
+    const source = fileSystem.readText(migration.filePath);
+    const tasks = parseTasks(source, migration.filePath);
+    const hasTasks = tasks.length > 0;
+
+    return {
+      number: migration.number,
+      name: migration.name,
+      isApplied: hasTasks && tasks.every((task) => task.checked),
+    };
+  });
+
+  const files: PredictionTrackedFile[] = [];
+  for (const migration of state.migrations) {
+    const migrationSource = fileSystem.readText(migration.filePath);
+    files.push({
+      relativePath: toProjectRelativePath(projectRoot, migration.filePath),
+      migrationNumber: migration.number,
+      kind: "migration",
+      content: migrationSource,
+    });
+
+    for (const satellite of migration.satellites) {
+      const kind = toPredictionTrackedFileKind(satellite.type);
+      if (!kind) {
+        continue;
+      }
+
+      files.push({
+        relativePath: toProjectRelativePath(projectRoot, satellite.filePath),
+        migrationNumber: migration.number,
+        kind,
+        content: fileSystem.readText(satellite.filePath),
+      });
+    }
+  }
+
+  return {
+    migrations,
+    files,
+  };
+}
+
+function toPredictionTrackedFileKind(type: SatelliteType): PredictionTrackedFileKind | null {
+  if (type === "context") {
+    return "context";
+  }
+  if (type === "snapshot") {
+    return "snapshot";
+  }
+  if (type === "backlog") {
+    return "backlog";
+  }
+  if (type === "review") {
+    return "review";
+  }
+  if (type === "user-experience") {
+    return "user-experience";
+  }
+  return null;
+}
+
+function toProjectRelativePath(projectRoot: string, absolutePath: string): string {
+  return path.relative(projectRoot, absolutePath).replace(/\\/g, "/");
+}
+
+function getPredictionBaselinePath(migrationsDir: string): string {
+  return path.join(migrationsDir, ".rundown", "prediction-baseline.json");
+}
+
+function loadPredictionBaseline(fileSystem: FileSystem, migrationsDir: string): PredictionBaseline | null {
+  const baselinePath = getPredictionBaselinePath(migrationsDir);
+  if (!fileSystem.exists(baselinePath)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(fileSystem.readText(baselinePath)) as PredictionBaseline;
+    if (!Array.isArray(parsed.pendingPredictionMigrationNumbers) || !Array.isArray(parsed.fileFingerprints)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function savePredictionBaseline(fileSystem: FileSystem, migrationsDir: string, baseline: PredictionBaseline): void {
+  const baselinePath = getPredictionBaselinePath(migrationsDir);
+  const baselineDir = path.dirname(baselinePath);
+  if (!fileSystem.exists(baselineDir)) {
+    fileSystem.mkdir(baselineDir, { recursive: true });
+  }
+
+  fileSystem.writeText(baselinePath, JSON.stringify(baseline, null, 2) + "\n");
 }
 
 async function runUserSession(input: {

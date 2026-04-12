@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createPredictionBaseline, type PredictionInputs } from "../../src/domain/prediction-reconciliation.js";
 
 const tempDirs: string[] = [];
 
@@ -81,6 +82,81 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(result.code).toBe(0);
     expect(fs.existsSync(path.join(workspace, "migrations", "0002-first-ranked-proposal.md"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, "migrations", "0002-second-ranked-proposal.md"))).toBe(false);
+  });
+
+  it("reconciles pending predictions before migrate up after a manual mid-run TODO change", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictionProjectForReconciliation(workspace);
+
+    writePredictionBaselineSnapshot(workspace, {
+      migrations: [
+        { number: 1, name: "initialize", isApplied: true },
+        { number: 2, name: "feature-a", isApplied: false },
+        { number: 3, name: "feature-b", isApplied: false },
+      ],
+      files: [
+        {
+          relativePath: "migrations/0001-initialize.md",
+          migrationNumber: 1,
+          kind: "migration",
+          content: "# 0001 initialize\n\n- [x] bootstrap\n",
+        },
+        {
+          relativePath: "migrations/0002-feature-a.md",
+          migrationNumber: 2,
+          kind: "migration",
+          content: "# 0002 feature-a\n\n- [ ] implement feature a\n",
+        },
+        {
+          relativePath: "migrations/0002--snapshot.md",
+          migrationNumber: 2,
+          kind: "snapshot",
+          content: "# Snapshot 0002 old\n",
+        },
+        {
+          relativePath: "migrations/0003-feature-b.md",
+          migrationNumber: 3,
+          kind: "migration",
+          content: "# 0003 feature-b\n\n- [ ] implement feature b\n",
+        },
+        {
+          relativePath: "migrations/0003--snapshot.md",
+          migrationNumber: 3,
+          kind: "snapshot",
+          content: "# Snapshot 0003 old\n",
+        },
+      ],
+    });
+
+    fs.writeFileSync(
+      path.join(workspace, "migrations", "0001-initialize.md"),
+      "# 0001 initialize\n\n- [x] bootstrap\n- [x] hotfix added mid-run\n",
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "migrate",
+      "up",
+      "--dir",
+      "migrations",
+      "--",
+      "node",
+      "-e",
+      buildMigrateUpReconciliationWorkerScript(),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+
+    expect(fs.existsSync(path.join(workspace, "migrations", "0002-feature-a.md"))).toBe(false);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0003-feature-b.md"))).toBe(false);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0002-feature-a-reconciled.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0003-feature-b-reconciled.md"))).toBe(true);
+    expect(fs.readFileSync(path.join(workspace, "migrations", "0001-initialize.md"), "utf-8")).toContain("hotfix added mid-run");
+
+    const markerPath = path.join(workspace, ".migrate-up-reconcile.seq");
+    expect(fs.existsSync(markerPath)).toBe(true);
+    const marker = Number.parseInt(fs.readFileSync(markerPath, "utf-8"), 10);
+    expect(marker).toBeGreaterThanOrEqual(3);
   });
 });
 
@@ -216,6 +292,27 @@ function scaffoldPredictionProjectWithSatelliteTemplates(workspace: string): voi
   fs.writeFileSync(path.join(workspace, ".rundown", "migrate-ux.md"), "{{latestMigration}}\n", "utf-8");
 }
 
+function scaffoldPredictionProjectForReconciliation(workspace: string): void {
+  fs.writeFileSync(path.join(workspace, "Design.md"), "# Design\n\nReconciliation test project.\n", "utf-8");
+  fs.mkdirSync(path.join(workspace, "migrations"), { recursive: true });
+  fs.writeFileSync(path.join(workspace, "migrations", "0001-initialize.md"), "# 0001 initialize\n\n- [x] bootstrap\n", "utf-8");
+  fs.writeFileSync(path.join(workspace, "migrations", "0001--context.md"), "# Context 0001\n", "utf-8");
+  fs.writeFileSync(path.join(workspace, "migrations", "0001--backlog.md"), "# Backlog 0001\n", "utf-8");
+  fs.writeFileSync(path.join(workspace, "migrations", "0001--snapshot.md"), "# Snapshot 0001\n", "utf-8");
+  fs.writeFileSync(path.join(workspace, "migrations", "0002-feature-a.md"), "# 0002 feature-a\n\n- [ ] implement feature a\n", "utf-8");
+  fs.writeFileSync(path.join(workspace, "migrations", "0002--snapshot.md"), "# Snapshot 0002 old\n", "utf-8");
+  fs.writeFileSync(path.join(workspace, "migrations", "0003-feature-b.md"), "# 0003 feature-b\n\n- [ ] implement feature b\n", "utf-8");
+  fs.writeFileSync(path.join(workspace, "migrations", "0003--snapshot.md"), "# Snapshot 0003 old\n", "utf-8");
+  fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+}
+
+function writePredictionBaselineSnapshot(workspace: string, inputs: PredictionInputs): void {
+  const baseline = createPredictionBaseline(inputs);
+  const baselineDir = path.join(workspace, "migrations", ".rundown");
+  fs.mkdirSync(baselineDir, { recursive: true });
+  fs.writeFileSync(path.join(baselineDir, "prediction-baseline.json"), JSON.stringify(baseline, null, 2) + "\n", "utf-8");
+}
+
 function buildSequencedWorkerScript(action: string): string {
   return [
     "const fs=require('node:fs');",
@@ -259,6 +356,34 @@ function buildUserSessionBacklogWorkerScript(): string {
     "console.log('# Backlog');",
     "console.log('');",
     "console.log('session-backlog-3');",
+    "process.exit(0);",
+  ].join("\n");
+}
+
+function buildMigrateUpReconciliationWorkerScript(): string {
+  return [
+    "const fs=require('node:fs');",
+    "const path=require('node:path');",
+    "const markerPath=path.join(process.cwd(),'.migrate-up-reconcile.seq');",
+    "let sequence=1;",
+    "if(fs.existsSync(markerPath)){",
+    "  sequence=Number.parseInt(fs.readFileSync(markerPath,'utf-8'),10)+1;",
+    "}",
+    "fs.writeFileSync(markerPath,String(sequence));",
+    "const promptPath=process.argv[process.argv.length-1];",
+    "const prompt=fs.existsSync(promptPath)?fs.readFileSync(promptPath,'utf-8'):'';",
+    "if(prompt.includes('Re-resolve the remaining pending migration prediction sequence.')){",
+    "  console.log(JSON.stringify({migrations:[",
+    "    {number:2,name:'feature-a-reconciled',migration:'# 0002 feature-a-reconciled\\n\\n- [ ] implement feature a reconciled\\n',snapshot:'# Snapshot 0002 reconciled\\n'},",
+    "    {number:3,name:'feature-b-reconciled',migration:'# 0003 feature-b-reconciled\\n\\n- [ ] implement feature b reconciled\\n',snapshot:'# Snapshot 0003 reconciled\\n'}",
+    "  ]}));",
+    "  process.exit(0);",
+    "}",
+    "if(prompt.includes('Verify whether the selected task is complete.')){",
+    "  console.log('OK');",
+    "  process.exit(0);",
+    "}",
+    "console.log('applied');",
     "process.exit(0);",
   ].join("\n");
 }

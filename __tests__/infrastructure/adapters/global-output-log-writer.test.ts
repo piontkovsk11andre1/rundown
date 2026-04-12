@@ -14,6 +14,50 @@ afterEach(() => {
   }
 });
 
+function createTestFileSystem(overrides: Partial<FileSystem> = {}): FileSystem {
+  return {
+    exists(fileOrDirPath) {
+      return fs.existsSync(fileOrDirPath);
+    },
+    readText(fileOrDirPath) {
+      return fs.readFileSync(fileOrDirPath, "utf-8");
+    },
+    writeText(fileOrDirPath, content) {
+      fs.writeFileSync(fileOrDirPath, content, "utf-8");
+    },
+    mkdir(dirPath, options) {
+      fs.mkdirSync(dirPath, options);
+    },
+    readdir(dirPath) {
+      return fs.readdirSync(dirPath, { withFileTypes: true }).map((entry) => ({
+        name: entry.name,
+        isFile: entry.isFile(),
+        isDirectory: entry.isDirectory(),
+      }));
+    },
+    stat(fileOrDirPath) {
+      try {
+        const stats = fs.statSync(fileOrDirPath);
+        return {
+          isFile: stats.isFile(),
+          isDirectory: stats.isDirectory(),
+          birthtimeMs: stats.birthtimeMs,
+          mtimeMs: stats.mtimeMs,
+        };
+      } catch {
+        return null;
+      }
+    },
+    unlink(fileOrDirPath) {
+      fs.unlinkSync(fileOrDirPath);
+    },
+    rm(fileOrDirPath, options) {
+      fs.rmSync(fileOrDirPath, options);
+    },
+    ...overrides,
+  };
+}
+
 describe("createGlobalOutputLogWriter", () => {
   it("creates the parent directory before the first append", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-global-output-"));
@@ -23,47 +67,12 @@ describe("createGlobalOutputLogWriter", () => {
     const parentDirectory = path.dirname(filePath);
     const mkdirCalls: string[] = [];
 
-    const fileSystem: FileSystem = {
-      exists(fileOrDirPath) {
-        return fs.existsSync(fileOrDirPath);
-      },
-      readText(fileOrDirPath) {
-        return fs.readFileSync(fileOrDirPath, "utf-8");
-      },
-      writeText(fileOrDirPath, content) {
-        fs.writeFileSync(fileOrDirPath, content, "utf-8");
-      },
+    const fileSystem = createTestFileSystem({
       mkdir(dirPath, options) {
         mkdirCalls.push(dirPath);
         fs.mkdirSync(dirPath, options);
       },
-      readdir(dirPath) {
-        return fs.readdirSync(dirPath, { withFileTypes: true }).map((entry) => ({
-          name: entry.name,
-          isFile: entry.isFile(),
-          isDirectory: entry.isDirectory(),
-        }));
-      },
-      stat(fileOrDirPath) {
-        try {
-          const stats = fs.statSync(fileOrDirPath);
-          return {
-            isFile: stats.isFile(),
-            isDirectory: stats.isDirectory(),
-            birthtimeMs: stats.birthtimeMs,
-            mtimeMs: stats.mtimeMs,
-          };
-        } catch {
-          return null;
-        }
-      },
-      unlink(fileOrDirPath) {
-        fs.unlinkSync(fileOrDirPath);
-      },
-      rm(fileOrDirPath, options) {
-        fs.rmSync(fileOrDirPath, options);
-      },
-    };
+    });
 
     const writer = createGlobalOutputLogWriter(filePath, fileSystem);
 
@@ -109,6 +118,58 @@ describe("createGlobalOutputLogWriter", () => {
     expect(lines.map((line) => line.message)).toEqual(["first", "second"]);
   });
 
+  it("appends without truncating existing content across repeated writes", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-global-output-"));
+    tempDirs.push(root);
+
+    const filePath = path.join(root, ".rundown", "logs", "output.jsonl");
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(
+      filePath,
+      '{"message":"existing"}\n',
+      "utf-8",
+    );
+
+    const writer = createGlobalOutputLogWriter(filePath, createTestFileSystem());
+
+    writer.write({
+      ts: "2026-03-27T00:00:00.000Z",
+      level: "info",
+      stream: "stdout",
+      kind: "info",
+      message: "first new",
+      command: "run",
+      argv: ["run", "TODO.md"],
+      cwd: root,
+      pid: 123,
+      version: "1.0.0",
+      session_id: "session-1",
+    });
+
+    writer.write({
+      ts: "2026-03-27T00:00:01.000Z",
+      level: "warn",
+      stream: "stderr",
+      kind: "warn",
+      message: "second new",
+      command: "run",
+      argv: ["run", "TODO.md"],
+      cwd: root,
+      pid: 124,
+      version: "1.0.0",
+      session_id: "session-1",
+    });
+
+    const messages = fs
+      .readFileSync(filePath, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { message: string })
+      .map((line) => line.message);
+
+    expect(messages).toEqual(["existing", "first new", "second new"]);
+  });
+
   it("is best-effort when append fails", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-global-output-"));
     tempDirs.push(root);
@@ -118,46 +179,7 @@ describe("createGlobalOutputLogWriter", () => {
       throw new Error("disk full");
     });
 
-    const fileSystem: FileSystem = {
-      exists(fileOrDirPath) {
-        return fs.existsSync(fileOrDirPath);
-      },
-      readText(fileOrDirPath) {
-        return fs.readFileSync(fileOrDirPath, "utf-8");
-      },
-      writeText(fileOrDirPath, content) {
-        fs.writeFileSync(fileOrDirPath, content, "utf-8");
-      },
-      mkdir(dirPath, options) {
-        fs.mkdirSync(dirPath, options);
-      },
-      readdir(dirPath) {
-        return fs.readdirSync(dirPath, { withFileTypes: true }).map((entry) => ({
-          name: entry.name,
-          isFile: entry.isFile(),
-          isDirectory: entry.isDirectory(),
-        }));
-      },
-      stat(fileOrDirPath) {
-        try {
-          const stats = fs.statSync(fileOrDirPath);
-          return {
-            isFile: stats.isFile(),
-            isDirectory: stats.isDirectory(),
-            birthtimeMs: stats.birthtimeMs,
-            mtimeMs: stats.mtimeMs,
-          };
-        } catch {
-          return null;
-        }
-      },
-      unlink(fileOrDirPath) {
-        fs.unlinkSync(fileOrDirPath);
-      },
-      rm(fileOrDirPath, options) {
-        fs.rmSync(fileOrDirPath, options);
-      },
-    };
+    const fileSystem = createTestFileSystem();
 
     const writer = createGlobalOutputLogWriter(filePath, fileSystem);
 
@@ -188,46 +210,14 @@ describe("createGlobalOutputLogWriter", () => {
 
     const filePath = path.join(root, ".rundown", "logs", "output.jsonl");
 
-    const fileSystem: FileSystem = {
+    const fileSystem = createTestFileSystem({
       exists() {
         return false;
-      },
-      readText(fileOrDirPath) {
-        return fs.readFileSync(fileOrDirPath, "utf-8");
-      },
-      writeText(fileOrDirPath, content) {
-        fs.writeFileSync(fileOrDirPath, content, "utf-8");
       },
       mkdir() {
         throw new Error("permission denied");
       },
-      readdir(dirPath) {
-        return fs.readdirSync(dirPath, { withFileTypes: true }).map((entry) => ({
-          name: entry.name,
-          isFile: entry.isFile(),
-          isDirectory: entry.isDirectory(),
-        }));
-      },
-      stat(fileOrDirPath) {
-        try {
-          const stats = fs.statSync(fileOrDirPath);
-          return {
-            isFile: stats.isFile(),
-            isDirectory: stats.isDirectory(),
-            birthtimeMs: stats.birthtimeMs,
-            mtimeMs: stats.mtimeMs,
-          };
-        } catch {
-          return null;
-        }
-      },
-      unlink(fileOrDirPath) {
-        fs.unlinkSync(fileOrDirPath);
-      },
-      rm(fileOrDirPath, options) {
-        fs.rmSync(fileOrDirPath, options);
-      },
-    };
+    });
 
     const writer = createGlobalOutputLogWriter(filePath, fileSystem);
 

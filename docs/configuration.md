@@ -8,7 +8,7 @@ This lets you:
 - set per-command worker overrides (`run`, `plan`, `discuss`, `help`, `research`, `reverify`, `verify`, `memory`, `tools.<toolName>`),
 - define named profiles (for model or other worker args),
 - configure inline task trace statistics written under completed TODOs,
-- apply profiles from file frontmatter, directive parent list items, or `profile:` prefix modifiers,
+- apply profiles from file frontmatter, directive parent list items, or `profile=` prefix modifiers,
 - override everything from the CLI when needed.
 
 ## Config file
@@ -172,8 +172,8 @@ Worker resolution applies this precedence (lowest to highest):
 1. `config.defaults`
 2. `config.commands.<command>`
 3. file frontmatter `profile: <name>`
-4. directive parent `profile: <name>`
-5. prefix modifier `profile: <name>`
+4. directive parent `profile=<name>`
+5. prefix modifier `profile=<name>`
 6. CLI `--worker` / `-- <command>`
 
 Notes:
@@ -216,7 +216,7 @@ A plain (non-checkbox) list item can provide context to child checkbox tasks.
 
 Supported directive parents:
 
-- `profile: <name>`: children inherit that profile.
+- `profile=<name>`: children inherit that profile.
 - `verify:` / `confirm:` / `check:`: children are treated as verify-only tasks.
 - `fast:` / `raw:`: children execute with verification suppressed.
 - `cli-args: <args>`: appends `<args>` to each child `cli:` checkbox task command.
@@ -224,7 +224,7 @@ Supported directive parents:
 Example:
 
 ```markdown
-- profile: fast
+- profile=fast
   - [ ] Quick task A
   - [ ] Quick task B
 
@@ -263,8 +263,8 @@ General form:
 Prefix chains compose modifiers and a terminal handler:
 
 ```markdown
-- [ ] profile: fast, verify: release checks pass
-- [ ] profile: complex; memory: capture migration constraints
+- [ ] profile=fast, verify: release checks pass
+- [ ] profile=complex; memory: capture migration constraints
 ```
 
 Composition rules:
@@ -272,7 +272,7 @@ Composition rules:
 - segments split on `, ` or `; ` only when the next segment starts with a known tool prefix,
 - modifier tools apply left-to-right and patch context,
 - handler tools are terminal and execute the task behavior,
-- when a chain has only modifiers (for example `profile: fast`), rundown runs default execute+verify with modified context.
+- when a chain has only modifiers (for example `profile=fast`), rundown runs default execute+verify with modified context.
 
 Built-in handler aliases:
 
@@ -287,7 +287,7 @@ All four prefixes resolve to the same handler and semantics; no alias has distin
 
 Built-in modifier:
 
-- `profile:`
+- `profile=`
 
 ## Tool templates
 
@@ -326,7 +326,7 @@ Template variables:
 Resolution and precedence:
 
 - Project `.js` tools in `toolDirs` are checked first and can override built-ins.
-- Built-in tools are checked next (`verify:`/`confirm:`/`check:`, memory aliases, fast/raw aliases, `include:`, `profile:`).
+- Built-in tools are checked next (`verify:`/`confirm:`/`check:`, memory aliases, fast/raw aliases, `include:`, `profile=`).
 - Project `.md` tools are checked after built-ins (for non-built-in tool names).
 - Unknown prefixes do not error; they fall back to normal task execution.
 - Empty payload for handler tools is invalid and fails fast.
@@ -358,22 +358,12 @@ These variables are available in all rundown shell execution contexts:
 - worker command execution,
 - lifecycle hooks.
 
-## Unsupported profile sub-item form
+## Legacy profile syntax rejection
 
-`profile: <name>` as a direct sub-item under a checkbox task is ignored.
-
-Example (ignored profile directive):
-
-```markdown
-- [ ] Parent task
-  - profile: fast
-```
-
-When this pattern is detected, rundown emits:
-
-`"profile: X" as a task sub-item is not supported — use it as a parent list item or in file frontmatter.`
+Legacy task syntax `profile: <name>` is rejected as a parse error.
 
 Use one of these supported forms instead:
 
 - file frontmatter `profile: <name>`, or
-- a plain parent list item `- profile: <name>` with child checkboxes.
+- a plain parent list item `- profile=<name>` with child checkboxes, or
+- a task prefix modifier `profile=<name>` in checkbox text.

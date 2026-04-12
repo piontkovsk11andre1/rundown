@@ -1064,7 +1064,7 @@ Use built-in prefixes when they improve execution quality for child tasks:
 
 - \`verify:\` skips execution and runs only the verification phase. Use it for child tasks that assert existing state without doing any work (e.g. "verify: all tests pass"). Do NOT use \`verify:\` for tasks that require creating, writing, or changing anything — those need execution.
 - \`fast:\` executes the task but skips the verification phase entirely. Use it for small, mechanical changes where per-task verification is wasteful.
-- \`profile: <name>\` to choose a worker profile for specific child tasks.
+- \`profile=<name>\` to choose a worker profile for specific child tasks.
 - \`memory:\` for child tasks that should capture reusable context.
 - \`include: <path>\` to delegate child subtasks to another Markdown file.
 
@@ -1081,15 +1081,15 @@ You can apply prefixes in either form:
 
 Prefix composition is supported with \`, \` or \`; \` separators when combining known prefixes, for example:
 
-- \`- [ ] profile: fast, verify: release checks pass\`
-- \`- [ ] profile: complex; memory: record migration constraints\`
+- \`- [ ] profile=fast, verify: release checks pass\`
+- \`- [ ] profile=complex; memory: record migration constraints\`
 
 Heuristics:
 
 - Use \`verify:\` only when the child task checks existing state without doing work. If the task creates, writes, or modifies anything, it is NOT a verify task.
 - Use \`fast:\` when the child task is a small mechanical edit that does not warrant its own verification pass.
 - Prefer grouping child tasks as \`fast:\` steps followed by a \`verify:\` step that validates the group. A parent task can have multiple such groups when work naturally splits into stages.
-- Use \`profile:\` when child task complexity or cost/speed trade-offs suggest a non-default worker.
+- Use \`profile=\` when child task complexity or cost/speed trade-offs suggest a non-default worker.
 - Use directive parents when multiple adjacent child tasks share the same prefix.
 - Prefer plain \`- [ ]\` child items when no special behavior is needed.
 

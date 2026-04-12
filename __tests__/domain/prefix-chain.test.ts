@@ -156,7 +156,7 @@ describe("parsePrefixChain", () => {
   });
 
   it("supports modifier chains before loop aliases and keeps canonical handler", () => {
-    const chain = parsePrefixChain("profile: fast, each: services", builtinToolResolver);
+    const chain = parsePrefixChain("profile=fast, each: services", builtinToolResolver);
 
     expect(chain.modifiers).toHaveLength(1);
     expect(chain.modifiers[0]?.tool.name).toBe("profile");
@@ -167,7 +167,7 @@ describe("parsePrefixChain", () => {
   });
 
   it.each([",", ";"])("parses profile/fast composition with %s separator and keeps loop alias canonical", (separator) => {
-    const chain = parsePrefixChain(`profile: fast${separator} foreach: services`, builtinToolResolver);
+    const chain = parsePrefixChain(`profile=fast${separator} foreach: services`, builtinToolResolver);
 
     expect(chain.modifiers).toHaveLength(1);
     expect(chain.modifiers[0]?.tool.name).toBe("profile");
@@ -178,7 +178,7 @@ describe("parsePrefixChain", () => {
   });
 
   it.each(["for", "each", "foreach"])("keeps verify as terminal handler when %s appears inside verify payload", (alias) => {
-    const chain = parsePrefixChain(`profile: fast, verify: ${alias}: services`, builtinToolResolver);
+    const chain = parsePrefixChain(`profile=fast, verify: ${alias}: services`, builtinToolResolver);
 
     expect(chain.modifiers).toHaveLength(1);
     expect(chain.modifiers[0]?.tool.name).toBe("profile");
@@ -186,5 +186,11 @@ describe("parsePrefixChain", () => {
     expect(chain.handler?.tool.name).toBe("verify");
     expect(chain.handler?.payload).toBe(`${alias}: services`);
     expect(chain.remainingText).toBe(`${alias}: services`);
+  });
+
+  it("throws for legacy profile: modifier syntax", () => {
+    expect(() => parsePrefixChain("profile: fast, verify: tests pass", builtinToolResolver)).toThrow(
+      "Invalid profile syntax: use profile=<name> (not profile: <name>).",
+    );
   });
 });

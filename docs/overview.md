@@ -248,12 +248,12 @@ All four prefixes resolve to the same control-flow handler and share identical s
 
 Built-in modifier:
 
-- `profile:`
+- `profile=`
 
 Modifier and handler composition:
 
-- `profile: fast, verify: tests pass`
-- `profile: complex; memory: capture design tradeoffs`
+- `profile=fast, verify: tests pass`
+- `profile=complex; memory: capture design tradeoffs`
 - `fast: ship release notes without verification`
 
 Intent precedence notes:

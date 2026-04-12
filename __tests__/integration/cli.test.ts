@@ -1742,7 +1742,7 @@ describe.sequential("CLI integration", () => {
     fs.writeFileSync(
       path.join(workspace, "roadmap.md"),
       [
-        "- profile: legacy",
+        "- profile=legacy",
         "  - [ ] verify: release docs are consistent",
         "",
       ].join("\n"),
@@ -1774,8 +1774,8 @@ describe.sequential("CLI integration", () => {
     fs.writeFileSync(
       path.join(workspace, "roadmap.md"),
       [
-        "- profile: legacy",
-        "  - [ ] profile: modern, verify: release docs are consistent",
+        "- profile=legacy",
+        "  - [ ] profile=modern, verify: release docs are consistent",
         "",
       ].join("\n"),
       "utf-8",
@@ -8416,7 +8416,7 @@ describe.sequential("CLI integration", () => {
     fs.writeFileSync(
       roadmapPath,
       [
-        "- [ ] profile: fast, parallel: setup release environments",
+        "- [ ] profile=fast, parallel: setup release environments",
         "  - [ ] first setup task",
         "  - [ ] second setup task",
       ].join("\n") + "\n",
@@ -8467,7 +8467,7 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("Task checked: first setup task"))).toBe(true);
     expect(result.logs.some((line) => line.includes("Task checked: second setup task"))).toBe(true);
     expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
-      "- [x] profile: fast, parallel: setup release environments",
+      "- [x] profile=fast, parallel: setup release environments",
       "  - [x] first setup task",
       "  - [x] second setup task",
       "",

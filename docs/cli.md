@@ -870,9 +870,9 @@ Worker resolution cascade (lowest to highest priority):
 - `defaults` in `.rundown/config.json`
 - `commands.<command>` in `.rundown/config.json` (`run`, `plan`, `make`, `discuss`, `research`, `reverify`, `help`)
 - Markdown frontmatter `profile: <name>`
-- Parent directive item `- profile: <name>` for child checkbox tasks
+- Parent directive item `- profile=<name>` for child checkbox tasks
 - Parent directive item `- cli-args: <args>` for child `cli:` checkbox tasks (appends `<args>` to each child inline CLI command)
-- Prefix modifier `profile: <name>` on the selected checkbox task
+- Prefix modifier `profile=<name>` on the selected checkbox task
 - CLI `--worker` or separator form `-- <command>`
 
 Profile behavior:
@@ -900,14 +900,14 @@ Built-in handler aliases:
 
 Built-in modifier:
 
-- `profile:`
+- `profile=`
 
 Composition examples:
 
 ```md
 - [ ] verify: docs are up to date
-- [ ] profile: fast, verify: tests pass
-- [ ] profile: complex; memory: capture architecture decisions
+- [ ] profile=fast, verify: tests pass
+- [ ] profile=complex; memory: capture architecture decisions
 ```
 
 Composition rules:
@@ -988,7 +988,7 @@ Execution behavior for `.md` tools:
 Resolution rules:
 
 - Project `.js` tools are resolved first and can override built-ins.
-- Built-in tools are resolved next (`verify:`/`confirm:`/`check:`, memory aliases, fast/raw aliases, end aliases, `include:`, `profile:`, `force:`).
+- Built-in tools are resolved next (`verify:`/`confirm:`/`check:`, memory aliases, fast/raw aliases, end aliases, `include:`, `profile=`, `force:`).
 - Project `.md` tools are resolved after built-ins (for non-built-in names).
 - Tool matching is case-insensitive and checks the text before the first `:`.
 - Unknown prefixes fall back to normal `execute-and-verify` behavior.

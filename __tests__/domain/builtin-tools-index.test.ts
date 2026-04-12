@@ -35,6 +35,16 @@ describe("builtin tools registry", () => {
     });
   });
 
+  it("defines get as a non-verifying handler that skips worker execution", () => {
+    const tool = resolveBuiltinTool("get");
+
+    expect(tool?.kind).toBe("handler");
+    expect(tool?.frontmatter).toEqual({
+      skipExecution: true,
+      shouldVerify: false,
+    });
+  });
+
   it("maps concurrent/par as parallel aliases", () => {
     const parallel = resolveBuiltinTool("parallel");
     const aliasNames = ["concurrent", "par"];

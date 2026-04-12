@@ -244,9 +244,9 @@ describe("parseTasks", () => {
   it("captures taskProfile for each/foreach aliases via generic prefix-task detection", () => {
     const md = [
       "- [ ] each: API endpoints",
-      "  - profile: fast",
+      "  - profile=fast",
       "- [ ] foreach: workers",
-      "  - profile: compact",
+      "  - profile=compact",
     ].join("\n");
 
     const tasks = parseTasks(md, "test.md");
@@ -519,7 +519,7 @@ describe("parseTasks", () => {
 
   it("propagates profile directive parent to child checkboxes", () => {
     const md = [
-      "- profile: fast",
+      "- profile=fast",
       "  - [ ] Quick task A",
       "  - [ ] Quick task B",
     ].join("\n");
@@ -531,9 +531,9 @@ describe("parseTasks", () => {
     expect(tasks[1]!.directiveProfile).toBe("fast");
   });
 
-  it("sets directiveProfile on children for profile: complex parent", () => {
+  it("sets directiveProfile on children for profile=complex parent", () => {
     const md = [
-      "- profile: complex",
+      "- profile=complex",
       "  - [ ] Build release notes",
       "  - [x] Verify migration guide",
     ].join("\n");
@@ -563,7 +563,7 @@ describe("parseTasks", () => {
 
   it("supports nested directives by combining inherited context", () => {
     const md = [
-      "- profile: complex",
+      "- profile=complex",
       "  - check:",
       "    - [ ] Run acceptance suite",
       "    - [ ] Confirm deployment checklist",
@@ -580,7 +580,7 @@ describe("parseTasks", () => {
 
   it("handles directive parents with no children without crashing", () => {
     const md = [
-      "- profile: complex",
+      "- profile=complex",
       "- check:",
       "- [ ] Independent task",
     ].join("\n");
@@ -591,6 +591,25 @@ describe("parseTasks", () => {
     expect(tasks[0]!.text).toBe("Independent task");
     expect(tasks[0]!.directiveProfile).toBeUndefined();
     expect(tasks[0]!.intent).toBeUndefined();
+  });
+
+  it("throws parse error for legacy profile: directive parent syntax", () => {
+    const md = [
+      "- profile: fast",
+      "  - [ ] Quick task A",
+    ].join("\n");
+
+    expect(() => parseTasks(md, "test.md")).toThrow(
+      "Invalid profile syntax at line 1: use profile=<name> (not profile: <name>).",
+    );
+  });
+
+  it("throws parse error for legacy profile: prefix syntax on checkbox tasks", () => {
+    const md = "- [ ] profile: fast, verify: tests pass";
+
+    expect(() => parseTasks(md, "test.md")).toThrow(
+      "Invalid profile syntax at line 1: use profile=<name> (not profile: <name>).",
+    );
   });
 
   it("keeps mixed children behavior under directive parent", () => {
@@ -614,7 +633,7 @@ describe("parseTasks", () => {
 
   it("supports combined directive parents for profile and verify intent", () => {
     const md = [
-      "- profile: complex",
+      "- profile=complex",
       "  - check:",
       "    - [ ] Docs are current",
     ].join("\n");
@@ -630,7 +649,7 @@ describe("parseTasks", () => {
   it("ignores profile directive when used directly under a checkbox task", () => {
     const md = [
       "- [ ] Parent task",
-      "  - profile: fast",
+      "  - profile=fast",
       "  - [ ] Child task",
     ].join("\n");
 
@@ -645,7 +664,7 @@ describe("parseTasks", () => {
   it("captures taskProfile from profile sub-item for verify prefix tasks", () => {
     const md = [
       "- [ ] verify: release checklist",
-      "  - profile: fast",
+      "  - profile=fast",
     ].join("\n");
 
     const tasks = parseTasks(md, "test.md");
@@ -658,7 +677,7 @@ describe("parseTasks", () => {
   it("captures taskProfile from profile sub-item for memory prefix tasks", () => {
     const md = [
       "- [ ] memory: capture deployment notes",
-      "  - profile: compact",
+      "  - profile=compact",
     ].join("\n");
 
     const tasks = parseTasks(md, "test.md");
@@ -671,9 +690,9 @@ describe("parseTasks", () => {
   it("captures taskProfile from profile sub-item for fast/raw prefix tasks", () => {
     const md = [
       "- [ ] fast: create release notes",
-      "  - profile: compact",
+      "  - profile=compact",
       "- [ ] raw: refresh changelog",
-      "  - profile: lightweight",
+      "  - profile=lightweight",
     ].join("\n");
 
     const tasks = parseTasks(md, "test.md");
@@ -688,9 +707,9 @@ describe("parseTasks", () => {
   it("captures taskProfile for case-insensitive fast/raw prefixes", () => {
     const md = [
       "- [ ] Fast : create release notes",
-      "  - profile: compact",
+      "  - profile=compact",
       "- [ ] rAw:\trefresh changelog",
-      "  - profile: lightweight",
+      "  - profile=lightweight",
     ].join("\n");
 
     const tasks = parseTasks(md, "test.md");
@@ -705,7 +724,7 @@ describe("parseTasks", () => {
   it("captures taskProfile from profile sub-item for tool-style prefix tasks", () => {
     const md = [
       "- [ ] post-on-gitea: release notes",
-      "  - profile: lightweight",
+      "  - profile=lightweight",
     ].join("\n");
 
     const tasks = parseTasks(md, "test.md");
@@ -909,13 +928,13 @@ describe("parseTasks", () => {
 
   it("composes cli-args with nested profile directives in both nesting orders", () => {
     const profileThenCliArgs = [
-      "- profile: fast",
+      "- profile=fast",
       "  - cli-args: --worker opencode",
       "    - [ ] cli: npm run build",
     ].join("\n");
     const cliArgsThenProfile = [
       "- cli-args: --worker opencode",
-      "  - profile: fast",
+      "  - profile=fast",
       "    - [ ] cli: npm run build",
     ].join("\n");
 
@@ -935,7 +954,7 @@ describe("parseTasks", () => {
 
   it("propagates profile and cli-args directives to sibling cli tasks", () => {
     const md = [
-      "- profile: fast",
+      "- profile=fast",
       "  - cli-args: --worker opencode",
       "    - [ ] cli: npm run build",
       "    - [ ] cli: npm test",

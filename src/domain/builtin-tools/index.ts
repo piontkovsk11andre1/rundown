@@ -6,13 +6,7 @@ import { profileHandler } from "./profile.js";
 import { forceHandler } from "./force.js";
 import { parallelHandler } from "./parallel.js";
 import { forLoopHandler } from "./for-loop.js";
-
-const getHandler: ToolDefinition["handler"] = async () => ({
-  // Keep normal worker execution enabled; `get:` currently acts as a
-  // lightweight extraction intent marker in prefix parsing/registration.
-  skipExecution: false,
-  shouldVerify: false,
-});
+import { getHandler } from "./get.js";
 
 /**
  * Static registry of built-in tool definitions.
@@ -54,7 +48,7 @@ const BUILTIN_TOOLS: Record<string, ToolDefinition> = {
     name: "get",
     kind: "handler",
     handler: getHandler,
-    frontmatter: { skipExecution: false, shouldVerify: false },
+    frontmatter: { skipExecution: true, shouldVerify: false },
   },
   parallel: {
     name: "parallel",

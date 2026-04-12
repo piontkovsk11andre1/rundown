@@ -6,6 +6,11 @@ export interface DesignContextResolution {
   sourcePaths: string[];
 }
 
+export interface DesignContextSourceReferencesResolution {
+  sourceReferences: string[];
+  hasManagedDocs: boolean;
+}
+
 export interface DesignRevisionDirectory {
   index: number;
   name: string;
@@ -78,6 +83,43 @@ export function resolveDesignContext(fileSystem: FileSystem, projectRoot: string
   return {
     design: fileSystem.readText(legacyDesignPath),
     sourcePaths: [legacyDesignPath],
+  };
+}
+
+export function resolveDesignContextSourceReferences(
+  fileSystem: FileSystem,
+  projectRoot: string,
+): DesignContextSourceReferencesResolution {
+  const docsCurrentDir = path.join(projectRoot, "docs", "current");
+  const revisions = discoverDesignRevisionDirectories(fileSystem, projectRoot);
+  const sourceReferences: string[] = [];
+
+  if (isDirectory(fileSystem, docsCurrentDir)) {
+    sourceReferences.push(docsCurrentDir);
+  }
+
+  for (const revision of revisions) {
+    sourceReferences.push(revision.absolutePath);
+  }
+
+  if (sourceReferences.length > 0) {
+    return {
+      sourceReferences,
+      hasManagedDocs: true,
+    };
+  }
+
+  const legacyDesignPath = path.join(projectRoot, "Design.md");
+  if (!isFile(fileSystem, legacyDesignPath)) {
+    return {
+      sourceReferences: [],
+      hasManagedDocs: false,
+    };
+  }
+
+  return {
+    sourceReferences: [legacyDesignPath],
+    hasManagedDocs: false,
   };
 }
 

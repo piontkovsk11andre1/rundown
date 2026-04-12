@@ -3,6 +3,7 @@ import {
   discoverDesignRevisionDirectories,
   prepareDesignRevisionDiffContext,
   parseDesignRevisionDirectoryName,
+  resolveDesignContextSourceReferences,
   saveDesignRevisionSnapshot,
 } from "../../application/design-context.ts";
 import type {
@@ -388,5 +389,62 @@ describe("prepareDesignRevisionDiffContext", () => {
     expect(diff.summary).toBe("No previous design revision found; cannot compute a revision diff yet.");
     expect(diff.sourceReferences).toEqual(["/repo/docs/current"]);
     expect(diff.changes).toEqual([]);
+  });
+});
+
+describe("resolveDesignContextSourceReferences", () => {
+  it("prefers managed docs/current and docs/rev.* directories as context roots", () => {
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        "/repo/docs": [
+          { name: "current", isDirectory: true, isFile: false },
+          { name: "rev.2", isDirectory: true, isFile: false },
+          { name: "rev.7", isDirectory: true, isFile: false },
+        ],
+        "/repo/docs/current": [{ name: "Design.md", isDirectory: false, isFile: true }],
+        "/repo/docs/rev.2": [{ name: "Design.md", isDirectory: false, isFile: true }],
+        "/repo/docs/rev.7": [{ name: "Design.md", isDirectory: false, isFile: true }],
+      },
+      files: {
+        "/repo/docs/current/Design.md": "current\n",
+        "/repo/docs/rev.2/Design.md": "two\n",
+        "/repo/docs/rev.7/Design.md": "seven\n",
+      },
+      stats: {
+        "/repo/docs": { isDirectory: true, isFile: false },
+        "/repo/docs/current": { isDirectory: true, isFile: false },
+        "/repo/docs/rev.2": { isDirectory: true, isFile: false },
+        "/repo/docs/rev.7": { isDirectory: true, isFile: false },
+      },
+    });
+
+    const resolution = resolveDesignContextSourceReferences(fileSystem, "/repo");
+
+    expect(resolution).toEqual({
+      sourceReferences: [
+        "/repo/docs/current",
+        "/repo/docs/rev.2",
+        "/repo/docs/rev.7",
+      ],
+      hasManagedDocs: true,
+    });
+  });
+
+  it("falls back to root Design.md when managed docs are unavailable", () => {
+    const fileSystem = new InMemoryFileSystem({
+      files: {
+        "/repo/Design.md": "legacy\n",
+      },
+      stats: {
+        "/repo/Design.md": { isDirectory: false, isFile: true },
+      },
+    });
+
+    const resolution = resolveDesignContextSourceReferences(fileSystem, "/repo");
+
+    expect(resolution).toEqual({
+      sourceReferences: ["/repo/Design.md"],
+      hasManagedDocs: false,
+    });
   });
 });

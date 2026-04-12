@@ -66,6 +66,9 @@ describeIfMigrateAvailable("migrate-task integration", () => {
         "SUMMARY={{revisionDiffSummary}}",
         "SOURCES={{revisionDiffSourceReferences}}",
         "SOURCES_JSON={{revisionDiffSourceReferencesJson}}",
+        "DESIGN_SOURCES={{designContextSourceReferences}}",
+        "DESIGN_SOURCES_JSON={{designContextSourceReferencesJson}}",
+        "HAS_MANAGED_DOCS={{designContextHasManagedDocs}}",
         "LEGACY_SUMMARY={{designRevisionDiffSummary}}",
       ].join("\n") + "\n",
       "utf-8",
@@ -88,6 +91,11 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(capturedPrompt).toContain("SUMMARY=Compared rev.1 -> current: 0 added 1 modified 0 removed");
     expect(capturedPrompt).toContain("SOURCES=- ");
     expect(capturedPrompt).toContain("SOURCES_JSON=[");
+    expect(capturedPrompt).toContain("DESIGN_SOURCES=- ");
+    expect(capturedPrompt).toMatch(/docs[\\/]current/);
+    expect(capturedPrompt).toMatch(/docs[\\/]rev\.1/);
+    expect(capturedPrompt).toContain("DESIGN_SOURCES_JSON=[");
+    expect(capturedPrompt).toContain("HAS_MANAGED_DOCS=true");
     expect(capturedPrompt).toContain("LEGACY_SUMMARY=Compared rev.1 -> current: 0 added 1 modified 0 removed");
     expect(fs.existsSync(path.join(workspace, "migrations", "0002-template-vars-checked.md"))).toBe(true);
   });

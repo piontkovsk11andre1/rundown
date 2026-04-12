@@ -481,6 +481,12 @@ You are planning the next migration step for a prediction-driven project.
 
 {{design}}
 
+## Design context sources
+
+- Managed docs layout detected: {{designContextHasManagedDocs}}
+
+{{designContextSourceReferences}}
+
 ## Latest context
 
 {{latestContext}}
@@ -552,6 +558,12 @@ You are updating migration context incrementally.
 
 {{design}}
 
+## Design context sources
+
+- Managed docs layout detected: {{designContextHasManagedDocs}}
+
+{{designContextSourceReferences}}
+
 ## Previous context
 
 {{latestContext}}
@@ -608,6 +620,12 @@ You are producing a migration snapshot of project state.
 
 {{design}}
 
+## Design context sources
+
+- Managed docs layout detected: {{designContextHasManagedDocs}}
+
+{{designContextSourceReferences}}
+
 ## Latest context
 
 {{latestContext}}
@@ -662,6 +680,12 @@ You are generating a backlog from migration progress.
 ## Design
 
 {{design}}
+
+## Design context sources
+
+- Managed docs layout detected: {{designContextHasManagedDocs}}
+
+{{designContextSourceReferences}}
 
 ## Latest context
 
@@ -718,6 +742,12 @@ You are reviewing migration progress against intended design.
 
 {{design}}
 
+## Design context sources
+
+- Managed docs layout detected: {{designContextHasManagedDocs}}
+
+{{designContextSourceReferences}}
+
 ## Latest context
 
 {{latestContext}}
@@ -770,6 +800,12 @@ You are evaluating user experience implications of migration progress.
 ## Design
 
 {{design}}
+
+## Design context sources
+
+- Managed docs layout detected: {{designContextHasManagedDocs}}
+
+{{designContextSourceReferences}}
 
 ## Latest context
 
@@ -1063,6 +1099,10 @@ Guidelines:
 - Expand thin descriptions into clear feature specifications.
 - Add relevant technical context: existing code patterns, module boundaries,
   API surfaces, and conventions discovered via CLI blocks or project knowledge.
+- Treat managed design docs as first-class context when present:
+  - \`docs/current/**\`
+  - \`docs/rev.*/**\`
+  Do not assume all authoritative design context lives in one root \`Design.md\`.
 - Surface design constraints, edge cases, and compatibility considerations.
 - Propose document structure: add section headings, acceptance criteria
   outlines, scope/out-of-scope boundaries, and integration notes.

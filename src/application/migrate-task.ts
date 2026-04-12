@@ -45,6 +45,7 @@ import { resolveWorkspaceLink } from "../domain/workspace-link.js";
 import {
   prepareDesignRevisionDiffContext,
   resolveDesignContext,
+  resolveDesignContextSourceReferences,
   saveDesignRevisionSnapshot,
 } from "./design-context.js";
 
@@ -1000,6 +1001,7 @@ function buildTemplateVars(
   const latestSnapshot = getLatestSatellitePath(state, "snapshot");
 
   const design = resolveDesignContext(fileSystem, projectRoot).design;
+  const designContextSources = resolveDesignContextSourceReferences(fileSystem, projectRoot);
   const revisionDiff = prepareDesignRevisionDiffContext(fileSystem, projectRoot, { target: "current" });
   const previousRevisionId = revisionDiff.fromRevision?.name ?? "";
   const currentRevisionId = revisionDiff.toTarget.name;
@@ -1007,6 +1009,7 @@ function buildTemplateVars(
     return "- " + change.kind + ": " + change.relativePath;
   }).join("\n");
   const revisionDiffSourceRefs = revisionDiff.sourceReferences.map((sourcePath) => "- " + sourcePath).join("\n");
+  const designContextSourceRefs = designContextSources.sourceReferences.map((sourcePath) => "- " + sourcePath).join("\n");
 
   const historyLines = state.migrations.map((migration) => {
     const fileName = path.basename(migration.filePath);
@@ -1026,6 +1029,9 @@ function buildTemplateVars(
     latestBacklog: latestBacklog ? fileSystem.readText(latestBacklog.filePath) : "",
     latestSnapshot: latestSnapshot ? fileSystem.readText(latestSnapshot) : "",
     migrationHistory: historyLines.join("\n"),
+    designContextSourceReferences: designContextSourceRefs,
+    designContextSourceReferencesJson: JSON.stringify(designContextSources.sourceReferences),
+    designContextHasManagedDocs: designContextSources.hasManagedDocs ? "true" : "false",
     currentRevisionId,
     previousRevisionId,
     revisionDiffSummary: revisionDiff.summary,

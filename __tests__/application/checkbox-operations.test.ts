@@ -562,6 +562,45 @@ describe("checkbox-operations", () => {
     expect(fileSystem.readText("todo.md")).toBe("- [ ] A\n- [ ] B\n");
   });
 
+  it("avoids unnecessary file rewrite for already-clean input during reset", () => {
+    const filePath = "todo.md";
+    const original = [
+      "- [ ] Plan next step",
+      "  - note: keep this user-authored context",
+      "- [ ] Implement follow-up",
+      "",
+    ].join("\n");
+    let source = original;
+    const writeText = vi.fn((path: string, content: string) => {
+      if (path !== filePath) {
+        throw new Error(`File not found: ${path}`);
+      }
+
+      source = content;
+    });
+    const fileSystem: FileSystem = {
+      exists: (path) => path === filePath,
+      readText: (path) => {
+        if (path !== filePath) {
+          throw new Error(`File not found: ${path}`);
+        }
+
+        return source;
+      },
+      writeText,
+      mkdir: () => undefined,
+      readdir: () => [],
+      stat: () => null,
+      unlink: () => undefined,
+      rm: () => undefined,
+    };
+
+    resetFileCheckboxes(filePath, fileSystem);
+
+    expect(source).toBe(original);
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
   it("reports dry-run reset count without mutating file", () => {
     const fileSystem = createFileSystem({
       "todo.md": "- [x] A\n- [x] B\n",

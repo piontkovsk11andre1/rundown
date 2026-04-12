@@ -120,6 +120,9 @@ export type { ConfigDirPort, ConfigDirResult } from "./config-dir-port.js";
 /** Worker configuration loading abstraction. */
 export type { WorkerConfigPort } from "./worker-config-port.js";
 
+/** Worker health state persistence abstraction. */
+export type { WorkerHealthSnapshot, WorkerHealthStore } from "./worker-health-store.js";
+
 /** Template variable loader abstraction for prompt rendering context. */
 export type { TemplateVarsLoaderPort } from "./template-vars-loader-port.js";
 

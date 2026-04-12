@@ -35,6 +35,10 @@ export { createFsTemplateLoader } from "./fs-template-loader.js";
  */
 export { createFsVerificationStore } from "./fs-verification-store.js";
 /**
+ * Creates the filesystem-backed worker health store adapter.
+ */
+export { createFsWorkerHealthStore } from "./fs-worker-health-store.js";
+/**
  * Creates the artifact-based verification store adapter.
  */
 export { createArtifactVerificationStore } from "./artifact-verification-store.js";

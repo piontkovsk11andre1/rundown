@@ -64,6 +64,7 @@ import type {
   TraceWriterPort,
   VerificationStore,
   WorkerConfigPort,
+  WorkerHealthStore,
   WorkerExecutorPort,
   WorkingDirectoryPort,
 } from "./domain/ports/index.js";
@@ -75,6 +76,7 @@ import {
   createArtifactVerificationStore,
   createFsArtifactStore,
   createFsFileLock,
+  createFsWorkerHealthStore,
   createFsTemplateLoader,
   createFsTemplateVarsLoaderAdapter,
   createFanoutTraceWriter,
@@ -226,6 +228,7 @@ export interface AppPorts {
   memoryWriter?: MemoryWriterPort;
   interactiveInput: InteractiveInputPort;
   workerConfigPort: WorkerConfigPort;
+  workerHealthStore: WorkerHealthStore;
   templateVarsLoader: TemplateVarsLoaderPort;
   traceWriter: TraceWriterPort;
   cliBlockExecutor: CommandExecutor;
@@ -299,6 +302,7 @@ function createAppPorts(overrides: Partial<AppPorts> = {}): AppPorts {
     memoryWriter,
     interactiveInput,
     workerConfigPort: overrides.workerConfigPort ?? createWorkerConfigAdapter(),
+    workerHealthStore: overrides.workerHealthStore ?? createFsWorkerHealthStore(),
     templateVarsLoader: overrides.templateVarsLoader ?? createFsTemplateVarsLoaderAdapter(),
     traceWriter: overrides.traceWriter ?? createNoopTraceWriter(),
     cliBlockExecutor: overrides.cliBlockExecutor ?? createCliBlockExecutor(),

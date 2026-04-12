@@ -49,6 +49,49 @@ const describeIfSaveMigrateAvailable = hasMigrateCommand
   : describe.skip;
 
 describeIfMigrateAvailable("migrate-task integration", () => {
+  it("exposes revision-aware migrate template aliases without breaking legacy fields", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictionProject(workspace);
+
+    fs.mkdirSync(path.join(workspace, "docs", "rev.1"), { recursive: true });
+    fs.mkdirSync(path.join(workspace, "docs", "current"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, "docs", "rev.1", "Design.md"), "# Design\n\nVersion one.\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "docs", "current", "Design.md"), "# Design\n\nVersion two.\n", "utf-8");
+
+    fs.writeFileSync(
+      path.join(workspace, ".rundown", "migrate.md"),
+      [
+        "CURRENT={{currentRevisionId}}",
+        "PREVIOUS={{previousRevisionId}}",
+        "SUMMARY={{revisionDiffSummary}}",
+        "SOURCES={{revisionDiffSourceReferences}}",
+        "SOURCES_JSON={{revisionDiffSourceReferencesJson}}",
+        "LEGACY_SUMMARY={{designRevisionDiffSummary}}",
+      ].join("\n") + "\n",
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "migrate",
+      "--dir",
+      "migrations",
+      "--",
+      "node",
+      "-e",
+      buildTemplateVarsAssertionWorkerScript(),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const capturedPrompt = fs.readFileSync(path.join(workspace, ".template-vars-prompt.txt"), "utf-8");
+    expect(capturedPrompt).toContain("CURRENT=current");
+    expect(capturedPrompt).toContain("PREVIOUS=rev.1");
+    expect(capturedPrompt).toContain("SUMMARY=Compared rev.1 -> current: 0 added 1 modified 0 removed");
+    expect(capturedPrompt).toContain("SOURCES=- ");
+    expect(capturedPrompt).toContain("SOURCES_JSON=[");
+    expect(capturedPrompt).toContain("LEGACY_SUMMARY=Compared rev.1 -> current: 0 added 1 modified 0 removed");
+    expect(fs.existsSync(path.join(workspace, "migrations", "0002-template-vars-checked.md"))).toBe(true);
+  });
+
   it("falls back to the first ranked proposal in non-interactive mode", async () => {
     const workspace = makeTempWorkspace();
     scaffoldPredictionProject(workspace);
@@ -517,6 +560,25 @@ function buildMigrateUpReconciliationWorkerScript(): string {
     "  process.exit(0);",
     "}",
     "console.log('applied');",
+    "process.exit(0);",
+  ].join("\n");
+}
+
+function buildTemplateVarsAssertionWorkerScript(): string {
+  return [
+    "const fs=require('node:fs');",
+    "const path=require('node:path');",
+    "const promptPath=process.argv[process.argv.length-1];",
+    "const prompt=fs.existsSync(promptPath)?fs.readFileSync(promptPath,'utf-8'):'';",
+    "const capturedPath=path.join(process.cwd(),'.template-vars-prompt.txt');",
+    "if(!fs.existsSync(capturedPath)){",
+    "  fs.writeFileSync(capturedPath,prompt,'utf-8');",
+    "}",
+    "if(prompt.includes('updating migration context incrementally')){",
+    "  console.log('# Context');",
+    "  process.exit(0);",
+    "}",
+    "console.log('1. template-vars-checked');",
     "process.exit(0);",
   ].join("\n");
 }

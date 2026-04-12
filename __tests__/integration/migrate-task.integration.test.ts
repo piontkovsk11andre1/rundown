@@ -148,6 +148,76 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(fs.existsSync(path.join(workspace, "migrations", "0002-template-vars-checked.md"))).toBe(true);
   });
 
+  it("includes deterministic revision-aware diff preview inputs", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictionProject(workspace);
+
+    fs.mkdirSync(path.join(workspace, "docs", "rev.1", "notes"), { recursive: true });
+    fs.mkdirSync(path.join(workspace, "docs", "current", "notes"), { recursive: true });
+
+    fs.writeFileSync(path.join(workspace, "docs", "rev.1", "zeta.md"), "Removed in current.\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "docs", "rev.1", "notes", "changes.md"), "Unchanged notes.\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "docs", "rev.1", "Design.md"), "# Design\n\nOld body.\n", "utf-8");
+
+    fs.writeFileSync(path.join(workspace, "docs", "current", "alpha.md"), "Added in current.\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "docs", "current", "notes", "changes.md"), "Unchanged notes.\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "docs", "current", "Design.md"), "# Design\n\nNew body.\n", "utf-8");
+
+    fs.writeFileSync(
+      path.join(workspace, ".rundown", "migrate.md"),
+      [
+        "SUMMARY={{revisionDiffSummary}}",
+        "HAS_COMPARISON={{designRevisionDiffHasComparison}}",
+        "FROM={{designRevisionFromRevision}}",
+        "TO={{designRevisionToTarget}}",
+        "FILES={{designRevisionDiffFiles}}",
+        "REV_SOURCES={{revisionDiffSourceReferences}}",
+        "REV_SOURCES_JSON={{revisionDiffSourceReferencesJson}}",
+        "DESIGN_SOURCES_JSON={{designContextSourceReferencesJson}}",
+      ].join("\n") + "\n",
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "migrate",
+      "--dir",
+      "migrations",
+      "--",
+      "node",
+      "-e",
+      buildTemplateVarsAssertionWorkerScript(),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+
+    const capturedPrompt = fs.readFileSync(path.join(workspace, ".template-vars-prompt.txt"), "utf-8");
+    expect(capturedPrompt).toContain("SUMMARY=Compared rev.1 -> current: 1 added 1 modified 1 removed");
+    expect(capturedPrompt).toContain("HAS_COMPARISON=true");
+    expect(capturedPrompt).toContain("FROM=rev.1");
+    expect(capturedPrompt).toContain("TO=current");
+
+    const filesIndex = capturedPrompt.indexOf("- added: alpha.md");
+    const modifiedIndex = capturedPrompt.indexOf("- modified: Design.md");
+    const removedIndex = capturedPrompt.indexOf("- removed: zeta.md");
+    expect(filesIndex).toBeGreaterThanOrEqual(0);
+    expect(modifiedIndex).toBeGreaterThan(filesIndex);
+    expect(removedIndex).toBeGreaterThan(modifiedIndex);
+
+    const revisionSources = readJsonLine(capturedPrompt, "REV_SOURCES_JSON=").map(normalizePathForAssertion);
+    expect(revisionSources).toStrictEqual([
+      normalizePathForAssertion(path.join(workspace, "docs", "rev.1")),
+      normalizePathForAssertion(path.join(workspace, "docs", "current")),
+    ]);
+
+    const designSources = readJsonLine(capturedPrompt, "DESIGN_SOURCES_JSON=").map(normalizePathForAssertion);
+    expect(designSources).toStrictEqual([
+      normalizePathForAssertion(path.join(workspace, "docs", "current")),
+      normalizePathForAssertion(path.join(workspace, "docs", "rev.1")),
+    ]);
+
+    expect(fs.existsSync(path.join(workspace, "migrations", "0002-template-vars-checked.md"))).toBe(true);
+  });
+
   it("falls back to root Design.md when managed docs directories are absent", async () => {
     const workspace = makeTempWorkspace();
     scaffoldPredictionProject(workspace);
@@ -538,6 +608,21 @@ const ANSI_ESCAPE_PATTERN = /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a
 
 function stripAnsi(value: string): string {
   return value.replace(ANSI_ESCAPE_PATTERN, "");
+}
+
+function normalizePathForAssertion(value: string): string {
+  return value.replace(/\\/g, "/");
+}
+
+function readJsonLine(prompt: string, key: string): string[] {
+  const line = prompt
+    .split(/\r?\n/)
+    .find((entry) => entry.startsWith(key));
+  if (!line) {
+    return [];
+  }
+
+  return JSON.parse(line.slice(key.length)) as string[];
 }
 
 function scaffoldPredictionProject(workspace: string): void {

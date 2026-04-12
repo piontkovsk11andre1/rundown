@@ -9110,8 +9110,8 @@ describe.sequential("CLI integration", () => {
     fs.writeFileSync(
       researchListPath,
       [
-        `- [ ] cli: rundown research "doc-one.md" --repair-attempts 1 --worker "node ${path.basename(workerOnePath)}"`,
-        `- [ ] cli: rundown research "doc-two.md" --repair-attempts 1 --worker "node ${path.basename(workerTwoPath)}"`,
+        `- [ ] cli: rundown research "doc-one.md" --worker "node ${path.basename(workerOnePath)}"`,
+        `- [ ] cli: rundown research "doc-two.md" --worker "node ${path.basename(workerTwoPath)}"`,
         "",
       ].join("\n"),
       "utf-8",

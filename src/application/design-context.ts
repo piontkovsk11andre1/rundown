@@ -266,12 +266,26 @@ export function saveDesignRevisionSnapshot(
   const revisionName = `rev.${nextIndex}`;
   const revisionDir = path.join(docsDir, revisionName);
   if (fileSystem.exists(revisionDir)) {
-    throw new Error("Design revision directory already exists: " + revisionDir);
+    throw new Error(
+      "Cannot save design revision: target snapshot already exists and revisions are immutable ("
+      + revisionDir
+      + "). Resolve the conflicting docs/rev.* entry before retrying.",
+    );
+  }
+
+  const metadataPath = getDesignRevisionMetadataPath(docsDir, revisionName);
+  if (fileSystem.exists(metadataPath)) {
+    throw new Error(
+      "Cannot save design revision: metadata sidecar already exists for immutable snapshot "
+      + revisionName
+      + " ("
+      + metadataPath
+      + "). Resolve the conflict before retrying.",
+    );
   }
 
   fileSystem.mkdir(revisionDir, { recursive: true });
   const copiedFileCount = copyDirectoryContents(fileSystem, docsCurrentDir, revisionDir);
-  const metadataPath = getDesignRevisionMetadataPath(docsDir, revisionName);
   const metadata = createDesignRevisionMetadata(revisionName, nextIndex, options);
   fileSystem.writeText(metadataPath, JSON.stringify(metadata, null, 2) + "\n");
 
@@ -769,6 +783,13 @@ function copyDirectoryContents(fileSystem: FileSystem, fromDirectory: string, to
       const destinationPath = path.join(pair.toDir, entry.name);
 
       if (entry.isDirectory) {
+        if (fileSystem.exists(destinationPath)) {
+          throw new Error(
+            "Cannot save design revision: immutable snapshot path already exists ("
+            + destinationPath
+            + ").",
+          );
+        }
         fileSystem.mkdir(destinationPath, { recursive: true });
         queue.push({ fromDir: sourcePath, toDir: destinationPath });
         continue;
@@ -776,6 +797,14 @@ function copyDirectoryContents(fileSystem: FileSystem, fromDirectory: string, to
 
       if (!entry.isFile) {
         continue;
+      }
+
+      if (fileSystem.exists(destinationPath)) {
+        throw new Error(
+          "Cannot save design revision: immutable snapshot file already exists ("
+          + destinationPath
+          + ").",
+        );
       }
 
       fileSystem.writeText(destinationPath, fileSystem.readText(sourcePath));

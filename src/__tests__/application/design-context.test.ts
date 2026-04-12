@@ -421,6 +421,89 @@ describe("saveDesignRevisionSnapshot", () => {
       "Design working directory is missing: /repo/docs/current. Create docs/current/ first (or run `rundown start ...`).",
     );
   });
+
+  it("throws when immutable next revision path is already occupied", () => {
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        "/repo/docs": [
+          { name: "current", isDirectory: true, isFile: false },
+          { name: "rev.3", isDirectory: true, isFile: false },
+        ],
+        "/repo/docs/current": [
+          { name: "Design.md", isDirectory: false, isFile: true },
+        ],
+      },
+      files: {
+        "/repo/docs/current/Design.md": "current\n",
+      },
+      stats: {
+        "/repo/docs": { isDirectory: true, isFile: false },
+        "/repo/docs/current": { isDirectory: true, isFile: false },
+        "/repo/docs/rev.3": { isDirectory: true, isFile: false },
+        "/repo/docs/rev.4": { isDirectory: false, isFile: true },
+      },
+    });
+
+    expect(() => saveDesignRevisionSnapshot(fileSystem, "/repo")).toThrow(
+      "Cannot save design revision: target snapshot already exists and revisions are immutable (/repo/docs/rev.4). Resolve the conflicting docs/rev.* entry before retrying.",
+    );
+  });
+
+  it("throws when immutable next revision metadata sidecar already exists", () => {
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        "/repo/docs": [
+          { name: "current", isDirectory: true, isFile: false },
+          { name: "rev.3", isDirectory: true, isFile: false },
+        ],
+        "/repo/docs/current": [
+          { name: "Design.md", isDirectory: false, isFile: true },
+        ],
+      },
+      files: {
+        "/repo/docs/current/Design.md": "current\n",
+        "/repo/docs/rev.4.meta.json": "{}\n",
+      },
+      stats: {
+        "/repo/docs": { isDirectory: true, isFile: false },
+        "/repo/docs/current": { isDirectory: true, isFile: false },
+        "/repo/docs/rev.3": { isDirectory: true, isFile: false },
+        "/repo/docs/rev.4.meta.json": { isDirectory: false, isFile: true },
+      },
+    });
+
+    expect(() => saveDesignRevisionSnapshot(fileSystem, "/repo")).toThrow(
+      "Cannot save design revision: metadata sidecar already exists for immutable snapshot rev.4 (/repo/docs/rev.4.meta.json). Resolve the conflict before retrying.",
+    );
+  });
+
+  it("throws when copying would overwrite an immutable snapshot file", () => {
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        "/repo/docs": [
+          { name: "current", isDirectory: true, isFile: false },
+          { name: "rev.3", isDirectory: true, isFile: false },
+        ],
+        "/repo/docs/current": [
+          { name: "Design.md", isDirectory: false, isFile: true },
+        ],
+      },
+      files: {
+        "/repo/docs/current/Design.md": "current\n",
+        "/repo/docs/rev.4/Design.md": "stale\n",
+      },
+      stats: {
+        "/repo/docs": { isDirectory: true, isFile: false },
+        "/repo/docs/current": { isDirectory: true, isFile: false },
+        "/repo/docs/rev.3": { isDirectory: true, isFile: false },
+        "/repo/docs/rev.4/Design.md": { isDirectory: false, isFile: true },
+      },
+    });
+
+    expect(() => saveDesignRevisionSnapshot(fileSystem, "/repo")).toThrow(
+      "Cannot save design revision: immutable snapshot file already exists (/repo/docs/rev.4/Design.md).",
+    );
+  });
 });
 
 describe("prepareDesignRevisionDiffContext", () => {

@@ -124,7 +124,7 @@ describe("builtin-tools/get getHandler", () => {
   });
 
   it("reuses existing get-result sub-items and skips worker execution", async () => {
-    const { context, writeText, runWorker } = createContext({
+    const { context, writeText, runWorker, emit } = createContext({
       source: "- [ ] get: All current names of this and that\n  - get-result: This\n",
       subItems: [{ text: "get-result: This", line: 2, depth: 1 }],
     });
@@ -137,11 +137,15 @@ describe("builtin-tools/get getHandler", () => {
     });
     expect(runWorker).not.toHaveBeenCalled();
     expect(writeText).not.toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledWith({
+      kind: "info",
+      message: "Get outcome: reused; rerun-policy=reuse; existing-results=1.",
+    });
   });
 
   it("refreshes existing get-result sub-items when get-mode is refresh", async () => {
     const source = "- [ ] get: All current names of this and that\n  - get-mode: refresh\n  - get-result: This\n";
-    const { context, writeText, runWorker } = createContext({
+    const { context, writeText, runWorker, emit } = createContext({
       source,
       subItems: [
         { text: "get-mode: refresh", line: 2, depth: 1 },
@@ -168,6 +172,10 @@ describe("builtin-tools/get getHandler", () => {
       + "  - get-mode: refresh\n"
       + "  - get-result: That\n",
     );
+    expect(emit).toHaveBeenCalledWith({
+      kind: "info",
+      message: "Get outcome: replaced; result-count=1; rerun-policy=refresh.",
+    });
   });
 
   it("fails when get-mode value is invalid", async () => {
@@ -187,7 +195,7 @@ describe("builtin-tools/get getHandler", () => {
 
   it("extracts results and writes get-result sub-items", async () => {
     const source = "- [ ] get: All current names of this and that\n  - note: keep context\n";
-    const { context, writeText, runWorker } = createContext({
+    const { context, writeText, runWorker, emit } = createContext({
       source,
       subItems: [{ text: "note: keep context", line: 2, depth: 1 }],
       runWorker: vi.fn(async () => ({
@@ -212,6 +220,10 @@ describe("builtin-tools/get getHandler", () => {
       + "  - get-result: That\n"
       + "  - note: keep context\n",
     );
+    expect(emit).toHaveBeenCalledWith({
+      kind: "info",
+      message: "Get outcome: generated; result-count=2; rerun-policy=reuse.",
+    });
   });
 
   it("deduplicates extracted values while preserving first discovery order", async () => {
@@ -328,7 +340,7 @@ describe("builtin-tools/get getHandler", () => {
   });
 
   it("persists an explicit empty marker when extraction succeeds but returns no values", async () => {
-    const { context, writeText } = createContext({
+    const { context, writeText, emit } = createContext({
       source: "- [ ] get: All current names of this and that\n",
       subItems: [],
       runWorker: vi.fn(async () => ({
@@ -350,6 +362,10 @@ describe("builtin-tools/get getHandler", () => {
       "- [ ] get: All current names of this and that\n"
       + "  - get-result: (empty)\n",
     );
+    expect(emit).toHaveBeenCalledWith({
+      kind: "info",
+      message: "Get outcome: empty; empty-result-policy=marker; action=persisted-empty-marker.",
+    });
   });
 
   it("reuses explicit empty marker on rerun and skips worker execution", async () => {
@@ -375,7 +391,7 @@ describe("builtin-tools/get getHandler", () => {
   });
 
   it("fails empty extraction when get-empty policy is fail", async () => {
-    const { context, writeText } = createContext({
+    const { context, writeText, emit } = createContext({
       source: "- [ ] get: All current names of this and that\n  - get-empty: fail\n",
       subItems: [{ text: "get-empty: fail", line: 2, depth: 1 }],
       runWorker: vi.fn(async () => ({
@@ -391,6 +407,10 @@ describe("builtin-tools/get getHandler", () => {
     expect(result.failureMessage).toBe("Get extraction returned no results (empty-result policy: fail).");
     expect(result.failureReason).toBe("Get extraction produced an empty result set and empty-result policy is fail.");
     expect(writeText).not.toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledWith({
+      kind: "warn",
+      message: "Get outcome: empty; empty-result-policy=fail; action=task-failed.",
+    });
   });
 
   it("uses nested indentation and preserves CRLF endings", async () => {

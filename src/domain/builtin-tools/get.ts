@@ -13,6 +13,7 @@ const GET_EMPTY_RESULT_MARKER = "(empty)";
 
 type GetRerunPolicy = "reuse" | "refresh";
 type GetEmptyResultPolicy = "marker" | "fail";
+type GetOutcome = "generated" | "reused" | "replaced" | "empty";
 
 interface ImmediateChildLine {
   index: number;
@@ -233,6 +234,18 @@ function applyDuplicateAndOrderingPolicy(results: readonly string[]): string[] {
   return normalized;
 }
 
+function emitOutcome(
+  context: ToolHandlerContext,
+  outcome: GetOutcome,
+  details: string,
+  kind: "info" | "warn" = "info",
+): void {
+  context.emit({
+    kind,
+    message: `Get outcome: ${outcome}; ${details}`,
+  });
+}
+
 function collectImmediateChildren(lines: string[], parentLineIndex: number, childIndentLength: number, parentIndentLength: number): ImmediateChildLine[] {
   const immediateChildren: ImmediateChildLine[] = [];
   const fencePattern = /^\s*(`{3,}|~{3,})/;
@@ -335,10 +348,11 @@ export const getHandler: ToolHandlerFn = async (context) => {
 
   const existingResults = findExistingResults(context.task.subItems);
   if (existingResults.length > 0 && policyResolution.policy === "reuse") {
-    context.emit({
-      kind: "info",
-      message: "Get results already present; reusing existing values (rerun policy: reuse).",
-    });
+    emitOutcome(
+      context,
+      "reused",
+      `rerun-policy=reuse; existing-results=${existingResults.length}.`,
+    );
     return {
       skipExecution: true,
       shouldVerify: false,
@@ -397,10 +411,12 @@ export const getHandler: ToolHandlerFn = async (context) => {
   const extractedResults = applyDuplicateAndOrderingPolicy(extractResults(runResult.stdout));
   if (extractedResults.length === 0) {
     if (emptyResultPolicyResolution.policy === "fail") {
-      context.emit({
-        kind: "warn",
-        message: "Get extraction returned no results; failing task because empty-result policy is set to fail.",
-      });
+      emitOutcome(
+        context,
+        "empty",
+        "empty-result-policy=fail; action=task-failed.",
+        "warn",
+      );
       return {
         exitCode: 1,
         failureMessage: "Get extraction returned no results (empty-result policy: fail).",
@@ -414,10 +430,11 @@ export const getHandler: ToolHandlerFn = async (context) => {
       context.fileSystem.writeText(context.task.file, updatedSource);
     }
 
-    context.emit({
-      kind: "info",
-      message: "Get extraction returned no results; persisted explicit empty marker as `get-result: (empty)`.",
-    });
+    emitOutcome(
+      context,
+      "empty",
+      "empty-result-policy=marker; action=persisted-empty-marker.",
+    );
     return {
       skipExecution: true,
       shouldVerify: false,
@@ -430,12 +447,11 @@ export const getHandler: ToolHandlerFn = async (context) => {
     context.fileSystem.writeText(context.task.file, updatedSource);
   }
 
-  context.emit({
-    kind: "info",
-    message: existingResults.length > 0
-      ? "Get extraction refreshed " + extractedResults.length + " result(s)."
-      : "Get extraction generated " + extractedResults.length + " result(s).",
-  });
+  emitOutcome(
+    context,
+    existingResults.length > 0 ? "replaced" : "generated",
+    `result-count=${extractedResults.length}; rerun-policy=${policyResolution.policy}.`,
+  );
   return {
     skipExecution: true,
     shouldVerify: false,

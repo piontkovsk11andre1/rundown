@@ -535,6 +535,188 @@ describe("createLoggedOutputPort", () => {
     }));
   });
 
+  it("normalizes valid group and progress counters deterministically", () => {
+    const writer = {
+      write: vi.fn(),
+    };
+
+    const port = createLoggedOutputPort({
+      output: { emit: vi.fn() },
+      writer,
+      context: {
+        command: "rundown",
+        argv: ["run", "TODO.md"],
+        cwd: "/workspace",
+        pid: 2001,
+        version: "1.2.3",
+        sessionId: "session-normalized-counters",
+      },
+      now: () => "2026-03-28T20:10:00.000Z",
+    });
+
+    port.emit({
+      kind: "group-start",
+      label: "Scan tasks",
+      counter: { current: -1.8, total: 3.9 },
+    });
+    port.emit({
+      kind: "progress",
+      progress: {
+        label: "Verify phase",
+        current: -2.4,
+        total: 4.7,
+        unit: "attempts",
+        detail: "running",
+      },
+    });
+
+    expect(writer.write).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      kind: "group-start",
+      level: "info",
+      stream: "stdout",
+      message: "[0/3] Scan tasks",
+    }));
+    expect(writer.write).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      kind: "progress",
+      level: "info",
+      stream: "stdout",
+      message: "Verify phase (0/4 attempts) - running",
+    }));
+  });
+
+  it("maps lifecycle and stdout/stderr events to deterministic structured entries", () => {
+    const writer = {
+      write: vi.fn(),
+    };
+
+    const port = createLoggedOutputPort({
+      output: { emit: vi.fn() },
+      writer,
+      context: {
+        command: "rundown",
+        argv: ["run", "TODO.md"],
+        cwd: "/workspace",
+        pid: 2002,
+        version: "1.2.3",
+        sessionId: "session-lifecycle-mapping",
+      },
+      now: () => "2026-03-28T20:20:00.000Z",
+    });
+
+    const events: ApplicationOutputEvent[] = [
+      {
+        kind: "task",
+        task: {
+          text: "Parent task",
+          checked: false,
+          index: 1,
+          line: 10,
+          column: 1,
+          offsetStart: 0,
+          offsetEnd: 20,
+          file: "TODO.md",
+          isInlineCli: false,
+          depth: 0,
+          children: [],
+          subItems: [],
+        },
+        blocked: true,
+        children: [
+          {
+            text: "Child task",
+            checked: false,
+            index: 2,
+            line: 12,
+            column: 3,
+            offsetStart: 21,
+            offsetEnd: 40,
+            file: "TODO.md",
+            isInlineCli: false,
+            depth: 1,
+            children: [],
+            subItems: [],
+          },
+        ],
+        subItems: [
+          {
+            text: "Detail line",
+            line: 11,
+            depth: 1,
+          },
+        ],
+      },
+      {
+        kind: "progress",
+        progress: {
+          label: "Execute",
+          detail: "queued",
+        },
+      },
+      {
+        kind: "group-start",
+        label: "Run checks",
+      },
+      {
+        kind: "group-end",
+        status: "failure",
+        message: "timed out",
+      },
+      {
+        kind: "text",
+        text: "stdout text line",
+      },
+      {
+        kind: "stderr",
+        text: "stderr text line",
+      },
+    ];
+
+    for (const event of events) {
+      port.emit(event);
+    }
+
+    expect(writer.write).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      kind: "task",
+      level: "info",
+      stream: "stdout",
+      message: [
+        "TODO.md:10 [#1] Parent task (blocked)",
+        "  TODO.md:11 - Detail line",
+        "  TODO.md:12 [#2] Child task",
+      ].join("\n"),
+    }));
+    expect(writer.write).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      kind: "progress",
+      level: "info",
+      stream: "stdout",
+      message: "Execute - queued",
+    }));
+    expect(writer.write).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      kind: "group-start",
+      level: "info",
+      stream: "stdout",
+      message: "Run checks",
+    }));
+    expect(writer.write).toHaveBeenNthCalledWith(4, expect.objectContaining({
+      kind: "group-end",
+      level: "warn",
+      stream: "stderr",
+      message: "failure - timed out",
+    }));
+    expect(writer.write).toHaveBeenNthCalledWith(5, expect.objectContaining({
+      kind: "text",
+      level: "info",
+      stream: "stdout",
+      message: "stdout text line",
+    }));
+    expect(writer.write).toHaveBeenNthCalledWith(6, expect.objectContaining({
+      kind: "stderr",
+      level: "error",
+      stream: "stderr",
+      message: "stderr text line",
+    }));
+  });
+
   it("persists plain text task and milestone messages when terminal output is animated", () => {
     const writer = {
       write: vi.fn(),

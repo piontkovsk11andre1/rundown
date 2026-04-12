@@ -5,6 +5,7 @@ import * as checkboxDomainModule from "../../src/domain/checkbox.js";
 import * as plannerDomainModule from "../../src/domain/planner.js";
 
 import {
+  advanceForLoopUsingFileSystem,
   captureCheckboxState,
   checkTaskUsingFileSystem,
   countCheckedTasks,
@@ -66,6 +67,48 @@ describe("checkbox-operations", () => {
     checkTaskUsingFileSystem(task, fileSystem);
 
     expect(fileSystem.readText("todo.md")).toBe("- [x] First task\n- [ ] Second task\n");
+  });
+
+  it("normalizes for-current metadata to the first item when current value is stale", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [ ] for: This, That",
+        "  - for-item: This",
+        "  - for-item: That",
+        "  - for-current: Stale",
+        "  - [ ] Do this",
+      ].join("\n"),
+    });
+    const task = createTask({
+      text: "for: This, That",
+      line: 1,
+      index: 0,
+      file: "todo.md",
+      children: [
+        createTask({ text: "Do this", line: 5, index: 1, depth: 1, file: "todo.md" }),
+      ],
+      subItems: [
+        { text: "for-item: This", line: 2, depth: 1 },
+        { text: "for-item: That", line: 3, depth: 1 },
+        { text: "for-current: Stale", line: 4, depth: 1 },
+      ],
+    });
+
+    const result = advanceForLoopUsingFileSystem(task, fileSystem);
+
+    expect(result).toEqual({
+      advanced: true,
+      completed: false,
+      current: "This",
+      remainingItems: 1,
+    });
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [ ] for: This, That",
+      "  - for-item: This",
+      "  - for-item: That",
+      "  - for-current: This",
+      "  - [ ] Do this",
+    ].join("\n"));
   });
 
   it("writes fix annotation after marking task checked", () => {

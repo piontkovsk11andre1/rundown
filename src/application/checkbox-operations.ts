@@ -400,55 +400,10 @@ function rewriteForLoopMetadataLines(lines: string[], loopTask: Task, nextCurren
   }
 }
 
-function appendForCurrentMetadataIfMissing(source: string, loopTask: Task, currentValue: string): string {
+function setForCurrentMetadata(source: string, loopTask: Task, currentValue: string): string {
   const eol = source.includes("\r\n") ? "\r\n" : "\n";
   const lines = source.split(/\r?\n/);
-  const parentLineIndex = loopTask.line - 1;
-  if (parentLineIndex < 0 || parentLineIndex >= lines.length) {
-    return source;
-  }
-
-  const parentLine = lines[parentLineIndex] ?? "";
-  const parentIndentLength = getLeadingWhitespaceLength(parentLine);
-  const childIndent = computeChildIndent(parentLine);
-  const childIndentLength = childIndent.length;
-
-  let hasForCurrent = false;
-  let insertionIndex = parentLineIndex + 1;
-  for (let index = parentLineIndex + 1; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    if (line.trim().length === 0) {
-      continue;
-    }
-    const lineIndentLength = getLeadingWhitespaceLength(line);
-    if (lineIndentLength <= parentIndentLength) {
-      break;
-    }
-
-    if (lineIndentLength === childIndentLength) {
-      const bulletMatch = line.match(/^\s*[-*+]\s+(.*)$/);
-      const childText = (bulletMatch?.[1] ?? "").trim();
-      if (/^for-current\s*:/i.test(childText)) {
-        hasForCurrent = true;
-        break;
-      }
-
-      if (/^\[[ xX]\]\s+/.test(childText)) {
-        insertionIndex = index;
-        break;
-      }
-
-      if (/^for-item\s*:/i.test(childText)) {
-        insertionIndex = index + 1;
-      }
-    }
-  }
-
-  if (hasForCurrent) {
-    return source;
-  }
-
-  lines.splice(insertionIndex, 0, `${childIndent}- for-current: ${currentValue}`);
+  rewriteForLoopMetadataLines(lines, loopTask, currentValue);
   return lines.join(eol);
 }
 
@@ -489,7 +444,7 @@ export function advanceForLoopUsingFileSystem(
 
     if (currentValue === undefined && nextIndex < itemValues.length) {
       const initialCurrent = itemValues[nextIndex]!;
-      const updatedSource = appendForCurrentMetadataIfMissing(source, latestLoopTask, initialCurrent);
+      const updatedSource = setForCurrentMetadata(source, latestLoopTask, initialCurrent);
       if (updatedSource !== source) {
         fileSystem.writeText(loopTask.file, updatedSource);
       }

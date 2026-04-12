@@ -143,16 +143,60 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
     ].join("\n"));
     expect(combinedOutput).toContain("Missing assertion text for `test new`.");
   });
+
+  it("rundown test resolves design from docs/current and ignores revision archives", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictedState(workspace, { template: "{{design}}" });
+    fs.mkdirSync(path.join(workspace, "docs", "current"), { recursive: true });
+    fs.mkdirSync(path.join(workspace, "docs", "rev.1"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, "docs", "current", "Design.md"), "# Current design\n\nPrimary current design.\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "docs", "current", "a-notes.md"), "Current notes A.\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "docs", "current", "z-notes.md"), "Current notes Z.\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "docs", "rev.1", "Design.md"), "# Revision design\n\nArchived revision content.\n", "utf-8");
+    fs.mkdirSync(path.join(workspace, "specs"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, "specs", "design-source.md"), "assert design source", "utf-8");
+
+    const result = await runCli([
+      "test",
+      "--dir",
+      "specs",
+      "--",
+      "node",
+      "-e",
+      [
+        "const fs=require('node:fs');",
+        "const p=process.argv[process.argv.length-1];",
+        "const prompt=fs.readFileSync(p,'utf-8');",
+        "const hasCurrent=prompt.includes('Primary current design.')&&prompt.includes('Current notes A.')&&prompt.includes('Current notes Z.');",
+        "const hasRevision=prompt.includes('Archived revision content.');",
+        "const aIndex=prompt.indexOf('### a-notes.md');",
+        "const zIndex=prompt.indexOf('### z-notes.md');",
+        "const ordered=aIndex>=0&&zIndex>=0&&aIndex<zIndex;",
+        "if(hasCurrent&&!hasRevision&&ordered){console.log('OK');process.exit(0);}",
+        "console.log('NOT_OK: expected docs/current context in deterministic order without revision archive content');process.exit(0);",
+      ].join(""),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n"));
+    expect(combinedOutput).toContain("PASS design-source.md");
+  });
 });
 
-function scaffoldPredictedState(workspace: string): void {
+function scaffoldPredictedState(workspace: string, options?: { template?: string }): void {
+  const template = options?.template ?? "{{assertion}}";
   fs.writeFileSync(path.join(workspace, "Design.md"), "# Design\n\nSeed design context.\n", "utf-8");
   fs.mkdirSync(path.join(workspace, "migrations"), { recursive: true });
   fs.writeFileSync(path.join(workspace, "migrations", "0001-initialize.md"), "# 0001 initialize\n", "utf-8");
   fs.writeFileSync(path.join(workspace, "migrations", "0001--context.md"), "# Context\n", "utf-8");
   fs.writeFileSync(path.join(workspace, "migrations", "0001--snapshot.md"), "# Snapshot\n", "utf-8");
   fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
-  fs.writeFileSync(path.join(workspace, ".rundown", "test-verify.md"), "{{assertion}}", "utf-8");
+  fs.writeFileSync(path.join(workspace, ".rundown", "test-verify.md"), template, "utf-8");
 }
 
 function makeTempWorkspace(): string {

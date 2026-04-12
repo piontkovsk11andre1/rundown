@@ -640,6 +640,95 @@ describeIfSaveMigrateAvailable("migrate save integration", () => {
     expect(combinedOutput).toContain("No design changes detected in docs/current/");
     expect(combinedOutput).toContain("rev.2");
   });
+
+  it("ignores malformed revision directories and still uses monotonic numbering", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictionProject(workspace);
+
+    fs.mkdirSync(path.join(workspace, "docs", "current", "nested"), { recursive: true });
+    fs.mkdirSync(path.join(workspace, "docs", "rev.1"), { recursive: true });
+    fs.mkdirSync(path.join(workspace, "docs", "rev.3"), { recursive: true });
+    fs.mkdirSync(path.join(workspace, "docs", "rev.8"), { recursive: true });
+    fs.mkdirSync(path.join(workspace, "docs", "rev.bad"), { recursive: true });
+    fs.mkdirSync(path.join(workspace, "docs", "rev.7-draft"), { recursive: true });
+    fs.mkdirSync(path.join(workspace, "docs", "rev.-1"), { recursive: true });
+    fs.mkdirSync(path.join(workspace, "docs", "revision.11"), { recursive: true });
+
+    fs.writeFileSync(path.join(workspace, "docs", "current", "Design.md"), "# Current design\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "docs", "current", "nested", "notes.md"), "Design notes\n", "utf-8");
+
+    const result = await runCli([
+      "migrate",
+      "save",
+      "--dir",
+      "migrations",
+      "--",
+      "node",
+      "-e",
+      "process.exit(0);",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(fs.existsSync(path.join(workspace, "docs", "rev.9", "Design.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "docs", "rev.9", "nested", "notes.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "docs", "rev.4"))).toBe(false);
+    expect(fs.existsSync(path.join(workspace, "docs", "rev.7-draft", "Design.md"))).toBe(false);
+  });
+
+  it("keeps repeated no-change saves deterministic without creating extra revisions", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictionProject(workspace);
+
+    fs.mkdirSync(path.join(workspace, "docs", "current", "notes"), { recursive: true });
+    fs.mkdirSync(path.join(workspace, "docs", "rev.2", "notes"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, "docs", "current", "Design.md"), "# Current design\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "docs", "current", "notes", "api.md"), "API details\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "docs", "rev.2", "Design.md"), "# Current design\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "docs", "rev.2", "notes", "api.md"), "API details\n", "utf-8");
+
+    const firstSave = await runCli([
+      "migrate",
+      "save",
+      "--dir",
+      "migrations",
+      "--",
+      "node",
+      "-e",
+      "process.exit(0);",
+    ], workspace);
+    const secondSave = await runCli([
+      "migrate",
+      "save",
+      "--dir",
+      "migrations",
+      "--",
+      "node",
+      "-e",
+      "process.exit(0);",
+    ], workspace);
+
+    expect(firstSave.code).toBe(0);
+    expect(secondSave.code).toBe(0);
+    expect(fs.existsSync(path.join(workspace, "docs", "rev.3"))).toBe(false);
+
+    const firstOutput = stripAnsi([
+      ...firstSave.logs,
+      ...firstSave.errors,
+      ...firstSave.stdoutWrites,
+      ...firstSave.stderrWrites,
+    ].join("\n"));
+    const secondOutput = stripAnsi([
+      ...secondSave.logs,
+      ...secondSave.errors,
+      ...secondSave.stdoutWrites,
+      ...secondSave.stderrWrites,
+    ].join("\n"));
+
+    expect(firstOutput).toContain("No design changes detected in docs/current/");
+    expect(secondOutput).toContain("No design changes detected in docs/current/");
+    expect(firstOutput).toContain("rev.2");
+    expect(secondOutput).toContain("rev.2");
+  });
 });
 
 describeIfRevisionPreviewActionsAvailable("migrate revision diff/preview integration", () => {

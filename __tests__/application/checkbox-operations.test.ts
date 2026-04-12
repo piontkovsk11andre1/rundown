@@ -798,6 +798,33 @@ describe("checkbox-operations", () => {
     ].join("\n"));
   });
 
+  it("removes mixed trace statistics, fix, and skipped annotations under one parent", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [x] Parent",
+        "  - note: keep this user note",
+        "  - total time: 5s",
+        "    - execution: 2s",
+        "  - fix: retry with smaller batch",
+        "    - verify: 1.5s",
+        "  - skipped: no output",
+        "  - [ ] Keep this actionable child",
+        "    - note: keep nested child note",
+        "- [x] Next task",
+      ].join("\n"),
+    });
+
+    resetFileCheckboxes("todo.md", fileSystem);
+
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [ ] Parent",
+      "  - note: keep this user note",
+      "  - [ ] Keep this actionable child",
+      "    - note: keep nested child note",
+      "- [ ] Next task",
+    ].join("\n"));
+  });
+
   it("treats checkbox-prefixed stale labels as stale during reset", () => {
     const fileSystem = createFileSystem({
       "todo.md": [

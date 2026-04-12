@@ -22,6 +22,9 @@ import { executeToolChain } from "./tool-execution.js";
 import { pluralize } from "./run-task-utils.js";
 
 const INCLUDE_STACK_ENV = "RUNDOWN_INCLUDE_STACK";
+const INLINE_CLI_FAILURE_STREAM_MAX_CHARS = 12_000;
+const INLINE_CLI_FAILURE_STREAM_HEAD_CHARS = 2_000;
+const INLINE_CLI_FAILURE_STREAM_TAIL_CHARS = 4_000;
 
 // Normalized emitter signature used across dispatch helpers.
 type EmitFn = (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
@@ -201,11 +204,11 @@ export async function dispatchTaskExecution(params: {
     }
 
     if (stdout) {
-      emit({ kind: "text", text: stdout });
+      emit({ kind: "text", text: formatInlineCliFailureStreamOutput("stdout", stdout) });
     }
 
     if (stderr) {
-      emit({ kind: "stderr", text: stderr });
+      emit({ kind: "stderr", text: formatInlineCliFailureStreamOutput("stderr", stderr) });
     }
   };
 
@@ -587,6 +590,27 @@ function resolveInlineCliCommand(task: Task): string {
   }
 
   return [command, directiveCliArgs].filter(Boolean).join(" ");
+}
+
+function formatInlineCliFailureStreamOutput(streamName: "stdout" | "stderr", output: string): string {
+  if (output.length <= INLINE_CLI_FAILURE_STREAM_MAX_CHARS) {
+    return output;
+  }
+
+  const retainedCharacterCount = INLINE_CLI_FAILURE_STREAM_HEAD_CHARS + INLINE_CLI_FAILURE_STREAM_TAIL_CHARS;
+  const omittedCharacterCount = Math.max(0, output.length - retainedCharacterCount);
+  const header = "[Inline CLI " + streamName + " truncated: showing first "
+    + INLINE_CLI_FAILURE_STREAM_HEAD_CHARS
+    + " and last "
+    + INLINE_CLI_FAILURE_STREAM_TAIL_CHARS
+    + " characters (omitted "
+    + omittedCharacterCount
+    + ").]";
+  const head = output.slice(0, INLINE_CLI_FAILURE_STREAM_HEAD_CHARS);
+  const tail = output.slice(-INLINE_CLI_FAILURE_STREAM_TAIL_CHARS);
+  const separator = "[... omitted " + omittedCharacterCount + " characters ...]";
+
+  return [header, head, separator, tail].join("\n");
 }
 
 function runIncludedFile(params: {

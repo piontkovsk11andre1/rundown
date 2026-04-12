@@ -1773,6 +1773,80 @@ describe("task-execution-dispatch", () => {
     expect(events.some((event) => event.kind === "text" || event.kind === "stderr")).toBe(false);
   });
 
+  it("truncates very large inline cli failure streams while keeping root-cause tail lines visible", async () => {
+    const task = createInlineTask(path.join(cwd, "tasks.md"), "cli: npm test");
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: "- [ ] cli: npm test\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    const hugeStdout = "s".repeat(9_000) + "\n" + "x".repeat(5_500) + "\nroot-cause-stdout\n";
+    const hugeStderr = "e".repeat(8_500) + "\n" + "y".repeat(6_500) + "\nroot-cause-stderr\n";
+
+    dependencies.workerExecutor.executeInlineCli = vi.fn(async () => ({
+      exitCode: 15,
+      stdout: hugeStdout,
+      stderr: hugeStderr,
+    }));
+
+    const result = await dispatchTaskExecution({
+      dependencies,
+      emit: (event) => events.push(event),
+      files: [task.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "wait",
+      transport: "file",
+      keepArtifacts: true,
+      showAgentOutput: false,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "execute-and-verify",
+      task,
+      prompt: "prompt",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      trace: true,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+    });
+
+    expect(result).toEqual({
+      kind: "execution-failed",
+      executionFailureMessage: "Inline CLI exited with code 15",
+      executionFailureRunReason: "Inline CLI exited with a non-zero code.",
+      executionFailureExitCode: 15,
+      forceRetryableFailure: true,
+    });
+
+    const stdoutEvent = events.find((event): event is { kind: "text"; text: string } => event.kind === "text");
+    expect(stdoutEvent).toBeDefined();
+    expect(stdoutEvent?.text.includes("[Inline CLI stdout truncated: showing first 2000 and last 4000 characters")).toBe(true);
+    expect(stdoutEvent?.text.includes("[... omitted ")).toBe(true);
+    expect(stdoutEvent?.text.includes("root-cause-stdout")).toBe(true);
+
+    const stderrEvent = events.find((event): event is { kind: "stderr"; text: string } => event.kind === "stderr");
+    expect(stderrEvent).toBeDefined();
+    expect(stderrEvent?.text.includes("[Inline CLI stderr truncated: showing first 2000 and last 4000 characters")).toBe(true);
+    expect(stderrEvent?.text.includes("[... omitted ")).toBe(true);
+    expect(stderrEvent?.text.includes("root-cause-stderr")).toBe(true);
+  });
+
   it("returns detached for detached worker mode", async () => {
     const task = createTask(path.join(cwd, "tasks.md"), "Ship release");
     const fileSystem = createInMemoryFileSystem({

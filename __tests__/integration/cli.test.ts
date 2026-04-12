@@ -7668,6 +7668,56 @@ describe.sequential("CLI integration", () => {
     expect(result.errors.some((line) => line.includes("Inline CLI exited with code 6"))).toBe(true);
   });
 
+  it("run truncates very large inline CLI failure output while preserving tail root-cause lines", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const failingScriptPath = path.join(workspace, "inline-cli-fail-large-output.cjs");
+    fs.writeFileSync(
+      roadmapPath,
+      "- [ ] cli: node inline-cli-fail-large-output.cjs\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      failingScriptPath,
+      [
+        "const hugeStdout = 'S'.repeat(2000) + '\\nMIDDLE_STDOUT_OMIT\\n' + 'm'.repeat(7000) + '\\n' + 't'.repeat(5000) + '\\nROOT_STDOUT_LINE\\n';",
+        "const hugeStderr = 'E'.repeat(2000) + '\\nMIDDLE_STDERR_OMIT\\n' + 'n'.repeat(7000) + '\\n' + 'u'.repeat(5000) + '\\nROOT_STDERR_LINE\\n';",
+        "process.stdout.write(hugeStdout);",
+        "process.stderr.write(hugeStderr);",
+        "process.exit(8);",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+    ], workspace);
+
+    expect(result.code).toBe(1);
+    expect(result.errors.some((line) => line.includes("Inline CLI exited with code 8"))).toBe(true);
+
+    const stdoutOutput = stripAnsi([
+      ...result.logs,
+      ...result.stdoutWrites,
+    ].join("\n"));
+    const stderrOutput = stripAnsi([
+      ...result.errors,
+      ...result.stderrWrites,
+    ].join("\n"));
+
+    expect(stdoutOutput.includes("[Inline CLI stdout truncated: showing first 2000 and last 4000 characters")).toBe(true);
+    expect(stdoutOutput.includes("[... omitted ")).toBe(true);
+    expect(stdoutOutput.includes("ROOT_STDOUT_LINE")).toBe(true);
+    expect(stdoutOutput.includes("MIDDLE_STDOUT_OMIT")).toBe(false);
+
+    expect(stderrOutput.includes("[Inline CLI stderr truncated: showing first 2000 and last 4000 characters")).toBe(true);
+    expect(stderrOutput.includes("[... omitted ")).toBe(true);
+    expect(stderrOutput.includes("ROOT_STDERR_LINE")).toBe(true);
+    expect(stderrOutput.includes("MIDDLE_STDERR_OMIT")).toBe(false);
+  });
+
   it("run returns 2 on verification failure, skips completion side effects, and writes fix annotation", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");

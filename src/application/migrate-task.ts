@@ -238,12 +238,11 @@ export function createMigrateTask(
     const resolvedSlugWorker = resolveWorkerPatternForInvocation({
       commandName: "migrate-slug",
       workerConfig: loadedWorkerConfig,
+      fallbackWorkerCommand: resolvedWorker.workerCommand,
       emit,
       mode: "wait",
     });
-    const slugWorkerPattern = resolvedSlugWorker.workerCommand.length > 0
-      ? resolvedSlugWorker.workerPattern
-      : resolvedWorker.workerPattern;
+    const slugWorkerPattern = resolvedSlugWorker.workerPattern;
 
     if (resolvedWorker.workerCommand.length === 0) {
       emit({

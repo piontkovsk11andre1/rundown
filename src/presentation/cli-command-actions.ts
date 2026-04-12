@@ -215,6 +215,7 @@ interface MigrateCommandOptions {
   action?: MigrateAction;
   downCount?: number;
   dir?: string;
+  label?: string;
   confirm: boolean;
   workerPattern: ParsedWorkerPattern;
   keepArtifacts: boolean;
@@ -1029,6 +1030,7 @@ export function createMigrateCommandAction({
       action: normalizedAction,
       downCount: parseLastCount(count),
       dir: normalizeOptionalString(opts.dir),
+      label: normalizeOptionalString(opts.label),
       confirm: Boolean(opts.confirm as boolean | undefined),
       workerPattern: resolveWorkerPattern(opts.worker, getWorkerFromSeparator),
       keepArtifacts: Boolean(opts.keepArtifacts as boolean | undefined),

@@ -324,6 +324,7 @@ const migrateCommand = program
   )
   .argument("[count]", "Optional number of runs to undo for down")
   .option("--dir <path>", "Migrations directory (default: ./migrations)", "./migrations")
+  .option("--label <text>", "Optional label to store in revision metadata for `migrate save`")
   .option("--confirm", "Show generated content and confirm before writing files", false)
   .option("--run <id|latest>", "Choose artifact run id or 'latest' for down", "latest")
   .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)

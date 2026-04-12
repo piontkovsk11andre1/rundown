@@ -125,10 +125,113 @@ describe("discoverDesignRevisionDirectories", () => {
     const revisions = discoverDesignRevisionDirectories(fileSystem, projectRoot);
 
     expect(revisions).toEqual([
-      { index: 1, name: "rev.001", absolutePath: "/repo/docs/rev.001" },
-      { index: 2, name: "REV.2", absolutePath: "/repo/docs/REV.2" },
-      { index: 2, name: "rev.2", absolutePath: "/repo/docs/rev.2" },
-      { index: 10, name: "rev.10", absolutePath: "/repo/docs/rev.10" },
+      {
+        index: 1,
+        name: "rev.001",
+        absolutePath: "/repo/docs/rev.001",
+        metadata: { createdAt: "", label: "" },
+        metadataPath: "/repo/docs/rev.001.meta.json",
+      },
+      {
+        index: 2,
+        name: "REV.2",
+        absolutePath: "/repo/docs/REV.2",
+        metadata: { createdAt: "", label: "" },
+        metadataPath: "/repo/docs/REV.2.meta.json",
+      },
+      {
+        index: 2,
+        name: "rev.2",
+        absolutePath: "/repo/docs/rev.2",
+        metadata: { createdAt: "", label: "" },
+        metadataPath: "/repo/docs/rev.2.meta.json",
+      },
+      {
+        index: 10,
+        name: "rev.10",
+        absolutePath: "/repo/docs/rev.10",
+        metadata: { createdAt: "", label: "" },
+        metadataPath: "/repo/docs/rev.10.meta.json",
+      },
+    ]);
+  });
+
+  it("reads deterministic metadata from valid sidecar files", () => {
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        "/repo/docs": [
+          { name: "rev.2", isDirectory: true, isFile: false },
+        ],
+      },
+      files: {
+        "/repo/docs/rev.2.meta.json": JSON.stringify({
+          revision: "rev.2",
+          index: 2,
+          createdAt: "2026-01-02T03:04:05.000Z",
+          label: "stable",
+        }),
+      },
+      stats: {
+        "/repo/docs": { isDirectory: true, isFile: false },
+        "/repo/docs/rev.2": { isDirectory: true, isFile: false },
+      },
+    });
+
+    const revisions = discoverDesignRevisionDirectories(fileSystem, "/repo");
+    expect(revisions).toEqual([
+      {
+        index: 2,
+        name: "rev.2",
+        absolutePath: "/repo/docs/rev.2",
+        metadata: {
+          createdAt: "2026-01-02T03:04:05.000Z",
+          label: "stable",
+        },
+        metadataPath: "/repo/docs/rev.2.meta.json",
+      },
+    ]);
+  });
+
+  it("ignores malformed or mismatched metadata sidecar files safely", () => {
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        "/repo/docs": [
+          { name: "rev.2", isDirectory: true, isFile: false },
+          { name: "rev.3", isDirectory: true, isFile: false },
+        ],
+      },
+      files: {
+        "/repo/docs/rev.2.meta.json": "{bad json",
+        "/repo/docs/rev.3.meta.json": JSON.stringify({
+          revision: "rev.3",
+          index: 99,
+          createdAt: "2026-01-02T03:04:05.000Z",
+          label: "wrong-index",
+        }),
+      },
+      stats: {
+        "/repo/docs": { isDirectory: true, isFile: false },
+        "/repo/docs/rev.2": { isDirectory: true, isFile: false },
+        "/repo/docs/rev.3": { isDirectory: true, isFile: false },
+      },
+    });
+
+    const revisions = discoverDesignRevisionDirectories(fileSystem, "/repo");
+    expect(revisions).toEqual([
+      {
+        index: 2,
+        name: "rev.2",
+        absolutePath: "/repo/docs/rev.2",
+        metadata: { createdAt: "", label: "" },
+        metadataPath: "/repo/docs/rev.2.meta.json",
+      },
+      {
+        index: 3,
+        name: "rev.3",
+        absolutePath: "/repo/docs/rev.3",
+        metadata: { createdAt: "", label: "" },
+        metadataPath: "/repo/docs/rev.3.meta.json",
+      },
     ]);
   });
 
@@ -184,10 +287,67 @@ describe("saveDesignRevisionSnapshot", () => {
         absolutePath: "/repo/docs/rev.4",
         sourcePath: "/repo/docs/current",
         copiedFileCount: 2,
+        metadata: {
+          createdAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+          label: "",
+        },
+        metadataPath: "/repo/docs/rev.4.meta.json",
       },
     });
     expect(fileSystem.readText("/repo/docs/rev.4/Design.md")).toBe("# Design\n");
     expect(fileSystem.readText("/repo/docs/rev.4/notes/api.md")).toBe("- endpoint\n");
+    expect(JSON.parse(fileSystem.readText("/repo/docs/rev.4.meta.json"))).toMatchObject({
+      revision: "rev.4",
+      index: 4,
+      label: undefined,
+    });
+  });
+
+  it("writes optional revision label into sidecar metadata", () => {
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        "/repo/docs": [
+          { name: "current", isDirectory: true, isFile: false },
+        ],
+        "/repo/docs/current": [
+          { name: "Design.md", isDirectory: false, isFile: true },
+        ],
+      },
+      files: {
+        "/repo/docs/current/Design.md": "# Design\n",
+      },
+      stats: {
+        "/repo/docs": { isDirectory: true, isFile: false },
+        "/repo/docs/current": { isDirectory: true, isFile: false },
+      },
+    });
+
+    const saved = saveDesignRevisionSnapshot(fileSystem, "/repo", {
+      label: "stable",
+      now: new Date("2026-01-02T03:04:05.000Z"),
+    });
+
+    expect(saved).toEqual({
+      kind: "saved",
+      revision: {
+        index: 1,
+        name: "rev.1",
+        absolutePath: "/repo/docs/rev.1",
+        sourcePath: "/repo/docs/current",
+        copiedFileCount: 1,
+        metadata: {
+          createdAt: "2026-01-02T03:04:05.000Z",
+          label: "stable",
+        },
+        metadataPath: "/repo/docs/rev.1.meta.json",
+      },
+    });
+    expect(JSON.parse(fileSystem.readText("/repo/docs/rev.1.meta.json"))).toEqual({
+      revision: "rev.1",
+      index: 1,
+      createdAt: "2026-01-02T03:04:05.000Z",
+      label: "stable",
+    });
   });
 
   it("returns unchanged when docs/current matches latest revision", () => {
@@ -240,6 +400,8 @@ describe("saveDesignRevisionSnapshot", () => {
         index: 5,
         name: "rev.5",
         absolutePath: "/repo/docs/rev.5",
+        metadata: { createdAt: "", label: "" },
+        metadataPath: "/repo/docs/rev.5.meta.json",
       },
     });
     expect(fileSystem.stat("/repo/docs/rev.6")).toBeNull();
@@ -300,6 +462,8 @@ describe("prepareDesignRevisionDiffContext", () => {
       kind: "current",
       name: "current",
       absolutePath: "/repo/docs/current",
+      metadata: { createdAt: "", label: "" },
+      metadataPath: "/repo/docs/current.meta.json",
     });
     expect(diff.addedCount).toBe(1);
     expect(diff.modifiedCount).toBe(1);
@@ -364,6 +528,8 @@ describe("prepareDesignRevisionDiffContext", () => {
       kind: "revision",
       name: "rev.4",
       absolutePath: "/repo/docs/rev.4",
+      metadata: { createdAt: "", label: "" },
+      metadataPath: "/repo/docs/rev.4.meta.json",
     });
     expect(diff.modifiedCount).toBe(1);
     expect(diff.summary).toBe("Compared rev.2 -> rev.4: 0 added 1 modified 0 removed");

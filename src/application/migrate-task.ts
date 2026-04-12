@@ -71,6 +71,7 @@ export interface MigrateTaskOptions {
   action?: MigrateAction;
   downCount?: number;
   dir?: string;
+  label?: string;
   confirm?: boolean;
   workerPattern: ParsedWorkerPattern;
   keepArtifacts?: boolean;
@@ -160,7 +161,9 @@ export function createMigrateTask(
 
       let saveResult;
       try {
-        saveResult = saveDesignRevisionSnapshot(dependencies.fileSystem, projectRoot);
+        saveResult = saveDesignRevisionSnapshot(dependencies.fileSystem, projectRoot, {
+          label: options.label,
+        });
       } catch (error) {
         emit({ kind: "error", message: error instanceof Error ? error.message : String(error) });
         return EXIT_CODE_FAILURE;
@@ -183,6 +186,7 @@ export function createMigrateTask(
             + savedRevision.name
             + " from docs/current/ to "
             + savedRevision.absolutePath
+            + (savedRevision.metadata.label.length > 0 ? " [label: " + savedRevision.metadata.label + "]" : "")
             + " ("
             + String(savedRevision.copiedFileCount)
             + " file"
@@ -1148,6 +1152,12 @@ function buildTemplateVars(
   const revisionDiff = prepareDesignRevisionDiffContext(fileSystem, projectRoot, { target: "current" });
   const previousRevisionId = revisionDiff.fromRevision?.name ?? "";
   const currentRevisionId = revisionDiff.toTarget.name;
+  const currentRevisionCreatedAt = revisionDiff.toTarget.metadata.createdAt;
+  const currentRevisionLabel = revisionDiff.toTarget.metadata.label;
+  const previousRevisionCreatedAt = revisionDiff.fromRevision?.metadata.createdAt ?? "";
+  const previousRevisionLabel = revisionDiff.fromRevision?.metadata.label ?? "";
+  const currentRevisionMetadataPath = revisionDiff.toTarget.metadataPath;
+  const previousRevisionMetadataPath = revisionDiff.fromRevision?.metadataPath ?? "";
   const revisionDiffFiles = revisionDiff.changes.map((change) => {
     return "- " + change.kind + ": " + change.relativePath;
   }).join("\n");
@@ -1177,6 +1187,12 @@ function buildTemplateVars(
     designContextHasManagedDocs: designContextSources.hasManagedDocs ? "true" : "false",
     currentRevisionId,
     previousRevisionId,
+    currentRevisionCreatedAt,
+    currentRevisionLabel,
+    previousRevisionCreatedAt,
+    previousRevisionLabel,
+    currentRevisionMetadataPath,
+    previousRevisionMetadataPath,
     revisionDiffSummary: revisionDiff.summary,
     revisionDiffSourceReferences: revisionDiffSourceRefs,
     revisionDiffSourceReferencesJson: JSON.stringify(revisionDiff.sourceReferences),

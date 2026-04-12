@@ -112,6 +112,16 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     fs.mkdirSync(path.join(workspace, "docs", "rev.1"), { recursive: true });
     fs.mkdirSync(path.join(workspace, "docs", "current"), { recursive: true });
     fs.writeFileSync(path.join(workspace, "docs", "rev.1", "Design.md"), "# Design\n\nVersion one.\n", "utf-8");
+    fs.writeFileSync(
+      path.join(workspace, "docs", "rev.1.meta.json"),
+      JSON.stringify({
+        revision: "rev.1",
+        index: 1,
+        createdAt: "2026-01-02T03:04:05.000Z",
+        label: "initial",
+      }, null, 2) + "\n",
+      "utf-8",
+    );
     fs.writeFileSync(path.join(workspace, "docs", "current", "Design.md"), "# Design\n\nVersion two.\n", "utf-8");
 
     fs.writeFileSync(
@@ -125,6 +135,12 @@ describeIfMigrateAvailable("migrate-task integration", () => {
         "DESIGN_SOURCES={{designContextSourceReferences}}",
         "DESIGN_SOURCES_JSON={{designContextSourceReferencesJson}}",
         "HAS_MANAGED_DOCS={{designContextHasManagedDocs}}",
+        "CURRENT_CREATED_AT={{currentRevisionCreatedAt}}",
+        "CURRENT_LABEL={{currentRevisionLabel}}",
+        "CURRENT_METADATA_PATH={{currentRevisionMetadataPath}}",
+        "PREVIOUS_CREATED_AT={{previousRevisionCreatedAt}}",
+        "PREVIOUS_LABEL={{previousRevisionLabel}}",
+        "PREVIOUS_METADATA_PATH={{previousRevisionMetadataPath}}",
         "LEGACY_SUMMARY={{designRevisionDiffSummary}}",
       ].join("\n") + "\n",
       "utf-8",
@@ -152,6 +168,13 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(capturedPrompt).toMatch(/docs[\\/]rev\.1/);
     expect(capturedPrompt).toContain("DESIGN_SOURCES_JSON=[");
     expect(capturedPrompt).toContain("HAS_MANAGED_DOCS=true");
+    expect(capturedPrompt).toContain("CURRENT_CREATED_AT=");
+    expect(capturedPrompt).toContain("CURRENT_LABEL=");
+    expect(capturedPrompt).toContain("CURRENT_METADATA_PATH=");
+    expect(capturedPrompt).toContain("PREVIOUS_CREATED_AT=2026-01-02T03:04:05.000Z");
+    expect(capturedPrompt).toContain("PREVIOUS_LABEL=initial");
+    expect(capturedPrompt).toContain("PREVIOUS_METADATA_PATH=");
+    expect(capturedPrompt).toMatch(/PREVIOUS_METADATA_PATH=.*docs[\\/]rev\.1\.meta\.json/);
     expect(capturedPrompt).toContain("LEGACY_SUMMARY=Compared rev.1 -> current: 0 added 1 modified 0 removed");
     expect(fs.existsSync(path.join(workspace, "migrations", "0002-template-vars-checked.md"))).toBe(true);
   });
@@ -577,6 +600,56 @@ describeIfSaveMigrateAvailable("migrate save integration", () => {
     expect(result.code).toBe(0);
     expect(fs.readFileSync(path.join(workspace, "docs", "rev.4", "Design.md"), "utf-8")).toBe("# Current design\n");
     expect(fs.readFileSync(path.join(workspace, "docs", "rev.4", "notes", "api.md"), "utf-8")).toBe("API details\n");
+    const metadata = JSON.parse(fs.readFileSync(path.join(workspace, "docs", "rev.4.meta.json"), "utf-8")) as {
+      revision: string;
+      index: number;
+      createdAt: string;
+      label?: string;
+    };
+    expect(metadata.revision).toBe("rev.4");
+    expect(metadata.index).toBe(4);
+    expect(metadata.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(metadata.label).toBeUndefined();
+  });
+
+  it("stores optional revision labels in sidecar metadata for migrate save", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictionProject(workspace);
+    fs.mkdirSync(path.join(workspace, "docs", "current"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, "docs", "current", "Design.md"), "# Current design\n", "utf-8");
+
+    const result = await runCli([
+      "migrate",
+      "save",
+      "--label",
+      "stable",
+      "--dir",
+      "migrations",
+      "--",
+      "node",
+      "-e",
+      "process.exit(0);",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const metadata = JSON.parse(fs.readFileSync(path.join(workspace, "docs", "rev.1.meta.json"), "utf-8")) as {
+      revision: string;
+      index: number;
+      createdAt: string;
+      label?: string;
+    };
+    expect(metadata.revision).toBe("rev.1");
+    expect(metadata.index).toBe(1);
+    expect(metadata.label).toBe("stable");
+
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n"));
+    expect(combinedOutput).toContain("Saved design revision rev.1");
+    expect(combinedOutput).toContain("[label: stable]");
   });
 
   it("bootstraps docs/current from legacy Design.md when missing", async () => {

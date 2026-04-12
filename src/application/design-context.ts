@@ -17,6 +17,13 @@ export interface DesignRevisionDirectory {
   index: number;
   name: string;
   absolutePath: string;
+  metadata: DesignRevisionMetadata;
+  metadataPath: string;
+}
+
+export interface DesignRevisionMetadata {
+  createdAt: string;
+  label: string;
 }
 
 export interface SavedDesignRevision {
@@ -25,6 +32,8 @@ export interface SavedDesignRevision {
   absolutePath: string;
   sourcePath: string;
   copiedFileCount: number;
+  metadata: DesignRevisionMetadata;
+  metadataPath: string;
 }
 
 export type DesignRevisionDiffChangeKind = "added" | "removed" | "modified";
@@ -42,6 +51,8 @@ export interface DesignRevisionDiffContext {
     kind: "current" | "revision";
     name: string;
     absolutePath: string;
+    metadata: DesignRevisionMetadata;
+    metadataPath: string;
   };
   hasComparison: boolean;
   summary: string;
@@ -62,6 +73,16 @@ export type SaveDesignRevisionSnapshotResult =
     sourcePath: string;
     latestRevision: DesignRevisionDirectory;
   };
+
+interface DesignRevisionMetadataRecord {
+  revision: string;
+  index: number;
+  createdAt: string;
+  label?: string;
+}
+
+const REVISION_DIRECTORY_PATTERN = /^rev\.(\d+)$/i;
+const REVISION_METADATA_FILE_SUFFIX = ".meta.json";
 
 export function resolveDesignContext(fileSystem: FileSystem, projectRoot: string): DesignContextResolution {
   const docsCurrentDir = path.join(projectRoot, "docs", "current");
@@ -173,6 +194,8 @@ export function discoverDesignRevisionDirectories(
       index: parsed.index,
       name: entry.name,
       absolutePath: path.join(docsDir, entry.name),
+      metadata: readDesignRevisionMetadata(fileSystem, docsDir, entry.name, parsed.index),
+      metadataPath: getDesignRevisionMetadataPath(docsDir, entry.name),
     });
   }
 
@@ -186,7 +209,7 @@ export function discoverDesignRevisionDirectories(
 }
 
 export function parseDesignRevisionDirectoryName(name: string): { index: number } | null {
-  const match = /^rev\.(\d+)$/i.exec(name.trim());
+  const match = REVISION_DIRECTORY_PATTERN.exec(name.trim());
   if (!match) {
     return null;
   }
@@ -207,6 +230,10 @@ export function parseDesignRevisionDirectoryName(name: string): { index: number 
 export function saveDesignRevisionSnapshot(
   fileSystem: FileSystem,
   projectRoot: string,
+  options?: {
+    label?: string;
+    now?: Date;
+  },
 ): SaveDesignRevisionSnapshotResult {
   const docsDir = path.join(projectRoot, "docs");
   const docsCurrentDir = path.join(docsDir, "current");
@@ -244,6 +271,9 @@ export function saveDesignRevisionSnapshot(
 
   fileSystem.mkdir(revisionDir, { recursive: true });
   const copiedFileCount = copyDirectoryContents(fileSystem, docsCurrentDir, revisionDir);
+  const metadataPath = getDesignRevisionMetadataPath(docsDir, revisionName);
+  const metadata = createDesignRevisionMetadata(revisionName, nextIndex, options);
+  fileSystem.writeText(metadataPath, JSON.stringify(metadata, null, 2) + "\n");
 
   return {
     kind: "saved",
@@ -253,6 +283,8 @@ export function saveDesignRevisionSnapshot(
       absolutePath: revisionDir,
       sourcePath: docsCurrentDir,
       copiedFileCount,
+      metadata: toTemplateRevisionMetadata(metadata),
+      metadataPath,
     },
   };
 }
@@ -356,13 +388,21 @@ function resolveDesignDiffTarget(
   kind: "current" | "revision";
   name: string;
   absolutePath: string;
+  metadata: DesignRevisionMetadata;
+  metadataPath: string;
   revisionIndex?: number;
 } {
   if (target === undefined || target === "current") {
+    const docsDir = path.dirname(docsCurrentDir);
     return {
       kind: "current",
       name: "current",
       absolutePath: docsCurrentDir,
+      metadata: {
+        createdAt: "",
+        label: "",
+      },
+      metadataPath: getDesignRevisionMetadataPath(docsDir, "current"),
     };
   }
 
@@ -374,6 +414,8 @@ function resolveDesignDiffTarget(
       kind: "revision",
       name: byNumericTarget.name,
       absolutePath: byNumericTarget.absolutePath,
+      metadata: byNumericTarget.metadata,
+      metadataPath: byNumericTarget.metadataPath,
       revisionIndex: byNumericTarget.index,
     };
   }
@@ -389,6 +431,8 @@ function resolveDesignDiffTarget(
         kind: "revision",
         name: revision.name,
         absolutePath: revision.absolutePath,
+        metadata: revision.metadata,
+        metadataPath: revision.metadataPath,
         revisionIndex: revision.index,
       };
     }
@@ -401,24 +445,135 @@ function resolveDesignDiffTarget(
           kind: "revision",
           name: matchedByIndex.name,
           absolutePath: matchedByIndex.absolutePath,
+          metadata: matchedByIndex.metadata,
+          metadataPath: matchedByIndex.metadataPath,
           revisionIndex: matchedByIndex.index,
         };
       }
     }
 
+    const docsDir = path.dirname(docsCurrentDir);
     return {
       kind: "revision",
       name: trimmedTarget,
-      absolutePath: path.join(path.dirname(docsCurrentDir), trimmedTarget),
+      absolutePath: path.join(docsDir, trimmedTarget),
+      metadata: {
+        createdAt: "",
+        label: "",
+      },
+      metadataPath: getDesignRevisionMetadataPath(docsDir, trimmedTarget),
       revisionIndex: parsedTarget?.index,
     };
   }
 
+  const docsDir = path.dirname(docsCurrentDir);
   return {
     kind: "current",
     name: "current",
     absolutePath: docsCurrentDir,
+    metadata: {
+      createdAt: "",
+      label: "",
+    },
+    metadataPath: getDesignRevisionMetadataPath(docsDir, "current"),
   };
+}
+
+function getDesignRevisionMetadataPath(docsDir: string, revisionName: string): string {
+  return path.join(docsDir, revisionName + REVISION_METADATA_FILE_SUFFIX);
+}
+
+function createDesignRevisionMetadata(
+  revisionName: string,
+  index: number,
+  options?: {
+    label?: string;
+    now?: Date;
+  },
+): DesignRevisionMetadataRecord {
+  const createdAt = (options?.now ?? new Date()).toISOString();
+  const label = options?.label?.trim() ?? "";
+
+  if (label.length > 0) {
+    return {
+      revision: revisionName,
+      index,
+      createdAt,
+      label,
+    };
+  }
+
+  return {
+    revision: revisionName,
+    index,
+    createdAt,
+  };
+}
+
+function toTemplateRevisionMetadata(metadata: { createdAt: string; label?: string }): DesignRevisionMetadata {
+  return {
+    createdAt: metadata.createdAt,
+    label: metadata.label ?? "",
+  };
+}
+
+function readDesignRevisionMetadata(
+  fileSystem: FileSystem,
+  docsDir: string,
+  revisionName: string,
+  revisionIndex: number,
+): DesignRevisionMetadata {
+  const metadataPath = getDesignRevisionMetadataPath(docsDir, revisionName);
+  const fallbackMetadata: DesignRevisionMetadata = {
+    createdAt: "",
+    label: "",
+  };
+
+  if (!isFile(fileSystem, metadataPath)) {
+    return fallbackMetadata;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fileSystem.readText(metadataPath));
+  } catch {
+    return fallbackMetadata;
+  }
+
+  if (!isValidRevisionMetadataRecord(parsed, revisionName, revisionIndex)) {
+    return fallbackMetadata;
+  }
+
+  return {
+    createdAt: parsed.createdAt,
+    label: parsed.label ?? "",
+  };
+}
+
+function isValidRevisionMetadataRecord(
+  value: unknown,
+  expectedRevisionName: string,
+  expectedRevisionIndex: number,
+): value is DesignRevisionMetadataRecord {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as Partial<DesignRevisionMetadataRecord>;
+  if (candidate.revision !== expectedRevisionName) {
+    return false;
+  }
+  if (candidate.index !== expectedRevisionIndex) {
+    return false;
+  }
+  if (typeof candidate.createdAt !== "string" || candidate.createdAt.length === 0) {
+    return false;
+  }
+  if (candidate.label !== undefined && typeof candidate.label !== "string") {
+    return false;
+  }
+
+  return true;
 }
 
 function findPreviousRevisionForTarget(

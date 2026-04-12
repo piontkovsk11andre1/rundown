@@ -424,6 +424,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       artifactStore: ports.artifactStore,
       workerConfigPort: ports.workerConfigPort,
       traceWriter: ports.traceWriter,
+      cliBlockExecutor: ports.cliBlockExecutor,
       configDir: ports.configDir,
       createTraceWriter: (trace, artifactContext) => {
         if (!trace) {

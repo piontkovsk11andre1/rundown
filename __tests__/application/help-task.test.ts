@@ -14,6 +14,7 @@ import { inferWorkerPatternFromCommand } from "../../src/domain/worker-pattern.j
 import type {
   ApplicationOutputEvent,
   ArtifactStore,
+  CommandExecutor,
   FileSystem,
   TraceWriterPort,
 } from "../../src/domain/ports/index.js";
@@ -116,6 +117,50 @@ describe("help-task", () => {
     expect(prompt).toContain("docs=- docs/a-first.md\n- docs/z-last.md");
     expect(prompt).toContain("commands=- run: execute unchecked TODO tasks");
     expect(prompt).toContain("- discuss: interactive task discussion");
+  });
+
+  it("expands cli fenced blocks in the help template before worker execution", async () => {
+    const cwd = "/workspace";
+    const { dependencies, workerExecutor, cliBlockExecutor } = createDependencies({ cwd });
+    vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
+      workers: {
+        tui: ["opencode", "run", "--tui"],
+      },
+    });
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "help.md"))) {
+        return [
+          "before",
+          "```cli",
+          "echo dynamic-help",
+          "```",
+          "after",
+        ].join("\n");
+      }
+      return null;
+    });
+    vi.mocked(cliBlockExecutor.execute).mockResolvedValue({
+      exitCode: 0,
+      stdout: "dynamic-output",
+      stderr: "",
+    });
+
+    const helpTask = createHelpTask(dependencies);
+    const code = await helpTask(createOptions({ workerCommand: [] }));
+
+    expect(code).toBe(EXIT_CODE_SUCCESS);
+    expect(vi.mocked(cliBlockExecutor.execute)).toHaveBeenCalledWith(
+      "echo dynamic-help",
+      cwd,
+      expect.objectContaining({
+        onCommandExecuted: expect.any(Function),
+      }),
+    );
+    const prompt = vi.mocked(workerExecutor.runWorker).mock.calls[0]?.[0].prompt ?? "";
+    expect(prompt).toContain("<command>echo dynamic-help</command>");
+    expect(prompt).toContain("<output>");
+    expect(prompt).toContain("dynamic-output");
+    expect(prompt).not.toContain("```cli");
   });
 
   it("returns no-work when no interactive help worker is configured", async () => {
@@ -356,6 +401,7 @@ function createDependencies(options: {
   events: ApplicationOutputEvent[];
   artifactStore: ArtifactStore;
   fileSystem: FileSystem;
+  cliBlockExecutor: CommandExecutor;
   workerExecutor: HelpTaskDependencies["workerExecutor"];
   traceWriter: TraceWriterPort;
 } {
@@ -407,6 +453,10 @@ function createDependencies(options: {
     executeRundownTask: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
   };
 
+  const cliBlockExecutor: CommandExecutor = {
+    execute: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
+  };
+
   const dependencies: HelpTaskDependencies = {
     workerExecutor,
     workingDirectory: { cwd: vi.fn(() => options.cwd) },
@@ -422,6 +472,7 @@ function createDependencies(options: {
     artifactStore,
     workerConfigPort: { load: vi.fn(() => undefined) },
     traceWriter,
+    cliBlockExecutor,
     configDir: {
       configDir: path.join(options.cwd, ".rundown"),
       isExplicit: false,
@@ -437,6 +488,7 @@ function createDependencies(options: {
     events,
     artifactStore,
     fileSystem,
+    cliBlockExecutor,
     workerExecutor,
     traceWriter,
   };

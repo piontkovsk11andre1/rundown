@@ -1,4 +1,5 @@
 import { EXIT_CODE_FAILURE, EXIT_CODE_NO_WORK, EXIT_CODE_SUCCESS } from "../domain/exit-codes.js";
+import { expandCliBlocks } from "../domain/cli-block.js";
 import { renderTemplate, type TemplateVars } from "../domain/template.js";
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import {
@@ -8,10 +9,13 @@ import {
 } from "../domain/trace.js";
 import { loadProjectTemplatesFromPorts } from "./project-templates.js";
 import { resolveWorkerPatternForInvocation } from "./resolve-worker.js";
+import { withCliTrace, withTemplateCliFailureAbort } from "./cli-block-handlers.js";
 import type {
   ArtifactRunContext,
   ArtifactStore,
   ArtifactStoreStatus,
+  CommandExecutionOptions,
+  CommandExecutor,
   ConfigDirResult,
   FileSystem,
   PathOperationsPort,
@@ -34,6 +38,7 @@ export interface HelpTaskDependencies {
   artifactStore: ArtifactStore;
   workerConfigPort: WorkerConfigPort;
   traceWriter: TraceWriterPort;
+  cliBlockExecutor: CommandExecutor;
   configDir: ConfigDirResult | undefined;
   createTraceWriter: (trace: boolean, artifactContext: ArtifactContext) => TraceWriterPort;
   output: ApplicationOutputPort;
@@ -104,7 +109,7 @@ export function createHelpTask(
         dependencies.templateLoader,
         dependencies.pathOperations,
       );
-      const prompt = renderHelpPrompt(templates.help, {
+      const renderedPrompt = renderHelpPrompt(templates.help, {
         cliVersion: options.cliVersion,
         workingDirectory: cwd,
         commandIndex: buildCommandIndex(),
@@ -122,9 +127,30 @@ export function createHelpTask(
       const activeArtifactContext = artifactContext;
 
       traceWriter = dependencies.createTraceWriter(options.trace, activeArtifactContext);
+      const nowIso = (): string => new Date().toISOString();
+      const baseCliExecutionOptions: CommandExecutionOptions | undefined = options.keepArtifacts
+        ? {
+          artifactContext: activeArtifactContext,
+          artifactPhase: "worker",
+          artifactPhaseLabel: "cli-help-template",
+          artifactExtra: { promptType: "help-template" },
+        }
+        : undefined;
+      const cliExecutionOptionsWithTrace = withCliTrace(
+        baseCliExecutionOptions,
+        traceWriter,
+        activeArtifactContext.runId,
+        nowIso,
+      );
+      const prompt = await expandCliBlocks(
+        renderedPrompt,
+        dependencies.cliBlockExecutor,
+        cwd,
+        withTemplateCliFailureAbort(cliExecutionOptionsWithTrace, "help template"),
+      );
+
       let traceCompleted = false;
       const traceStartedAtMs = Date.now();
-      const nowIso = (): string => new Date().toISOString();
       const toTraceStatus = (status: ArtifactStoreStatus): TraceRunStatus => status;
 
       traceWriter.write(createRunStartedEvent({

@@ -74,6 +74,7 @@ import type {
   TraceWriterPort,
   VerificationStore,
   WorkerConfigPort,
+  WorkerHealthStore,
   WorkerExecutorPort,
   WorkingDirectoryPort,
 } from "../domain/ports/index.js";
@@ -110,6 +111,7 @@ export interface RunTaskDependencies {
   pathOperations: PathOperationsPort;
   templateVarsLoader: TemplateVarsLoaderPort;
   workerConfigPort: WorkerConfigPort;
+  workerHealthStore?: WorkerHealthStore;
   memoryResolver?: MemoryResolverPort;
   toolResolver?: ToolResolverPort;
   memoryWriter?: MemoryWriterPort;
@@ -357,6 +359,10 @@ export function createRunTaskExecution(
         },
       }
       : loadedWorkerConfigWithDefaults;
+    const workerHealthEntries = dependencies.workerHealthStore
+      ? dependencies.workerHealthStore.read(dependencies.configDir?.configDir ?? executionCwd).entries
+      : [];
+    const evaluateWorkerHealthAtMs = Date.now();
 
     // Initialize run-scoped mutable state shared across task iterations.
     const state: Parameters<typeof runTaskIteration>[0]["state"] = {
@@ -825,6 +831,8 @@ export function createRunTaskExecution(
                 worker: {
                   workerPattern,
                   loadedWorkerConfig,
+                  workerHealthEntries,
+                  evaluateWorkerHealthAtMs,
                 },
                 verifyConfig: {
                   configuredOnlyVerify,

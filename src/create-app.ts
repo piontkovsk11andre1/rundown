@@ -353,6 +353,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
     memoryWriter: ports.memoryWriter,
     templateVarsLoader: ports.templateVarsLoader,
     workerConfigPort: ports.workerConfigPort,
+    workerHealthStore: ports.workerHealthStore,
     traceWriter: ports.traceWriter,
     cliBlockExecutor: ports.cliBlockExecutor,
     configDir: ports.configDir,

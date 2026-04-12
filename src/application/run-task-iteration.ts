@@ -32,7 +32,7 @@ import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import type { ExtraTemplateVars } from "../domain/template-vars.js";
 import type { RunTaskDependencies } from "./run-task-execution.js";
 import type { TraceStatisticsConfig } from "../domain/worker-config.js";
-import type { WorkerFailureClass } from "../domain/worker-health.js";
+import type { WorkerFailureClass, WorkerHealthEntry } from "../domain/worker-health.js";
 import { classifyWorkerFailure } from "./worker-failure-classification.js";
 import { RUN_REASON_USAGE_LIMIT_DETECTED } from "../domain/run-reasons.js";
 
@@ -96,6 +96,8 @@ interface IterationExecutionOptions {
 interface IterationWorkerConfig {
   workerPattern: ParsedWorkerPattern;
   loadedWorkerConfig: ReturnType<RunTaskDependencies["workerConfigPort"]["load"]> | undefined;
+  workerHealthEntries?: readonly WorkerHealthEntry[];
+  evaluateWorkerHealthAtMs?: number;
 }
 
 interface IterationVerifyConfig {
@@ -341,6 +343,8 @@ export async function runTaskIteration(params: {
     toolName: taskIntentDecision.toolName,
     emit,
     mode: execution.mode,
+    workerHealthEntries: worker.workerHealthEntries,
+    evaluateWorkerHealthAtMs: worker.evaluateWorkerHealthAtMs,
   });
   const resolvedWorkerCommand = resolvedWorker.workerCommand;
   const resolvedWorkerPattern = resolvedWorker.workerPattern;
@@ -360,6 +364,8 @@ export async function runTaskIteration(params: {
       toolName: taskIntentDecision.toolName,
       emit,
       mode: "wait",
+      workerHealthEntries: worker.workerHealthEntries,
+      evaluateWorkerHealthAtMs: worker.evaluateWorkerHealthAtMs,
     })
     : resolvedWorker;
   const verificationWorkerCommand = verificationWorker.workerCommand;

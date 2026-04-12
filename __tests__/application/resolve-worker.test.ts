@@ -4,6 +4,12 @@ import {
   resolveWorkerPatternForInvocation,
 } from "../../src/application/resolve-worker.js";
 import type { ApplicationOutputEvent } from "../../src/domain/ports/output-port.js";
+import {
+  WORKER_HEALTH_STATUS_COOLING_DOWN,
+  WORKER_HEALTH_STATUS_UNAVAILABLE,
+  buildWorkerHealthProfileKey,
+  buildWorkerHealthWorkerKey,
+} from "../../src/domain/worker-health.js";
 
 describe("resolve-worker", () => {
   it("resolves worker from config layers and warns on ignored profile sub-item", () => {
@@ -478,5 +484,142 @@ describe("resolve-worker", () => {
       usesFile: false,
       appendFile: false,
     });
+  });
+
+  it("selects first eligible configured fallback when primary is cooling down", () => {
+    const nowIso = "2026-04-12T09:32:38.339Z";
+    const command = resolveWorkerForInvocation({
+      commandName: "run",
+      workerConfig: {
+        workers: {
+          default: ["primary", "worker"],
+          fallbacks: [
+            ["fallback", "one"],
+            ["fallback", "two"],
+          ],
+        },
+      },
+      source: "- [ ] task\n",
+      cliWorkerCommand: [],
+      workerHealthEntries: [
+        {
+          key: buildWorkerHealthWorkerKey(["primary", "worker"]),
+          source: "worker",
+          status: WORKER_HEALTH_STATUS_COOLING_DOWN,
+          cooldownUntil: "2026-04-12T10:32:38.339Z",
+        },
+      ],
+      evaluateWorkerHealthAtMs: Date.parse(nowIso),
+    });
+
+    expect(command).toEqual(["fallback", "one"]);
+  });
+
+  it("skips ineligible fallback candidates and picks next eligible deterministically", () => {
+    const nowIso = "2026-04-12T09:32:38.339Z";
+    const command = resolveWorkerForInvocation({
+      commandName: "run",
+      workerConfig: {
+        workers: {
+          default: ["primary", "worker"],
+          fallbacks: [
+            ["fallback", "one"],
+            ["fallback", "two"],
+            ["fallback", "three"],
+          ],
+        },
+      },
+      source: "- [ ] task\n",
+      cliWorkerCommand: [],
+      workerHealthEntries: [
+        {
+          key: buildWorkerHealthWorkerKey(["primary", "worker"]),
+          source: "worker",
+          status: WORKER_HEALTH_STATUS_COOLING_DOWN,
+          cooldownUntil: "2026-04-12T10:32:38.339Z",
+        },
+        {
+          key: buildWorkerHealthWorkerKey(["fallback", "one"]),
+          source: "worker",
+          status: WORKER_HEALTH_STATUS_UNAVAILABLE,
+        },
+        {
+          key: buildWorkerHealthWorkerKey(["fallback", "two"]),
+          source: "worker",
+          status: WORKER_HEALTH_STATUS_COOLING_DOWN,
+          cooldownUntil: "2026-04-12T11:32:38.339Z",
+        },
+      ],
+      evaluateWorkerHealthAtMs: Date.parse(nowIso),
+    });
+
+    expect(command).toEqual(["fallback", "three"]);
+  });
+
+  it("returns empty command when all primary and fallbacks are ineligible", () => {
+    const nowIso = "2026-04-12T09:32:38.339Z";
+    const command = resolveWorkerForInvocation({
+      commandName: "run",
+      workerConfig: {
+        workers: {
+          default: ["primary", "worker"],
+          fallbacks: [
+            ["fallback", "one"],
+          ],
+        },
+        profiles: {
+          fast: ["primary", "worker"],
+        },
+      },
+      source: "- [ ] task\n",
+      cliWorkerCommand: [],
+      workerHealthEntries: [
+        {
+          key: buildWorkerHealthWorkerKey(["primary", "worker"]),
+          source: "worker",
+          status: WORKER_HEALTH_STATUS_UNAVAILABLE,
+        },
+        {
+          key: buildWorkerHealthWorkerKey(["fallback", "one"]),
+          source: "worker",
+          status: WORKER_HEALTH_STATUS_COOLING_DOWN,
+          cooldownUntil: "2026-04-12T10:32:38.339Z",
+        },
+      ],
+      evaluateWorkerHealthAtMs: Date.parse(nowIso),
+    });
+
+    expect(command).toEqual([]);
+  });
+
+  it("applies profile-level ineligibility when evaluating fallback candidates", () => {
+    const nowIso = "2026-04-12T09:32:38.339Z";
+    const command = resolveWorkerForInvocation({
+      commandName: "run",
+      workerConfig: {
+        workers: {
+          default: ["primary", "worker"],
+          fallbacks: [
+            ["fallback", "one"],
+          ],
+        },
+        profiles: {
+          fast: ["primary", "worker"],
+        },
+      },
+      source: "---\nprofile: fast\n---\n\n- [ ] task\n",
+      cliWorkerCommand: [],
+      workerHealthEntries: [
+        {
+          key: buildWorkerHealthProfileKey("fast"),
+          source: "profile",
+          status: WORKER_HEALTH_STATUS_COOLING_DOWN,
+          cooldownUntil: "2026-04-12T10:32:38.339Z",
+        },
+      ],
+      evaluateWorkerHealthAtMs: Date.parse(nowIso),
+    });
+
+    expect(command).toEqual([]);
   });
 });

@@ -15,6 +15,8 @@ Store templates in `.rundown/`:
   verify.md
   repair.md
   plan.md
+  plan-prepend.md
+  plan-append.md
   discuss.md
   vars.json
 ```
@@ -28,7 +30,52 @@ Store templates in `.rundown/`:
 | `.rundown/verify.md` | Instructions for deciding whether the task is truly complete |
 | `.rundown/repair.md` | Instructions for fixing a failed attempt |
 | `.rundown/plan.md` | Instructions for breaking a task into nested subtasks |
+| `.rundown/plan-prepend.md` | Optional advisory guidance for what should appear near the beginning of generated plan tasks |
+| `.rundown/plan-append.md` | Optional advisory guidance for what should appear near the end of generated plan tasks |
 | `.rundown/discuss.md` | Instructions for interactive task refinement before execution |
+
+## Planner guidance files (optional)
+
+Planner customization can include two optional guidance files:
+
+- `.rundown/plan-prepend.md`
+- `.rundown/plan-append.md`
+
+These files are not macro snippets and are not copied literally into TODO output.
+They are semantic guidance that influences planner judgment when `rundown plan`
+or plan phases in other commands generate missing tasks.
+
+Use them to express intent such as:
+
+- what discovery/setup checks should usually appear early,
+- what validation/handoff steps should usually appear late,
+- when those patterns should be skipped.
+
+Fallback behavior is safe by default:
+
+- if either file is missing, unreadable, or empty, it is treated as empty guidance,
+- planning continues normally with built-in guardrails,
+- add-only and convergence rules remain unchanged.
+
+### Good guidance style
+
+Prefer intent-oriented phrasing instead of literal TODO text requirements.
+
+Example `.rundown/plan-prepend.md`:
+
+```md
+When changes affect unfamiliar modules, add an early discovery task to inspect current behavior and constraints before implementation.
+
+Skip this when the selected section is purely editorial documentation work.
+```
+
+Example `.rundown/plan-append.md`:
+
+```md
+If planned tasks modify executable source files, include a final verification task appropriate for the stack (tests, lint, or build).
+
+Do not add release or packaging tasks for local prototypes.
+```
 
 ### Live help placeholders
 

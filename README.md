@@ -275,6 +275,14 @@ It does not decompose work into TODOs itself; that remains the `plan` phase.
 
 When implementation intent is spread across a full document, `rundown plan` scans that markdown file and appends missing actionable TODOs using `.rundown/plan.md`.
 
+You can optionally guide planner ordering/coverage with:
+
+- `.rundown/plan-prepend.md` (advice for early tasks)
+- `.rundown/plan-append.md` (advice for late tasks)
+
+These files are advisory semantics, not literal snippet insertion. Missing files are
+treated as empty guidance with no error.
+
 If the document has no TODOs yet, `plan` creates an initial actionable set first, then runs iterative clean-session scans (`--scan-count`, default `3`) until no additional TODOs are proposed or the scan cap is reached.
 
 Updates are append-only for safety: existing TODO text is preserved while missing work is added deterministically.

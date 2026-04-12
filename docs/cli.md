@@ -57,12 +57,15 @@ Scaffold a prediction-oriented project workspace.
 
 `start` creates a design-first project structure and prepares migration/spec workflows:
 
-- `Design.md`
+- `docs/current/`
+- `docs/current/Design.md`
 - `AGENTS.md`
 - `migrations/`
 - `migrations/0001-initialize.md`
 - `specs/`
 - `.rundown/`
+
+Compatibility note: legacy root `Design.md` is still read as a fallback when `docs/current/` is not present.
 
 Synopsis:
 
@@ -83,6 +86,8 @@ Options:
 Generate and manage prediction migrations.
 
 Without an action, `migrate` generates the next migration proposal based on design and migration context.
+
+Design context resolution is revision-aware: it prefers `docs/current/**`, includes revision/archive directories (`docs/rev.*/**`) as context sources, and falls back to legacy root `Design.md` for older projects.
 
 Synopsis:
 

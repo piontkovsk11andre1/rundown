@@ -155,9 +155,10 @@ Note: `rundown revert` only works for tasks originally executed with both `--com
 
 `rundown` also supports a migration-style prediction loop for long-horizon planning:
 
-- `start` scaffolds a prediction project with `Design.md`, `AGENTS.md`, `migrations/`, `specs/`, and `.rundown/`.
-- `migrate` generates the next migration, saves design revisions (`save`), or produces a satellite artifact (`context`, `snapshot`, `backlog`, `review`, `user-experience`).
+- `start` scaffolds a prediction project with `docs/current/` (default primary doc: `docs/current/Design.md`), `AGENTS.md`, `migrations/`, `specs/`, and `.rundown/`.
+- `migrate` generates the next migration, saves design revisions (`save`), or produces a satellite artifact (`context`, `snapshot`, `backlog`, `review`, `user-experience`, `user-session`).
 - `migrate save` snapshots `docs/current/` into the next `docs/rev.N/` directory, and returns a no-op message when `docs/current/` is unchanged from the latest revision.
+- For existing repositories, legacy root `Design.md` remains a compatibility fallback when `docs/current/` is not present.
 - `undo` semantically reverses previously completed work from task artifacts (AI-level undo, not git-commit revert).
 - `test` verifies spec assertions against the predicted migration state (design + migration context), not the current implementation files.
 

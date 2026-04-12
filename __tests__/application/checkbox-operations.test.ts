@@ -1141,4 +1141,33 @@ describe("checkbox-operations", () => {
       "    - skipped: no output",
     ].join("\n"));
   });
+
+  it("relocates checkbox when file content shifted after agent modification", () => {
+    // Simulate agent inserting content above the checkbox during execution.
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "## Research",
+        "",
+        "Agent-generated content line 1",
+        "Agent-generated content line 2",
+        "",
+        "- [ ] Do thing",
+        "- [ ] Another task",
+      ].join("\n"),
+    });
+    // Task was parsed when checkbox was on line 1, but file was modified since.
+    const task = createTask({ text: "Do thing", line: 1, index: 0, file: "todo.md" });
+
+    checkTaskUsingFileSystem(task, fileSystem);
+
+    expect(fileSystem.readText("todo.md")).toBe([
+      "## Research",
+      "",
+      "Agent-generated content line 1",
+      "Agent-generated content line 2",
+      "",
+      "- [x] Do thing",
+      "- [ ] Another task",
+    ].join("\n"));
+  });
 });

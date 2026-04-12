@@ -6,6 +6,23 @@ import type { FileSystem } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
 const TRACE_STATISTICS_CHILD_LABEL_PATTERN = /^(?:total time|execution|verify|repair|idle|tokens estimated|phases|verify attempts|repair attempts):\s+\S/i;
+
+/**
+ * Re-locate a task in freshly-read source by matching text content.
+ *
+ * After agent execution the file may have been modified (e.g. content inserted
+ * above the checkbox), so the original `task.line` can be stale.  This helper
+ * re-parses and returns the first unchecked task whose text matches, falling
+ * back to the original task when no match is found.
+ */
+function relocateTask(source: string, task: Task): Task {
+  const freshTasks = parseTasks(source, task.file);
+  return (
+    freshTasks.find((candidate) => candidate.text === task.text && !candidate.checked) ??
+    freshTasks.find((candidate) => candidate.text === task.text) ??
+    task
+  );
+}
 const TRACE_STATISTICS_GRANDCHILD_LABEL_PATTERN = /^(?:execution|verify|repair):\s+\S/i;
 const RUNTIME_STALE_CHILD_LABEL_PATTERN = /^(?:total time|execution|verify|repair|idle|tokens estimated|phases|verify attempts|repair attempts|fix|skipped):\s+\S/i;
 
@@ -231,7 +248,8 @@ function stripRuntimeStaleAnnotationsFromSource(source: string, file: string): s
 export function checkTaskUsingFileSystem(task: Task, fileSystem: FileSystem): void {
   withSerializedFileMutation(task.file, () => {
     const source = fileSystem.readText(task.file);
-    const updated = markChecked(source, task);
+    const effectiveTask = relocateTask(source, task);
+    const updated = markChecked(source, effectiveTask);
     fileSystem.writeText(task.file, updated);
   });
 }
@@ -251,18 +269,19 @@ export function writeFixAnnotationToFile(task: Task, failureReason: string | nul
 
   withSerializedFileMutation(task.file, () => {
     const source = fileSystem.readText(task.file);
+    const effectiveTask = relocateTask(source, task);
     let checkedSource = source;
     try {
-      checkedSource = markChecked(source, task);
+      checkedSource = markChecked(source, effectiveTask);
     } catch (error) {
       const lines = source.split(/\r?\n/);
-      const taskLine = lines[task.line - 1] ?? "";
+      const taskLine = lines[effectiveTask.line - 1] ?? "";
       const taskLineAlreadyChecked = /\[[xX]\]/.test(taskLine);
       if (!taskLineAlreadyChecked) {
         throw error;
       }
     }
-    const updated = insertSubitems(checkedSource, task, annotationLines);
+    const updated = insertSubitems(checkedSource, effectiveTask, annotationLines);
     fileSystem.writeText(task.file, updated);
   });
 }
@@ -284,9 +303,10 @@ export function insertTraceStatisticsUsingFileSystem(
 
   withSerializedFileMutation(task.file, () => {
     const source = fileSystem.readText(task.file);
+    const effectiveTask = relocateTask(source, task);
     const eol = source.includes("\r\n") ? "\r\n" : "\n";
     const lines = source.split(/\r?\n/);
-    const parentLineIndex = task.line - 1;
+    const parentLineIndex = effectiveTask.line - 1;
 
     if (parentLineIndex < 0 || parentLineIndex >= lines.length) {
       return;

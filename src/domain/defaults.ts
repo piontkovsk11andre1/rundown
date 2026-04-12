@@ -106,11 +106,12 @@ ${DEFAULT_TEMPLATE_VARS_SECTION}
 
 Execute the selected task.
 
-Complete the task described above. Make the necessary changes to the project, but do not edit the source Markdown task file as part of completion tracking.
+Complete the task described above. Make the necessary changes to the project, but **never edit the source Markdown task file** (\`{{file}}\`).
 
-- Do not change the checkbox in the source Markdown file.
-- Do not rewrite the task item to make it look completed.
+- Do not modify \`{{file}}\` in any way: do not change checkboxes, rewrite task items, insert content, add documentation, or restructure the file.
+- Inserting research notes, headings, or any other text into the task file shifts line numbers and breaks rundown's internal tracking.
 - Do not treat editing the TODO file itself as evidence that the task is done unless the task explicitly requires documentation changes in that file.
+- If the task asks you to document findings, write them to a separate file — not the task file.
 - rundown is responsible for marking the task complete after validation succeeds.
 {{traceInstructions}}
 `;

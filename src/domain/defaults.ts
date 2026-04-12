@@ -380,7 +380,7 @@ If \`.rundown/config.json\` has a default worker configured, \`--worker\` and \`
 - **\`verify: <assertion>\`** — Verify-only task (confirm:, check: are aliases).
 - **\`memory: <prompt>\`** — Capture information to source-local memory (memorize:, remember:, inventory:).
 - **\`fast: <task>\`** — Skip verification for this task (raw: is an alias).
-- **\`end: <condition>\`** — Stop processing siblings when condition is true (return:, skip:, quit:, break:).
+- **\`optional: <condition>\`** — Conditionally stop processing siblings when condition is true (preferred). Aliases: skip:, end:, return:, quit:, break:.
 - **\`include: <file.md>\`** — Include and execute tasks from another file.
 - **\`profile=<name>\`** — Select a named worker profile for this task.
 - Prefixes compose: \`profile=fast, verify: tests pass\`

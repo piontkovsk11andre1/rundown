@@ -86,23 +86,31 @@ const BUILTIN_TOOLS: Record<string, ToolDefinition> = {
     handler: forLoopHandler,
     frontmatter: { skipExecution: true, autoComplete: true, shouldVerify: false },
   },
-  end: {
-    name: "end",
-    // `end` is terminal control flow, so it is a handler (not a modifier).
+  optional: {
+    name: "optional",
+    // `optional` is terminal control flow, so it is a handler (not a modifier).
     kind: "handler",
     handler: endHandler,
     // Keep worker execution enabled so `endHandler` can evaluate the condition.
-    // Verification is disabled because end-condition tasks are control-flow only.
-    frontmatter: { skipExecution: false, shouldVerify: false },
-  },
-  return: {
-    name: "return",
-    kind: "handler",
-    handler: endHandler,
+    // Verification is disabled because condition tasks are control-flow only.
     frontmatter: { skipExecution: false, shouldVerify: false },
   },
   skip: {
     name: "skip",
+    kind: "handler",
+    handler: endHandler,
+    frontmatter: { skipExecution: false, shouldVerify: false },
+  },
+  // Compatibility aliases retained in v1.x during migration to `optional`/`skip`.
+  // `quit` remains an alias by policy for backward compatibility.
+  end: {
+    name: "end",
+    kind: "handler",
+    handler: endHandler,
+    frontmatter: { skipExecution: false, shouldVerify: false },
+  },
+  return: {
+    name: "return",
     kind: "handler",
     handler: endHandler,
     frontmatter: { skipExecution: false, shouldVerify: false },

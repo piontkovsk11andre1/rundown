@@ -223,6 +223,35 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
     ].join("\n"));
     expect(combinedOutput).toContain("PASS legacy-design-source.md");
   });
+
+  it("rundown test warns clearly when docs/current exists but draft is empty", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictedState(workspace, { template: "{{assertion}}" });
+    fs.rmSync(path.join(workspace, "Design.md"), { force: true });
+    fs.mkdirSync(path.join(workspace, "docs", "current"), { recursive: true });
+    fs.mkdirSync(path.join(workspace, "specs"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, "specs", "empty-draft.md"), "assert empty draft guidance", "utf-8");
+
+    const result = await runCli([
+      "test",
+      "--dir",
+      "specs",
+      "--",
+      "node",
+      "-e",
+      "console.log('OK');process.exit(0);",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n"));
+    expect(combinedOutput).toContain("Design draft is empty: docs/current/ has no files.");
+    expect(combinedOutput).toContain("PASS empty-draft.md");
+  });
 });
 
 function scaffoldPredictedState(workspace: string, options?: { template?: string }): void {

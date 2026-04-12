@@ -29,6 +29,7 @@ interface TestContext {
   latestContext: string;
   latestSnapshot: string;
   migrationHistory: string;
+  lowContextGuidance: string;
 }
 
 export interface TestSpecsDependencies {
@@ -123,6 +124,9 @@ export function createTestSpecs(
     const templatePath = path.join(cwd, ".rundown", "test-verify.md");
     const verifyTemplate = dependencies.templateLoader.load(templatePath) ?? DEFAULT_TEST_VERIFY_TEMPLATE;
     const testContext = buildTestContext(dependencies.fileSystem, cwd);
+    if (testContext.lowContextGuidance.length > 0) {
+      emit({ kind: "warn", message: testContext.lowContextGuidance });
+    }
 
     let passed = 0;
     let failed = 0;
@@ -247,12 +251,14 @@ function buildTestContext(fileSystem: FileSystem, projectRoot: string): TestCont
 
   const state = readMigrationState(fileSystem, migrationsDir);
   const latestSnapshot = getLatestSatellitePath(state, "snapshot");
+  const designContext = resolveDesignContext(fileSystem, projectRoot);
 
   return {
-    design: resolveDesignContext(fileSystem, projectRoot).design,
+    design: designContext.design,
     latestContext: state.latestContext ? fileSystem.readText(state.latestContext.filePath) : "",
     latestSnapshot: latestSnapshot ? fileSystem.readText(latestSnapshot) : "",
     migrationHistory: state.migrations.map((migration) => "- " + path.basename(migration.filePath)).join("\n"),
+    lowContextGuidance: designContext.isLowContext ? designContext.lowContextGuidance : "",
   };
 }
 

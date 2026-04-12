@@ -4,6 +4,8 @@ import type { FileSystem } from "../domain/ports/index.js";
 export interface DesignContextResolution {
   design: string;
   sourcePaths: string[];
+  isLowContext: boolean;
+  lowContextGuidance: string;
 }
 
 export interface DesignContextSourceReferencesResolution {
@@ -63,12 +65,26 @@ export type SaveDesignRevisionSnapshotResult =
 
 export function resolveDesignContext(fileSystem: FileSystem, projectRoot: string): DesignContextResolution {
   const docsCurrentDir = path.join(projectRoot, "docs", "current");
+  const hasManagedCurrentDraft = isDirectory(fileSystem, docsCurrentDir);
   const docsCurrentFiles = collectDesignFiles(fileSystem, docsCurrentDir);
 
   if (docsCurrentFiles.length > 0) {
     return {
       design: formatDesignWorkspaceContext(fileSystem, docsCurrentDir, docsCurrentFiles),
       sourcePaths: docsCurrentFiles,
+      isLowContext: false,
+      lowContextGuidance: "",
+    };
+  }
+
+  if (hasManagedCurrentDraft) {
+    return {
+      design: "",
+      sourcePaths: [docsCurrentDir],
+      isLowContext: true,
+      lowContextGuidance:
+        "Design draft is empty: docs/current/ has no files. "
+        + "Add docs/current/Design.md (and supporting docs) for richer migrate/test context.",
     };
   }
 
@@ -77,12 +93,18 @@ export function resolveDesignContext(fileSystem: FileSystem, projectRoot: string
     return {
       design: "",
       sourcePaths: [],
+      isLowContext: true,
+      lowContextGuidance:
+        "No design context found. Add docs/current/Design.md (preferred) "
+        + "or root Design.md (legacy fallback) for richer migrate/test context.",
     };
   }
 
   return {
     design: fileSystem.readText(legacyDesignPath),
     sourcePaths: [legacyDesignPath],
+    isLowContext: false,
+    lowContextGuidance: "",
   };
 }
 

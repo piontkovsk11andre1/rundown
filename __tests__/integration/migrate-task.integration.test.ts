@@ -262,6 +262,34 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(fs.existsSync(path.join(workspace, "migrations", "0002-template-vars-checked.md"))).toBe(true);
   });
 
+  it("emits low-context guidance when docs/current exists but has no files", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictionProject(workspace);
+    fs.rmSync(path.join(workspace, "Design.md"), { force: true });
+    fs.mkdirSync(path.join(workspace, "docs", "current"), { recursive: true });
+
+    const result = await runCli([
+      "migrate",
+      "--dir",
+      "migrations",
+      "--",
+      "node",
+      "-e",
+      buildTemplateVarsAssertionWorkerScript(),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0002-template-vars-checked.md"))).toBe(true);
+
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n"));
+    expect(combinedOutput).toContain("Design draft is empty: docs/current/ has no files.");
+  });
+
   it("falls back to the first ranked proposal in non-interactive mode", async () => {
     const workspace = makeTempWorkspace();
     scaffoldPredictionProject(workspace);
@@ -578,6 +606,37 @@ describeIfSaveMigrateAvailable("migrate save integration", () => {
       ...result.stderrWrites,
     ].join("\n"));
     expect(combinedOutput).toContain("Bootstrapped docs/current/ from legacy Design.md");
+  });
+
+  it("keeps revision-save valid for an empty docs/current draft", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictionProject(workspace);
+    fs.rmSync(path.join(workspace, "Design.md"), { force: true });
+    fs.mkdirSync(path.join(workspace, "docs", "current"), { recursive: true });
+
+    const result = await runCli([
+      "migrate",
+      "save",
+      "--dir",
+      "migrations",
+      "--",
+      "node",
+      "-e",
+      "process.exit(0);",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(fs.existsSync(path.join(workspace, "docs", "rev.1"))).toBe(true);
+    expect(fs.readdirSync(path.join(workspace, "docs", "rev.1"))).toStrictEqual([]);
+
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n"));
+    expect(combinedOutput).toContain("Saved design revision rev.1");
+    expect(combinedOutput).toContain("Saved empty design revision from docs/current/");
   });
 
   it("fails clearly when docs/current and legacy Design.md are both missing", async () => {

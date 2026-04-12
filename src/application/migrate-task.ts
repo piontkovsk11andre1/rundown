@@ -187,8 +187,16 @@ export function createMigrateTask(
             + String(savedRevision.copiedFileCount)
             + " file"
             + (savedRevision.copiedFileCount === 1 ? "" : "s")
-            + ").",
-        });
+             + ").",
+         });
+        if (savedRevision.copiedFileCount === 0) {
+          emit({
+            kind: "warn",
+            message:
+              "Saved empty design revision from docs/current/. "
+              + "Add docs/current/Design.md (and supporting docs) for richer migrate/test context.",
+          });
+        }
       }
       return EXIT_CODE_SUCCESS;
     }
@@ -295,6 +303,8 @@ export function createMigrateTask(
         showAgentOutput: options.showAgentOutput,
       });
     }
+
+    emitLowDesignContextGuidance(dependencies.fileSystem, projectRoot, emit);
 
     const state = readMigrationState(dependencies.fileSystem, migrationsDir);
 
@@ -687,6 +697,22 @@ function ensureManagedDesignWorkspaceForRevisionCommands(
       + docsCurrentDir
       + ". Create docs/current/ (or run `rundown start ...`) before using revision commands.",
   };
+}
+
+function emitLowDesignContextGuidance(
+  fileSystem: FileSystem,
+  projectRoot: string,
+  emit: ApplicationOutputPort["emit"],
+): void {
+  const designContext = resolveDesignContext(fileSystem, projectRoot);
+  if (!designContext.isLowContext || designContext.lowContextGuidance.trim().length === 0) {
+    return;
+  }
+
+  emit({
+    kind: "warn",
+    message: designContext.lowContextGuidance,
+  });
 }
 
 function resolveWorkspaceRootFromCurrentDir(fileSystem: FileSystem, currentDir: string): string {

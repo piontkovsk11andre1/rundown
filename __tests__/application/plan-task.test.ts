@@ -2598,6 +2598,52 @@ describe("plan-task", () => {
     );
   });
 
+  it("includes prepend/append advisory guidance in deep prompt context during deep planning", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const content = "# Roadmap\n- [ ] Build release flow\n";
+    const { dependencies, workerExecutor, fileSystem } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: content,
+    });
+    const prependPath = dependencies.pathOperations.join(dependencies.configDir!.configDir, "plan-prepend.md");
+    const appendPath = dependencies.pathOperations.join(dependencies.configDir!.configDir, "plan-append.md");
+    const originalReadText = vi.mocked(dependencies.fileSystem.readText).getMockImplementation();
+
+    vi.mocked(dependencies.fileSystem.readText).mockImplementation((filePath: string) => {
+      if (filePath === prependPath) {
+        return "Prefer prerequisite discovery before implementation tasks.";
+      }
+      if (filePath === appendPath) {
+        return "Prefer final verification and handoff checks when applicable.";
+      }
+      return originalReadText?.(filePath) ?? "";
+    });
+
+    vi.mocked(workerExecutor.runWorker)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      })
+      .mockImplementationOnce(async () => {
+        fileSystem.writeText(markdownFile, "# Roadmap\n- [ ] Build release flow\n  - [ ] Define release steps\n  - [ ] Validate rollout\n");
+        return { exitCode: 0, stdout: "", stderr: "" };
+      });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({ source: markdownFile, deep: 1 }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(workerExecutor.runWorker)).toHaveBeenCalledTimes(2);
+    const deepPrompt = vi.mocked(workerExecutor.runWorker).mock.calls[1]?.[0]?.prompt ?? "";
+    expect(deepPrompt).toContain("Optional prepend guidance (advisory)");
+    expect(deepPrompt).toContain("Optional append guidance (advisory)");
+    expect(deepPrompt).toContain("Prefer prerequisite discovery before implementation tasks.");
+    expect(deepPrompt).toContain("Prefer final verification and handoff checks when applicable.");
+  });
+
   it("runs deep passes after scan convergence and inserts child TODO items", async () => {
     const cwd = "/workspace";
     const markdownFile = path.join(cwd, "roadmap.md");

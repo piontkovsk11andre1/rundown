@@ -134,4 +134,35 @@ describe("parsePrefixChain", () => {
     expect(chain.handler).toBeUndefined();
     expect(chain.remainingText).toBe("");
   });
+
+  it("parses for: as loop handler and preserves payload text", () => {
+    const chain = parsePrefixChain("for: All controllers", builtinToolResolver);
+
+    expect(chain.modifiers).toEqual([]);
+    expect(chain.handler?.tool.name).toBe("for");
+    expect(chain.handler?.tool.kind).toBe("handler");
+    expect(chain.handler?.payload).toBe("All controllers");
+    expect(chain.remainingText).toBe("All controllers");
+  });
+
+  it("normalizes each:/foreach: aliases to canonical for handler", () => {
+    const eachChain = parsePrefixChain("each: API routes", builtinToolResolver);
+    const foreachChain = parsePrefixChain("foreach: API routes", builtinToolResolver);
+
+    expect(eachChain.handler?.tool.name).toBe("for");
+    expect(eachChain.handler?.payload).toBe("API routes");
+    expect(foreachChain.handler?.tool.name).toBe("for");
+    expect(foreachChain.handler?.payload).toBe("API routes");
+  });
+
+  it("supports modifier chains before loop aliases and keeps canonical handler", () => {
+    const chain = parsePrefixChain("profile: fast, each: services", builtinToolResolver);
+
+    expect(chain.modifiers).toHaveLength(1);
+    expect(chain.modifiers[0]?.tool.name).toBe("profile");
+    expect(chain.modifiers[0]?.payload).toBe("fast");
+    expect(chain.handler?.tool.name).toBe("for");
+    expect(chain.handler?.payload).toBe("services");
+    expect(chain.remainingText).toBe("services");
+  });
 });

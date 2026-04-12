@@ -5,6 +5,7 @@ import { includeHandler } from "./include.js";
 import { profileHandler } from "./profile.js";
 import { forceHandler } from "./force.js";
 import { parallelHandler } from "./parallel.js";
+import { forLoopHandler } from "./for-loop.js";
 
 /**
  * Static registry of built-in tool definitions.
@@ -55,6 +56,24 @@ const BUILTIN_TOOLS: Record<string, ToolDefinition> = {
     name: "par",
     kind: "handler",
     handler: parallelHandler,
+    frontmatter: { skipExecution: true, autoComplete: true, shouldVerify: false },
+  },
+  for: {
+    name: "for",
+    kind: "handler",
+    handler: forLoopHandler,
+    frontmatter: { skipExecution: true, autoComplete: true, shouldVerify: false },
+  },
+  each: {
+    name: "for",
+    kind: "handler",
+    handler: forLoopHandler,
+    frontmatter: { skipExecution: true, autoComplete: true, shouldVerify: false },
+  },
+  foreach: {
+    name: "for",
+    kind: "handler",
+    handler: forLoopHandler,
     frontmatter: { skipExecution: true, autoComplete: true, shouldVerify: false },
   },
   end: {

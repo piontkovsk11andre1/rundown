@@ -176,6 +176,45 @@ describe("parseTasks", () => {
     expect(tasks[1]!.subItems).toEqual([{ text: "Child note", line: 4, depth: 2 }]);
   });
 
+  it("parses for-loop metadata lines as subItems under loop-prefixed parent tasks", () => {
+    const md = [
+      "- [ ] for: All controllers",
+      "  - for-item: This",
+      "  - for-item: That",
+      "  - for-current: This",
+      "  - [ ] Do this",
+      "  - [ ] Do that",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(3);
+    expect(tasks[0]!.text).toBe("for: All controllers");
+    expect(tasks[0]!.subItems).toEqual([
+      { text: "for-item: This", line: 2, depth: 1 },
+      { text: "for-item: That", line: 3, depth: 1 },
+      { text: "for-current: This", line: 4, depth: 1 },
+    ]);
+    expect(tasks[0]!.children).toEqual([tasks[1], tasks[2]]);
+  });
+
+  it("captures taskProfile for each/foreach aliases via generic prefix-task detection", () => {
+    const md = [
+      "- [ ] each: API endpoints",
+      "  - profile: fast",
+      "- [ ] foreach: workers",
+      "  - profile: compact",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]!.text).toBe("each: API endpoints");
+    expect(tasks[0]!.taskProfile).toBe("fast");
+    expect(tasks[1]!.text).toBe("foreach: workers");
+    expect(tasks[1]!.taskProfile).toBe("compact");
+  });
+
   it("parses trace statistics lines as plain subItems on subsequent runs", () => {
     const md = [
       "- [x] Ship release",

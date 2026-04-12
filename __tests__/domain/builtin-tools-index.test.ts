@@ -47,6 +47,27 @@ describe("builtin tools registry", () => {
     }
   });
 
+  it("maps for/each/foreach as canonical loop handler aliases", () => {
+    const loopTool = resolveBuiltinTool("for");
+    const aliasNames = ["each", "foreach"];
+
+    expect(loopTool?.kind).toBe("handler");
+    expect(loopTool?.name).toBe("for");
+    expect(loopTool?.frontmatter).toEqual({
+      skipExecution: true,
+      autoComplete: true,
+      shouldVerify: false,
+    });
+
+    for (const aliasName of aliasNames) {
+      const alias = resolveBuiltinTool(aliasName);
+      expect(alias?.kind).toBe("handler");
+      expect(alias?.name).toBe("for");
+      expect(alias?.handler).toBe(loopTool?.handler);
+      expect(alias?.frontmatter).toEqual(loopTool?.frontmatter);
+    }
+  });
+
   it("does not statically register question because it needs injected interactive input", () => {
     expect(resolveBuiltinTool("question")).toBeUndefined();
   });

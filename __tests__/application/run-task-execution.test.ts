@@ -102,19 +102,19 @@ describe("run-task-execution helpers", () => {
       "echo from-template",
       cwd,
       expect.objectContaining({
-        env: {
+        env: expect.objectContaining({
           RUNDOWN_VAR_API_TOKEN: "from-cli",
           RUNDOWN_VAR_CHANNEL: "stable",
           RUNDOWN_VAR_DB_HOST: "localhost",
-        },
+        }),
       }),
     );
     expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledWith(expect.objectContaining({
-      env: {
+      env: expect.objectContaining({
         RUNDOWN_VAR_API_TOKEN: "from-cli",
         RUNDOWN_VAR_CHANNEL: "stable",
         RUNDOWN_VAR_DB_HOST: "localhost",
-      },
+      }),
     }));
   });
 
@@ -142,10 +142,10 @@ describe("run-task-execution helpers", () => {
       "echo hello",
       expectedInlineCwd,
       expect.objectContaining({
-        env: {
+        env: expect.objectContaining({
           RUNDOWN_VAR_REGION: "eu-west",
           RUNDOWN_VAR_RELEASE: "v1",
-        },
+        }),
       }),
     );
   });

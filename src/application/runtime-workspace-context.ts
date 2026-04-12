@@ -12,6 +12,16 @@ export interface RuntimeWorkspaceContext {
 }
 
 /**
+ * Template variable keys reserved for runtime workspace context.
+ */
+export const WORKSPACE_CONTEXT_TEMPLATE_VAR_KEYS = [
+  "invocationDir",
+  "workspaceDir",
+  "workspaceLinkPath",
+  "isLinkedWorkspace",
+] as const;
+
+/**
  * Optional invocation/workspace metadata supplied by CLI command actions.
  */
 export interface RuntimeWorkspaceContextInput {
@@ -63,4 +73,27 @@ export function buildWorkspaceContextTemplateVars(
     workspaceLinkPath: context.workspaceLinkPath,
     isLinkedWorkspace: context.isLinkedWorkspace ? "true" : "false",
   };
+}
+
+/**
+ * Merges vars while preserving authoritative runtime workspace context keys.
+ */
+export function mergeTemplateVarsWithWorkspaceContext(
+  fileTemplateVars: ExtraTemplateVars,
+  cliTemplateVars: ExtraTemplateVars,
+  workspaceContextTemplateVars: ExtraTemplateVars,
+): ExtraTemplateVars {
+  const merged: ExtraTemplateVars = {
+    ...fileTemplateVars,
+    ...cliTemplateVars,
+  };
+
+  for (const key of WORKSPACE_CONTEXT_TEMPLATE_VAR_KEYS) {
+    const value = workspaceContextTemplateVars[key];
+    if (typeof value === "string") {
+      merged[key] = value;
+    }
+  }
+
+  return merged;
 }

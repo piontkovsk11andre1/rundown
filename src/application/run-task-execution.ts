@@ -37,6 +37,7 @@ import { createCachedCommandExecutor } from "./cached-command-executor.js";
 import { formatNoItemsFound, formatNoItemsFoundMatching, pluralize } from "./run-task-utils.js";
 import {
   buildWorkspaceContextTemplateVars,
+  mergeTemplateVarsWithWorkspaceContext,
   resolveRuntimeWorkspaceContext,
 } from "./runtime-workspace-context.js";
 import { isParallelGroupTaskText } from "../domain/parallel-group.js";
@@ -329,11 +330,11 @@ export function createRunTaskExecution(
       )
       : {};
     const cliTemplateVars = parseCliTemplateVars(cliTemplateVarArgs);
-    const extraTemplateVars: ExtraTemplateVars = {
-      ...fileTemplateVars,
-      ...cliTemplateVars,
-      ...workspaceContextTemplateVars,
-    };
+    const extraTemplateVars: ExtraTemplateVars = mergeTemplateVarsWithWorkspaceContext(
+      fileTemplateVars,
+      cliTemplateVars,
+      workspaceContextTemplateVars,
+    );
     const rundownVarEnv = buildRundownVarEnv(extraTemplateVars);
     const templateVarsWithUserVariables: ExtraTemplateVars = {
       ...extraTemplateVars,

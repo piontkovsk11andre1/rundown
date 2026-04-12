@@ -32,6 +32,7 @@ import {
 import { loadProjectTemplatesFromPorts } from "./project-templates.js";
 import {
   buildWorkspaceContextTemplateVars,
+  mergeTemplateVarsWithWorkspaceContext,
   resolveRuntimeWorkspaceContext,
 } from "./runtime-workspace-context.js";
 import {
@@ -275,11 +276,11 @@ export function createPlanTask(
         )
         : {};
       const cliTemplateVars = parseCliTemplateVars(cliTemplateVarArgs);
-      const extraTemplateVars: ExtraTemplateVars = {
-        ...fileTemplateVars,
-        ...cliTemplateVars,
-        ...workspaceContextTemplateVars,
-      };
+      const extraTemplateVars: ExtraTemplateVars = mergeTemplateVarsWithWorkspaceContext(
+        fileTemplateVars,
+        cliTemplateVars,
+        workspaceContextTemplateVars,
+      );
       const rundownVarEnv = buildRundownVarEnv(extraTemplateVars);
       const templateVarsWithUserVariables: ExtraTemplateVars = {
         ...extraTemplateVars,

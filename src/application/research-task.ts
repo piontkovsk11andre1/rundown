@@ -24,6 +24,7 @@ import { loadProjectTemplatesFromPorts } from "./project-templates.js";
 import { resolveWorkerPatternForInvocation } from "./resolve-worker.js";
 import {
   buildWorkspaceContextTemplateVars,
+  mergeTemplateVarsWithWorkspaceContext,
   resolveRuntimeWorkspaceContext,
 } from "./runtime-workspace-context.js";
 import { FileLockError } from "../domain/ports/file-lock.js";
@@ -220,11 +221,11 @@ export function createResearchTask(
           )
           : {};
         const cliTemplateVars = parseCliTemplateVars(cliTemplateVarArgs);
-        const extraTemplateVars: ExtraTemplateVars = {
-          ...fileTemplateVars,
-          ...cliTemplateVars,
-          ...workspaceContextTemplateVars,
-        };
+        const extraTemplateVars: ExtraTemplateVars = mergeTemplateVarsWithWorkspaceContext(
+          fileTemplateVars,
+          cliTemplateVars,
+          workspaceContextTemplateVars,
+        );
         const rundownVarEnv = buildRundownVarEnv(extraTemplateVars);
         const templateVarsWithUserVariables: ExtraTemplateVars = {
           ...extraTemplateVars,
@@ -424,11 +425,11 @@ export function createResearchTask(
           )
           : {};
         const cliTemplateVars = parseCliTemplateVars(cliTemplateVarArgs);
-        const extraTemplateVars: ExtraTemplateVars = {
-          ...fileTemplateVars,
-          ...cliTemplateVars,
-          ...workspaceContextTemplateVars,
-        };
+        const extraTemplateVars: ExtraTemplateVars = mergeTemplateVarsWithWorkspaceContext(
+          fileTemplateVars,
+          cliTemplateVars,
+          workspaceContextTemplateVars,
+        );
         const rundownVarEnv = buildRundownVarEnv(extraTemplateVars);
         const templateVarsWithUserVariables: ExtraTemplateVars = {
           ...extraTemplateVars,

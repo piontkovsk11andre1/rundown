@@ -205,6 +205,48 @@ describe("run-task-execution helpers", () => {
     expect(prompt).not.toContain(path.resolve("/fake/cli/invocation"));
   });
 
+  it("emits non-linked workspace context template variables with fallback values", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "build release"),
+      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] build release\n" }),
+      gitClient: createGitClientMock(),
+    });
+    dependencies.templateLoader.load = (templatePath: string) => {
+      if (templatePath.endsWith("execute.md")) {
+        return [
+          "invocationDir={{invocationDir}}",
+          "workspaceDir={{workspaceDir}}",
+          "workspaceLinkPath={{workspaceLinkPath}}",
+          "isLinkedWorkspace={{isLinkedWorkspace}}",
+        ].join("\n");
+      }
+      return null;
+    };
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({
+      printPrompt: true,
+      verify: false,
+      invocationDir: "/real/invocation",
+      workspaceDir: "/real/workspace",
+      workspaceLinkPath: "/real/invocation/.rundown/workspace.link",
+      isLinkedWorkspace: false,
+      workerCommand: ["opencode", "run"],
+    }));
+
+    expect(code).toBe(0);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain(`invocationDir=${path.resolve("/real/invocation")}`);
+    expect(prompt).toContain(`workspaceDir=${path.resolve("/real/invocation")}`);
+    expect(prompt).toContain("workspaceLinkPath=");
+    expect(prompt).toContain("isLinkedWorkspace=false");
+    expect(prompt).not.toContain(path.resolve("/real/workspace"));
+    expect(prompt).not.toContain(path.resolve("/real/invocation/.rundown/workspace.link"));
+  });
+
   it("uses parser-appended cli-args directly for inline cli execution", async () => {
     const cwd = "/workspace";
     const taskFile = `${cwd}/tasks.md`;

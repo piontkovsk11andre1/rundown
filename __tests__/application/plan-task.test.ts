@@ -411,6 +411,42 @@ describe("plan-task", () => {
     expect(prompt).not.toContain("/fake/cli/");
   });
 
+  it("emits non-linked workspace context template variables with fallback values", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, events } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\nBuild a new release process.\n",
+    });
+
+    vi.mocked(dependencies.templateLoader.load).mockReturnValue([
+      "invocationDir={{invocationDir}}",
+      "workspaceDir={{workspaceDir}}",
+      "workspaceLinkPath={{workspaceLinkPath}}",
+      "isLinkedWorkspace={{isLinkedWorkspace}}",
+    ].join("\n"));
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({
+      source: markdownFile,
+      printPrompt: true,
+      invocationDir: "/real/invocation",
+      workspaceDir: "/real/workspace",
+      workspaceLinkPath: "/real/invocation/.rundown/workspace.link",
+      isLinkedWorkspace: false,
+    }));
+
+    expect(code).toBe(0);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain("invocationDir=/real/invocation");
+    expect(prompt).toContain("workspaceDir=/real/invocation");
+    expect(prompt).toContain("workspaceLinkPath=");
+    expect(prompt).toContain("isLinkedWorkspace=false");
+    expect(prompt).not.toContain("/real/workspace");
+    expect(prompt).not.toContain("/real/invocation/.rundown/workspace.link");
+  });
+
   it("supports dry-run and skips worker execution", async () => {
     const cwd = "/workspace";
     const markdownFile = path.join(cwd, "roadmap.md");

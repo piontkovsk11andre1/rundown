@@ -19,6 +19,11 @@ interface ImmediateChildLine {
   text: string;
 }
 
+interface OpenFence {
+  char: "`" | "~";
+  length: number;
+}
+
 function buildExtractionPrompt(query: string): string {
   return [
     "You are extracting a concrete list of names from a task query.",
@@ -217,17 +222,34 @@ function extractResults(raw: string): string[] {
 
 function collectImmediateChildren(lines: string[], parentLineIndex: number, childIndentLength: number, parentIndentLength: number): ImmediateChildLine[] {
   const immediateChildren: ImmediateChildLine[] = [];
+  const fencePattern = /^\s*(`{3,}|~{3,})/;
+  let openFence: OpenFence | null = null;
 
   for (let index = parentLineIndex + 1; index < lines.length; index += 1) {
     const line = lines[index] ?? "";
-    if (line.trim().length === 0) {
-      continue;
-    }
-
     const leadingWhitespaceLength = (line.match(/^(\s*)/)?.[1] ?? "").length;
     if (leadingWhitespaceLength <= parentIndentLength) {
       break;
     }
+
+    const fenceMatch = line.match(fencePattern);
+    if (fenceMatch) {
+      const marker = fenceMatch[1] ?? "";
+      const char = marker[0] as "`" | "~";
+      const length = marker.length;
+
+      if (openFence === null) {
+        openFence = { char, length };
+      } else if (openFence.char === char && length >= openFence.length) {
+        openFence = null;
+      }
+      continue;
+    }
+
+    if (openFence !== null || line.trim().length === 0) {
+      continue;
+    }
+
     if (leadingWhitespaceLength !== childIndentLength) {
       continue;
     }

@@ -397,6 +397,48 @@ describe("builtin-tools/get getHandler", () => {
     );
   });
 
+  it("refreshes only real child get-result lines and preserves fenced examples", async () => {
+    const source = [
+      "- [ ] get: All current names of this and that",
+      "  ```md",
+      "  - get-result: Example inside fence",
+      "  ```",
+      "  - get-mode: refresh",
+      "  - get-result: Legacy",
+      "",
+    ].join("\n");
+    const { context, writeText } = createContext({
+      source,
+      subItems: [
+        { text: "get-mode: refresh", line: 5, depth: 1 },
+        { text: "get-result: Legacy", line: 6, depth: 1 },
+      ],
+      runWorker: vi.fn(async () => ({
+        exitCode: 0,
+        stdout: '{"results":["This","That"]}',
+        stderr: "",
+      })),
+    });
+
+    const result = await getHandler(context);
+
+    expect(result).toEqual({
+      skipExecution: true,
+      shouldVerify: false,
+    });
+    const writtenSource = writeText.mock.calls[0]?.[1] ?? "";
+    expect(writtenSource).toBe([
+      "- [ ] get: All current names of this and that",
+      "  ```md",
+      "  - get-result: Example inside fence",
+      "  ```",
+      "  - get-mode: refresh",
+      "  - get-result: This",
+      "  - get-result: That",
+      "",
+    ].join("\n"));
+  });
+
   it("round-trips escaped get-result values through parser and deterministic rerun", async () => {
     const source = "- [ ] get: All current names of this and that\n";
     const firstRun = createContext({

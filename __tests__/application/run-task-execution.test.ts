@@ -2415,6 +2415,40 @@ describe("run-task-execution helpers", () => {
     expect(events.some((event) => event.kind === "warn" && event.message.includes("Force retry"))).toBe(false);
   });
 
+  it.each([
+    { label: "--dry-run", options: { dryRun: true } },
+    { label: "--print-prompt", options: { printPrompt: true } },
+  ])("keeps fenced get-result lines stable during $label", async ({ options }) => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const initialSource = [
+      "- [ ] get: All current names of this and that",
+      "  ```md",
+      "  - get-result: Example inside fence",
+      "  ```",
+      "",
+    ].join("\n");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: initialSource,
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "get: All current names of this and that"),
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({
+      verify: false,
+      ...options,
+    }));
+
+    expect(code).toBe(0);
+    expect(fileSystem.readText(taskFile)).toBe(initialSource);
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+  });
+
   it("re-parses task context after tool updates so downstream tasks see new sub-items", async () => {
     const cwd = "/workspace";
     const taskFile = `${cwd}/tasks.md`;

@@ -267,10 +267,19 @@ function findTaskByIdentity(tasks: Task[], task: Task): Task | undefined {
     ?? tasks.find((candidate) => candidate.line === task.line);
 }
 
+function collectDescendantTasks(task: Task): Task[] {
+  const descendants: Task[] = [];
+  for (const child of task.children) {
+    descendants.push(child);
+    descendants.push(...collectDescendantTasks(child));
+  }
+  return descendants;
+}
+
 function resolveLoopChildTasks(tasks: Task[], loopTask: Task): Task[] {
   const loopInTree = findTaskByIdentity(tasks, loopTask);
   if (loopInTree) {
-    return loopInTree.children;
+    return collectDescendantTasks(loopInTree);
   }
 
   return tasks.filter((candidate) => {
@@ -278,7 +287,7 @@ function resolveLoopChildTasks(tasks: Task[], loopTask: Task): Task[] {
       return false;
     }
 
-    if (candidate.depth !== loopTask.depth + 1) {
+    if (candidate.depth <= loopTask.depth) {
       return false;
     }
 

@@ -1469,6 +1469,8 @@ describe("task-execution-dispatch", () => {
       executionFailureMessage: "Inline CLI exited with code 3",
       executionFailureRunReason: "Inline CLI exited with a non-zero code.",
       executionFailureExitCode: 3,
+      executionFailureStdout: "inline out",
+      executionFailureStderr: "inline err",
       forceRetryableFailure: true,
     });
     expect(events).toContainEqual({ kind: "text", text: "inline out" });
@@ -1585,6 +1587,8 @@ describe("task-execution-dispatch", () => {
       executionFailureMessage: "Inline CLI exited with code 9",
       executionFailureRunReason: "Inline CLI exited with a non-zero code.",
       executionFailureExitCode: 9,
+      executionFailureStdout: "inline fail out",
+      executionFailureStderr: "inline fail err",
       forceRetryableFailure: true,
     });
     expect(events).toContainEqual({ kind: "text", text: "inline fail out" });
@@ -1646,6 +1650,8 @@ describe("task-execution-dispatch", () => {
       executionFailureMessage: "Inline CLI exited with code 11",
       executionFailureRunReason: "Inline CLI exited with a non-zero code.",
       executionFailureExitCode: 11,
+      executionFailureStdout: "",
+      executionFailureStderr: "inline fail err only",
       forceRetryableFailure: true,
     });
     expect(events).toContainEqual({ kind: "stderr", text: "inline fail err only" });
@@ -1707,6 +1713,8 @@ describe("task-execution-dispatch", () => {
       executionFailureMessage: "Inline CLI exited with code 12",
       executionFailureRunReason: "Inline CLI exited with a non-zero code.",
       executionFailureExitCode: 12,
+      executionFailureStdout: "inline fail out only",
+      executionFailureStderr: "",
       forceRetryableFailure: true,
     });
     expect(events).toContainEqual({ kind: "text", text: "inline fail out only" });
@@ -1768,6 +1776,8 @@ describe("task-execution-dispatch", () => {
       executionFailureMessage: "Inline CLI exited with code 13",
       executionFailureRunReason: "Inline CLI exited with a non-zero code.",
       executionFailureExitCode: 13,
+      executionFailureStdout: "",
+      executionFailureStderr: "",
       forceRetryableFailure: true,
     });
     expect(events.some((event) => event.kind === "text" || event.kind === "stderr")).toBe(false);
@@ -1831,6 +1841,8 @@ describe("task-execution-dispatch", () => {
       executionFailureMessage: "Inline CLI exited with code 15",
       executionFailureRunReason: "Inline CLI exited with a non-zero code.",
       executionFailureExitCode: 15,
+      executionFailureStdout: hugeStdout,
+      executionFailureStderr: hugeStderr,
       forceRetryableFailure: true,
     });
 
@@ -2576,6 +2588,8 @@ describe("task-execution-dispatch", () => {
       executionFailureMessage: "Worker exited with code 7.",
       executionFailureRunReason: "Worker exited with a non-zero code.",
       executionFailureExitCode: 7,
+      executionFailureStdout: "",
+      executionFailureStderr: "worker failed",
       forceRetryableFailure: true,
     });
 
@@ -2633,6 +2647,8 @@ describe("task-execution-dispatch", () => {
       executionFailureMessage: "Inline CLI exited with code 5",
       executionFailureRunReason: "Inline CLI exited with a non-zero code.",
       executionFailureExitCode: 5,
+      executionFailureStdout: "",
+      executionFailureStderr: "inline failed",
       forceRetryableFailure: true,
     });
 

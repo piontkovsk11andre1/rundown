@@ -32,6 +32,9 @@ import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import type { ExtraTemplateVars } from "../domain/template-vars.js";
 import type { RunTaskDependencies } from "./run-task-execution.js";
 import type { TraceStatisticsConfig } from "../domain/worker-config.js";
+import type { WorkerFailureClass } from "../domain/worker-health.js";
+import { classifyWorkerFailure } from "./worker-failure-classification.js";
+import { RUN_REASON_USAGE_LIMIT_DETECTED } from "../domain/run-reasons.js";
 
 type EmitFn = (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
 type ArtifactContext = ArtifactRunContext;
@@ -224,6 +227,7 @@ export async function runTaskIteration(params: {
   continueLoop: boolean;
   exitCode?: number;
   forceRetryableFailure?: boolean;
+  workerFailureClass?: WorkerFailureClass;
 }> {
   const { dependencies, emit, state, context, execution, worker, verifyConfig, completion, prompts, traceConfig, lifecycle } = params;
   const { source, fileSource, files, task } = context;
@@ -570,6 +574,13 @@ export async function runTaskIteration(params: {
     return {
       continueLoop: false,
       forceRetryableFailure: dispatchResult.forceRetryableFailure === true,
+      workerFailureClass: classifyIterationFailure({
+        runReason: dispatchResult.executionFailureRunReason,
+        exitCode: dispatchResult.executionFailureExitCode,
+        message: dispatchResult.executionFailureMessage,
+        stdout: dispatchResult.executionFailureStdout,
+        stderr: dispatchResult.executionFailureStderr,
+      }),
       exitCode: await handleDispatchFailure({
         dispatchResult,
         emit,
@@ -668,13 +679,26 @@ export async function runTaskIteration(params: {
     groupEnded = true;
   }
 
+  const normalizedCompletionResult = {
+    ...completionResult,
+    workerFailureClass: completionResult.continueLoop
+      ? undefined
+      : classifyIterationFailure({
+        runReason: dispatchResult.verificationFailureRunReason,
+        exitCode: completionResult.exitCode ?? 0,
+        message: completionResult.failureMessage ?? dispatchResult.verificationFailureMessage,
+        usageLimitDetected: dispatchResult.verificationFailureRunReason === RUN_REASON_USAGE_LIMIT_DETECTED,
+        stdout: dispatchResult.executionStdout,
+      }),
+  };
+
   if (!completionResult.continueLoop && (completionResult.exitCode ?? 0) !== 0 && !groupEnded) {
     emitGroupFailure(completionResult.failureMessage ?? dispatchResult.verificationFailureRunReason);
   } else if (!completionResult.continueLoop && !groupEnded) {
     emitGroupSuccess();
   }
 
-  return completionResult;
+  return normalizedCompletionResult;
   } catch (error) {
     const message = error instanceof Error
       ? error.message
@@ -683,3 +707,18 @@ export async function runTaskIteration(params: {
     throw error;
   }
 }
+  const classifyIterationFailure = (input: {
+    runReason?: string;
+    exitCode?: number | null;
+    message?: string;
+    usageLimitDetected?: boolean;
+    stdout?: string;
+    stderr?: string;
+  }): WorkerFailureClass => classifyWorkerFailure({
+    runReason: input.runReason,
+    exitCode: input.exitCode,
+    message: input.message,
+    usageLimitDetected: input.usageLimitDetected,
+    stdout: input.stdout,
+    stderr: input.stderr,
+  });

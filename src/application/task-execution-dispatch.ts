@@ -53,6 +53,8 @@ export type TaskExecutionDispatchResult =
     executionFailureMessage: string;
     executionFailureRunReason: string;
     executionFailureExitCode: number | null;
+    executionFailureStdout?: string;
+    executionFailureStderr?: string;
     forceRetryableFailure?: boolean;
   }
   | {
@@ -292,6 +294,8 @@ export async function dispatchTaskExecution(params: {
             executionFailureMessage: includeExecution.message,
             executionFailureRunReason: includeExecution.reason,
             executionFailureExitCode: includeExecution.exitCode,
+            executionFailureStdout: includeExecution.stdout,
+            executionFailureStderr: includeExecution.stderr,
             forceRetryableFailure: true,
           };
         }
@@ -358,6 +362,8 @@ export async function dispatchTaskExecution(params: {
         executionFailureMessage: "Inline CLI exited with code " + cliResult.exitCode,
         executionFailureRunReason: "Inline CLI exited with a non-zero code.",
         executionFailureExitCode: cliResult.exitCode,
+        executionFailureStdout: cliResult.stdout,
+        executionFailureStderr: cliResult.stderr,
         forceRetryableFailure: true,
       };
     }
@@ -443,6 +449,8 @@ export async function dispatchTaskExecution(params: {
         executionFailureMessage: "Tool expansion worker execution was interrupted before completion.",
         executionFailureRunReason: "Tool expansion worker execution was interrupted.",
         executionFailureExitCode: null,
+        executionFailureStdout: runResult.stdout,
+        executionFailureStderr: runResult.stderr,
       };
     }
 
@@ -452,6 +460,8 @@ export async function dispatchTaskExecution(params: {
         executionFailureMessage: "Tool expansion worker exited with code " + runResult.exitCode + ".",
         executionFailureRunReason: "Tool expansion worker exited with a non-zero code.",
         executionFailureExitCode: runResult.exitCode,
+        executionFailureStdout: runResult.stdout,
+        executionFailureStderr: runResult.stderr,
         forceRetryableFailure: true,
       };
     }
@@ -532,6 +542,8 @@ export async function dispatchTaskExecution(params: {
       executionFailureMessage: "Worker execution was interrupted before completion.",
       executionFailureRunReason: "Worker execution was interrupted.",
       executionFailureExitCode: null,
+      executionFailureStdout: runResult.stdout,
+      executionFailureStderr: runResult.stderr,
     };
   }
 
@@ -541,6 +553,8 @@ export async function dispatchTaskExecution(params: {
       executionFailureMessage: "Worker exited with code " + runResult.exitCode + ".",
       executionFailureRunReason: "Worker exited with a non-zero code.",
       executionFailureExitCode: runResult.exitCode,
+      executionFailureStdout: runResult.stdout,
+      executionFailureStderr: runResult.stderr,
       forceRetryableFailure: true,
     };
   }
@@ -629,7 +643,14 @@ function runIncludedFile(params: {
   emitExecutionWorkerOutput: (stdout: string, stderr: string) => void;
 }): Promise<
   | { ok: true }
-  | { ok: false; message: string; reason: string; exitCode: number | null }
+  | {
+    ok: false;
+    message: string;
+    reason: string;
+    exitCode: number | null;
+    stdout?: string;
+    stderr?: string;
+  }
 > {
   const {
     dependencies,
@@ -730,6 +751,8 @@ function runIncludedFile(params: {
         message: "Included file execution was interrupted before completion: " + includedFile,
         reason: "Included file execution was interrupted.",
         exitCode: null,
+        stdout: includeRunResult.stdout,
+        stderr: includeRunResult.stderr,
       };
     }
 
@@ -739,6 +762,8 @@ function runIncludedFile(params: {
         message: "Included file execution failed with code " + includeRunResult.exitCode + ": " + includedFile,
         reason: "Included file execution failed.",
         exitCode: includeRunResult.exitCode,
+        stdout: includeRunResult.stdout,
+        stderr: includeRunResult.stderr,
       };
     }
 

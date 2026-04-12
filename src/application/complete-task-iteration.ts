@@ -38,6 +38,12 @@ import {
   RUN_REASON_USAGE_LIMIT_DETECTED,
 } from "../domain/run-reasons.js";
 import {
+  WORKER_FAILURE_CLASS_TRANSPORT_UNAVAILABLE,
+  WORKER_FAILURE_CLASS_USAGE_LIMIT,
+  type WorkerFailureClass,
+} from "../domain/worker-health.js";
+import { classifyWorkerFailure } from "./worker-failure-classification.js";
+import {
   normalizeRepairPathForDisplay,
   resolveInlineRundownTargetArtifactPath,
   resolveRepairTemplateForTask,
@@ -79,6 +85,7 @@ export async function completeTaskIteration(params: {
     reason: string,
     exitCode: number | null,
     preserve?: boolean,
+    extra?: Record<string, unknown>,
   ) => Promise<number>;
   finishRun: (
     code: number,
@@ -330,6 +337,14 @@ export async function completeTaskIteration(params: {
       const surfacedFailureMessage = usageLimitDetected
         ? usageLimitFailureMessage
         : fullVerificationFailureMessage;
+      const failureClass = usageLimitDetected
+        ? WORKER_FAILURE_CLASS_USAGE_LIMIT
+        : classifyWorkerFailure({
+          message: surfacedFailureMessage,
+          runReason: RUN_REASON_VERIFICATION_FAILED,
+          exitCode: 2,
+          usageLimitDetected,
+        });
       if (persistFailureAnnotation) {
         try {
           writeFixAnnotationToFile(task, failureReason, dependencies.fileSystem);
@@ -349,7 +364,7 @@ export async function completeTaskIteration(params: {
       );
       return {
         continueLoop: false,
-        forceRetryableFailure: !usageLimitDetected,
+        forceRetryableFailure: !usageLimitDetected && failureClass !== WORKER_FAILURE_CLASS_TRANSPORT_UNAVAILABLE,
         failureMessage: surfacedFailureMessage,
         exitCode: await failRun(
           2,

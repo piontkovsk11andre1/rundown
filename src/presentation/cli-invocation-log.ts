@@ -88,13 +88,10 @@ export function emitCliFatalError(
 ): void {
   // Normalize unknown error values to a printable string.
   const message = String(error);
-  if (emitOutputEvent) {
-    // Route fatal errors through the standard output port when available.
-    emitOutputEvent({ kind: "error", message });
-  } else {
-    // Fallback for parse-time failures before application output wiring exists.
-    console.error(pc.red("✖") + " " + message);
-  }
+  void emitOutputEvent;
+
+  // Preserve stable terminal fatal rendering across startup and runtime failures.
+  console.error(pc.red("✖") + " " + message);
   // Mirror fatal errors into global logs for post-mortem diagnostics.
   appendCliFatalErrorToGlobalLog(message, state);
 }
@@ -129,33 +126,26 @@ function appendCliFatalErrorToGlobalLog(message: string, state?: CliInvocationLo
 export function configureCommanderOutputHandlers(
   command: Command,
   getState: () => CliInvocationLogState | undefined,
-  getEmitOutputEvent?: () => EmitOutputEvent | undefined,
 ): void {
   command.configureOutput({
     writeOut(output: string) {
-      const emitOutputEvent = getEmitOutputEvent?.();
-      if (emitOutputEvent) {
-        // Route framework stdout through the application output port when available.
-        emitOutputEvent({ kind: "text", text: output });
+      if (output.length === 0) {
         return;
       }
 
-      // Preserve parse-time stdout behavior before application output wiring exists.
+      // Preserve commander stdout behavior for all invocation phases.
       process.stdout.write(output);
-      // Persist framework stdout output to the global invocation log.
+      // Persist framework stdout output to the global invocation log using framework kind.
       appendCommanderFrameworkOutputToGlobalLog(output, "stdout", getState);
     },
     writeErr(output: string) {
-      const emitOutputEvent = getEmitOutputEvent?.();
-      if (emitOutputEvent) {
-        // Route framework stderr through the application output port when available.
-        emitOutputEvent({ kind: "stderr", text: output });
+      if (output.length === 0) {
         return;
       }
 
-      // Preserve parse-time stderr behavior before application output wiring exists.
+      // Preserve commander stderr behavior for all invocation phases.
       process.stderr.write(output);
-      // Persist framework stderr output to the global invocation log.
+      // Persist framework stderr output to the global invocation log using framework kind.
       appendCommanderFrameworkOutputToGlobalLog(output, "stderr", getState);
     },
   });

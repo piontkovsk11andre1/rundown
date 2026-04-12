@@ -121,7 +121,6 @@ function getApp(): CliApp {
 configureCommanderOutputHandlers(
   program,
   () => runtimeState.invocationLogState,
-  () => runtimeState.app?.emitOutput,
 );
 
 program

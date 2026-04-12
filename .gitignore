@@ -3,4 +3,5 @@ dist/
 .rundown/
 coverage/
 migrations/
+queries/
 .claude/

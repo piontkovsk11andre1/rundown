@@ -1162,8 +1162,8 @@ export const DEFAULT_QUERY_SEED_TEMPLATE = `\
 
 ## Objective
 
-Research the codebase and produce a comprehensive answer to the query above.
-This document describes what to investigate - not what to build.
+Research and produce a comprehensive answer to the query above.
+This document describes what to investigate, not what to build.
 
 ## Analysis directory
 
@@ -1172,6 +1172,10 @@ This document describes what to investigate - not what to build.
 ## Output directory
 
 Each investigation step writes findings to \`{{workdir}}\` when file output mode is enabled.
+
+## Exclusions
+
+Ignore files inside \`.rundown\` directories. They contain runtime artifacts and are not part of the source.
 `;
 
 /**
@@ -1192,6 +1196,10 @@ Conclude with a single verdict token: \`Y\` or \`N\`.
 ## Output directory
 
 Each investigation step writes findings to \`{{workdir}}\` when file output mode is enabled.
+
+## Exclusions
+
+Ignore files inside \`.rundown\` directories. They contain runtime artifacts and are not part of the source.
 `;
 
 /**
@@ -1212,6 +1220,10 @@ Conclude with exactly one verdict line: \`success\` or \`failure: <reason>\`.
 ## Output directory
 
 Each investigation step writes findings to \`{{workdir}}\` when file output mode is enabled.
+
+## Exclusions
+
+Ignore files inside \`.rundown\` directories. They contain runtime artifacts and are not part of the source.
 `;
 
 /**

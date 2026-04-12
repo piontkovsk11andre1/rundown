@@ -238,6 +238,7 @@ describe("builtin-tools/get getHandler", () => {
 
     const reparsed = parseTasks(writtenSource, "C:/workspace/todo.md")[0];
     expect(reparsed?.subItems[0]?.text).toBe("get-result: core: [parser]*module*");
+    expect(reparsed?.children).toEqual([]);
   });
 
   it("uses larger code fences when get-result values contain backticks", async () => {

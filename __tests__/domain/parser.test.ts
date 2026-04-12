@@ -176,6 +176,27 @@ describe("parseTasks", () => {
     expect(tasks[1]!.subItems).toEqual([{ text: "Child note", line: 4, depth: 2 }]);
   });
 
+  it("keeps get-result lines as subItems and never as executable child tasks", () => {
+    const md = [
+      "- [ ] get: All current names of this and that",
+      "  - get-result: This",
+      "  - get-result: That:Beta",
+      "  - [ ] Follow-up task",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]!.text).toBe("get: All current names of this and that");
+    expect(tasks[0]!.subItems).toEqual([
+      { text: "get-result: This", line: 2, depth: 1 },
+      { text: "get-result: That:Beta", line: 3, depth: 1 },
+    ]);
+    expect(tasks[0]!.children).toEqual([tasks[1]]);
+    expect(tasks[1]!.text).toBe("Follow-up task");
+    expect(tasks.every((task) => !task.text.toLowerCase().startsWith("get-result:"))).toBe(true);
+  });
+
   it("parses for-loop metadata lines as subItems under loop-prefixed parent tasks", () => {
     const md = [
       "- [ ] for: All controllers",
@@ -602,6 +623,18 @@ describe("parseTasks", () => {
     expect(() => parseTasks(md, "test.md")).toThrow(
       "Invalid profile syntax at line 1: use profile=<name> (not profile: <name>).",
     );
+  });
+
+  it("does not throw for documentation bullets that mention `profile: <name>`", () => {
+    const md = [
+      "- `profile: <name>` to choose a worker profile",
+      "- [ ] Actual runnable task",
+    ].join("\n");
+
+    const tasks = parseTasks(md, "test.md");
+
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.text).toBe("Actual runnable task");
   });
 
   it("throws parse error for legacy profile: prefix syntax on checkbox tasks", () => {

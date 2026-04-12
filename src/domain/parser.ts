@@ -105,8 +105,8 @@ const FRONTMATTER_BLOCK_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---/;
 const FRONTMATTER_KEY_VALUE_PATTERN = /^\s*([^:#\s][^:]*)\s*:\s*(.*)$/;
 // Detects directive list items that set a profile context.
 const PROFILE_DIRECTIVE_PATTERN = /^profile\s*=\s*(.+)$/i;
-// Detects legacy profile syntax that is now rejected.
-const LEGACY_PROFILE_DIRECTIVE_PATTERN = /^profile\s*:\s*(.+)$/i;
+// Detects legacy task-level profile syntax that is now rejected.
+const LEGACY_PROFILE_TASK_SYNTAX_PATTERN = /^profile\s*:\s*([A-Za-z0-9._-]+)(?:\s*(?:[,;])\s*.+)?$/i;
 // Detects directive list items that append args to nested cli tasks.
 const CLI_ARGS_DIRECTIVE_PATTERN = /^cli[-\s]?args\s*:\s*(.*)$/i;
 // Detects directive list items that switch tasks to verify-only intent.
@@ -271,7 +271,7 @@ function walkForTasks(
   if (isListItem(node) && node.checked !== null && node.checked !== undefined) {
     const text = extractText(node);
     const line = node.position?.start.line ?? 0;
-    if (LEGACY_PROFILE_DIRECTIVE_PATTERN.test(text)) {
+    if (isLegacyProfileTaskSyntax(text)) {
       throwInvalidLegacyProfileSyntaxError(line);
     }
     const pos = node.position;
@@ -318,7 +318,7 @@ function walkForTasks(
   } else if (isListItem(node)) {
     const text = extractText(node);
     const line = node.position?.start.line ?? 0;
-    if (LEGACY_PROFILE_DIRECTIVE_PATTERN.test(text)) {
+    if (isLegacyProfileTaskSyntax(text) && (Boolean(currentParentTask) || hasCheckboxDescendant(node))) {
       throwInvalidLegacyProfileSyntaxError(line);
     }
     const directive = parseDirectiveParent(text);
@@ -364,6 +364,34 @@ function walkForTasks(
       walkForTasks(child, tasks, file, nextDepth, currentParentTask, nextDirectiveContext);
     }
   }
+}
+
+function isLegacyProfileTaskSyntax(text: string): boolean {
+  return LEGACY_PROFILE_TASK_SYNTAX_PATTERN.test(text.trim());
+}
+
+function hasCheckboxDescendant(listItem: ListItem): boolean {
+  for (const child of listItem.children) {
+    if (child.type !== "list") {
+      continue;
+    }
+
+    for (const nested of child.children) {
+      if (nested.type !== "listItem") {
+        continue;
+      }
+
+      if (nested.checked !== null && nested.checked !== undefined) {
+        return true;
+      }
+
+      if (hasCheckboxDescendant(nested)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 function throwInvalidLegacyProfileSyntaxError(line: number): never {

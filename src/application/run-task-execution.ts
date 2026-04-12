@@ -246,6 +246,77 @@ function isFailoverRetryableFailureClass(
     || failureClass === WORKER_FAILURE_CLASS_TRANSPORT_UNAVAILABLE;
 }
 
+interface RetryBoundaryGitCheckpoint {
+  stashHash: string;
+  reason: "failover" | "force";
+  taskFile: string;
+  taskLine: number;
+}
+
+async function preserveGitStateForRetryBoundary(params: {
+  gitClient: GitClient;
+  cwd: string;
+  configDir: ConfigDirResult | undefined;
+  pathOperations: PathOperationsPort;
+  taskFile: string;
+  taskLine: number;
+  reason: RetryBoundaryGitCheckpoint["reason"];
+}): Promise<RetryBoundaryGitCheckpoint | null> {
+  const {
+    gitClient,
+    cwd,
+    configDir,
+    pathOperations,
+    taskFile,
+    taskLine,
+    reason,
+  } = params;
+  const isClean = await isWorkingDirectoryClean(gitClient, cwd, configDir, pathOperations);
+  if (isClean) {
+    return null;
+  }
+
+  const stashMessage = "rundown retry-boundary "
+    + reason
+    + " "
+    + taskFile
+    + ":"
+    + taskLine
+    + " "
+    + new Date().toISOString();
+  await gitClient.run([
+    "stash",
+    "push",
+    "--include-untracked",
+    "--message",
+    stashMessage,
+  ], cwd);
+  const stashHash = (await gitClient.run(["rev-parse", "--verify", "stash@{0}"], cwd)).trim();
+  if (stashHash.length === 0) {
+    throw new Error("Failed to capture retry-boundary stash reference.");
+  }
+
+  const isCleanAfterStash = await isWorkingDirectoryClean(gitClient, cwd, configDir, pathOperations);
+  if (!isCleanAfterStash) {
+    throw new Error("Retry boundary could not produce a clean working tree after stashing.");
+  }
+
+  return {
+    stashHash,
+    reason,
+    taskFile,
+    taskLine,
+  };
+}
+
+async function restoreLatestRetryBoundaryGitState(params: {
+  gitClient: GitClient;
+  cwd: string;
+  checkpoint: RetryBoundaryGitCheckpoint;
+}): Promise<void> {
+  await params.gitClient.run(["stash", "apply", params.checkpoint.stashHash], params.cwd);
+}
+
 /**
  * Dependency bundle required to construct the `run` command execution flow.
  */
@@ -550,6 +621,7 @@ export function createRunTaskExecution(
     // run-all commit timing is explicitly configured to commit once at file end.
     const deferCommitUntilPostRun = commitAfterComplete
       && (resetAfter || (effectiveRunAll && commitMode === "file-done"));
+    let commitRetryBoundaryGitEnabled = false;
     let currentRound = 1;
     let runFailoverAttemptsUsed = 0;
     // Use an injectable timestamp provider for prompt/template rendering.
@@ -697,6 +769,7 @@ export function createRunTaskExecution(
         if (!inGitRepo) {
           emit({ kind: "warn", message: "--commit: not inside a git repository, skipping." });
         } else {
+          commitRetryBoundaryGitEnabled = true;
           const isClean = await isWorkingDirectoryClean(
             dependencies.gitClient,
             cwd,
@@ -899,6 +972,82 @@ export function createRunTaskExecution(
             } | undefined;
             let iterationResult: Awaited<ReturnType<typeof runTaskIteration>> | undefined;
             let taskFailoverAttemptsUsed = 0;
+            const retryBoundaryGitCheckpoints: RetryBoundaryGitCheckpoint[] = [];
+
+            const maybePreserveGitStateForRetryBoundary = async (
+              reason: RetryBoundaryGitCheckpoint["reason"],
+            ): Promise<number | null> => {
+              if (!commitRetryBoundaryGitEnabled) {
+                return null;
+              }
+
+              try {
+                const checkpoint = await preserveGitStateForRetryBoundary({
+                  gitClient: dependencies.gitClient,
+                  cwd: executionCwd,
+                  configDir: dependencies.configDir,
+                  pathOperations: dependencies.pathOperations,
+                  taskFile: selectedTaskResult.task.file,
+                  taskLine: selectedTaskResult.task.line,
+                  reason,
+                });
+                if (!checkpoint) {
+                  return null;
+                }
+
+                retryBoundaryGitCheckpoints.push(checkpoint);
+                emit({
+                  kind: "info",
+                  message: "--commit: stashed retry-boundary git state at "
+                    + checkpoint.taskFile
+                    + ":"
+                    + checkpoint.taskLine
+                    + " ("
+                    + checkpoint.stashHash.slice(0, 12)
+                    + ").",
+                });
+                return null;
+              } catch (error) {
+                const message = "--commit: failed to preserve git state before retry boundary: " + String(error);
+                emit({ kind: "error", message });
+                return 1;
+              }
+            };
+
+            const maybeRestoreGitStateAfterTerminalFailure = async (): Promise<void> => {
+              if (!commitRetryBoundaryGitEnabled || retryBoundaryGitCheckpoints.length === 0) {
+                return;
+              }
+
+              const latestCheckpoint = retryBoundaryGitCheckpoints[retryBoundaryGitCheckpoints.length - 1];
+              if (!latestCheckpoint) {
+                return;
+              }
+
+              try {
+                await restoreLatestRetryBoundaryGitState({
+                  gitClient: dependencies.gitClient,
+                  cwd: executionCwd,
+                  checkpoint: latestCheckpoint,
+                });
+                emit({
+                  kind: "warn",
+                  message: "--commit: restored stashed retry-boundary git state from "
+                    + latestCheckpoint.reason
+                    + " attempt ("
+                    + latestCheckpoint.stashHash.slice(0, 12)
+                    + ").",
+                });
+              } catch (error) {
+                emit({
+                  kind: "warn",
+                  message: "--commit: retry-boundary stash restore failed; manual recovery may be needed ("
+                    + latestCheckpoint.stashHash.slice(0, 12)
+                    + "). Error: "
+                    + String(error),
+                });
+              }
+            };
 
             while (attempt < maxTaskAttempts) {
               attempt++;
@@ -1080,6 +1229,7 @@ export function createRunTaskExecution(
                     kind: "error",
                     message: "Failover exhausted: " + exhaustedReason + ". Last failure class: " + iterationResult.workerFailureClass + ".",
                   });
+                  await maybeRestoreGitStateAfterTerminalFailure();
                   return exitCode;
                 }
 
@@ -1095,6 +1245,10 @@ export function createRunTaskExecution(
                     + maxFailoverAttemptsPerTask
                     + ").",
                 });
+                const retryBoundaryPreserveExitCode = await maybePreserveGitStateForRetryBoundary("failover");
+                if (retryBoundaryPreserveExitCode !== null) {
+                  return retryBoundaryPreserveExitCode;
+                }
                 attempt--;
                 runFailed = false;
                 state.runCompleted = false;
@@ -1116,6 +1270,7 @@ export function createRunTaskExecution(
                   kind: "error",
                   message: "Failover exhausted: no eligible fallback workers remain after health filtering.",
                 });
+                await maybeRestoreGitStateAfterTerminalFailure();
                 return exitCode;
               }
 
@@ -1125,6 +1280,9 @@ export function createRunTaskExecution(
                 && !isFinalAttempt;
               if (!shouldRetryForceAttempt) {
                 if (!iterationResult.continueLoop) {
+                  if (exitCode !== 0) {
+                    await maybeRestoreGitStateAfterTerminalFailure();
+                  }
                   return exitCode;
                 }
                 break;
@@ -1138,6 +1296,10 @@ export function createRunTaskExecution(
                   + maxTaskAttempts
                   + " — restarting task iteration from scratch",
               });
+              const forceRetryBoundaryPreserveExitCode = await maybePreserveGitStateForRetryBoundary("force");
+              if (forceRetryBoundaryPreserveExitCode !== null) {
+                return forceRetryBoundaryPreserveExitCode;
+              }
               const previousRunId = state.artifactContext?.runId ?? traceRunSession.getRunId();
               forceRetryMetadata = typeof previousRunId === "string" && previousRunId.length > 0
                 ? {

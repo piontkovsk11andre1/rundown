@@ -1178,6 +1178,166 @@ describe("run-task-execution helpers", () => {
     }));
   });
 
+  it("stashes git state at commit retry boundary before failover retries", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const gitClient = createGitClientMock();
+    let statusCheckCount = 0;
+    gitClient.run = vi.fn(async (args: string[]) => {
+      if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+        return "true";
+      }
+      if (args[0] === "rev-parse" && args[1] === "--show-toplevel") {
+        return cwd;
+      }
+      if (args[0] === "check-ignore") {
+        throw new Error("not ignored");
+      }
+      if (args[0] === "status" && args[1] === "--porcelain") {
+        if (args.includes("--untracked-files=no")) {
+          return " M tasks.md";
+        }
+        statusCheckCount += 1;
+        if (statusCheckCount === 1) {
+          return "";
+        }
+        if (statusCheckCount === 2) {
+          return " M tasks.md";
+        }
+        return "";
+      }
+      if (args[0] === "stash" && args[1] === "push") {
+        return "Saved working directory and index state";
+      }
+      if (args[0] === "rev-parse" && args[1] === "--verify" && args[2] === "stash@{0}") {
+        return "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
+      }
+      if (args[0] === "add" || args[0] === "commit") {
+        return "";
+      }
+      if (args[0] === "rev-parse" && args[1] === "HEAD") {
+        return "abc123";
+      }
+      return "";
+    });
+
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "implement fallback behavior"),
+      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] implement fallback behavior\n" }),
+      gitClient,
+      workerConfig: {
+        workers: {
+          default: ["primary", "worker"],
+          fallbacks: [["fallback", "worker"]],
+        },
+      },
+    });
+
+    dependencies.workerExecutor.runWorker = vi
+      .fn()
+      .mockResolvedValueOnce({ exitCode: null, stdout: "", stderr: "timed out" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "" });
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({
+      verify: false,
+      workerCommand: [],
+      commitAfterComplete: true,
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      workerPattern: expect.objectContaining({ command: ["fallback", "worker"] }),
+    }));
+    const stashPushCalls = vi.mocked(gitClient.run).mock.calls.filter(
+      ([args]) => args[0] === "stash" && args[1] === "push",
+    );
+    const stashApplyCalls = vi.mocked(gitClient.run).mock.calls.filter(
+      ([args]) => args[0] === "stash" && args[1] === "apply",
+    );
+    expect(stashPushCalls).toHaveLength(1);
+    expect(stashApplyCalls).toHaveLength(0);
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "info",
+      message: expect.stringContaining("--commit: stashed retry-boundary git state"),
+    }));
+  });
+
+  it("restores stashed git state after terminal force retry failure in commit mode", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const gitClient = createGitClientMock();
+    let statusCheckCount = 0;
+    gitClient.run = vi.fn(async (args: string[]) => {
+      if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
+        return "true";
+      }
+      if (args[0] === "rev-parse" && args[1] === "--show-toplevel") {
+        return cwd;
+      }
+      if (args[0] === "check-ignore") {
+        throw new Error("not ignored");
+      }
+      if (args[0] === "status" && args[1] === "--porcelain") {
+        statusCheckCount += 1;
+        if (statusCheckCount === 1) {
+          return "";
+        }
+        if (statusCheckCount === 2) {
+          return " M tasks.md";
+        }
+        return "";
+      }
+      if (args[0] === "stash" && args[1] === "push") {
+        return "Saved working directory and index state";
+      }
+      if (args[0] === "rev-parse" && args[1] === "--verify" && args[2] === "stash@{0}") {
+        return "feedfacefeedfacefeedfacefeedfacefeedface";
+      }
+      if (args[0] === "stash" && args[1] === "apply") {
+        return "";
+      }
+      return "";
+    });
+
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "force: 2, implement feature"),
+      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] force: 2, implement feature\n" }),
+      gitClient,
+    });
+
+    dependencies.workerExecutor.runWorker = vi
+      .fn()
+      .mockResolvedValue({ exitCode: 1, stdout: "", stderr: "boom" });
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({
+      verify: false,
+      commitAfterComplete: true,
+    }));
+
+    expect(code).toBe(1);
+    const stashPushCalls = vi.mocked(gitClient.run).mock.calls.filter(
+      ([args]) => args[0] === "stash" && args[1] === "push",
+    );
+    const stashApplyCalls = vi.mocked(gitClient.run).mock.calls.filter(
+      ([args]) => args[0] === "stash" && args[1] === "apply",
+    );
+    expect(stashPushCalls).toHaveLength(1);
+    expect(stashApplyCalls).toHaveLength(1);
+    expect(stashApplyCalls[0]?.[0]).toEqual([
+      "stash",
+      "apply",
+      "feedfacefeedfacefeedfacefeedfacefeedface",
+    ]);
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "warn",
+      message: expect.stringContaining("--commit: restored stashed retry-boundary git state"),
+    }));
+  });
+
   it("runs all force attempts on repeated failure and returns final failRun exit code", async () => {
     const cwd = "/workspace";
     const taskFile = `${cwd}/tasks.md`;

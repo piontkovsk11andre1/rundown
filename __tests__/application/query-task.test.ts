@@ -22,6 +22,10 @@ describe("query-task", () => {
     const queryTask = createQueryTask(dependencies);
     const code = await queryTask(createOptions({
       dir: requestedDir,
+      invocationDir: "/workspace/invocation",
+      workspaceDir: "/workspace/linked",
+      workspaceLinkPath: "/workspace/invocation/.rundown/workspace.link",
+      isLinkedWorkspace: true,
       format: "json",
       output: undefined,
       cliTemplateVarArgs: ["query=from-cli", "custom=value"],
@@ -68,6 +72,10 @@ describe("query-task", () => {
     expect(researchTask).toHaveBeenCalledWith(expect.objectContaining({
       source: queryDocumentPath,
       cwd: resolvedDir,
+      invocationDir: "/workspace/invocation",
+      workspaceDir: "/workspace/linked",
+      workspaceLinkPath: "/workspace/invocation/.rundown/workspace.link",
+      isLinkedWorkspace: true,
       cliTemplateVarArgs: expect.arrayContaining([
         "query=from-cli",
         "custom=value",
@@ -79,6 +87,10 @@ describe("query-task", () => {
     expect(planTask).toHaveBeenCalledWith(expect.objectContaining({
       source: queryDocumentPath,
       cwd: resolvedDir,
+      invocationDir: "/workspace/invocation",
+      workspaceDir: "/workspace/linked",
+      workspaceLinkPath: "/workspace/invocation/.rundown/workspace.link",
+      isLinkedWorkspace: true,
       cliTemplateVarArgs: expect.arrayContaining([
         "query=from-cli",
         "custom=value",
@@ -90,6 +102,10 @@ describe("query-task", () => {
     expect(runTask).toHaveBeenCalledWith(expect.objectContaining({
       source: queryDocumentPath,
       cwd: resolvedDir,
+      invocationDir: "/workspace/invocation",
+      workspaceDir: "/workspace/linked",
+      workspaceLinkPath: "/workspace/invocation/.rundown/workspace.link",
+      isLinkedWorkspace: true,
       runAll: true,
       taskTemplateOverride: DEFAULT_QUERY_EXECUTION_TEMPLATE,
       showAgentOutput: false,
@@ -428,6 +444,11 @@ function createOptions(overrides: Partial<QueryTaskOptions> = {}): QueryTaskOpti
   return {
     queryText: "Is auth enforced?",
     dir: "/workspace",
+    cwd: "/workspace",
+    invocationDir: "/workspace",
+    workspaceDir: "/workspace",
+    workspaceLinkPath: "",
+    isLinkedWorkspace: false,
     format: "markdown",
     output: undefined,
     skipResearch: false,

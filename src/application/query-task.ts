@@ -48,6 +48,11 @@ export interface QueryTaskDependencies {
 export interface QueryTaskOptions {
   queryText: string;
   dir: string;
+  cwd?: string;
+  invocationDir?: string;
+  workspaceDir?: string;
+  workspaceLinkPath?: string;
+  isLinkedWorkspace?: boolean;
   format: QueryOutputFormat;
   output?: string;
   skipResearch: boolean;
@@ -146,6 +151,10 @@ export function createQueryTask(
         const researchCode = await dependencies.researchTask({
           source: queryDocumentPath,
           cwd: resolvedDir,
+          invocationDir: options.invocationDir,
+          workspaceDir: options.workspaceDir,
+          workspaceLinkPath: options.workspaceLinkPath,
+          isLinkedWorkspace: options.isLinkedWorkspace,
           mode: options.mode,
           workerPattern: options.workerPattern,
           showAgentOutput: options.showAgentOutput,
@@ -173,6 +182,10 @@ export function createQueryTask(
       const planCode = await dependencies.planTask({
         source: queryDocumentPath,
         cwd: resolvedDir,
+        invocationDir: options.invocationDir,
+        workspaceDir: options.workspaceDir,
+        workspaceLinkPath: options.workspaceLinkPath,
+        isLinkedWorkspace: options.isLinkedWorkspace,
         scanCount: options.scanCount,
         maxItems: options.maxItems,
         deep: options.deep,
@@ -203,6 +216,10 @@ export function createQueryTask(
       const runCode = await dependencies.runTask({
         source: queryDocumentPath,
         cwd: resolvedDir,
+        invocationDir: options.invocationDir,
+        workspaceDir: options.workspaceDir,
+        workspaceLinkPath: options.workspaceLinkPath,
+        isLinkedWorkspace: options.isLinkedWorkspace,
         mode: options.mode,
         workerPattern: options.workerPattern,
         sortMode: "name-sort",

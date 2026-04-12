@@ -62,6 +62,14 @@ interface WorkerActionDependencies {
   getWorkerFromSeparator: () => string[] | undefined;
 }
 
+interface WorkerWorkspaceRuntimeOptions {
+  cwd: string;
+  invocationDir: string;
+  workspaceDir: string;
+  workspaceLinkPath: string;
+  isLinkedWorkspace: boolean;
+}
+
 interface HelpActionDependencies extends WorkerActionDependencies {
   outputHelp: () => void;
   cliVersion: string;
@@ -73,13 +81,7 @@ function emitCliInfo(app: CliApp, message: string): void {
   app.emitOutput?.({ kind: "info", message });
 }
 
-function resolveWorkerWorkspaceRuntimeOptions(): {
-  cwd: string;
-  invocationDir: string;
-  workspaceDir: string;
-  workspaceLinkPath: string;
-  isLinkedWorkspace: boolean;
-} {
+function resolveWorkerWorkspaceRuntimeOptions(): WorkerWorkspaceRuntimeOptions {
   const workspaceContext = resolveInvocationWorkspaceContext();
   return {
     cwd: workspaceContext.workspaceDir,
@@ -918,6 +920,7 @@ export function createExploreCommandAction({
     const app = getApp();
     const targetMarkdownFile = resolveResearchMarkdownFile(markdownFiles);
     const {
+      workspaceRuntimeOptions,
       mode,
       sharedRuntimeOptions,
       dryRun,
@@ -931,6 +934,7 @@ export function createExploreCommandAction({
     return runExplorePhases({
       app,
       targetMarkdownFile,
+      workspaceRuntimeOptions,
       mode,
       sharedRuntimeOptions,
       dryRun,
@@ -1075,6 +1079,7 @@ export function createQueryCommandAction({
   queryModes,
 }: QueryActionDependencies): (queryText: string, opts: CliOpts) => CliActionResult {
   return (queryText: string, opts: CliOpts) => {
+    const workspaceRuntimeOptions = resolveWorkerWorkspaceRuntimeOptions();
     const mode = parseRunnerMode(opts.mode as string | undefined, queryModes);
     const sharedRuntimeOptions = resolveSharedWorkerRuntimeOptions(opts, getWorkerFromSeparator);
     const format = parseQueryOutputFormat(opts.format as string | undefined);
@@ -1084,6 +1089,7 @@ export function createQueryCommandAction({
     const request: QueryCommandInvocationOptions = {
       queryText,
       dir,
+      ...workspaceRuntimeOptions,
       format,
       output,
       skipResearch: Boolean(opts.skipResearch as boolean | undefined),
@@ -1113,6 +1119,7 @@ export function createQueryCommandAction({
 interface RunExplorePhasesOptions {
   app: CliApp;
   targetMarkdownFile: string;
+  workspaceRuntimeOptions: WorkerWorkspaceRuntimeOptions;
   mode: ProcessRunMode;
   sharedRuntimeOptions: ReturnType<typeof resolveSharedWorkerRuntimeOptions>;
   dryRun: boolean;
@@ -1124,6 +1131,7 @@ interface RunExplorePhasesOptions {
 }
 
 interface ParsedExploreCliOptions {
+  workspaceRuntimeOptions: WorkerWorkspaceRuntimeOptions;
   mode: ProcessRunMode;
   sharedRuntimeOptions: ReturnType<typeof resolveSharedWorkerRuntimeOptions>;
   dryRun: boolean;
@@ -1140,6 +1148,7 @@ function parseExploreCliOptions(
   getWorkerFromSeparator: () => string[] | undefined,
 ): ParsedExploreCliOptions {
   return {
+    workspaceRuntimeOptions: resolveWorkerWorkspaceRuntimeOptions(),
     mode: parseRunnerMode(opts.mode as string | undefined, exploreModes),
     sharedRuntimeOptions: resolveSharedWorkerRuntimeOptions(opts, getWorkerFromSeparator),
     dryRun: Boolean(opts.dryRun as boolean | undefined),
@@ -1154,6 +1163,7 @@ function parseExploreCliOptions(
 async function runExplorePhases({
   app,
   targetMarkdownFile,
+  workspaceRuntimeOptions,
   mode,
   sharedRuntimeOptions,
   dryRun,
@@ -1163,14 +1173,13 @@ async function runExplorePhases({
   maxItems,
   verbose,
 }: RunExplorePhasesOptions): Promise<number> {
-  const workerWorkspaceRuntimeOptions = resolveWorkerWorkspaceRuntimeOptions();
   const sharedWorkerPattern = sharedRuntimeOptions.workerPattern;
 
   emitCliInfo(app, "Explore phase 1/2: research");
 
   const researchCode = normalizeMakePhaseExitCode(await app.researchTask({
     source: targetMarkdownFile,
-    ...workerWorkspaceRuntimeOptions,
+    ...workspaceRuntimeOptions,
     mode,
     workerPattern: sharedWorkerPattern,
     showAgentOutput: sharedRuntimeOptions.showAgentOutput,
@@ -1196,7 +1205,7 @@ async function runExplorePhases({
 
   return normalizeMakePhaseExitCode(await app.planTask({
     source: targetMarkdownFile,
-    ...workerWorkspaceRuntimeOptions,
+    ...workspaceRuntimeOptions,
     scanCount,
     maxItems,
     deep,
@@ -1231,6 +1240,7 @@ export function createMakeCommandAction({
     const app = getApp();
     const targetMarkdownFile = resolveMakeMarkdownFile(markdownFile);
     const {
+      workspaceRuntimeOptions,
       mode,
       sharedRuntimeOptions,
       dryRun,
@@ -1244,6 +1254,7 @@ export function createMakeCommandAction({
       app,
       seedText,
       targetMarkdownFile,
+      workspaceRuntimeOptions,
       mode,
       sharedRuntimeOptions,
       dryRun,
@@ -1259,6 +1270,7 @@ interface RunMakeBootstrapPhasesOptions {
   app: CliApp;
   seedText: string;
   targetMarkdownFile: string;
+  workspaceRuntimeOptions: WorkerWorkspaceRuntimeOptions;
   mode: ProcessRunMode;
   sharedRuntimeOptions: ReturnType<typeof resolveSharedWorkerRuntimeOptions>;
   dryRun: boolean;
@@ -1269,6 +1281,7 @@ interface RunMakeBootstrapPhasesOptions {
 }
 
 interface ParsedMakeBootstrapCliOptions {
+  workspaceRuntimeOptions: WorkerWorkspaceRuntimeOptions;
   mode: ProcessRunMode;
   sharedRuntimeOptions: ReturnType<typeof resolveSharedWorkerRuntimeOptions>;
   dryRun: boolean;
@@ -1284,6 +1297,7 @@ function parseMakeBootstrapCliOptions(
   getWorkerFromSeparator: () => string[] | undefined,
 ): ParsedMakeBootstrapCliOptions {
   return {
+    workspaceRuntimeOptions: resolveWorkerWorkspaceRuntimeOptions(),
     mode: parseRunnerMode(opts.mode as string | undefined, makeModes),
     sharedRuntimeOptions: resolveSharedWorkerRuntimeOptions(opts, getWorkerFromSeparator),
     dryRun: Boolean(opts.dryRun as boolean | undefined),
@@ -1298,6 +1312,7 @@ async function runMakeBootstrapPhases({
   app,
   seedText,
   targetMarkdownFile,
+  workspaceRuntimeOptions,
   mode,
   sharedRuntimeOptions,
   dryRun,
@@ -1306,7 +1321,6 @@ async function runMakeBootstrapPhases({
   maxItems,
   verbose,
 }: RunMakeBootstrapPhasesOptions): Promise<number> {
-  const workerWorkspaceRuntimeOptions = resolveWorkerWorkspaceRuntimeOptions();
   const sharedWorkerPattern = sharedRuntimeOptions.workerPattern;
 
   createSeedMarkdownFile(targetMarkdownFile, seedText);
@@ -1315,7 +1329,7 @@ async function runMakeBootstrapPhases({
 
   const researchCode = normalizeMakePhaseExitCode(await app.researchTask({
     source: targetMarkdownFile,
-    ...workerWorkspaceRuntimeOptions,
+    ...workspaceRuntimeOptions,
     mode,
     workerPattern: sharedWorkerPattern,
     showAgentOutput: sharedRuntimeOptions.showAgentOutput,
@@ -1341,7 +1355,7 @@ async function runMakeBootstrapPhases({
 
   return normalizeMakePhaseExitCode(await app.planTask({
     source: targetMarkdownFile,
-    ...workerWorkspaceRuntimeOptions,
+    ...workspaceRuntimeOptions,
     scanCount,
     maxItems,
     mode,
@@ -1373,9 +1387,9 @@ export function createDoCommandAction({
 }: DoActionDependencies): (seedText: string, markdownFile: string, opts: CliOpts) => CliActionResult {
   return async (seedText: string, markdownFile: string, opts: CliOpts) => {
     const app = getApp();
-    const workerWorkspaceRuntimeOptions = resolveWorkerWorkspaceRuntimeOptions();
     const targetMarkdownFile = resolveMakeMarkdownFile(markdownFile);
     const {
+      workspaceRuntimeOptions,
       mode,
       sharedRuntimeOptions,
       dryRun,
@@ -1417,6 +1431,7 @@ export function createDoCommandAction({
       app,
       seedText,
       targetMarkdownFile,
+      workspaceRuntimeOptions,
       mode,
       sharedRuntimeOptions,
       dryRun,
@@ -1438,7 +1453,7 @@ export function createDoCommandAction({
 
     return app.runTask({
       source: targetMarkdownFile,
-      ...workerWorkspaceRuntimeOptions,
+      ...workspaceRuntimeOptions,
       mode,
       workerPattern: sharedWorkerPattern,
       sortMode: runSortMode,

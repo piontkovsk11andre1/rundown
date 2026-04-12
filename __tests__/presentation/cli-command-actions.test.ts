@@ -315,6 +315,11 @@ describe("createQueryCommandAction", () => {
     expect(queryTask).toHaveBeenCalledWith(expect.objectContaining({
       queryText: "check auth flow",
       dir: path.resolve("./src"),
+      cwd: expect.any(String),
+      invocationDir: expect.any(String),
+      workspaceDir: expect.any(String),
+      workspaceLinkPath: expect.any(String),
+      isLinkedWorkspace: expect.any(Boolean),
       format: "markdown",
       output: "./result.md",
       skipResearch: true,

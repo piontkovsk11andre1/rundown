@@ -30,9 +30,10 @@ export function resolveRuntimeWorkspaceContext(
   pathOperations: PathOperationsPort,
 ): RuntimeWorkspaceContext {
   const invocationDir = pathOperations.resolve(input.invocationDir ?? input.executionCwd);
-  const workspaceDir = pathOperations.resolve(input.workspaceDir ?? input.executionCwd);
-  const inferredLinkedWorkspace = invocationDir !== workspaceDir;
+  const resolvedWorkspaceDir = pathOperations.resolve(input.workspaceDir ?? input.executionCwd);
+  const inferredLinkedWorkspace = invocationDir !== resolvedWorkspaceDir;
   const isLinkedWorkspace = input.isLinkedWorkspace ?? inferredLinkedWorkspace;
+  const workspaceDir = isLinkedWorkspace ? resolvedWorkspaceDir : invocationDir;
   const workspaceLinkPath = isLinkedWorkspace && input.workspaceLinkPath
     ? pathOperations.resolve(input.workspaceLinkPath)
     : "";

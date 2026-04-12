@@ -175,14 +175,72 @@ describe("saveDesignRevisionSnapshot", () => {
     const saved = saveDesignRevisionSnapshot(fileSystem, projectRoot);
 
     expect(saved).toEqual({
-      index: 4,
-      name: "rev.4",
-      absolutePath: "/repo/docs/rev.4",
-      sourcePath: "/repo/docs/current",
-      copiedFileCount: 2,
+      kind: "saved",
+      revision: {
+        index: 4,
+        name: "rev.4",
+        absolutePath: "/repo/docs/rev.4",
+        sourcePath: "/repo/docs/current",
+        copiedFileCount: 2,
+      },
     });
     expect(fileSystem.readText("/repo/docs/rev.4/Design.md")).toBe("# Design\n");
     expect(fileSystem.readText("/repo/docs/rev.4/notes/api.md")).toBe("- endpoint\n");
+  });
+
+  it("returns unchanged when docs/current matches latest revision", () => {
+    const projectRoot = "/repo";
+    const docsDir = "/repo/docs";
+    const docsCurrentDir = "/repo/docs/current";
+    const latestRevisionDir = "/repo/docs/rev.5";
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        [docsDir]: [
+          { name: "current", isDirectory: true, isFile: false },
+          { name: "rev.5", isDirectory: true, isFile: false },
+        ],
+        [docsCurrentDir]: [
+          { name: "Design.md", isDirectory: false, isFile: true },
+          { name: "notes", isDirectory: true, isFile: false },
+        ],
+        ["/repo/docs/current/notes"]: [
+          { name: "api.md", isDirectory: false, isFile: true },
+        ],
+        [latestRevisionDir]: [
+          { name: "Design.md", isDirectory: false, isFile: true },
+          { name: "notes", isDirectory: true, isFile: false },
+        ],
+        ["/repo/docs/rev.5/notes"]: [
+          { name: "api.md", isDirectory: false, isFile: true },
+        ],
+      },
+      files: {
+        "/repo/docs/current/Design.md": "# Design\n",
+        "/repo/docs/current/notes/api.md": "- endpoint\n",
+        "/repo/docs/rev.5/Design.md": "# Design\n",
+        "/repo/docs/rev.5/notes/api.md": "- endpoint\n",
+      },
+      stats: {
+        [docsDir]: { isDirectory: true, isFile: false },
+        [docsCurrentDir]: { isDirectory: true, isFile: false },
+        ["/repo/docs/current/notes"]: { isDirectory: true, isFile: false },
+        [latestRevisionDir]: { isDirectory: true, isFile: false },
+        ["/repo/docs/rev.5/notes"]: { isDirectory: true, isFile: false },
+      },
+    });
+
+    const saved = saveDesignRevisionSnapshot(fileSystem, projectRoot);
+
+    expect(saved).toEqual({
+      kind: "unchanged",
+      sourcePath: "/repo/docs/current",
+      latestRevision: {
+        index: 5,
+        name: "rev.5",
+        absolutePath: "/repo/docs/rev.5",
+      },
+    });
+    expect(fileSystem.stat("/repo/docs/rev.6")).toBeNull();
   });
 
   it("throws with guidance when docs/current is missing", () => {

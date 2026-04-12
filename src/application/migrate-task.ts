@@ -224,20 +224,31 @@ export function createMigrateTask(
     }
 
     if (action === "save") {
-      const savedRevision = saveDesignRevisionSnapshot(dependencies.fileSystem, projectRoot);
-      emit({
-        kind: "success",
-        message:
-          "Saved design revision "
-          + savedRevision.name
-          + " from docs/current/ to "
-          + savedRevision.absolutePath
-          + " ("
-          + String(savedRevision.copiedFileCount)
-          + " file"
-          + (savedRevision.copiedFileCount === 1 ? "" : "s")
-          + ").",
-      });
+      const saveResult = saveDesignRevisionSnapshot(dependencies.fileSystem, projectRoot);
+      if (saveResult.kind === "unchanged") {
+        emit({
+          kind: "info",
+          message:
+            "No design changes detected in docs/current/ since "
+            + saveResult.latestRevision.name
+            + "; skipped creating a new revision snapshot.",
+        });
+      } else {
+        const savedRevision = saveResult.revision;
+        emit({
+          kind: "success",
+          message:
+            "Saved design revision "
+            + savedRevision.name
+            + " from docs/current/ to "
+            + savedRevision.absolutePath
+            + " ("
+            + String(savedRevision.copiedFileCount)
+            + " file"
+            + (savedRevision.copiedFileCount === 1 ? "" : "s")
+            + ").",
+        });
+      }
       return EXIT_CODE_SUCCESS;
     }
 

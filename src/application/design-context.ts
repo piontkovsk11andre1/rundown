@@ -20,6 +20,17 @@ export interface SavedDesignRevision {
   copiedFileCount: number;
 }
 
+export type SaveDesignRevisionSnapshotResult =
+  | {
+    kind: "saved";
+    revision: SavedDesignRevision;
+  }
+  | {
+    kind: "unchanged";
+    sourcePath: string;
+    latestRevision: DesignRevisionDirectory;
+  };
+
 export function resolveDesignContext(fileSystem: FileSystem, projectRoot: string): DesignContextResolution {
   const docsCurrentDir = path.join(projectRoot, "docs", "current");
   const docsCurrentFiles = collectDesignFiles(fileSystem, docsCurrentDir);
@@ -104,7 +115,10 @@ export function parseDesignRevisionDirectoryName(name: string): { index: number 
   return { index: parsedIndex };
 }
 
-export function saveDesignRevisionSnapshot(fileSystem: FileSystem, projectRoot: string): SavedDesignRevision {
+export function saveDesignRevisionSnapshot(
+  fileSystem: FileSystem,
+  projectRoot: string,
+): SaveDesignRevisionSnapshotResult {
   const docsDir = path.join(projectRoot, "docs");
   const docsCurrentDir = path.join(docsDir, "current");
 
@@ -124,6 +138,15 @@ export function saveDesignRevisionSnapshot(fileSystem: FileSystem, projectRoot: 
     }
   }
 
+  const latestRevision = revisions.length > 0 ? revisions[revisions.length - 1] : null;
+  if (latestRevision && directoryTreesAreEqual(fileSystem, docsCurrentDir, latestRevision.absolutePath)) {
+    return {
+      kind: "unchanged",
+      sourcePath: docsCurrentDir,
+      latestRevision,
+    };
+  }
+
   const revisionName = `rev.${nextIndex}`;
   const revisionDir = path.join(docsDir, revisionName);
   if (fileSystem.exists(revisionDir)) {
@@ -134,11 +157,14 @@ export function saveDesignRevisionSnapshot(fileSystem: FileSystem, projectRoot: 
   const copiedFileCount = copyDirectoryContents(fileSystem, docsCurrentDir, revisionDir);
 
   return {
-    index: nextIndex,
-    name: revisionName,
-    absolutePath: revisionDir,
-    sourcePath: docsCurrentDir,
-    copiedFileCount,
+    kind: "saved",
+    revision: {
+      index: nextIndex,
+      name: revisionName,
+      absolutePath: revisionDir,
+      sourcePath: docsCurrentDir,
+      copiedFileCount,
+    },
   };
 }
 
@@ -229,6 +255,73 @@ function copyDirectoryContents(fileSystem: FileSystem, fromDirectory: string, to
   }
 
   return copiedFileCount;
+}
+
+function directoryTreesAreEqual(fileSystem: FileSystem, leftRoot: string, rightRoot: string): boolean {
+  const leftEntries = collectDirectoryTreeEntries(fileSystem, leftRoot);
+  const rightEntries = collectDirectoryTreeEntries(fileSystem, rightRoot);
+
+  if (leftEntries.length !== rightEntries.length) {
+    return false;
+  }
+
+  for (let index = 0; index < leftEntries.length; index += 1) {
+    const left = leftEntries[index];
+    const right = rightEntries[index];
+    if (!left || !right) {
+      return false;
+    }
+
+    if (left.relativePath !== right.relativePath || left.kind !== right.kind) {
+      return false;
+    }
+
+    if (left.kind === "file" && left.content !== right.content) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function collectDirectoryTreeEntries(
+  fileSystem: FileSystem,
+  rootDirectory: string,
+): Array<{ relativePath: string; kind: "directory" | "file"; content?: string }> {
+  const collected: Array<{ relativePath: string; kind: "directory" | "file"; content?: string }> = [];
+  const queue: string[] = [rootDirectory];
+
+  while (queue.length > 0) {
+    const currentDir = queue.shift();
+    if (!currentDir) {
+      continue;
+    }
+
+    const entries = fileSystem.readdir(currentDir)
+      .slice()
+      .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
+
+    for (const entry of entries) {
+      const absolutePath = path.join(currentDir, entry.name);
+      const relativePath = path.relative(rootDirectory, absolutePath).replace(/\\/g, "/");
+
+      if (entry.isDirectory) {
+        collected.push({ relativePath, kind: "directory" });
+        queue.push(absolutePath);
+        continue;
+      }
+
+      if (entry.isFile) {
+        collected.push({
+          relativePath,
+          kind: "file",
+          content: fileSystem.readText(absolutePath),
+        });
+      }
+    }
+  }
+
+  return collected.sort((left, right) => left.relativePath.localeCompare(right.relativePath, undefined, { sensitivity: "base" }));
 }
 
 function findPrimaryDesignPath(filePaths: string[]): string | null {

@@ -364,6 +364,39 @@ describeIfSaveMigrateAvailable("migrate save integration", () => {
     expect(combinedOutput).toContain("Design working directory is missing:");
     expect(combinedOutput).toContain("docs/current");
   });
+
+  it("reports a no-op when docs/current is unchanged from latest revision", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictionProject(workspace);
+    fs.mkdirSync(path.join(workspace, "docs", "current", "notes"), { recursive: true });
+    fs.mkdirSync(path.join(workspace, "docs", "rev.2", "notes"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, "docs", "current", "Design.md"), "# Current design\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "docs", "current", "notes", "api.md"), "API details\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "docs", "rev.2", "Design.md"), "# Current design\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "docs", "rev.2", "notes", "api.md"), "API details\n", "utf-8");
+
+    const result = await runCli([
+      "migrate",
+      "save",
+      "--dir",
+      "migrations",
+      "--",
+      "node",
+      "-e",
+      "process.exit(0);",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(fs.existsSync(path.join(workspace, "docs", "rev.3"))).toBe(false);
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n"));
+    expect(combinedOutput).toContain("No design changes detected in docs/current/");
+    expect(combinedOutput).toContain("rev.2");
+  });
 });
 
 const ANSI_ESCAPE_PATTERN = /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-ntqry=><~]))/g;

@@ -96,12 +96,15 @@ Actions:
 - omitted: generate next migration
 - `up`: execute migration tasks (`run-all` style)
 - `down [n]`: alias of `rundown undo [--last n]`
+- `save`: snapshot `docs/current/` into the next `docs/rev.N/` directory
 - `snapshot`: generate `NNNN--snapshot.md`
 - `backlog`: generate `NNNN--backlog.md`
 - `context`: (re)generate `NNNN--context.md`
 - `review`: generate `NNNN--review.md`
 - `user-experience`: generate `NNNN--user-experience.md`
 - `user-session`: interactive migration discussion session
+
+`save` no-change behavior: when `docs/current/` is byte-for-byte unchanged from the latest revision directory, no new `docs/rev.N/` directory is created and the command reports a no-op.
 
 Options:
 

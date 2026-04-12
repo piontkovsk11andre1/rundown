@@ -405,6 +405,42 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(fs.existsSync(path.join(workspace, "migrations", "0002-from-migrate-execution-worker.md"))).toBe(true);
   });
 
+  it("keeps dedicated slug generation deterministic across repeated migrate runs", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictionProjectWithSatelliteTemplates(workspace);
+    fs.writeFileSync(
+      path.join(workspace, ".rundown", "config.json"),
+      JSON.stringify({
+        workers: {
+          default: ["node", "-e", buildMigrateExecutionWorkerScript()],
+        },
+        commands: {
+          "migrate-slug": ["node", "-e", buildMigrateSlugOnlyWorkerScript("stable-dedicated-slug")],
+        },
+      }, null, 2) + "\n",
+      "utf-8",
+    );
+
+    const firstRun = await runCli([
+      "migrate",
+      "--dir",
+      "migrations",
+    ], workspace);
+    const secondRun = await runCli([
+      "migrate",
+      "--dir",
+      "migrations",
+    ], workspace);
+
+    expect(firstRun.code).toBe(0);
+    expect(secondRun.code).toBe(0);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0002-stable-dedicated-slug.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0003-stable-dedicated-slug.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0002-from-migrate-execution-worker.md"))).toBe(false);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0003-from-migrate-execution-worker.md"))).toBe(false);
+    expect(fs.readFileSync(path.join(workspace, "migrations", "0003--context.md"), "utf-8")).toContain("from-migrate-execution-worker");
+  });
+
   it("uses commands.migrate-slug during migrate up prediction reconciliation", async () => {
     const workspace = makeTempWorkspace();
     scaffoldPredictionProjectForReconciliation(workspace);
@@ -482,6 +518,82 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(fs.existsSync(path.join(workspace, "migrations", "0003-slug-worker-reconciled-b.md"))).toBe(false);
     expect(fs.readFileSync(path.join(workspace, "migrations", "0002-feature-a.md"), "utf-8")).toContain("slug-worker-reconciled-a");
     expect(fs.readFileSync(path.join(workspace, "migrations", "0003-feature-b.md"), "utf-8")).toContain("slug-worker-reconciled-b");
+  });
+
+  it("falls back to migrate worker for migrate up reconciliation when migrate-slug is not configured", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictionProjectForReconciliation(workspace);
+
+    writePredictionBaselineSnapshot(workspace, {
+      migrations: [
+        { number: 1, name: "initialize", isApplied: true },
+        { number: 2, name: "feature-a", isApplied: false },
+        { number: 3, name: "feature-b", isApplied: false },
+      ],
+      files: [
+        {
+          relativePath: "migrations/0001-initialize.md",
+          migrationNumber: 1,
+          kind: "migration",
+          content: "# 0001 initialize\n\n- [x] bootstrap\n",
+        },
+        {
+          relativePath: "migrations/0002-feature-a.md",
+          migrationNumber: 2,
+          kind: "migration",
+          content: "# 0002 feature-a\n\n- [ ] implement feature a\n",
+        },
+        {
+          relativePath: "migrations/0002--snapshot.md",
+          migrationNumber: 2,
+          kind: "snapshot",
+          content: "# Snapshot 0002 old\n",
+        },
+        {
+          relativePath: "migrations/0003-feature-b.md",
+          migrationNumber: 3,
+          kind: "migration",
+          content: "# 0003 feature-b\n\n- [ ] implement feature b\n",
+        },
+        {
+          relativePath: "migrations/0003--snapshot.md",
+          migrationNumber: 3,
+          kind: "snapshot",
+          content: "# Snapshot 0003 old\n",
+        },
+      ],
+    });
+
+    fs.writeFileSync(
+      path.join(workspace, "migrations", "0001-initialize.md"),
+      "# 0001 initialize\n\n- [x] bootstrap\n- [x] hotfix added mid-run\n",
+      "utf-8",
+    );
+
+    fs.writeFileSync(
+      path.join(workspace, ".rundown", "config.json"),
+      JSON.stringify({
+        workers: {
+          default: ["node", "-e", buildMigrateUpReconciliationWorkerScript()],
+        },
+      }, null, 2) + "\n",
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "migrate",
+      "up",
+      "--dir",
+      "migrations",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0002-feature-a.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0003-feature-b.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0002-feature-a-reconciled.md"))).toBe(false);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0003-feature-b-reconciled.md"))).toBe(false);
+    expect(fs.readFileSync(path.join(workspace, "migrations", "0002-feature-a.md"), "utf-8")).toContain("feature-a-reconciled");
+    expect(fs.readFileSync(path.join(workspace, "migrations", "0003-feature-b.md"), "utf-8")).toContain("feature-b-reconciled");
   });
 
   it("reconciles pending predictions before migrate up after a manual mid-run TODO change", async () => {

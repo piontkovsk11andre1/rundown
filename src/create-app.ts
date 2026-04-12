@@ -13,6 +13,10 @@ import {
   createCleanMemory,
   type CleanMemoryOptions,
 } from "./application/clean-memory.js";
+import {
+  createViewWorkerHealthStatus,
+  type ViewWorkerHealthOptions,
+} from "./application/worker-health-status.js";
 import { createPlanTask, type PlanTaskOptions as PlanTaskUseCaseOptions } from "./application/plan-task.js";
 import { createResearchTask, type ResearchTaskOptions as ResearchTaskUseCaseOptions } from "./application/research-task.js";
 import {
@@ -115,6 +119,7 @@ export type App = {
   viewMemory: (options: ViewMemoryOptions) => Promise<number>;
   validateMemory: (options: ValidateMemoryOptions) => Promise<number>;
   cleanMemory: (options: CleanMemoryOptions) => Promise<number>;
+  viewWorkerHealthStatus: (options: ViewWorkerHealthOptions) => number;
   reverifyTask: (options: ReverifyTaskCommandOptions) => Promise<number>;
   revertTask: (options: RevertTaskOptions) => Promise<number>;
   undoTask: (options: UndoTaskOptions) => Promise<number>;
@@ -457,6 +462,12 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       pathOperations: ports.pathOperations,
       output: ports.output,
     }),
+    viewWorkerHealthStatus: (ports) => createViewWorkerHealthStatus({
+      workerHealthStore: ports.workerHealthStore,
+      workerConfigPort: ports.workerConfigPort,
+      configDir: ports.configDir,
+      output: ports.output,
+    }),
     viewMemory: (ports) => createViewMemory({
       sourceResolver: ports.sourceResolver,
       memoryResolver: ports.memoryResolver,
@@ -639,6 +650,7 @@ function createAppFromFactories(
   const viewMemory = factories.viewMemory(ports);
   const validateMemory = factories.validateMemory(ports);
   const cleanMemory = factories.cleanMemory(ports);
+  const viewWorkerHealthStatus = factories.viewWorkerHealthStatus(ports);
   const reverifyTask = factories.reverifyTask(ports);
   const revertTask = factories.revertTask(ports);
   const undoTask = factories.undoTask(ports);
@@ -671,6 +683,7 @@ function createAppFromFactories(
     viewMemory,
     validateMemory,
     cleanMemory,
+    viewWorkerHealthStatus,
     reverifyTask,
     revertTask,
     undoTask,

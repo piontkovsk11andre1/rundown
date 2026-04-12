@@ -72,6 +72,20 @@ interface ResolveWorkerSelection {
   effectiveProfileName?: string;
 }
 
+export interface WorkerResolutionCandidateSnapshot {
+  workerCommand: string[];
+  source: ResolvedWorkerCandidate["source"];
+  fallbackIndex?: number;
+  eligibility: WorkerProfileEligibilityEvaluation;
+}
+
+export interface WorkerResolutionSnapshot {
+  workerCommand: string[];
+  candidates: WorkerResolutionCandidateSnapshot[];
+  selectedCandidateIndex: number;
+  effectiveProfileName?: string;
+}
+
 interface ResolvedWorkerInvocation {
   workerCommand: string[];
   workerPattern: ParsedWorkerPattern;
@@ -323,6 +337,26 @@ function resolveWorkerSelectionForInvocation(input: ResolveWorkerForInvocationIn
     candidates: evaluatedCandidates,
     selectedCandidateIndex,
     effectiveProfileName,
+  };
+}
+
+/**
+ * Resolves worker selection details, including fallback candidate eligibility.
+ */
+export function resolveWorkerSelectionSnapshotForInvocation(
+  input: ResolveWorkerForInvocationInput,
+): WorkerResolutionSnapshot {
+  const selection = resolveWorkerSelectionForInvocation(input);
+  return {
+    workerCommand: [...selection.workerCommand],
+    selectedCandidateIndex: selection.selectedCandidateIndex,
+    candidates: selection.candidates.map((candidate) => ({
+      workerCommand: [...candidate.workerCommand],
+      source: candidate.source,
+      fallbackIndex: candidate.fallbackIndex,
+      eligibility: candidate.eligibility,
+    })),
+    ...(selection.effectiveProfileName ? { effectiveProfileName: selection.effectiveProfileName } : {}),
   };
 }
 

@@ -1691,6 +1691,21 @@ export function createMemoryCleanCommandAction({
 }
 
 /**
+ * Creates the `worker-health` command action handler.
+ *
+ * The returned action maps CLI flags to the application `viewWorkerHealthStatus` use case.
+ */
+export function createWorkerHealthCommandAction({
+  getApp,
+}: Pick<WorkerActionDependencies, "getApp">): (opts: CliOpts) => CliActionResult {
+  return (opts: CliOpts) => {
+    return getApp().viewWorkerHealthStatus({
+      json: Boolean(opts.json as boolean | undefined),
+    });
+  };
+}
+
+/**
  * Creates the `intro` command action handler.
  *
  * The returned action renders an animated CLI presentation introducing rundown.

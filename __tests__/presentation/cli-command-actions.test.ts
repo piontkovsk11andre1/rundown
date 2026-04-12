@@ -12,6 +12,7 @@ import {
   createQueryCommandAction,
   createReverifyCommandAction,
   createRunCommandAction,
+  createWorkerHealthCommandAction,
 } from "../../src/presentation/cli-command-actions.js";
 import type { CliApp } from "../../src/presentation/cli-app-init.js";
 import * as sleepModule from "../../src/infrastructure/cancellable-sleep.js";
@@ -399,5 +400,21 @@ describe("verification exit code propagation", () => {
     });
 
     expect(exitCode).toBe(EXIT_CODE_VERIFICATION_FAILURE);
+  });
+});
+
+describe("createWorkerHealthCommandAction", () => {
+  it("forwards --json to viewWorkerHealthStatus", () => {
+    const viewWorkerHealthStatus = vi.fn(() => 0);
+    const app = { viewWorkerHealthStatus } as unknown as CliApp;
+    const action = createWorkerHealthCommandAction({
+      getApp: () => app,
+    });
+
+    const exitCode = action({ json: true });
+
+    expect(exitCode).toBe(0);
+    expect(viewWorkerHealthStatus).toHaveBeenCalledTimes(1);
+    expect(viewWorkerHealthStatus).toHaveBeenCalledWith({ json: true });
   });
 });

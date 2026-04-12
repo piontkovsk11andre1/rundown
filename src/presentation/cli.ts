@@ -46,6 +46,7 @@ import {
   createMemoryViewCommandAction,
   createMemoryCleanCommandAction,
   createMemoryValidateCommandAction,
+  createWorkerHealthCommandAction,
   createNextCommandAction,
   createPlanCommandAction,
   createQueryCommandAction,
@@ -659,6 +660,13 @@ program
   .option("--json", "Print validation report as JSON", false)
   .allowUnknownOption(false)
   .action(withCliAction(createMemoryValidateCommandAction({ getApp })));
+
+program
+  .command("worker-health")
+  .description("Display persisted worker/profile health and fallback eligibility snapshots.")
+  .option("--json", "Print worker health status as JSON", false)
+  .allowUnknownOption(false)
+  .action(withCliAction(createWorkerHealthCommandAction({ getApp })));
 
 program
   .command("memory-clean")

@@ -188,6 +188,41 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
     ].join("\n"));
     expect(combinedOutput).toContain("PASS design-source.md");
   });
+
+  it("rundown test falls back to root Design.md when docs/current is absent", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictedState(workspace, { template: "{{design}}" });
+    fs.writeFileSync(path.join(workspace, "Design.md"), "# Design\n\nLegacy fallback design source.\n", "utf-8");
+    fs.mkdirSync(path.join(workspace, "specs"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, "specs", "legacy-design-source.md"), "assert legacy design source", "utf-8");
+
+    const result = await runCli([
+      "test",
+      "--dir",
+      "specs",
+      "--",
+      "node",
+      "-e",
+      [
+        "const fs=require('node:fs');",
+        "const p=process.argv[process.argv.length-1];",
+        "const prompt=fs.readFileSync(p,'utf-8');",
+        "const hasLegacy=prompt.includes('Legacy fallback design source.');",
+        "const hasManaged=prompt.includes('### docs/current/Design.md')||prompt.includes('docs/current');",
+        "if(hasLegacy&&!hasManaged){console.log('OK');process.exit(0);}",
+        "console.log('NOT_OK: expected root Design.md fallback without managed docs context');process.exit(0);",
+      ].join(""),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n"));
+    expect(combinedOutput).toContain("PASS legacy-design-source.md");
+  });
 });
 
 function scaffoldPredictedState(workspace: string, options?: { template?: string }): void {

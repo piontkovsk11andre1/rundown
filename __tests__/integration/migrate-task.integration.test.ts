@@ -148,6 +148,42 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(fs.existsSync(path.join(workspace, "migrations", "0002-template-vars-checked.md"))).toBe(true);
   });
 
+  it("falls back to root Design.md when managed docs directories are absent", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictionProject(workspace);
+    fs.writeFileSync(path.join(workspace, "Design.md"), "# Design\n\nLegacy single-file design source.\n", "utf-8");
+
+    fs.writeFileSync(
+      path.join(workspace, ".rundown", "migrate.md"),
+      [
+        "DESIGN={{design}}",
+        "HAS_MANAGED={{designContextHasManagedDocs}}",
+        "SOURCES={{designContextSourceReferences}}",
+      ].join("\n") + "\n",
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "migrate",
+      "--dir",
+      "migrations",
+      "--",
+      "node",
+      "-e",
+      buildTemplateVarsAssertionWorkerScript(),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+
+    const capturedPrompt = fs.readFileSync(path.join(workspace, ".template-vars-prompt.txt"), "utf-8");
+    expect(capturedPrompt).toContain("Legacy single-file design source.");
+    expect(capturedPrompt).toContain("HAS_MANAGED=false");
+    expect(capturedPrompt).toContain("SOURCES=- ");
+    expect(capturedPrompt).toMatch(/Design\.md/);
+    expect(capturedPrompt).not.toMatch(/docs[\\/]current/);
+    expect(fs.existsSync(path.join(workspace, "migrations", "0002-template-vars-checked.md"))).toBe(true);
+  });
+
   it("falls back to the first ranked proposal in non-interactive mode", async () => {
     const workspace = makeTempWorkspace();
     scaffoldPredictionProject(workspace);

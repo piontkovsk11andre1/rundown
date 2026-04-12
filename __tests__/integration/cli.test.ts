@@ -4817,6 +4817,117 @@ describe.sequential("CLI integration", () => {
     expect(combinedOutput.includes("prompt-file-failure")).toBe(true);
   });
 
+  it("run --keep-artifacts persists successful source cli expansion in execute prompt.md", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+
+    fs.writeFileSync(
+      roadmapPath,
+      [
+        "```cli",
+        "node -e \"process.stdout.write('prompt-file-artifact-success\\n')\"",
+        "```",
+        "",
+        "- [ ] Validate prompt file artifact success",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--keep-artifacts",
+      "--",
+      "node",
+      "-e",
+      "process.exit(0)",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const savedRun = findSavedRunByCommand(workspace, "run");
+    expect(savedRun).toBeDefined();
+    const runDir = path.join(workspace, ".rundown", "runs", savedRun!.runId);
+    const workerPhaseDir = fs.readdirSync(runDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(runDir, entry.name))
+      .find((phaseDir) => {
+        const metadataPath = path.join(phaseDir, "metadata.json");
+        if (!fs.existsSync(metadataPath)) {
+          return false;
+        }
+        const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf-8")) as {
+          phase?: unknown;
+          promptFile?: unknown;
+        };
+        return metadata.phase === "execute" && metadata.promptFile === "prompt.md";
+      });
+
+    expect(workerPhaseDir).toBeDefined();
+    const promptPath = path.join(workerPhaseDir!, "prompt.md");
+    expect(fs.existsSync(promptPath)).toBe(true);
+    const promptSource = fs.readFileSync(promptPath, "utf-8");
+    expect(promptSource).toContain("prompt-file-artifact-success");
+    expect(promptSource).not.toContain("```cli");
+  });
+
+  it("run --keep-artifacts persists failed source cli diagnostics in execute prompt.md", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+
+    fs.writeFileSync(
+      roadmapPath,
+      [
+        "```cli",
+        "node -e \"process.stderr.write('prompt-file-artifact-failure\\n');process.exit(11)\"",
+        "```",
+        "",
+        "- [ ] Validate prompt file artifact failure",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+      "--keep-artifacts",
+      "--",
+      "node",
+      "-e",
+      "process.exit(0)",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const savedRun = findSavedRunByCommand(workspace, "run");
+    expect(savedRun).toBeDefined();
+    const runDir = path.join(workspace, ".rundown", "runs", savedRun!.runId);
+    const workerPhaseDir = fs.readdirSync(runDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(runDir, entry.name))
+      .find((phaseDir) => {
+        const metadataPath = path.join(phaseDir, "metadata.json");
+        if (!fs.existsSync(metadataPath)) {
+          return false;
+        }
+        const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf-8")) as {
+          phase?: unknown;
+          promptFile?: unknown;
+        };
+        return metadata.phase === "execute" && metadata.promptFile === "prompt.md";
+      });
+
+    expect(workerPhaseDir).toBeDefined();
+    const promptPath = path.join(workerPhaseDir!, "prompt.md");
+    expect(fs.existsSync(promptPath)).toBe(true);
+    const promptSource = fs.readFileSync(promptPath, "utf-8");
+    expect(promptSource).toContain('<command exit_code="11">node -e');
+    expect(promptSource).toContain("prompt-file-artifact-failure");
+    expect(promptSource).not.toContain("```cli");
+  });
+
   it("run preserves source cli command ordering and non-fatal failure semantics in staged prompt files", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");

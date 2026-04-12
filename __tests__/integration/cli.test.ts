@@ -7380,6 +7380,101 @@ describe.sequential("CLI integration", () => {
       .toContain("- [ ] cli: node -e \"console.error('inline-cli-fail-detail'); process.exit(1)\"");
   });
 
+  it("run routes failing inline CLI stdout/stderr to correct streams and preserves multiline details", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const failingScriptPath = path.join(workspace, "inline-cli-fail-streams.cjs");
+    fs.writeFileSync(
+      roadmapPath,
+      "- [ ] cli: node inline-cli-fail-streams.cjs\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      failingScriptPath,
+      [
+        "process.stdout.write('inline-stdout-line-1\\ninline-stdout-line-2\\n');",
+        "process.stderr.write('inline-stderr-line-1\\ninline-stderr-line-2\\n');",
+        "process.exit(2);",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--no-verify",
+    ], workspace);
+
+    expect(result.code).toBe(1);
+    expect(result.errors.some((line) => line.includes("Inline CLI exited with code 2"))).toBe(true);
+
+    const stdoutOutput = stripAnsi([
+      ...result.logs,
+      ...result.stdoutWrites,
+    ].join("\n"));
+    const stderrOutput = stripAnsi([
+      ...result.errors,
+      ...result.stderrWrites,
+    ].join("\n"));
+
+    expect(stdoutOutput.includes("inline-stdout-line-1\n")).toBe(true);
+    expect(stdoutOutput.includes("inline-stdout-line-2")).toBe(true);
+    expect(stderrOutput.includes("inline-stderr-line-1\n")).toBe(true);
+    expect(stderrOutput.includes("inline-stderr-line-2")).toBe(true);
+    expect(stdoutOutput.includes("inline-stderr-line-1")).toBe(false);
+    expect(stderrOutput.includes("inline-stdout-line-1")).toBe(false);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: node inline-cli-fail-streams.cjs");
+  });
+
+  it("run --all shows failing inline CLI stdout/stderr details with correct stream routing", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const failingScriptPath = path.join(workspace, "inline-cli-fail-all-streams.cjs");
+    fs.writeFileSync(
+      roadmapPath,
+      "- [ ] cli: node inline-cli-fail-all-streams.cjs\n- [ ] cli: echo should-not-run\n",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      failingScriptPath,
+      [
+        "process.stdout.write('all-stdout-line-1\\nall-stdout-line-2\\n');",
+        "process.stderr.write('all-stderr-line-1\\nall-stderr-line-2\\n');",
+        "process.exit(3);",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--all",
+      "--no-verify",
+    ], workspace);
+
+    expect(result.code).toBe(1);
+    expect(result.errors.some((line) => line.includes("Inline CLI exited with code 3"))).toBe(true);
+
+    const stdoutOutput = stripAnsi([
+      ...result.logs,
+      ...result.stdoutWrites,
+    ].join("\n"));
+    const stderrOutput = stripAnsi([
+      ...result.errors,
+      ...result.stderrWrites,
+    ].join("\n"));
+
+    expect(stdoutOutput.includes("all-stdout-line-1\n")).toBe(true);
+    expect(stdoutOutput.includes("all-stdout-line-2")).toBe(true);
+    expect(stderrOutput.includes("all-stderr-line-1\n")).toBe(true);
+    expect(stderrOutput.includes("all-stderr-line-2")).toBe(true);
+    expect(stdoutOutput.includes("all-stderr-line-1")).toBe(false);
+    expect(stderrOutput.includes("all-stdout-line-1")).toBe(false);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe(
+      "- [ ] cli: node inline-cli-fail-all-streams.cjs\n- [ ] cli: echo should-not-run\n",
+    );
+  });
+
   it("run returns 2 on verification failure, skips completion side effects, and writes fix annotation", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");

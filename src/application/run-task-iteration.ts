@@ -230,6 +230,7 @@ export async function runTaskIteration(params: {
   exitCode?: number;
   forceRetryableFailure?: boolean;
   workerFailureClass?: WorkerFailureClass;
+  executedWorkerCommand?: string[];
 }> {
   const { dependencies, emit, state, context, execution, worker, verifyConfig, completion, prompts, traceConfig, lifecycle } = params;
   const { source, fileSource, files, task } = context;
@@ -580,6 +581,7 @@ export async function runTaskIteration(params: {
     return {
       continueLoop: false,
       forceRetryableFailure: dispatchResult.forceRetryableFailure === true,
+      executedWorkerCommand: selectedWorkerCommand,
       workerFailureClass: classifyIterationFailure({
         runReason: dispatchResult.executionFailureRunReason,
         exitCode: dispatchResult.executionFailureExitCode,
@@ -608,6 +610,7 @@ export async function runTaskIteration(params: {
     return {
       continueLoop: false,
       forceRetryableFailure: false,
+      executedWorkerCommand: selectedWorkerCommand,
       exitCode: await lifecycle.finishRun(0, "detached", true),
     };
   }
@@ -687,6 +690,7 @@ export async function runTaskIteration(params: {
 
   const normalizedCompletionResult = {
     ...completionResult,
+    executedWorkerCommand: selectedWorkerCommand,
     workerFailureClass: completionResult.continueLoop
       ? undefined
       : classifyIterationFailure({

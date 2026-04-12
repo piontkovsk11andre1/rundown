@@ -33,6 +33,7 @@ import {
 import { runTaskIteration } from "./run-task-iteration.js";
 import { extractForceModifier } from "../domain/prefix-chain.js";
 import { applyTraceStatisticsDefaults } from "../domain/worker-config.js";
+import type { WorkerHealthPolicyConfig } from "../domain/worker-config.js";
 import { createCachedCommandExecutor } from "./cached-command-executor.js";
 import { formatNoItemsFound, formatNoItemsFoundMatching, pluralize } from "./run-task-utils.js";
 import {
@@ -49,6 +50,7 @@ import {
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import { toRuntimeTaskMetadata } from "./task-context-resolution.js";
 import { FileLockError } from "../domain/ports/file-lock.js";
+import type { WorkerHealthSnapshot } from "../domain/ports/worker-health-store.js";
 import type {
   ArtifactRunContext,
   ArtifactStoreStatus,
@@ -79,6 +81,18 @@ import type {
   WorkingDirectoryPort,
 } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
+import {
+  WORKER_FAILURE_CLASS_EXECUTION_FAILURE_OTHER,
+  WORKER_FAILURE_CLASS_SUCCESS,
+  WORKER_FAILURE_CLASS_TRANSPORT_UNAVAILABLE,
+  WORKER_FAILURE_CLASS_USAGE_LIMIT,
+  WORKER_HEALTH_STATUS_COOLING_DOWN,
+  WORKER_HEALTH_STATUS_HEALTHY,
+  WORKER_HEALTH_STATUS_UNAVAILABLE,
+  buildWorkerHealthWorkerKey,
+  type WorkerFailureClass,
+  type WorkerHealthEntry,
+} from "../domain/worker-health.js";
 
 type ArtifactContext = ArtifactRunContext;
 type EmitFn = (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
@@ -90,6 +104,128 @@ export { toRuntimeTaskMetadata } from "./task-context-resolution.js";
 export { finalizeRunArtifacts } from "./run-lifecycle.js";
 export { getAutomationWorkerCommand, isOpenCodeWorkerCommand };
 export type { RunnerMode };
+
+function resolvePerTaskFailoverAttemptLimit(healthPolicy: WorkerHealthPolicyConfig | undefined, configuredFallbackCount: number): number {
+  if (typeof healthPolicy?.maxFailoverAttemptsPerTask === "number") {
+    return healthPolicy.maxFailoverAttemptsPerTask;
+  }
+
+  return Math.max(0, configuredFallbackCount);
+}
+
+function resolveCooldownSecondsForFailureClass(
+  failureClass: WorkerFailureClass,
+  healthPolicy: WorkerHealthPolicyConfig | undefined,
+): number {
+  if (failureClass === WORKER_FAILURE_CLASS_USAGE_LIMIT) {
+    return healthPolicy?.cooldownSecondsByFailureClass?.usage_limit ?? 900;
+  }
+
+  if (failureClass === WORKER_FAILURE_CLASS_TRANSPORT_UNAVAILABLE) {
+    return healthPolicy?.cooldownSecondsByFailureClass?.transport_unavailable ?? 0;
+  }
+
+  return healthPolicy?.cooldownSecondsByFailureClass?.execution_failure_other ?? 0;
+}
+
+function updateWorkerHealthForAttemptOutcome(params: {
+  snapshot: WorkerHealthSnapshot;
+  workerCommand: readonly string[];
+  failureClass: WorkerFailureClass;
+  healthPolicy: WorkerHealthPolicyConfig | undefined;
+  now: Date;
+}): WorkerHealthSnapshot {
+  const { snapshot, workerCommand, failureClass, healthPolicy, now } = params;
+  const key = buildWorkerHealthWorkerKey(workerCommand);
+  if (key.length === 0) {
+    return snapshot;
+  }
+
+  const nowIso = now.toISOString();
+  const entries = [...snapshot.entries];
+  const existingIndex = entries.findIndex((entry) => entry.source === "worker" && entry.key === key);
+  const existingEntry = existingIndex >= 0 ? entries[existingIndex] : undefined;
+  const currentFailureCount = existingEntry?.failureCountWindow ?? 0;
+
+  let nextEntry: WorkerHealthEntry = {
+    key,
+    source: "worker" as const,
+    status: WORKER_HEALTH_STATUS_HEALTHY,
+    failureCountWindow: currentFailureCount,
+    ...(existingEntry?.lastSuccessAt ? { lastSuccessAt: existingEntry.lastSuccessAt } : {}),
+  };
+
+  if (failureClass === WORKER_FAILURE_CLASS_SUCCESS) {
+    nextEntry = {
+      ...nextEntry,
+      status: WORKER_HEALTH_STATUS_HEALTHY,
+      cooldownUntil: undefined,
+      lastFailureClass: WORKER_FAILURE_CLASS_SUCCESS,
+      lastSuccessAt: nowIso,
+      lastFailureAt: undefined,
+      failureCountWindow: 0,
+    };
+  } else if (failureClass === WORKER_FAILURE_CLASS_USAGE_LIMIT) {
+    const cooldownSeconds = resolveCooldownSecondsForFailureClass(failureClass, healthPolicy);
+    nextEntry = {
+      ...nextEntry,
+      status: cooldownSeconds > 0 ? WORKER_HEALTH_STATUS_COOLING_DOWN : WORKER_HEALTH_STATUS_UNAVAILABLE,
+      cooldownUntil: cooldownSeconds > 0
+        ? new Date(now.getTime() + (cooldownSeconds * 1000)).toISOString()
+        : undefined,
+      lastFailureClass: failureClass,
+      lastFailureAt: nowIso,
+      failureCountWindow: currentFailureCount + 1,
+    };
+  } else if (failureClass === WORKER_FAILURE_CLASS_TRANSPORT_UNAVAILABLE) {
+    const unavailableMode = healthPolicy?.unavailableReevaluation?.mode ?? "manual";
+    const probeCooldownSeconds = healthPolicy?.unavailableReevaluation?.probeCooldownSeconds
+      ?? healthPolicy?.cooldownSecondsByFailureClass?.transport_unavailable
+      ?? 300;
+    const shouldUseCooldown = unavailableMode === "cooldown";
+    nextEntry = {
+      ...nextEntry,
+      status: shouldUseCooldown ? WORKER_HEALTH_STATUS_COOLING_DOWN : WORKER_HEALTH_STATUS_UNAVAILABLE,
+      cooldownUntil: shouldUseCooldown
+        ? new Date(now.getTime() + (probeCooldownSeconds * 1000)).toISOString()
+        : undefined,
+      lastFailureClass: failureClass,
+      lastFailureAt: nowIso,
+      failureCountWindow: currentFailureCount + 1,
+    };
+  } else {
+    const cooldownSeconds = resolveCooldownSecondsForFailureClass(failureClass, healthPolicy);
+    nextEntry = {
+      ...nextEntry,
+      status: cooldownSeconds > 0 ? WORKER_HEALTH_STATUS_COOLING_DOWN : WORKER_HEALTH_STATUS_HEALTHY,
+      cooldownUntil: cooldownSeconds > 0
+        ? new Date(now.getTime() + (cooldownSeconds * 1000)).toISOString()
+        : undefined,
+      lastFailureClass: failureClass,
+      lastFailureAt: nowIso,
+      failureCountWindow: currentFailureCount + 1,
+    };
+  }
+
+  if (existingIndex >= 0) {
+    entries[existingIndex] = nextEntry;
+  } else {
+    entries.push(nextEntry);
+  }
+
+  return {
+    schemaVersion: snapshot.schemaVersion,
+    updatedAt: nowIso,
+    entries,
+  };
+}
+
+function isFailoverRetryableFailureClass(
+  failureClass: WorkerFailureClass | undefined,
+): failureClass is typeof WORKER_FAILURE_CLASS_USAGE_LIMIT | typeof WORKER_FAILURE_CLASS_TRANSPORT_UNAVAILABLE {
+  return failureClass === WORKER_FAILURE_CLASS_USAGE_LIMIT
+    || failureClass === WORKER_FAILURE_CLASS_TRANSPORT_UNAVAILABLE;
+}
 
 /**
  * Dependency bundle required to construct the `run` command execution flow.
@@ -359,10 +495,21 @@ export function createRunTaskExecution(
         },
       }
       : loadedWorkerConfigWithDefaults;
-    const workerHealthEntries = dependencies.workerHealthStore
-      ? dependencies.workerHealthStore.read(dependencies.configDir?.configDir ?? executionCwd).entries
-      : [];
-    const evaluateWorkerHealthAtMs = Date.now();
+    const workerHealthStoreBaseDir = dependencies.configDir?.configDir ?? executionCwd;
+    let workerHealthSnapshot: WorkerHealthSnapshot = dependencies.workerHealthStore
+      ? dependencies.workerHealthStore.read(workerHealthStoreBaseDir)
+      : {
+        schemaVersion: 1,
+        updatedAt: new Date().toISOString(),
+        entries: [],
+      };
+    let workerHealthEntries = workerHealthSnapshot.entries;
+    const healthPolicy = loadedWorkerConfig?.healthPolicy;
+    const maxFailoverAttemptsPerTask = resolvePerTaskFailoverAttemptLimit(
+      healthPolicy,
+      loadedWorkerConfig?.workers?.fallbacks?.length ?? 0,
+    );
+    const maxFailoverAttemptsPerRun = healthPolicy?.maxFailoverAttemptsPerRun;
 
     // Initialize run-scoped mutable state shared across task iterations.
     const state: Parameters<typeof runTaskIteration>[0]["state"] = {
@@ -385,6 +532,7 @@ export function createRunTaskExecution(
     const deferCommitUntilPostRun = commitAfterComplete
       && (resetAfter || (effectiveRunAll && commitMode === "file-done"));
     let currentRound = 1;
+    let runFailoverAttemptsUsed = 0;
     // Use an injectable timestamp provider for prompt/template rendering.
     const nowIso = (): string => new Date().toISOString();
     // Create a trace session that aggregates run and task lifecycle events.
@@ -731,6 +879,7 @@ export function createRunTaskExecution(
               previousExitCode: number;
             } | undefined;
             let iterationResult: Awaited<ReturnType<typeof runTaskIteration>> | undefined;
+            let taskFailoverAttemptsUsed = 0;
 
             while (attempt < maxTaskAttempts) {
               attempt++;
@@ -832,7 +981,7 @@ export function createRunTaskExecution(
                   workerPattern,
                   loadedWorkerConfig,
                   workerHealthEntries,
-                  evaluateWorkerHealthAtMs,
+                  evaluateWorkerHealthAtMs: Date.now(),
                 },
                 verifyConfig: {
                   configuredOnlyVerify,
@@ -877,6 +1026,79 @@ export function createRunTaskExecution(
 
               const exitCode = iterationResult.exitCode ?? 0;
               const didFail = !iterationResult.continueLoop && exitCode !== 0;
+
+              if ((iterationResult.executedWorkerCommand?.length ?? 0) > 0) {
+                const healthOutcomeClass: WorkerFailureClass = didFail
+                  ? (iterationResult.workerFailureClass ?? WORKER_FAILURE_CLASS_EXECUTION_FAILURE_OTHER)
+                  : WORKER_FAILURE_CLASS_SUCCESS;
+                workerHealthSnapshot = updateWorkerHealthForAttemptOutcome({
+                  snapshot: workerHealthSnapshot,
+                  workerCommand: iterationResult.executedWorkerCommand ?? [],
+                  failureClass: healthOutcomeClass,
+                  healthPolicy,
+                  now: new Date(),
+                });
+                workerHealthEntries = workerHealthSnapshot.entries;
+                if (dependencies.workerHealthStore) {
+                  dependencies.workerHealthStore.write(workerHealthSnapshot, workerHealthStoreBaseDir);
+                }
+              }
+
+              const shouldRetryFailover = didFail
+                && isFailoverRetryableFailureClass(iterationResult.workerFailureClass)
+                && (iterationResult.executedWorkerCommand?.length ?? 0) > 0;
+              if (shouldRetryFailover) {
+                const hasTaskBudget = taskFailoverAttemptsUsed < maxFailoverAttemptsPerTask;
+                const hasRunBudget = maxFailoverAttemptsPerRun === undefined
+                  || runFailoverAttemptsUsed < maxFailoverAttemptsPerRun;
+
+                if (!hasTaskBudget || !hasRunBudget) {
+                  const exhaustedReason = !hasTaskBudget
+                    ? "per-task failover attempt limit reached"
+                    : "per-run failover attempt limit reached";
+                  emit({
+                    kind: "error",
+                    message: "Failover exhausted: " + exhaustedReason + ". Last failure class: " + iterationResult.workerFailureClass + ".",
+                  });
+                  return exitCode;
+                }
+
+                taskFailoverAttemptsUsed++;
+                runFailoverAttemptsUsed++;
+                emit({
+                  kind: "warn",
+                  message: "Worker attempt failed with "
+                    + iterationResult.workerFailureClass
+                    + "; retrying with next eligible fallback (task failover "
+                    + taskFailoverAttemptsUsed
+                    + "/"
+                    + maxFailoverAttemptsPerTask
+                    + ").",
+                });
+                attempt--;
+                runFailed = false;
+                state.runCompleted = false;
+                dependencies.verificationStore.remove(selectedTaskResult.task);
+                state.deferredCommitContext = null;
+                resetArtifacts();
+                if (cacheCliBlocks) {
+                  cliBlockExecutor = createCachedCommandExecutor(defaultCliBlockExecutor);
+                }
+                continue;
+              }
+
+              if (
+                didFail
+                && taskFailoverAttemptsUsed > 0
+                && (iterationResult.executedWorkerCommand?.length ?? 0) === 0
+              ) {
+                emit({
+                  kind: "error",
+                  message: "Failover exhausted: no eligible fallback workers remain after health filtering.",
+                });
+                return exitCode;
+              }
+
               const shouldRetryForceAttempt = didFail
                 && initialForceExtraction.isForce
                 && iterationResult.forceRetryableFailure === true

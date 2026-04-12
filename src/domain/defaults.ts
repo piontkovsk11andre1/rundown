@@ -799,6 +799,7 @@ Rules:
 - Do not insert new items between existing items or between prose paragraphs. Append after the last existing TODO item or at the document end.
 - Do not reword, rephrase, or rewrite the descriptive text of any existing TODO item.
 - You may fix prefixes on existing unchecked items: normalize aliases to canonical form (e.g. \`check:\` → \`verify:\`), add a missing prefix when the task clearly needs one, or remove an incorrect prefix.
+- Remove obviously wrong duplicate directive groups/prefix wrappers and duplicate inline prefixes on unchecked items (for example repeated \`fast:\`/\`verify:\` wrappers or stacked identical prefixes introduced by prior planning passes).
 - Do not change any \`- [ ]\` item to \`- [x]\`.
 - Do not remove or move any existing item (checked or unchecked).
 - Do not output a proposed list on stdout; apply edits to \`{{file}}\` directly.

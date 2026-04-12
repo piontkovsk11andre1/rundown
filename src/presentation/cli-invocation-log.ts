@@ -4,7 +4,7 @@ import { createGlobalOutputLogWriter } from "../infrastructure/adapters/global-o
 import { globalOutputLogFilePath } from "../infrastructure/runtime-artifacts.js";
 import { CONFIG_DIR_NAME } from "../domain/ports/config-dir-port.js";
 import type { ApplicationOutputEvent } from "../domain/ports/output-port.js";
-import type { LoggedOutputContext } from "./logged-output-port.js";
+import { withLoggedOutputContext, type LoggedOutputContext } from "./logged-output-port.js";
 import type {
   CliInvocationLogState,
   CliInvocationMetadataDependencies,
@@ -111,19 +111,13 @@ function appendCliFatalErrorToGlobalLog(message: string, state?: CliInvocationLo
 
   try {
     // Persist a structured fatal log event with invocation metadata.
-    state.writer.write({
+    state.writer.write(withLoggedOutputContext({
       ts: new Date().toISOString(),
       level: "error",
       stream: "stderr",
       kind: "cli-fatal",
       message,
-      command: state.context.command,
-      argv: state.context.argv,
-      cwd: state.context.cwd,
-      pid: state.context.pid,
-      version: state.context.version,
-      session_id: state.context.sessionId,
-    });
+    }, state.context));
   } catch {
     // best-effort logging: never interrupt command flow on log write failures
   }
@@ -188,19 +182,13 @@ function appendCommanderFrameworkOutputToGlobalLog(
 
   try {
     // Record the framework output with an inferred severity from stream type.
-    state.writer.write({
+    state.writer.write(withLoggedOutputContext({
       ts: new Date().toISOString(),
       level: stream === "stderr" ? "error" : "info",
       stream,
       kind: "commander",
       message,
-      command: state.context.command,
-      argv: state.context.argv,
-      cwd: state.context.cwd,
-      pid: state.context.pid,
-      version: state.context.version,
-      session_id: state.context.sessionId,
-    });
+    }, state.context));
   } catch {
     // best-effort logging: never interrupt command flow on log write failures
   }

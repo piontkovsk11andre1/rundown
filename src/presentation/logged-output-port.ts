@@ -27,6 +27,29 @@ export interface LoggedOutputContext {
   sessionId: string;
 }
 
+type GlobalOutputLogEntryWithoutContext = Omit<
+  GlobalOutputLogEntry,
+  "command" | "argv" | "cwd" | "pid" | "version" | "session_id"
+>;
+
+/**
+ * Attaches invocation metadata to a global output log entry payload.
+ */
+export function withLoggedOutputContext(
+  entry: GlobalOutputLogEntryWithoutContext,
+  context: LoggedOutputContext,
+): GlobalOutputLogEntry {
+  return {
+    ...entry,
+    command: context.command,
+    argv: context.argv,
+    cwd: context.cwd,
+    pid: context.pid,
+    version: context.version,
+    session_id: context.sessionId,
+  };
+}
+
 /**
  * Defines dependencies required to create an output port that also logs globally.
  */
@@ -51,19 +74,13 @@ export function createLoggedOutputPort(options: CreateLoggedOutputPortOptions): 
     // Emit to the structured logger first, then always forward to the real output port.
     emit(event) {
       try {
-        const entry: GlobalOutputLogEntry = {
+        const entry = withLoggedOutputContext({
           ts: now(),
           level: resolveLogLevel(event),
           stream: resolveLogStream(event),
           kind: resolveLogKind(event),
           message: resolveLogMessage(event),
-          command: options.context.command,
-          argv: options.context.argv,
-          cwd: options.context.cwd,
-          pid: options.context.pid,
-          version: options.context.version,
-          session_id: options.context.sessionId,
-        };
+        }, options.context);
         options.writer.write(sanitizeGlobalOutputLogEntry(entry));
       } catch {
         // best-effort logging: never interrupt output flow on log write failures

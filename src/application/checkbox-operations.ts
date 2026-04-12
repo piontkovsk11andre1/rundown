@@ -7,6 +7,7 @@ import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 
 const TRACE_STATISTICS_CHILD_LABEL_PATTERN = /^(?:total time|execution|verify|repair|idle|tokens estimated|phases|verify attempts|repair attempts):\s+\S/i;
 const TRACE_STATISTICS_GRANDCHILD_LABEL_PATTERN = /^(?:execution|verify|repair):\s+\S/i;
+const RUNTIME_STALE_CHILD_LABEL_PATTERN = /^(?:total time|execution|verify|repair|idle|tokens estimated|phases|verify attempts|repair attempts|fix|skipped):\s+\S/i;
 
 interface FileMutationQueue {
   locked: boolean;
@@ -67,7 +68,7 @@ function isListItemWithLabel(line: string, labelPattern: RegExp): boolean {
     return false;
   }
 
-  const label = match[1] ?? "";
+  const label = (match[1] ?? "").replace(/^\[[ xX]\]\s+/, "").trimStart();
   return labelPattern.test(label);
 }
 
@@ -75,6 +76,19 @@ function isTraceStatisticsLineForTask(line: string, parentIndentLength: number):
   const lineIndentLength = getLeadingWhitespaceLength(line);
   if (lineIndentLength === parentIndentLength + 2) {
     return isListItemWithLabel(line, TRACE_STATISTICS_CHILD_LABEL_PATTERN);
+  }
+
+  if (lineIndentLength === parentIndentLength + 4) {
+    return isListItemWithLabel(line, TRACE_STATISTICS_GRANDCHILD_LABEL_PATTERN);
+  }
+
+  return false;
+}
+
+function isRuntimeStaleLineForTask(line: string, parentIndentLength: number): boolean {
+  const lineIndentLength = getLeadingWhitespaceLength(line);
+  if (lineIndentLength === parentIndentLength + 2) {
+    return isListItemWithLabel(line, RUNTIME_STALE_CHILD_LABEL_PATTERN);
   }
 
   if (lineIndentLength === parentIndentLength + 4) {
@@ -118,6 +132,40 @@ function stripTrailingTraceStatisticsLines(
   return removeStartIndex;
 }
 
+function stripTrailingRuntimeStaleLines(
+  lines: string[],
+  parentLineIndex: number,
+  descendantEndIndexExclusive: number,
+): number {
+  const parentLine = lines[parentLineIndex] ?? "";
+  const parentIndentLength = getLeadingWhitespaceLength(parentLine);
+  let removeStartIndex = descendantEndIndexExclusive;
+
+  for (let index = descendantEndIndexExclusive - 1; index > parentLineIndex; index -= 1) {
+    const line = lines[index] ?? "";
+    if (line.trim().length === 0) {
+      if (removeStartIndex < descendantEndIndexExclusive) {
+        removeStartIndex = index;
+        continue;
+      }
+
+      break;
+    }
+
+    if (!isRuntimeStaleLineForTask(line, parentIndentLength)) {
+      break;
+    }
+
+    removeStartIndex = index;
+  }
+
+  if (removeStartIndex < descendantEndIndexExclusive) {
+    lines.splice(removeStartIndex, descendantEndIndexExclusive - removeStartIndex);
+  }
+
+  return removeStartIndex;
+}
+
 function hasTraceStatisticsInDescendants(
   lines: string[],
   parentLineIndex: number,
@@ -140,7 +188,7 @@ function hasTraceStatisticsInDescendants(
   return false;
 }
 
-function stripTraceStatisticsFromSource(source: string, file: string): string {
+function stripRuntimeStaleAnnotationsFromSource(source: string, file: string): string {
   const tasks = parseTasks(source, file);
   if (tasks.length === 0) {
     return source;
@@ -171,7 +219,7 @@ function stripTraceStatisticsFromSource(source: string, file: string): string {
       descendantEndIndexExclusive = index + 1;
     }
 
-    stripTrailingTraceStatisticsLines(lines, parentLineIndex, descendantEndIndexExclusive);
+    stripTrailingRuntimeStaleLines(lines, parentLineIndex, descendantEndIndexExclusive);
   }
 
   return lines.join(eol);
@@ -419,7 +467,7 @@ export function resetFileCheckboxes(file: string, fileSystem: FileSystem): void 
     }
 
     const updated = resetAllCheckboxes(source, file);
-    const cleaned = stripTraceStatisticsFromSource(updated, file);
+    const cleaned = stripRuntimeStaleAnnotationsFromSource(updated, file);
     fileSystem.writeText(file, cleaned);
   });
 }

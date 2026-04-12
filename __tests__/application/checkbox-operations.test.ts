@@ -748,6 +748,47 @@ describe("checkbox-operations", () => {
     ].join("\n"));
   });
 
+  it("removes fix and skipped runtime annotations during checkbox reset", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [x] Parent",
+        "  - note: keep this",
+        "  - fix: retry with smaller batch",
+        "  - skipped: already satisfied",
+        "- [x] Next task",
+        "  - skipped: no output",
+      ].join("\n"),
+    });
+
+    resetFileCheckboxes("todo.md", fileSystem);
+
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [ ] Parent",
+      "  - note: keep this",
+      "- [ ] Next task",
+    ].join("\n"));
+  });
+
+  it("treats checkbox-prefixed stale labels as stale during reset", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [x] Parent",
+        "  - [x] fix: generated annotation",
+        "  + [ ] skipped: generated annotation",
+        "  * [x] verify attempts: 2",
+        "    - execution: 1s",
+        "- [ ] Keep",
+      ].join("\n"),
+    });
+
+    resetFileCheckboxes("todo.md", fileSystem);
+
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [ ] Parent",
+      "- [ ] Keep",
+    ].join("\n"));
+  });
+
   it("marks a single remaining sibling as checked and inserts skipped annotation", () => {
     const fileSystem = createFileSystem({
       "todo.md": [

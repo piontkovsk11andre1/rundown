@@ -576,6 +576,7 @@ describe("checkbox-operations", () => {
       kind: "info",
       message: "Dry run — would reset checkboxes (pre-run) in: todo.md",
     });
+    expect(emit).toHaveBeenCalledTimes(1);
   });
 
   it("reports dry-run stale runtime cleanup intent when reset would remove annotations", () => {
@@ -605,6 +606,31 @@ describe("checkbox-operations", () => {
       message: "Dry run — would also remove stale runtime annotations in: todo.md",
     });
     expect(emit).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps dry-run reporting checkbox-centric when no checked tasks exist", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [ ] A",
+        "  - fix: generated annotation",
+        "  - skipped: generated annotation",
+      ].join("\n"),
+    });
+    const emit = vi.fn();
+
+    const count = maybeResetFileCheckboxes("todo.md", fileSystem, true, emit, "post-run");
+
+    expect(count).toBe(0);
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [ ] A",
+      "  - fix: generated annotation",
+      "  - skipped: generated annotation",
+    ].join("\n"));
+    expect(emit).toHaveBeenNthCalledWith(1, {
+      kind: "info",
+      message: "Dry run — would reset checkboxes (post-run) in: todo.md",
+    });
+    expect(emit).toHaveBeenCalledTimes(1);
   });
 
   it("resets checkboxes and emits count in normal mode", () => {

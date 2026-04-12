@@ -4191,6 +4191,81 @@ describe.sequential("CLI integration", () => {
     expect(parsedLines.slice(firstLines.length).some((entry) => entry.command === "list")).toBe(true);
   });
 
+  it("uses one append-only output log for mixed next/list/run invocations with distinct session ids", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "tasks.md"), "- [ ] Ship release notes\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] cli: echo mixed run\n", "utf-8");
+
+    const firstResult = await runCli(["next", "tasks.md"], workspace);
+    expect(firstResult.code).toBe(0);
+
+    const outputLogPath = path.join(workspace, ".rundown", "logs", "output.jsonl");
+    expect(fs.existsSync(outputLogPath)).toBe(true);
+
+    const firstLines = fs.readFileSync(outputLogPath, "utf-8")
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0);
+    expect(firstLines.length).toBeGreaterThan(0);
+
+    const secondResult = await runCli(["list", "tasks.md"], workspace);
+    expect(secondResult.code).toBe(0);
+
+    const secondLines = fs.readFileSync(outputLogPath, "utf-8")
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0);
+
+    expect(secondLines.length).toBeGreaterThan(firstLines.length);
+    expect(secondLines.slice(0, firstLines.length)).toEqual(firstLines);
+
+    const thirdResult = await runCli(["run", "roadmap.md", "--no-verify"], workspace);
+    expect(thirdResult.code).toBe(0);
+
+    const thirdLines = fs.readFileSync(outputLogPath, "utf-8")
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0);
+
+    expect(thirdLines.length).toBeGreaterThan(secondLines.length);
+    expect(thirdLines.slice(0, secondLines.length)).toEqual(secondLines);
+
+    const firstEntries = firstLines.map((line) => JSON.parse(line) as { command?: string; session_id?: string });
+    const secondEntries = secondLines.slice(firstLines.length)
+      .map((line) => JSON.parse(line) as { command?: string; session_id?: string });
+    const thirdEntries = thirdLines.slice(secondLines.length)
+      .map((line) => JSON.parse(line) as { command?: string; session_id?: string });
+
+    expect(firstEntries.some((entry) => entry.command === "next")).toBe(true);
+    expect(secondEntries.some((entry) => entry.command === "list")).toBe(true);
+    expect(thirdEntries.some((entry) => entry.command === "run")).toBe(true);
+
+    const firstSessionIds = new Set(
+      firstEntries
+        .map((entry) => entry.session_id)
+        .filter((sessionId): sessionId is string => typeof sessionId === "string"),
+    );
+    const secondSessionIds = new Set(
+      secondEntries
+        .map((entry) => entry.session_id)
+        .filter((sessionId): sessionId is string => typeof sessionId === "string"),
+    );
+    const thirdSessionIds = new Set(
+      thirdEntries
+        .map((entry) => entry.session_id)
+        .filter((sessionId): sessionId is string => typeof sessionId === "string"),
+    );
+
+    expect(firstSessionIds.size).toBeGreaterThan(0);
+    expect(secondSessionIds.size).toBeGreaterThan(0);
+    expect(thirdSessionIds.size).toBeGreaterThan(0);
+
+    for (const sessionId of secondSessionIds) {
+      expect(firstSessionIds.has(sessionId)).toBe(false);
+    }
+    for (const sessionId of thirdSessionIds) {
+      expect(firstSessionIds.has(sessionId)).toBe(false);
+      expect(secondSessionIds.has(sessionId)).toBe(false);
+    }
+  });
+
   it("writes global output log under the upward-discovered config dir", async () => {
     const workspace = makeTempWorkspace();
     const repoRoot = path.join(workspace, "repo");

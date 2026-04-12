@@ -61,6 +61,9 @@
     "micromark-extension-gfm-task-list-item": "^2.1.0",
     "picocolors": "^1.1.1"
   },
+  "overrides": {
+    "test-exclude": "^8.0.0"
+  },
   "devDependencies": {
     "@types/cross-spawn": "^6.0.6",
     "@types/node": "^22.0.0",

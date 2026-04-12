@@ -131,6 +131,7 @@ export async function executeToolChain(
       kind: "tool-handled",
       skipExecution: result.skipExecution ?? false,
       shouldVerify: result.shouldVerify ?? false,
+      forLoopItems: result.forLoopItems,
       ...(result.skipRemainingSiblings ? { skipRemainingSiblings: result.skipRemainingSiblings } : {}),
       childFile: result.childFile,
       childTaskCount: result.childTasks?.length ?? 0,
@@ -271,6 +272,7 @@ export type ToolChainResult =
     kind: "tool-handled";
     skipExecution: boolean;
     shouldVerify: boolean;
+    forLoopItems?: string[];
     skipRemainingSiblings?: {
       reason: string;
     };

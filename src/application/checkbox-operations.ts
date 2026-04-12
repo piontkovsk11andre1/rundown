@@ -7,6 +7,7 @@ import {
   getForCurrentValue,
   getForItemValues,
   isForLoopTaskText,
+  normalizeForLoopItemValues,
   parseForItemValue,
 } from "../domain/for-loop.js";
 import { findRemainingSiblings, findUncheckedDescendants } from "../domain/task-selection.js";
@@ -328,7 +329,14 @@ function markUncheckedTask(source: string, task: Task): string {
   return lines.join(eol);
 }
 
-function rewriteForLoopMetadataLines(lines: string[], loopTask: Task, nextCurrent?: string): void {
+function rewriteForLoopMetadataLines(
+  lines: string[],
+  loopTask: Task,
+  options: {
+    nextCurrent?: string;
+    forItems?: readonly string[];
+  } = {},
+): void {
   const parentLineIndex = loopTask.line - 1;
   if (parentLineIndex < 0 || parentLineIndex >= lines.length) {
     return;
@@ -383,9 +391,10 @@ function rewriteForLoopMetadataLines(lines: string[], loopTask: Task, nextCurren
     }
   }
 
-  const metadataLines = existingForItems.map((value) => `${childIndent}- ${formatForLoopItemMetadataLine(value)}`);
-  if (nextCurrent !== undefined) {
-    metadataLines.push(`${childIndent}- ${formatForLoopCurrentMetadataLine(nextCurrent)}`);
+  const forItems = normalizeForLoopItemValues(options.forItems ?? existingForItems);
+  const metadataLines = forItems.map((value) => `${childIndent}- ${formatForLoopItemMetadataLine(value)}`);
+  if (options.nextCurrent !== undefined) {
+    metadataLines.push(`${childIndent}- ${formatForLoopCurrentMetadataLine(options.nextCurrent)}`);
   }
 
   let insertionIndex = parentLineIndex + 1;
@@ -419,8 +428,32 @@ function rewriteForLoopMetadataLines(lines: string[], loopTask: Task, nextCurren
 function setForCurrentMetadata(source: string, loopTask: Task, currentValue: string): string {
   const eol = source.includes("\r\n") ? "\r\n" : "\n";
   const lines = source.split(/\r?\n/);
-  rewriteForLoopMetadataLines(lines, loopTask, currentValue);
+  rewriteForLoopMetadataLines(lines, loopTask, { nextCurrent: currentValue });
   return lines.join(eol);
+}
+
+export function syncForLoopMetadataItemsUsingFileSystem(
+  loopTask: Task,
+  itemValues: readonly string[],
+  fileSystem: FileSystem,
+): void {
+  const normalizedItems = normalizeForLoopItemValues(itemValues);
+  withSerializedFileMutation(loopTask.file, () => {
+    const source = fileSystem.readText(loopTask.file);
+    const latestTasks = parseTasks(source, loopTask.file);
+    const latestLoopTask = findTaskByIdentity(latestTasks, loopTask);
+    if (!latestLoopTask || !isForLoopTaskText(latestLoopTask.text)) {
+      return;
+    }
+
+    const eol = source.includes("\r\n") ? "\r\n" : "\n";
+    const lines = source.split(/\r?\n/);
+    rewriteForLoopMetadataLines(lines, latestLoopTask, { forItems: normalizedItems });
+    const updatedSource = lines.join(eol);
+    if (updatedSource !== source) {
+      fileSystem.writeText(loopTask.file, updatedSource);
+    }
+  });
 }
 
 export function advanceForLoopUsingFileSystem(
@@ -486,7 +519,7 @@ export function advanceForLoopUsingFileSystem(
     if (nextIndex >= itemValues.length) {
       const eol = source.includes("\r\n") ? "\r\n" : "\n";
       const lines = source.split(/\r?\n/);
-      rewriteForLoopMetadataLines(lines, latestLoopTask, undefined);
+      rewriteForLoopMetadataLines(lines, latestLoopTask);
       const updatedSource = lines.join(eol);
       if (updatedSource !== source) {
         fileSystem.writeText(loopTask.file, updatedSource);
@@ -513,7 +546,7 @@ export function advanceForLoopUsingFileSystem(
 
     const eol = source.includes("\r\n") ? "\r\n" : "\n";
     const lines = source.split(/\r?\n/);
-    rewriteForLoopMetadataLines(lines, latestLoopAfterReset, nextCurrent);
+    rewriteForLoopMetadataLines(lines, latestLoopAfterReset, { nextCurrent });
     const updatedSource = lines.join(eol);
     if (updatedSource !== source) {
       fileSystem.writeText(loopTask.file, updatedSource);

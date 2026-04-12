@@ -43,6 +43,7 @@ export interface ToolContextModifications {
 export interface ToolHandlerResult {
   skipExecution?: boolean;
   shouldVerify?: boolean;
+  forLoopItems?: string[];
   skipRemainingSiblings?: {
     reason: string;
   };

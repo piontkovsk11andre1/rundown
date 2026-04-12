@@ -10,6 +10,7 @@ import {
   checkTaskUsingFileSystem,
   insertTraceStatisticsUsingFileSystem,
   skipRemainingSiblingsUsingFileSystem,
+  syncForLoopMetadataItemsUsingFileSystem,
   writeFixAnnotationToFile,
 } from "./checkbox-operations.js";
 import {
@@ -141,6 +142,7 @@ export async function completeTaskIteration(params: {
     current: string;
     remainingItems: number;
   };
+  forLoopItems?: string[];
   failOnCompleteHookError?: boolean;
   persistFailureAnnotation?: boolean;
   traceStatisticsConfig?: TraceStatisticsConfig;
@@ -202,6 +204,7 @@ export async function completeTaskIteration(params: {
     skipRemainingSiblingsReason,
     toolExpansionInsertedChildCount,
     forLoopAdvanced,
+    forLoopItems,
     failOnCompleteHookError,
     persistFailureAnnotation = true,
     traceStatisticsConfig,
@@ -418,6 +421,10 @@ export async function completeTaskIteration(params: {
 
   const isLoopTask = isForLoopTaskText(task.text);
   if (isLoopTask) {
+    if (forLoopItems && forLoopItems.length > 0) {
+      syncForLoopMetadataItemsUsingFileSystem(task, forLoopItems, dependencies.fileSystem);
+    }
+
     if (forLoopAdvanced) {
       emit({
         kind: "info",

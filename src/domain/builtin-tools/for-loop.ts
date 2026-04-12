@@ -33,6 +33,7 @@ export const forLoopHandler: ToolHandlerFn = async (context) => {
     return {
       skipExecution: true,
       shouldVerify: false,
+      forLoopItems: [],
     };
   }
 
@@ -49,5 +50,6 @@ export const forLoopHandler: ToolHandlerFn = async (context) => {
     skipExecution: true,
     shouldVerify: false,
     childTasks: metadataLines,
+    forLoopItems: bakedItems,
   };
 };

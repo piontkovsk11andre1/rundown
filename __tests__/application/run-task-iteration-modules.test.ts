@@ -2469,6 +2469,120 @@ describe("task-execution-dispatch", () => {
     ].join("\n"));
   });
 
+  it("syncs canonical loop metadata before advancing cursor", async () => {
+    const task = createTask(path.join(cwd, "tasks.md"), "for: This, That", {
+      subItems: [
+        { text: "for-item: Legacy", line: 2, depth: 1 },
+        { text: "for-current: Legacy", line: 3, depth: 1 },
+      ],
+      children: [
+        createTask(path.join(cwd, "tasks.md"), "Do this", {
+          index: 1,
+          line: 4,
+          depth: 1,
+        }),
+      ],
+    });
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: [
+        "- [ ] for: This, That",
+        "  - for-item: Legacy",
+        "  - for-current: Legacy",
+        "  - [ ] Do this",
+      ].join("\n"),
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    const result = await dispatchTaskExecution({
+      dependencies,
+      emit: (event) => events.push(event),
+      files: [task.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      selectedWorkerPattern: {
+        command: ["opencode", "run"],
+        usesBootstrap: false,
+        usesFile: false,
+        appendFile: true,
+      },
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "wait",
+      keepArtifacts: true,
+      showAgentOutput: false,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "execute-and-verify",
+      prefixChain: {
+        modifiers: [],
+        handler: {
+          tool: {
+            name: "for",
+            kind: "handler",
+            frontmatter: { skipExecution: true, shouldVerify: false },
+            handler: async () => ({
+              skipExecution: true,
+              shouldVerify: false,
+              forLoopItems: ["This", "That"],
+            }),
+          },
+          payload: "This, That",
+        },
+        remainingText: "This, That",
+      },
+      task,
+      prompt: "unused",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      resolvedWorkerPattern: {
+        command: ["opencode", "run"],
+        usesBootstrap: false,
+        usesFile: false,
+        appendFile: true,
+      },
+      trace: false,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+    });
+
+    expect(result).toEqual({
+      kind: "ready-for-completion",
+      shouldVerify: false,
+      cliExecutionOptionsForVerification: undefined,
+      verificationFailureMessage: "Verification failed after all repair attempts. Task not checked.",
+      verificationFailureRunReason: "Verification failed after all repair attempts.",
+      skipRemainingSiblingsReason: undefined,
+      toolExpansionInsertedChildCount: undefined,
+      forLoopAdvanced: {
+        current: "This",
+        remainingItems: 1,
+      },
+      forLoopItems: ["This", "That"],
+    });
+
+    expect(fileSystem.readText(task.file)).toBe([
+      "- [ ] for: This, That",
+      "  - for-item: This",
+      "  - for-item: That",
+      "  - for-current: This",
+      "  - [ ] Do this",
+    ].join("\n"));
+  });
+
   it("keeps default worker stdout/stderr hidden when show-agent-output is disabled while preserving lifecycle status", async () => {
     const task = createTask(path.join(cwd, "tasks.md"), "Ship release");
     const fileSystem = createInMemoryFileSystem({

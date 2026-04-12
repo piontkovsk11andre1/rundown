@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   advanceForLoopUsingFileSystem,
   insertTraceStatisticsUsingFileSystem,
+  syncForLoopMetadataItemsUsingFileSystem,
 } from "../../application/checkbox-operations.ts";
 import { parseTasks } from "../../domain/parser.ts";
 import type { Task } from "../../domain/parser.ts";
@@ -221,6 +222,66 @@ describe("advanceForLoopUsingFileSystem", () => {
       "  - for-current: That",
       "  - [ ] Do this",
       "  - [ ] Do that",
+      "- [ ] Next task",
+    ].join("\n"));
+  });
+});
+
+describe("syncForLoopMetadataItemsUsingFileSystem", () => {
+  function resolveLoopTask(fileSystem: InMemoryFileSystem, file: string): Task {
+    const tasks = parseTasks(fileSystem.readText(file), file);
+    const loopTask = tasks.find((task) => task.text.toLowerCase().startsWith("for:"));
+    if (!loopTask) {
+      throw new Error("Loop task not found in test source.");
+    }
+
+    return loopTask;
+  }
+
+  it("replaces manual metadata with canonical baked for-item values", () => {
+    const file = "task.md";
+    const source = [
+      "- [ ] for: All controllers",
+      "  - for-item: ManualOne",
+      "  - for-current: ManualOne",
+      "  - [ ] Do this",
+      "  - [ ] Do that",
+      "- [ ] Next task",
+    ].join("\n");
+    const fileSystem = new InMemoryFileSystem({ [file]: source });
+
+    syncForLoopMetadataItemsUsingFileSystem(
+      resolveLoopTask(fileSystem, file),
+      ["This", "That", "This"],
+      fileSystem,
+    );
+
+    expect(fileSystem.readText(file)).toBe([
+      "- [ ] for: All controllers",
+      "  - for-item: This",
+      "  - for-item: That",
+      "  - [ ] Do this",
+      "  - [ ] Do that",
+      "- [ ] Next task",
+    ].join("\n"));
+  });
+
+  it("removes pre-existing manual loop metadata when baked list is empty", () => {
+    const file = "task.md";
+    const source = [
+      "- [ ] for: All controllers",
+      "  - for-item: ManualOne",
+      "  - for-current: ManualOne",
+      "  - [ ] Do this",
+      "- [ ] Next task",
+    ].join("\n");
+    const fileSystem = new InMemoryFileSystem({ [file]: source });
+
+    syncForLoopMetadataItemsUsingFileSystem(resolveLoopTask(fileSystem, file), [], fileSystem);
+
+    expect(fileSystem.readText(file)).toBe([
+      "- [ ] for: All controllers",
+      "  - [ ] Do this",
       "- [ ] Next task",
     ].join("\n"));
   });

@@ -1,5 +1,10 @@
+import path from "node:path";
 import type { ExtraTemplateVars } from "../domain/template-vars.js";
 import type { PathOperationsPort } from "../domain/ports/index.js";
+import {
+  DEFAULT_PREDICTION_WORKSPACE_DIRECTORIES,
+  type PredictionWorkspaceDirectories,
+} from "./prediction-workspace-paths.js";
 
 /**
  * Workspace location metadata that is injected into prompt templates.
@@ -19,6 +24,12 @@ export const WORKSPACE_CONTEXT_TEMPLATE_VAR_KEYS = [
   "workspaceDir",
   "workspaceLinkPath",
   "isLinkedWorkspace",
+  "workspaceDesignDir",
+  "workspaceSpecsDir",
+  "workspaceMigrationsDir",
+  "workspaceDesignPath",
+  "workspaceSpecsPath",
+  "workspaceMigrationsPath",
 ] as const;
 
 /**
@@ -66,12 +77,19 @@ export function resolveRuntimeWorkspaceContext(
  */
 export function buildWorkspaceContextTemplateVars(
   context: RuntimeWorkspaceContext,
+  predictionWorkspaceDirectories: PredictionWorkspaceDirectories = DEFAULT_PREDICTION_WORKSPACE_DIRECTORIES,
 ): ExtraTemplateVars {
   return {
     invocationDir: context.invocationDir,
     workspaceDir: context.workspaceDir,
     workspaceLinkPath: context.workspaceLinkPath,
     isLinkedWorkspace: context.isLinkedWorkspace ? "true" : "false",
+    workspaceDesignDir: predictionWorkspaceDirectories.design,
+    workspaceSpecsDir: predictionWorkspaceDirectories.specs,
+    workspaceMigrationsDir: predictionWorkspaceDirectories.migrations,
+    workspaceDesignPath: path.join(context.workspaceDir, predictionWorkspaceDirectories.design),
+    workspaceSpecsPath: path.join(context.workspaceDir, predictionWorkspaceDirectories.specs),
+    workspaceMigrationsPath: path.join(context.workspaceDir, predictionWorkspaceDirectories.migrations),
   };
 }
 

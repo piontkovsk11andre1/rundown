@@ -35,6 +35,12 @@ describe("default prompt templates", () => {
       workspaceDir: "/repo/workspace",
       workspaceLinkPath: "/repo/invoke/.rundown/workspace.link",
       isLinkedWorkspace: "true",
+      workspaceDesignDir: "design",
+      workspaceSpecsDir: "specs",
+      workspaceMigrationsDir: "migrations",
+      workspaceDesignPath: "/repo/workspace/design",
+      workspaceSpecsPath: "/repo/workspace/specs",
+      workspaceMigrationsPath: "/repo/workspace/migrations",
       userVariables: "branch=main\nticket=ENG-42",
     });
 
@@ -43,6 +49,12 @@ describe("default prompt templates", () => {
     expect(result).toContain("- Workspace directory: `/repo/workspace`");
     expect(result).toContain("- Workspace link path: `/repo/invoke/.rundown/workspace.link`");
     expect(result).toContain("- Linked workspace: `true`");
+    expect(result).toContain("- Prediction design directory: `design`");
+    expect(result).toContain("- Prediction specs directory: `specs`");
+    expect(result).toContain("- Prediction migrations directory: `migrations`");
+    expect(result).toContain("- Prediction design path: `/repo/workspace/design`");
+    expect(result).toContain("- Prediction specs path: `/repo/workspace/specs`");
+    expect(result).toContain("- Prediction migrations path: `/repo/workspace/migrations`");
     expect(result).toContain("## Variables\n\nbranch=main\nticket=ENG-42");
   });
 
@@ -58,6 +70,12 @@ describe("default prompt templates", () => {
       workspaceDir: "/repo/workspace",
       workspaceLinkPath: "",
       isLinkedWorkspace: "false",
+      workspaceDesignDir: "design",
+      workspaceSpecsDir: "specs",
+      workspaceMigrationsDir: "migrations",
+      workspaceDesignPath: "/repo/workspace/design",
+      workspaceSpecsPath: "/repo/workspace/specs",
+      workspaceMigrationsPath: "/repo/workspace/migrations",
       userVariables: "(none)",
     });
 
@@ -65,6 +83,12 @@ describe("default prompt templates", () => {
     expect(result).toContain("- Workspace directory: `/repo/workspace`");
     expect(result).toContain("- Workspace link path: ``");
     expect(result).toContain("- Linked workspace: `false`");
+    expect(result).toContain("- Prediction design directory: `design`");
+    expect(result).toContain("- Prediction specs directory: `specs`");
+    expect(result).toContain("- Prediction migrations directory: `migrations`");
+    expect(result).toContain("- Prediction design path: `/repo/workspace/design`");
+    expect(result).toContain("- Prediction specs path: `/repo/workspace/specs`");
+    expect(result).toContain("- Prediction migrations path: `/repo/workspace/migrations`");
     expect(result).toContain("## Variables\n\n(none)");
   });
 

@@ -53,6 +53,12 @@ export const DEFAULT_TEMPLATE_VARS_SECTION = `\
 - Workspace directory: \`{{workspaceDir}}\`
 - Workspace link path: \`{{workspaceLinkPath}}\`
 - Linked workspace: \`{{isLinkedWorkspace}}\`
+- Prediction design directory: \`{{workspaceDesignDir}}\`
+- Prediction specs directory: \`{{workspaceSpecsDir}}\`
+- Prediction migrations directory: \`{{workspaceMigrationsDir}}\`
+- Prediction design path: \`{{workspaceDesignPath}}\`
+- Prediction specs path: \`{{workspaceSpecsPath}}\`
+- Prediction migrations path: \`{{workspaceMigrationsPath}}\`
 
 ## Variables
 

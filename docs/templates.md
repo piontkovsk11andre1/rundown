@@ -142,6 +142,12 @@ Built-in worker-facing templates include:
   - `{{workspaceDir}}`
   - `{{workspaceLinkPath}}`
   - `{{isLinkedWorkspace}}`
+  - `{{workspaceDesignDir}}`
+  - `{{workspaceSpecsDir}}`
+  - `{{workspaceMigrationsDir}}`
+  - `{{workspaceDesignPath}}`
+  - `{{workspaceSpecsPath}}`
+  - `{{workspaceMigrationsPath}}`
 - A `## Variables` section that renders `{{userVariables}}`.
 
 These workspace fields are available in worker-facing prompt paths (`run`, `discuss`,
@@ -158,6 +164,12 @@ All workspace-context fields are runtime-injected as absolute normalized paths/v
 | `{{workspaceDir}}` | Absolute effective workspace directory used for execution/source resolution. |
 | `{{workspaceLinkPath}}` | Absolute path to `.rundown/workspace.link` when linked workspace mode is active; otherwise empty. |
 | `{{isLinkedWorkspace}}` | String boolean: `"true"` when linked mode is active, otherwise `"false"`. |
+| `{{workspaceDesignDir}}` | Project-relative design workspace directory from prediction workspace config (default: `design`). |
+| `{{workspaceSpecsDir}}` | Project-relative specs workspace directory from prediction workspace config (default: `specs`). |
+| `{{workspaceMigrationsDir}}` | Project-relative migrations workspace directory from prediction workspace config (default: `migrations`). |
+| `{{workspaceDesignPath}}` | Absolute path to the effective design workspace directory (`workspaceDir` + `workspaceDesignDir`). |
+| `{{workspaceSpecsPath}}` | Absolute path to the effective specs workspace directory (`workspaceDir` + `workspaceSpecsDir`). |
+| `{{workspaceMigrationsPath}}` | Absolute path to the effective migrations workspace directory (`workspaceDir` + `workspaceMigrationsDir`). |
 
 Fallback semantics are deterministic:
 

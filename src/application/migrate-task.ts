@@ -1022,6 +1022,10 @@ function buildTemplateVars(
   state: ReturnType<typeof readMigrationState>,
   projectRoot: string,
 ): TemplateVars {
+  const workspaceDirectories = resolvePredictionWorkspaceDirectories({
+    fileSystem,
+    workspaceRoot: projectRoot,
+  });
   const latestMigration = state.migrations[state.migrations.length - 1] ?? null;
   const latestContext = state.latestContext;
   const latestBacklog = state.latestBacklog;
@@ -1085,6 +1089,12 @@ function buildTemplateVars(
     designRevisionDiffRemovedCount: revisionDiff.removedCount,
     designRevisionDiffFiles: revisionDiffFiles,
     designRevisionDiffSources: revisionDiffSourceRefs,
+    workspaceDesignDir: workspaceDirectories.design,
+    workspaceSpecsDir: workspaceDirectories.specs,
+    workspaceMigrationsDir: workspaceDirectories.migrations,
+    workspaceDesignPath: path.join(projectRoot, workspaceDirectories.design),
+    workspaceSpecsPath: path.join(projectRoot, workspaceDirectories.specs),
+    workspaceMigrationsPath: path.join(projectRoot, workspaceDirectories.migrations),
     position: state.currentPosition,
   };
 }

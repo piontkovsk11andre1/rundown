@@ -37,6 +37,9 @@ import type { WorkerHealthPolicyConfig } from "../domain/worker-config.js";
 import { createCachedCommandExecutor } from "./cached-command-executor.js";
 import { formatNoItemsFound, formatNoItemsFoundMatching, pluralize } from "./run-task-utils.js";
 import {
+  resolvePredictionWorkspaceDirectories,
+} from "./prediction-workspace-paths.js";
+import {
   buildWorkspaceContextTemplateVars,
   mergeTemplateVarsWithWorkspaceContext,
   resolveRuntimeWorkspaceContext,
@@ -520,7 +523,14 @@ export function createRunTaskExecution(
       },
       dependencies.pathOperations,
     );
-    const workspaceContextTemplateVars = buildWorkspaceContextTemplateVars(runtimeWorkspaceContext);
+    const workspaceDirectories = resolvePredictionWorkspaceDirectories({
+      fileSystem: dependencies.fileSystem,
+      workspaceRoot: runtimeWorkspaceContext.workspaceDir,
+    });
+    const workspaceContextTemplateVars = buildWorkspaceContextTemplateVars(
+      runtimeWorkspaceContext,
+      workspaceDirectories,
+    );
 
     let cliBlockExecutor = cacheCliBlocks
       ? createCachedCommandExecutor(defaultCliBlockExecutor)

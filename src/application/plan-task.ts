@@ -31,6 +31,9 @@ import {
 } from "./cli-block-handlers.js";
 import { loadProjectTemplatesFromPorts } from "./project-templates.js";
 import {
+  resolvePredictionWorkspaceDirectories,
+} from "./prediction-workspace-paths.js";
+import {
   buildWorkspaceContextTemplateVars,
   mergeTemplateVarsWithWorkspaceContext,
   resolveRuntimeWorkspaceContext,
@@ -223,7 +226,14 @@ export function createPlanTask(
       },
       dependencies.pathOperations,
     );
-    const workspaceContextTemplateVars = buildWorkspaceContextTemplateVars(runtimeWorkspaceContext);
+    const workspaceDirectories = resolvePredictionWorkspaceDirectories({
+      fileSystem: dependencies.fileSystem,
+      workspaceRoot: runtimeWorkspaceContext.workspaceDir,
+    });
+    const workspaceContextTemplateVars = buildWorkspaceContextTemplateVars(
+      runtimeWorkspaceContext,
+      workspaceDirectories,
+    );
     const cliExecutionOptions = cliBlockTimeoutMs === undefined
       ? undefined
       : { timeoutMs: cliBlockTimeoutMs };

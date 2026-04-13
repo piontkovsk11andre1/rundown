@@ -100,6 +100,12 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     fs.writeFileSync(
       path.join(workspace, ".rundown", "migrate.md"),
       [
+        "DESIGN_DIR={{workspaceDesignDir}}",
+        "SPECS_DIR={{workspaceSpecsDir}}",
+        "MIGRATIONS_DIR={{workspaceMigrationsDir}}",
+        "DESIGN_PATH={{workspaceDesignPath}}",
+        "SPECS_PATH={{workspaceSpecsPath}}",
+        "MIGRATIONS_PATH={{workspaceMigrationsPath}}",
         "DESIGN={{design}}",
         "HAS_MANAGED={{designContextHasManagedDocs}}",
         "SOURCES={{designContextSourceReferences}}",
@@ -122,6 +128,12 @@ describeIfMigrateAvailable("migrate-task integration", () => {
 
     const capturedPrompt = fs.readFileSync(path.join(workspace, ".template-vars-prompt.txt"), "utf-8");
     expect(capturedPrompt).toContain("Managed canonical design source.");
+    expect(capturedPrompt).toContain("DESIGN_DIR=design");
+    expect(capturedPrompt).toContain("SPECS_DIR=specs");
+    expect(capturedPrompt).toContain("MIGRATIONS_DIR=migrations");
+    expect(capturedPrompt).toMatch(/DESIGN_PATH=.*[\\/]design/);
+    expect(capturedPrompt).toMatch(/SPECS_PATH=.*[\\/]specs/);
+    expect(capturedPrompt).toMatch(/MIGRATIONS_PATH=.*[\\/]migrations/);
     expect(capturedPrompt).toContain("Canonical API details.");
     expect(capturedPrompt).not.toContain("Canonical revision text.");
     expect(capturedPrompt).toContain("HAS_MANAGED=true");

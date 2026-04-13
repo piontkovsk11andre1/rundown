@@ -842,6 +842,76 @@ describeIfMigrateAvailable("migrate revision-action removals", () => {
 });
 
 describeIfDocsDiffAvailable("docs diff integration", () => {
+  it("resolves docs publish paths against linked workspace roots", async () => {
+    const sandbox = makeTempWorkspace();
+    const sourceWorkspace = path.join(sandbox, "source-workspace");
+    const linkedInvocationDir = path.join(sandbox, "linked-invocation");
+
+    fs.mkdirSync(sourceWorkspace, { recursive: true });
+    fs.mkdirSync(linkedInvocationDir, { recursive: true });
+    scaffoldPredictionProject(sourceWorkspace);
+    fs.mkdirSync(path.join(sourceWorkspace, "docs", "current"), { recursive: true });
+    fs.writeFileSync(path.join(sourceWorkspace, "docs", "current", "Design.md"), "# Design\n\nlinked publish\n", "utf-8");
+
+    const linkedConfigDir = path.join(linkedInvocationDir, ".rundown");
+    fs.mkdirSync(linkedConfigDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(linkedConfigDir, "workspace.link"),
+      path.relative(linkedInvocationDir, sourceWorkspace).replace(/\\/g, "/"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "docs",
+      "publish",
+      "--dir",
+      "migrations",
+    ], linkedInvocationDir);
+
+    expect(result.code).toBe(0);
+    expect(fs.existsSync(path.join(sourceWorkspace, "docs", "rev.1", "Design.md"))).toBe(true);
+    expect(fs.existsSync(path.join(linkedInvocationDir, "docs", "rev.1", "Design.md"))).toBe(false);
+  });
+
+  it("resolves docs diff against linked workspace roots", async () => {
+    const sandbox = makeTempWorkspace();
+    const sourceWorkspace = path.join(sandbox, "source-workspace");
+    const linkedInvocationDir = path.join(sandbox, "linked-invocation");
+
+    fs.mkdirSync(path.join(sourceWorkspace, "migrations"), { recursive: true });
+    fs.mkdirSync(path.join(sourceWorkspace, "docs", "rev.1"), { recursive: true });
+    fs.mkdirSync(path.join(sourceWorkspace, "docs", "current"), { recursive: true });
+    fs.writeFileSync(path.join(sourceWorkspace, "docs", "rev.1", "Design.md"), "old\n", "utf-8");
+    fs.writeFileSync(path.join(sourceWorkspace, "docs", "current", "Design.md"), "new\n", "utf-8");
+
+    const linkedConfigDir = path.join(linkedInvocationDir, ".rundown");
+    fs.mkdirSync(linkedConfigDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(linkedConfigDir, "workspace.link"),
+      path.relative(linkedInvocationDir, sourceWorkspace).replace(/\\/g, "/"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "docs",
+      "diff",
+      "preview",
+      "--dir",
+      "migrations",
+    ], linkedInvocationDir);
+
+    expect(result.code).toBe(0);
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n"));
+    expect(combinedOutput).toContain("Compared rev.1 -> current:");
+    expect(combinedOutput).toMatch(/docs[\\/]rev\.1/);
+    expect(combinedOutput).toMatch(/docs[\\/]current/);
+  });
+
   it("docs diff previews revision changes without requiring a worker command", async () => {
     const workspace = makeTempWorkspace();
     scaffoldPredictionProject(workspace);

@@ -1,4 +1,4 @@
-import { stripAnsi } from "./services/string-utils.js";
+import { sanitizeTerminalText } from "./services/string-utils.js";
 
 /**
  * Current schema version for newline-delimited global output log entries.
@@ -85,20 +85,20 @@ export function serializeGlobalOutputLogEntry(entry: GlobalOutputLogEntry): stri
  * @returns Sanitized entry with terminal escape codes stripped.
  */
 export function sanitizeGlobalOutputLogEntry(entry: GlobalOutputLogEntry): GlobalOutputLogEntry {
-  const level = stripAnsi(entry.level) as GlobalOutputLogLevel;
-  const stream = stripAnsi(entry.stream) as GlobalOutputLogStream;
+  const level = sanitizeTerminalText(entry.level) as GlobalOutputLogLevel;
+  const stream = sanitizeTerminalText(entry.stream) as GlobalOutputLogStream;
 
   return {
-    ts: stripAnsi(entry.ts),
+    ts: sanitizeTerminalText(entry.ts),
     level,
     stream,
-    kind: stripAnsi(entry.kind) as GlobalOutputLogKind,
-    message: stripAnsi(entry.message),
-    command: stripAnsi(entry.command),
-    argv: entry.argv.map((arg) => stripAnsi(arg)),
-    cwd: stripAnsi(entry.cwd),
+    kind: sanitizeTerminalText(entry.kind) as GlobalOutputLogKind,
+    message: sanitizeTerminalText(entry.message),
+    command: sanitizeTerminalText(entry.command),
+    argv: entry.argv.map((arg) => sanitizeTerminalText(arg)),
+    cwd: sanitizeTerminalText(entry.cwd),
     pid: entry.pid,
-    version: stripAnsi(entry.version),
-    session_id: stripAnsi(entry.session_id),
+    version: sanitizeTerminalText(entry.version),
+    session_id: sanitizeTerminalText(entry.session_id),
   };
 }

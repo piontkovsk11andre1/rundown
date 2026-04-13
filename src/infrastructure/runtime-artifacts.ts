@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { CONFIG_DIR_NAME } from "../domain/ports/config-dir-port.js";
+import { sanitizeTerminalText } from "../domain/services/string-utils.js";
 
 /**
  * Identifies the runtime stage that produced a captured artifact.
@@ -586,14 +587,14 @@ export function completeRuntimePhase(
   if (options.stdout !== undefined && options.stdout.length > 0) {
     const stdoutFile = path.join(handle.dir, "stdout.log");
     ensureParentDir(stdoutFile);
-    fs.writeFileSync(stdoutFile, options.stdout, "utf-8");
+    fs.writeFileSync(stdoutFile, sanitizeTerminalText(options.stdout), "utf-8");
     handle.metadata.stdoutFile = "stdout.log";
   }
 
   if (options.stderr !== undefined && options.stderr.length > 0) {
     const stderrFile = path.join(handle.dir, "stderr.log");
     ensureParentDir(stderrFile);
-    fs.writeFileSync(stderrFile, options.stderr, "utf-8");
+    fs.writeFileSync(stderrFile, sanitizeTerminalText(options.stderr), "utf-8");
     handle.metadata.stderrFile = "stderr.log";
   }
 

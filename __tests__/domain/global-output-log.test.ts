@@ -73,6 +73,28 @@ describe("global output log serialization", () => {
     expect(Object.keys(parsed).sort()).toEqual(STABLE_ENTRY_KEYS);
   });
 
+  it("normalizes carriage-return frame updates and control characters", () => {
+    const line = serializeGlobalOutputLogEntry({
+      ts: "2026-03-27T00:00:00.000Z",
+      level: "info",
+      stream: "stdout",
+      kind: "progress",
+      message: "frame 1\rframe 2\u0007",
+      command: "run",
+      argv: ["run", "tasks.md", "--label=scan\rscan2"],
+      cwd: "/workspace\u0008",
+      pid: 1000,
+      version: "1.0.0",
+      session_id: "session-5\u000c",
+    });
+
+    const parsed = JSON.parse(line.trim()) as Record<string, unknown>;
+    expect(parsed["message"]).toBe("frame 2");
+    expect(parsed["argv"]).toEqual(["run", "tasks.md", "scan2"]);
+    expect(parsed["cwd"]).toBe("/workspace");
+    expect(parsed["session_id"]).toBe("session-5");
+  });
+
   it("keeps multi-line message content escaped within one JSONL line", () => {
     const line = serializeGlobalOutputLogEntry({
       ts: "2026-03-27T00:00:00.000Z",

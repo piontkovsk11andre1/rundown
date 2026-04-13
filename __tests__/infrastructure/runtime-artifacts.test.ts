@@ -204,6 +204,28 @@ describe("runtime-artifacts", () => {
     expect(fs.existsSync(path.join(phase.dir, "stderr.log"))).toBe(false);
   });
 
+  it("sanitizes captured stdout/stderr logs for deterministic artifacts", () => {
+    const cwd = createWorkspace();
+    const context = createRuntimeArtifactsContext({ cwd, commandName: "run", keepArtifacts: true });
+
+    const phase = beginRuntimePhase(context, {
+      phase: "execute",
+      command: ["node", "worker.js"],
+      mode: "wait",
+      transport: "arg",
+    });
+
+    completeRuntimePhase(phase, {
+      exitCode: 1,
+      stdout: "step 1\rstep 2\u0007\nline\u001b[32m ok\u001b[0m",
+      stderr: "warn\r\nerr\u0008or",
+      outputCaptured: true,
+    });
+
+    expect(fs.readFileSync(path.join(phase.dir, "stdout.log"), "utf-8")).toBe("step 2\nline ok");
+    expect(fs.readFileSync(path.join(phase.dir, "stderr.log"), "utf-8")).toBe("warn\nerror");
+  });
+
   it("supports scan-style phase labels in directory names and metadata", () => {
     const cwd = createWorkspace();
     const context = createRuntimeArtifactsContext({ cwd, commandName: "plan", keepArtifacts: true });

@@ -3,14 +3,19 @@ import { EXIT_CODE_FAILURE, EXIT_CODE_SUCCESS } from "../domain/exit-codes.js";
 import type { FileSystem } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import { resolveWorkspaceLink } from "../domain/workspace-link.js";
-import { saveDesignRevisionSnapshot } from "./design-context.js";
+import {
+  prepareDesignRevisionDiffContext,
+  saveDesignRevisionSnapshot,
+} from "./design-context.js";
 
-type DocsAction = "publish";
+type DocsAction = "publish" | "diff";
+type DocsDiffTarget = "current" | "preview";
 
 export interface DocsTaskOptions {
   action?: DocsAction;
   dir?: string;
   label?: string;
+  target?: DocsDiffTarget;
 }
 
 export interface DocsTaskDependencies {
@@ -25,8 +30,8 @@ export function createDocsTask(
 
   return async function docsTask(options: DocsTaskOptions): Promise<number> {
     const action = options.action ?? "publish";
-    if (action !== "publish") {
-      throw new Error("Invalid docs action: " + action + ". Allowed: publish.");
+    if (action !== "publish" && action !== "diff") {
+      throw new Error("Invalid docs action: " + action + ". Allowed: publish, diff.");
     }
 
     const invocationDir = process.cwd();
@@ -47,6 +52,21 @@ export function createDocsTask(
     if (!workspaceReady.ok) {
       emit({ kind: "error", message: workspaceReady.message });
       return EXIT_CODE_FAILURE;
+    }
+
+    if (action === "diff") {
+      const target = options.target ?? "current";
+      if (target !== "current" && target !== "preview") {
+        throw new Error("Invalid docs diff target: " + target + ". Allowed: current, preview.");
+      }
+
+      emitDesignRevisionDiffPreview({
+        fileSystem: dependencies.fileSystem,
+        projectRoot,
+        emit,
+        includeSourceReferences: target === "preview",
+      });
+      return EXIT_CODE_SUCCESS;
     }
 
     let saveResult;
@@ -96,6 +116,39 @@ export function createDocsTask(
 
     return EXIT_CODE_SUCCESS;
   };
+}
+
+function emitDesignRevisionDiffPreview(input: {
+  fileSystem: FileSystem;
+  projectRoot: string;
+  emit: ApplicationOutputPort["emit"];
+  includeSourceReferences: boolean;
+}): void {
+  const { fileSystem, projectRoot, emit, includeSourceReferences } = input;
+  const diff = prepareDesignRevisionDiffContext(fileSystem, projectRoot, { target: "current" });
+
+  emit({
+    kind: "info",
+    message: includeSourceReferences ? "Design revision diff preview:" : "Design revision diff:",
+  });
+  emit({ kind: "info", message: diff.summary });
+
+  if (includeSourceReferences) {
+    const sourceReferenceLines = diff.sourceReferences.length > 0
+      ? diff.sourceReferences.map((sourcePath) => `- ${sourcePath}`).join("\n") + "\n"
+      : "- (none)\n";
+    emit({ kind: "text", text: "Sources:\n" + sourceReferenceLines });
+  }
+
+  if (diff.changes.length === 0) {
+    emit({ kind: "info", message: "No file-level design changes detected." });
+    return;
+  }
+
+  const changeLines = diff.changes
+    .map((change) => `- ${change.kind}: ${change.relativePath}`)
+    .join("\n");
+  emit({ kind: "text", text: "Changes:\n" + changeLines + "\n" });
 }
 
 function ensureManagedDesignWorkspaceForRevisionCommands(

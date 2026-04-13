@@ -19,12 +19,15 @@ afterEach(() => {
 
 const CLI_FILE_PATH = path.resolve(process.cwd(), "src/presentation/cli.ts");
 const MIGRATE_TASK_FILE_PATH = path.resolve(process.cwd(), "src/application/migrate-task.ts");
+const DOCS_TASK_FILE_PATH = path.resolve(process.cwd(), "src/application/docs-task.ts");
 const cliSource = fs.existsSync(CLI_FILE_PATH)
   ? fs.readFileSync(CLI_FILE_PATH, "utf-8")
   : "";
 const hasMigrateCommand = fs.existsSync(CLI_FILE_PATH)
   && cliSource.includes('.command("migrate")');
 const hasMigrateTaskUseCase = fs.existsSync(MIGRATE_TASK_FILE_PATH);
+const hasDocsTaskUseCase = fs.existsSync(DOCS_TASK_FILE_PATH);
+const migrateActionHelpText = /Migration action:[^\n"]*/.exec(cliSource)?.[0] ?? "";
 const describeIfMigrateAvailable = hasMigrateCommand && hasMigrateTaskUseCase ? describe : describe.skip;
 const SATELLITE_ACTIONS = ["context", "snapshot", "backlog", "review", "user-experience"] as const;
 const hasMigrateSatelliteActions = SATELLITE_ACTIONS.every((action) => cliSource.includes(action));
@@ -34,10 +37,11 @@ const describeIfSatelliteMigrateAvailable = hasMigrateCommand
   ? describe
   : describe.skip;
 const hasMigrateUserSessionAction = cliSource.includes("user-session");
-const hasMigrateSaveAction = cliSource.includes("save");
-const hasMigrateDiffAction = cliSource.includes("diff");
-const hasMigratePreviewAction = cliSource.includes("preview");
+const hasMigrateSaveAction = /\bsave\b/.test(migrateActionHelpText);
+const hasMigrateDiffAction = /\bdiff\b/.test(migrateActionHelpText);
+const hasMigratePreviewAction = /\bpreview\b/.test(migrateActionHelpText);
 const hasMigrateConfirmOption = cliSource.includes("--confirm");
+const hasDocsDiffCommand = cliSource.includes('.command("docs")') && cliSource.includes('.command("diff")');
 const describeIfUserSessionMigrateAvailable = hasMigrateCommand
   && hasMigrateTaskUseCase
   && hasMigrateUserSessionAction
@@ -55,6 +59,7 @@ const describeIfRevisionPreviewActionsAvailable = hasMigrateCommand
   && hasMigratePreviewAction
   ? describe
   : describe.skip;
+const describeIfDocsDiffAvailable = hasDocsTaskUseCase && hasDocsDiffCommand ? describe : describe.skip;
 
 describeIfMigrateAvailable("migrate-task integration", () => {
   it("generates migrations from managed docs context without requiring root Design.md", async () => {
@@ -1107,8 +1112,8 @@ describeIfSaveMigrateAvailable("migrate save integration", () => {
   });
 });
 
-describeIfRevisionPreviewActionsAvailable("migrate revision diff/preview integration", () => {
-  it("migrate diff previews revision changes without requiring a worker command", async () => {
+describeIfDocsDiffAvailable("docs diff integration", () => {
+  it("docs diff previews revision changes without requiring a worker command", async () => {
     const workspace = makeTempWorkspace();
     scaffoldPredictionProject(workspace);
     fs.mkdirSync(path.join(workspace, "docs", "rev.1", "notes"), { recursive: true });
@@ -1121,7 +1126,7 @@ describeIfRevisionPreviewActionsAvailable("migrate revision diff/preview integra
     fs.writeFileSync(path.join(workspace, "docs", "rev.1", "notes", "x.md"), "same\n", "utf-8");
 
     const result = await runCli([
-      "migrate",
+      "docs",
       "diff",
       "--dir",
       "migrations",
@@ -1142,7 +1147,7 @@ describeIfRevisionPreviewActionsAvailable("migrate revision diff/preview integra
     expect(combinedOutput).not.toContain("No worker command available");
   });
 
-  it("migrate preview includes revision sources plus file-level change summary", async () => {
+  it("docs diff preview includes revision sources plus file-level change summary", async () => {
     const workspace = makeTempWorkspace();
     scaffoldPredictionProject(workspace);
     fs.mkdirSync(path.join(workspace, "docs", "rev.1"), { recursive: true });
@@ -1151,7 +1156,8 @@ describeIfRevisionPreviewActionsAvailable("migrate revision diff/preview integra
     fs.writeFileSync(path.join(workspace, "docs", "current", "Design.md"), "new\n", "utf-8");
 
     const result = await runCli([
-      "migrate",
+      "docs",
+      "diff",
       "preview",
       "--dir",
       "migrations",
@@ -1172,7 +1178,7 @@ describeIfRevisionPreviewActionsAvailable("migrate revision diff/preview integra
     expect(combinedOutput).toContain("- modified: Design.md");
   });
 
-  it("migrate diff bootstraps docs/current from legacy Design.md when needed", async () => {
+  it("docs diff bootstraps docs/current from legacy Design.md when needed", async () => {
     const workspace = makeTempWorkspace();
     scaffoldPredictionProject(workspace);
     fs.mkdirSync(path.join(workspace, "docs", "rev.1"), { recursive: true });
@@ -1181,7 +1187,7 @@ describeIfRevisionPreviewActionsAvailable("migrate revision diff/preview integra
     fs.writeFileSync(path.join(workspace, "Design.md"), "new\n", "utf-8");
 
     const result = await runCli([
-      "migrate",
+      "docs",
       "diff",
       "--dir",
       "migrations",
@@ -1199,14 +1205,15 @@ describeIfRevisionPreviewActionsAvailable("migrate revision diff/preview integra
     expect(combinedOutput).toContain("Compared rev.1 -> current:");
   });
 
-  it("migrate preview fails clearly when docs/current and legacy Design.md are both missing", async () => {
+  it("docs diff preview fails clearly when docs/current and legacy Design.md are both missing", async () => {
     const workspace = makeTempWorkspace();
     scaffoldPredictionProject(workspace);
     fs.rmSync(path.join(workspace, "docs"), { recursive: true, force: true });
     fs.rmSync(path.join(workspace, "Design.md"), { force: true });
 
     const result = await runCli([
-      "migrate",
+      "docs",
+      "diff",
       "preview",
       "--dir",
       "migrations",

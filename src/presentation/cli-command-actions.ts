@@ -199,9 +199,6 @@ interface QueryActionDependencies extends WorkerActionDependencies {
 type MigrateAction =
   | "up"
   | "down"
-  | "save"
-  | "diff"
-  | "preview"
   | "snapshot"
   | "backlog"
   | "context"
@@ -215,7 +212,6 @@ interface MigrateCommandOptions {
   action?: MigrateAction;
   downCount?: number;
   dir?: string;
-  label?: string;
   confirm: boolean;
   workerPattern: ParsedWorkerPattern;
   slugWorkerPattern?: ParsedWorkerPattern;
@@ -225,9 +221,10 @@ interface MigrateCommandOptions {
 }
 
 interface DocsCommandOptions {
-  action?: "publish";
+  action?: "publish" | "diff";
   dir?: string;
   label?: string;
+  target?: "current" | "preview";
 }
 
 type DocsCommandHandler = (options: DocsCommandOptions) => CliActionResult;
@@ -1032,7 +1029,7 @@ export function createMigrateCommandAction({
       throw new Error(
         "Invalid migrate action: "
           + normalizedAction
-          + ". Allowed: up, down, save, diff, preview, snapshot, backlog, context, review, user-experience, user-session.",
+          + ". Allowed: up, down, snapshot, backlog, context, review, user-experience, user-session.",
       );
     }
 
@@ -1044,7 +1041,6 @@ export function createMigrateCommandAction({
       action: normalizedAction,
       downCount: parseLastCount(count),
       dir: normalizeOptionalString(opts.dir),
-      label: normalizeOptionalString(opts.label),
       confirm: Boolean(opts.confirm as boolean | undefined),
       workerPattern,
       ...(slugWorkerPattern ? { slugWorkerPattern } : {}),
@@ -1081,8 +1077,7 @@ export function createDocsPublishCommandAction({
  */
 export function createDocsDiffCommandAction({
   getApp,
-  getWorkerFromSeparator,
-}: WorkerActionDependencies): (target: string | undefined, opts: CliOpts) => CliActionResult {
+}: Pick<WorkerActionDependencies, "getApp">): (target: string | undefined, opts: CliOpts) => CliActionResult {
   return (target: string | undefined, opts: CliOpts) => {
     const resolvedDiffMode = resolveDocsDiffMode({
       target: normalizeOptionalString(target),
@@ -1090,13 +1085,10 @@ export function createDocsDiffCommandAction({
       to: normalizeOptionalString(opts.to),
     });
 
-    return resolveMigrateCommandHandler(getApp())({
-      action: resolvedDiffMode,
+    return resolveDocsCommandHandler(getApp())({
+      action: "diff",
       dir: normalizeOptionalString(opts.dir),
-      confirm: false,
-      workerPattern: resolveWorkerPattern(opts.worker, getWorkerFromSeparator),
-      keepArtifacts: false,
-      showAgentOutput: false,
+      target: resolvedDiffMode,
     });
   };
 }
@@ -1858,9 +1850,6 @@ function resolveTestCommandHandler(appInstance: CliApp): TestCommandHandler {
 function isMigrateAction(value: string): value is MigrateAction {
   return value === "up"
     || value === "down"
-    || value === "save"
-    || value === "diff"
-    || value === "preview"
     || value === "snapshot"
     || value === "backlog"
     || value === "context"
@@ -1873,9 +1862,9 @@ function isTestAction(value: string): value is TestAction {
   return value === "new";
 }
 
-function resolveDocsDiffMigrateAction(target: string | undefined): "diff" | "preview" {
+function resolveDocsDiffMigrateAction(target: string | undefined): "current" | "preview" {
   if (target === undefined || target === "current") {
-    return "diff";
+    return "current";
   }
 
   if (target === "preview") {
@@ -1889,7 +1878,7 @@ function resolveDocsDiffMode(input: {
   target: string | undefined;
   from: string | undefined;
   to: string | undefined;
-}): "diff" | "preview" {
+}): "current" | "preview" {
   const { target, from, to } = input;
   const hasExplicitSelectors = from !== undefined || to !== undefined;
 
@@ -1916,7 +1905,7 @@ function resolveDocsDiffMode(input: {
     );
   }
 
-  return "diff";
+  return "current";
 }
 
 function parseDocsDiffRevisionSelector(value: string, optionName: "from" | "to"): "current" | `rev.${number}` {

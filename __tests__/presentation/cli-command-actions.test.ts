@@ -510,86 +510,79 @@ describe("createDocsPublishCommandAction", () => {
 });
 
 describe("createDocsDiffCommandAction", () => {
-  it("routes shorthand defaults and preview target to migrate diff actions", async () => {
-    const migrateTask = vi.fn(async () => 0);
-    const app = { migrateTask } as unknown as CliApp;
+  it("routes shorthand defaults and preview target to docs diff action", async () => {
+    const docsTask = vi.fn(async () => 0);
+    const app = { docsTask } as unknown as CliApp;
     const action = createDocsDiffCommandAction({
       getApp: () => app,
-      getWorkerFromSeparator: () => undefined,
     });
 
     const defaultExitCode = await action(undefined, {
       dir: "migrations",
-      worker: "opencode run --model gpt-5.3-codex",
     });
     const previewExitCode = await action("preview", {
       dir: "migrations",
-      worker: "opencode run --model gpt-5.3-codex",
     });
 
     expect(defaultExitCode).toBe(0);
     expect(previewExitCode).toBe(0);
-    expect(migrateTask).toHaveBeenNthCalledWith(1, expect.objectContaining({
+    expect(docsTask).toHaveBeenNthCalledWith(1, expect.objectContaining({
       action: "diff",
+      target: "current",
       dir: "migrations",
     }));
-    expect(migrateTask).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      action: "preview",
+    expect(docsTask).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      action: "diff",
+      target: "preview",
       dir: "migrations",
     }));
   });
 
   it("accepts explicit --from/--to selectors with deterministic current target", async () => {
-    const migrateTask = vi.fn(async () => 0);
-    const app = { migrateTask } as unknown as CliApp;
+    const docsTask = vi.fn(async () => 0);
+    const app = { docsTask } as unknown as CliApp;
     const action = createDocsDiffCommandAction({
       getApp: () => app,
-      getWorkerFromSeparator: () => undefined,
     });
 
     const exitCode = await action(undefined, {
       dir: "migrations",
       from: "rev.1",
       to: "current",
-      worker: "opencode run --model gpt-5.3-codex",
     });
 
     expect(exitCode).toBe(0);
-    expect(migrateTask).toHaveBeenCalledWith(expect.objectContaining({
+    expect(docsTask).toHaveBeenCalledWith(expect.objectContaining({
       action: "diff",
+      target: "current",
       dir: "migrations",
     }));
   });
 
   it("rejects invalid selector combinations and values", async () => {
-    const migrateTask = vi.fn(async () => 0);
-    const app = { migrateTask } as unknown as CliApp;
+    const docsTask = vi.fn(async () => 0);
+    const app = { docsTask } as unknown as CliApp;
     const action = createDocsDiffCommandAction({
       getApp: () => app,
-      getWorkerFromSeparator: () => undefined,
     });
 
     expect(() => action("preview", {
       from: "rev.1",
       to: "current",
-      worker: "opencode run --model gpt-5.3-codex",
     })).toThrow("[target] shorthand cannot be combined");
 
     expect(() => action(undefined, {
       from: "rev.1",
-      worker: "opencode run --model gpt-5.3-codex",
     })).toThrow("--from and --to must be provided together");
 
     expect(() => action(undefined, {
       from: "release-1",
       to: "current",
-      worker: "opencode run --model gpt-5.3-codex",
     })).toThrow("Invalid docs diff --from selector");
 
     expect(() => action(undefined, {
       from: "rev.1",
       to: "rev.2",
-      worker: "opencode run --model gpt-5.3-codex",
     })).toThrow("Unsupported docs diff selector combination");
   });
 });

@@ -46,15 +46,11 @@ import {
   prepareDesignRevisionDiffContext,
   resolveDesignContext,
   resolveDesignContextSourceReferences,
-  saveDesignRevisionSnapshot,
 } from "./design-context.js";
 
 type MigrateAction =
   | "up"
   | "down"
-  | "save"
-  | "diff"
-  | "preview"
   | "snapshot"
   | "backlog"
   | "context"
@@ -71,7 +67,6 @@ export interface MigrateTaskOptions {
   action?: MigrateAction;
   downCount?: number;
   dir?: string;
-  label?: string;
   confirm?: boolean;
   workerPattern: ParsedWorkerPattern;
   slugWorkerPattern?: ParsedWorkerPattern;
@@ -149,83 +144,6 @@ export function createMigrateTask(
     const action = options.action;
     const projectRoot = path.dirname(migrationsDir);
     const configDir = path.join(projectRoot, ".rundown");
-    if (action === "save") {
-      const workspaceReady = ensureManagedDesignWorkspaceForRevisionCommands(
-        dependencies.fileSystem,
-        projectRoot,
-        emit,
-      );
-      if (!workspaceReady.ok) {
-        emit({ kind: "error", message: workspaceReady.message });
-        return EXIT_CODE_FAILURE;
-      }
-
-      let saveResult;
-      try {
-        saveResult = saveDesignRevisionSnapshot(dependencies.fileSystem, projectRoot, {
-          label: options.label,
-        });
-      } catch (error) {
-        emit({ kind: "error", message: error instanceof Error ? error.message : String(error) });
-        return EXIT_CODE_FAILURE;
-      }
-
-      if (saveResult.kind === "unchanged") {
-        emit({
-          kind: "info",
-          message:
-            "No design changes detected in docs/current/ since "
-            + saveResult.latestRevision.name
-            + "; skipped creating a new revision snapshot.",
-        });
-      } else {
-        const savedRevision = saveResult.revision;
-        emit({
-          kind: "success",
-          message:
-            "Saved design revision "
-            + savedRevision.name
-            + " from docs/current/ to "
-            + savedRevision.absolutePath
-            + (savedRevision.metadata.label.length > 0 ? " [label: " + savedRevision.metadata.label + "]" : "")
-            + " ("
-            + String(savedRevision.copiedFileCount)
-            + " file"
-            + (savedRevision.copiedFileCount === 1 ? "" : "s")
-             + ").",
-         });
-        if (savedRevision.copiedFileCount === 0) {
-          emit({
-            kind: "warn",
-            message:
-              "Saved empty design revision from docs/current/. "
-              + "Add docs/current/Design.md (and supporting docs) for richer migrate/test context.",
-          });
-        }
-      }
-      return EXIT_CODE_SUCCESS;
-    }
-
-    if (action === "diff" || action === "preview") {
-      const workspaceReady = ensureManagedDesignWorkspaceForRevisionCommands(
-        dependencies.fileSystem,
-        projectRoot,
-        emit,
-      );
-      if (!workspaceReady.ok) {
-        emit({ kind: "error", message: workspaceReady.message });
-        return EXIT_CODE_FAILURE;
-      }
-
-      emitDesignRevisionDiffPreview({
-        fileSystem: dependencies.fileSystem,
-        projectRoot,
-        emit,
-        includeSourceReferences: action === "preview",
-      });
-      return EXIT_CODE_SUCCESS;
-    }
-
     const loadedWorkerConfig = dependencies.fileSystem.exists(configDir)
       ? dependencies.workerConfigPort.load(configDir)
       : undefined;
@@ -447,39 +365,6 @@ export function createMigrateTask(
   };
 }
 
-function emitDesignRevisionDiffPreview(input: {
-  fileSystem: FileSystem;
-  projectRoot: string;
-  emit: ApplicationOutputPort["emit"];
-  includeSourceReferences: boolean;
-}): void {
-  const { fileSystem, projectRoot, emit, includeSourceReferences } = input;
-  const diff = prepareDesignRevisionDiffContext(fileSystem, projectRoot, { target: "current" });
-
-  emit({
-    kind: "info",
-    message: includeSourceReferences ? "Design revision diff preview:" : "Design revision diff:",
-  });
-  emit({ kind: "info", message: diff.summary });
-
-  if (includeSourceReferences) {
-    const sourceReferenceLines = diff.sourceReferences.length > 0
-      ? diff.sourceReferences.map((sourcePath) => `- ${sourcePath}`).join("\n") + "\n"
-      : "- (none)\n";
-    emit({ kind: "text", text: "Sources:\n" + sourceReferenceLines });
-  }
-
-  if (diff.changes.length === 0) {
-    emit({ kind: "info", message: "No file-level design changes detected." });
-    return;
-  }
-
-  const changeLines = diff.changes
-    .map((change) => `- ${change.kind}: ${change.relativePath}`)
-    .join("\n");
-  emit({ kind: "text", text: "Changes:\n" + changeLines + "\n" });
-}
-
 function persistPredictionBaselineSnapshot(fileSystem: FileSystem, migrationsDir: string): void {
   const predictionInputs = readPredictionInputs(fileSystem, migrationsDir);
   const baseline = createPredictionBaseline(predictionInputs);
@@ -677,41 +562,6 @@ function toPredictionTrackedFileKind(type: SatelliteType): PredictionTrackedFile
 
 function toProjectRelativePath(projectRoot: string, absolutePath: string): string {
   return path.relative(projectRoot, absolutePath).replace(/\\/g, "/");
-}
-
-function ensureManagedDesignWorkspaceForRevisionCommands(
-  fileSystem: FileSystem,
-  projectRoot: string,
-  emit: ApplicationOutputPort["emit"],
-): { ok: true } | { ok: false; message: string } {
-  const docsCurrentDir = path.join(projectRoot, "docs", "current");
-  if (isDirectory(fileSystem, docsCurrentDir)) {
-    return { ok: true };
-  }
-
-  const legacyDesignPath = path.join(projectRoot, "Design.md");
-  if (isFile(fileSystem, legacyDesignPath)) {
-    fileSystem.mkdir(docsCurrentDir, { recursive: true });
-    const bootstrappedDesignPath = path.join(docsCurrentDir, "Design.md");
-    if (!isFile(fileSystem, bootstrappedDesignPath)) {
-      fileSystem.writeText(bootstrappedDesignPath, fileSystem.readText(legacyDesignPath));
-    }
-
-    emit({
-      kind: "info",
-      message:
-        "Bootstrapped docs/current/ from legacy Design.md to initialize revision workflow.",
-    });
-    return { ok: true };
-  }
-
-  return {
-    ok: false,
-    message:
-      "Design working directory is missing: "
-      + docsCurrentDir
-      + ". Create docs/current/ (or run `rundown start ...`) before using revision commands.",
-  };
 }
 
 function emitLowDesignContextGuidance(
@@ -1368,9 +1218,6 @@ export async function confirmBeforeWrite(
 export function isMigrationAction(value: string | undefined): value is MigrateAction {
   return value === "up"
     || value === "down"
-    || value === "save"
-    || value === "diff"
-    || value === "preview"
     || value === "snapshot"
     || value === "backlog"
     || value === "context"

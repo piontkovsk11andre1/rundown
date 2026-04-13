@@ -322,11 +322,10 @@ const migrateCommand = program
   .description("Generate and manage revision-aware prediction migrations.")
   .argument(
     "[action]",
-    "Migration action: up | down [n] | save | diff | preview | snapshot | backlog | context | review | user-experience | user-session",
+    "Migration action: up | down [n] | snapshot | backlog | context | review | user-experience | user-session",
   )
   .argument("[count]", "Optional number of runs to undo for down")
   .option("--dir <path>", "Migrations directory (default: ./migrations)", "./migrations")
-  .option("--label <text>", "Optional label to store in revision metadata for `migrate save`")
   .option("--confirm", "Show generated content and confirm before writing files", false)
   .option("--run <id|latest>", "Choose artifact run id or 'latest' for down", "latest")
   .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
@@ -345,7 +344,6 @@ migrateCommand.addHelpText(
     "",
     "Revision-aware behavior:",
     "  - Reads design context from docs/current/** (with legacy root Design.md fallback)",
-    "  - `migrate save` snapshots docs/current/ to the next docs/rev.N/ directory",
     "  - Migration generation includes revision diff context from previous revision vs current draft",
   ].join("\n"),
 );
@@ -372,11 +370,9 @@ docsCommand
   .option("--dir <path>", "Migrations directory (default: ./migrations)", "./migrations")
   .option("--from <rev|current>", "Explicit source revision selector (use with --to)")
   .option("--to <rev|current>", "Explicit destination revision selector (use with --from)")
-  .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
   .allowUnknownOption(false)
   .action(withCliAction(createDocsDiffCommandAction({
     getApp,
-    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
   })))
   .addHelpText(
     "after",

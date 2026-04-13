@@ -48,6 +48,44 @@ function stripAnsi(value: string): string {
   return value.replace(ANSI_ESCAPE_PATTERN, "");
 }
 
+function expectedInitSuccessLines(displayConfigDir: string): string[] {
+  return [
+    `✔ Created ${displayConfigDir}/tools/`,
+    `✔ Created ${displayConfigDir}/execute.md`,
+    `✔ Created ${displayConfigDir}/discuss-finished.md`,
+    `✔ Created ${displayConfigDir}/verify.md`,
+    `✔ Created ${displayConfigDir}/repair.md`,
+    `✔ Created ${displayConfigDir}/plan.md`,
+    `✔ Created ${displayConfigDir}/research.md`,
+    `✔ Created ${displayConfigDir}/trace.md`,
+    `✔ Created ${displayConfigDir}/undo.md`,
+    `✔ Created ${displayConfigDir}/test-verify.md`,
+    `✔ Created ${displayConfigDir}/migrate.md`,
+    `✔ Created ${displayConfigDir}/migrate-context.md`,
+    `✔ Created ${displayConfigDir}/migrate-snapshot.md`,
+    `✔ Created ${displayConfigDir}/migrate-backlog.md`,
+    `✔ Created ${displayConfigDir}/migrate-review.md`,
+    `✔ Created ${displayConfigDir}/migrate-ux.md`,
+    `✔ Created ${displayConfigDir}/vars.json`,
+    `✔ Created ${displayConfigDir}/config.json`,
+    `✔ Initialized ${displayConfigDir}/ with default templates.`,
+  ];
+}
+
+function expectStaticInitOutput(result: {
+  logs: string[];
+  errors: string[];
+  stdoutWrites: string[];
+  stderrWrites: string[];
+}): void {
+  expect(result.stdoutWrites).toEqual([]);
+  expect(result.stderrWrites).toEqual([]);
+
+  for (const line of [...result.logs, ...result.errors]) {
+    expect(line.includes("\r")).toBe(false);
+  }
+}
+
 function normalizeLegacyWorkerPatternArgs(args: string[]): string[] {
   const normalized: string[] = [];
 
@@ -13209,7 +13247,10 @@ describe.sequential("CLI integration", () => {
     expect(fs.existsSync(path.join(workspace, ".rundown", "config.json"))).toBe(true);
     expect(fs.readFileSync(path.join(workspace, ".rundown", "config.json"), "utf-8")).toBe("{}\n");
     expect(fs.readFileSync(path.join(workspace, ".rundown", "vars.json"), "utf-8")).toBe("{}\n");
-    expect(result.logs.some((line) => line.includes("Initialized .rundown/ with default templates."))).toBe(true);
+
+    expectStaticInitOutput(result);
+    expect(result.errors).toEqual([]);
+    expect(result.logs.map(stripAnsi)).toEqual(expectedInitSuccessLines(".rundown"));
   });
 
   it("init --config-dir creates defaults at the explicit target directory", async () => {
@@ -13240,6 +13281,10 @@ describe.sequential("CLI integration", () => {
     expect(fs.readFileSync(path.join(customConfigDir, "config.json"), "utf-8")).toBe("{}\n");
     expect(fs.readFileSync(path.join(customConfigDir, "vars.json"), "utf-8")).toBe("{}\n");
     expect(fs.existsSync(path.join(workspace, ".rundown"))).toBe(false);
+
+    expectStaticInitOutput(result);
+    expect(result.errors).toEqual([]);
+    expect(result.logs.map(stripAnsi)).toEqual(expectedInitSuccessLines(customConfigDir));
   });
 
   it("init keeps existing files and warns when defaults already exist", async () => {
@@ -13252,8 +13297,13 @@ describe.sequential("CLI integration", () => {
 
     expect(result.code).toBe(0);
     expect(fs.readFileSync(path.join(workspace, ".rundown", "execute.md"), "utf-8")).toBe("custom execute");
-    expect(result.errors.some((line) => line.includes(".rundown/execute.md already exists, skipping."))).toBe(true);
-    expect(result.logs.some((line) => line.includes("Initialized .rundown/ with default templates."))).toBe(true);
+
+    expectStaticInitOutput(result);
+    expect(result.errors.map(stripAnsi)).toEqual([
+      "⚠ .rundown/execute.md already exists, skipping.",
+    ]);
+    expect(result.logs.map(stripAnsi)[0]).toBe("✔ Created .rundown/tools/");
+    expect(result.logs.map(stripAnsi).at(-1)).toBe("✔ Initialized .rundown/ with default templates.");
   });
 });
 

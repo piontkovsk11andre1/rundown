@@ -1031,20 +1031,40 @@ function resolveDesignWorkspaceForRevisions(fileSystem: FileSystem, projectRoot:
   relativeCurrentDir: string;
 } {
   const canonicalRootDir = path.join(projectRoot, CANONICAL_WORKSPACE_DIR);
-  if (isDirectory(fileSystem, canonicalRootDir)) {
+  const canonicalCurrentDir = path.join(canonicalRootDir, "current");
+  if (isDirectory(fileSystem, canonicalCurrentDir)) {
     return {
       rootDir: canonicalRootDir,
-      currentDir: path.join(canonicalRootDir, "current"),
+      currentDir: canonicalCurrentDir,
       relativeRootDir: CANONICAL_WORKSPACE_DIR,
       relativeCurrentDir: CANONICAL_WORKSPACE_DIR + "/current",
     };
   }
 
   const legacyRootDir = path.join(projectRoot, LEGACY_WORKSPACE_DIR);
+  const legacyCurrentDir = path.join(legacyRootDir, "current");
+  if (isDirectory(fileSystem, legacyCurrentDir)) {
+    return {
+      rootDir: legacyRootDir,
+      currentDir: legacyCurrentDir,
+      relativeRootDir: LEGACY_WORKSPACE_DIR,
+      relativeCurrentDir: LEGACY_WORKSPACE_DIR + "/current",
+    };
+  }
+
+  if (isDirectory(fileSystem, canonicalRootDir)) {
+    return {
+      rootDir: canonicalRootDir,
+      currentDir: canonicalCurrentDir,
+      relativeRootDir: CANONICAL_WORKSPACE_DIR,
+      relativeCurrentDir: CANONICAL_WORKSPACE_DIR + "/current",
+    };
+  }
+
   if (isDirectory(fileSystem, legacyRootDir)) {
     return {
       rootDir: legacyRootDir,
-      currentDir: path.join(legacyRootDir, "current"),
+      currentDir: legacyCurrentDir,
       relativeRootDir: LEGACY_WORKSPACE_DIR,
       relativeCurrentDir: LEGACY_WORKSPACE_DIR + "/current",
     };

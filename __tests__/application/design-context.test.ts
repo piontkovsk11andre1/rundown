@@ -96,6 +96,86 @@ function normalizePath(value: string): string {
 }
 
 describe("design-context revision metadata and immutability", () => {
+  it("saves canonical design/current into design/rev.N snapshots", () => {
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        "/repo/design": [
+          { name: "current", isDirectory: true, isFile: false },
+          { name: "rev.2", isDirectory: true, isFile: false },
+        ],
+        "/repo/design/current": [
+          { name: "Target.md", isDirectory: false, isFile: true },
+        ],
+      },
+      files: {
+        "/repo/design/current/Target.md": "current\n",
+      },
+      stats: {
+        "/repo/design": { isDirectory: true, isFile: false },
+        "/repo/design/current": { isDirectory: true, isFile: false },
+        "/repo/design/rev.2": { isDirectory: true, isFile: false },
+      },
+    });
+
+    const saved = saveDesignRevisionSnapshot(fileSystem, "/repo");
+
+    expect(saved).toMatchObject({
+      kind: "saved",
+      revision: {
+        index: 3,
+        name: "rev.3",
+        absolutePath: expect.any(String),
+        sourcePath: expect.any(String),
+      },
+    });
+    if (saved.kind === "saved") {
+      expect(normalizePath(saved.revision.absolutePath)).toBe("/repo/design/rev.3");
+      expect(normalizePath(saved.revision.sourcePath)).toBe("/repo/design/current");
+    }
+    expect(fileSystem.readText("/repo/design/rev.3/Target.md")).toBe("current\n");
+  });
+
+  it("falls back to legacy docs/current for revisions when canonical design/current is missing", () => {
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        "/repo/design": [],
+        "/repo/docs": [
+          { name: "current", isDirectory: true, isFile: false },
+          { name: "rev.4", isDirectory: true, isFile: false },
+        ],
+        "/repo/docs/current": [
+          { name: "Design.md", isDirectory: false, isFile: true },
+        ],
+      },
+      files: {
+        "/repo/docs/current/Design.md": "legacy\n",
+      },
+      stats: {
+        "/repo/design": { isDirectory: true, isFile: false },
+        "/repo/docs": { isDirectory: true, isFile: false },
+        "/repo/docs/current": { isDirectory: true, isFile: false },
+        "/repo/docs/rev.4": { isDirectory: true, isFile: false },
+      },
+    });
+
+    const saved = saveDesignRevisionSnapshot(fileSystem, "/repo");
+
+    expect(saved).toMatchObject({
+      kind: "saved",
+      revision: {
+        index: 5,
+        name: "rev.5",
+        absolutePath: expect.any(String),
+        sourcePath: expect.any(String),
+      },
+    });
+    if (saved.kind === "saved") {
+      expect(normalizePath(saved.revision.absolutePath)).toBe("/repo/docs/rev.5");
+      expect(normalizePath(saved.revision.sourcePath)).toBe("/repo/docs/current");
+    }
+    expect(fileSystem.readText("/repo/docs/rev.5/Design.md")).toBe("legacy\n");
+  });
+
   it("keeps saved revision content immutable after later docs/current edits", () => {
     const fileSystem = new InMemoryFileSystem({
       directories: {
@@ -193,6 +273,40 @@ describe("design-context revision metadata and immutability", () => {
       metadataPath: expect.stringMatching(/(?:\\|\/)repo(?:\\|\/)docs(?:\\|\/)rev\.4\.meta\.json$/),
     });
     expect(diff.summary).toBe("Compared rev.2 -> rev.4: 0 added 1 modified 0 removed");
+  });
+
+  it("uses legacy docs revisions for diff when canonical design/current is unavailable", () => {
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        "/repo/design": [],
+        "/repo/docs": [
+          { name: "current", isDirectory: true, isFile: false },
+          { name: "rev.1", isDirectory: true, isFile: false },
+        ],
+        "/repo/docs/current": [
+          { name: "Design.md", isDirectory: false, isFile: true },
+        ],
+        "/repo/docs/rev.1": [
+          { name: "Design.md", isDirectory: false, isFile: true },
+        ],
+      },
+      files: {
+        "/repo/docs/current/Design.md": "new\n",
+        "/repo/docs/rev.1/Design.md": "old\n",
+      },
+      stats: {
+        "/repo/design": { isDirectory: true, isFile: false },
+        "/repo/docs": { isDirectory: true, isFile: false },
+        "/repo/docs/current": { isDirectory: true, isFile: false },
+        "/repo/docs/rev.1": { isDirectory: true, isFile: false },
+      },
+    });
+
+    const diff = prepareDesignRevisionDiffContext(fileSystem, "/repo");
+
+    expect(normalizePath(diff.fromRevision?.absolutePath ?? "")).toBe("/repo/docs/rev.1");
+    expect(normalizePath(diff.toTarget.absolutePath)).toBe("/repo/docs/current");
+    expect(diff.summary).toBe("Compared rev.1 -> current: 0 added 1 modified 0 removed");
   });
 });
 

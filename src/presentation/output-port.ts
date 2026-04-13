@@ -1,13 +1,10 @@
 import type { ApplicationOutputEvent, ApplicationOutputPort } from "../domain/ports/output-port.js";
 import pc from "picocolors";
-import { sleep, typeText } from "./animation.js";
 import { formatTaskDetailLines } from "./task-detail-lines.js";
 
 const ANSI_ESCAPE_PATTERN = /\u001B\[[0-9;]*m/g;
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SPINNER_FRAME_INTERVAL_MS = 80;
-const CLI_TYPING_DELAY_MS = 10;
-const CLI_CASCADE_DELAY_MS = 45;
 
 interface ProgressPayload {
   label: string;
@@ -36,13 +33,11 @@ const progressRenderState: ProgressRenderState = {
 let groupDepth = 0;
 let quietMode = false;
 
-let animatedLineQueue: Promise<void> = Promise.resolve();
-
 /**
  * Waits for all queued line animations to finish before returning.
  */
 export function drainAnimationQueue(): Promise<void> {
-  return animatedLineQueue;
+  return Promise.resolve();
 }
 
 /**
@@ -105,60 +100,6 @@ function isInteractiveProgressEnabled(): boolean {
 
   const normalized = ci.trim().toLowerCase();
   return normalized === "" || normalized === "0" || normalized === "false";
-}
-
-/**
- * Indicates whether typed CLI line animations are safe for this session.
- */
-function isInteractiveLineAnimationEnabled(): boolean {
-  return isInteractiveProgressEnabled();
-}
-
-/**
- * Queues asynchronous typed line animations to preserve output order.
- */
-function enqueueAnimatedLine(render: () => Promise<void>): void {
-  animatedLineQueue = animatedLineQueue.then(render).catch(() => undefined);
-}
-
-/**
- * Renders a prefixed line with a subtle typewriter effect.
- */
-async function renderTypedLine(prefix: string, message: string): Promise<void> {
-  process.stdout.write(`${prefix} `);
-  await typeText(message, undefined, CLI_TYPING_DELAY_MS);
-  process.stdout.write("\n");
-}
-
-/**
- * Renders a line instantly, then briefly pauses to create a cascade effect.
- */
-async function renderCascadeLine(prefix: string, message: string): Promise<void> {
-  console.log(`${prefix} ${message}`);
-  await sleep(CLI_CASCADE_DELAY_MS);
-}
-
-/**
- * Determines whether an info line should be rendered with a reveal effect.
- */
-function shouldAnimateInfoMessage(message: string): boolean {
-  void message;
-  return false;
-}
-
-/**
- * Determines whether a success line should be rendered with a reveal effect.
- */
-function shouldAnimateSuccessMessage(message: string): boolean {
-  return message.startsWith("All tasks completed")
-    || message.startsWith("Initialized ");
-}
-
-/**
- * Determines whether a success line should be rendered with a cascade-style reveal.
- */
-function shouldCascadeSuccessMessage(message: string): boolean {
-  return message.startsWith("Created ");
 }
 
 /**
@@ -431,10 +372,6 @@ export const cliOutputPort: ApplicationOutputPort = {
         flushProgressLine();
         {
           const linePrefix = withGroupPrefix(pc.blue("ℹ"));
-          if (isInteractiveLineAnimationEnabled() && shouldAnimateInfoMessage(event.message)) {
-            enqueueAnimatedLine(() => renderTypedLine(linePrefix, styleInfoMessage(event.message)));
-            return;
-          }
           console.log(`${linePrefix} ${styleInfoMessage(event.message)}`);
         }
         return;
@@ -450,14 +387,6 @@ export const cliOutputPort: ApplicationOutputPort = {
         flushProgressLine();
         {
           const linePrefix = withGroupPrefix(pc.green("✔"));
-          if (isInteractiveLineAnimationEnabled() && shouldCascadeSuccessMessage(event.message)) {
-            enqueueAnimatedLine(() => renderCascadeLine(linePrefix, event.message));
-            return;
-          }
-          if (isInteractiveLineAnimationEnabled() && shouldAnimateSuccessMessage(event.message)) {
-            enqueueAnimatedLine(() => renderTypedLine(linePrefix, event.message));
-            return;
-          }
           console.log(`${linePrefix} ${event.message}`);
         }
         return;

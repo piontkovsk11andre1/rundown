@@ -1491,6 +1491,89 @@ describe("task-execution-dispatch", () => {
     };
   }
 
+  async function dispatchControlFlowPrefix(params: {
+    prefix: "optional" | "skip";
+    workerRun: (prompt: unknown) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
+  }) {
+    const task = createTask(path.join(cwd, "tasks.md"), params.prefix + ": there is no output to process");
+    const fileSystem = createInMemoryFileSystem({
+      [task.file]: [
+        "- [ ] " + params.prefix + ": there is no output to process",
+        "- [ ] Do this and that",
+      ].join("\n"),
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    dependencies.workerExecutor.runWorker = vi.fn(params.workerRun);
+
+    const tool = resolveBuiltinTool(params.prefix);
+    expect(tool).toBeDefined();
+    if (!tool) {
+      throw new Error("Expected built-in tool for prefix: " + params.prefix);
+    }
+
+    const result = await dispatchTaskExecution({
+      dependencies,
+      emit: (event) => events.push(event),
+      files: [task.file],
+      selectedWorkerCommand: ["opencode", "run"],
+      selectedWorkerPattern: {
+        command: ["opencode", "run"],
+        usesBootstrap: false,
+        usesFile: false,
+        appendFile: true,
+      },
+      pendingPreRunResetTraceEvents: [],
+      traceRunSession: createSession(),
+      roundContext: {
+        currentRound: 1,
+        totalRounds: 1,
+      },
+      configuredOnlyVerify: false,
+      onlyVerify: false,
+      shouldVerify: true,
+      mode: "wait",
+      keepArtifacts: true,
+      showAgentOutput: false,
+      ignoreCliBlock: false,
+      verify: true,
+      noRepair: false,
+      repairAttempts: 0,
+      taskIntent: "execute-and-verify",
+      prefixChain: {
+        modifiers: [],
+        handler: {
+          tool,
+          payload: "there is no output to process",
+        },
+        remainingText: "there is no output to process",
+      },
+      task,
+      prompt: "unused",
+      expandedContextBefore: "",
+      artifactContext: createArtifactContext(),
+      resolvedWorkerCommand: ["opencode", "run"],
+      resolvedWorkerPattern: {
+        command: ["opencode", "run"],
+        usesBootstrap: false,
+        usesFile: false,
+        appendFile: true,
+      },
+      trace: false,
+      cliExecutionOptionsWithVerificationTemplateFailureAbort: undefined,
+      cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace: undefined,
+    });
+
+    return {
+      result,
+      runWorker: dependencies.workerExecutor.runWorker,
+    };
+  }
+
   it("normalizes only-verify mode and flushes pending reset traces", async () => {
     const task = createTask(path.join(cwd, "tasks.md"), "Ship release");
     const fileSystem = createInMemoryFileSystem({
@@ -2493,6 +2576,70 @@ describe("task-execution-dispatch", () => {
     });
     expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
   });
+
+  it.each(["optional", "skip"] as const)(
+    "keeps control-flow outcomes for %s: true/false/ambiguous/error",
+    async (prefix) => {
+      const yesOutcome = await dispatchControlFlowPrefix({
+        prefix,
+        workerRun: async () => ({ exitCode: 0, stdout: "yes", stderr: "" }),
+      });
+      expect(yesOutcome.result).toEqual({
+        kind: "ready-for-completion",
+        shouldVerify: false,
+        cliExecutionOptionsForVerification: undefined,
+        verificationFailureMessage: "Verification failed after all repair attempts. Task not checked.",
+        verificationFailureRunReason: "Verification failed after all repair attempts.",
+        skipRemainingSiblingsReason: "there is no output to process",
+        toolExpansionInsertedChildCount: undefined,
+      });
+      expect(yesOutcome.runWorker).toHaveBeenCalledTimes(1);
+
+      const noOutcome = await dispatchControlFlowPrefix({
+        prefix,
+        workerRun: async () => ({ exitCode: 0, stdout: "no", stderr: "" }),
+      });
+      expect(noOutcome.result).toEqual({
+        kind: "ready-for-completion",
+        shouldVerify: false,
+        cliExecutionOptionsForVerification: undefined,
+        verificationFailureMessage: "Verification failed after all repair attempts. Task not checked.",
+        verificationFailureRunReason: "Verification failed after all repair attempts.",
+        skipRemainingSiblingsReason: undefined,
+        toolExpansionInsertedChildCount: undefined,
+      });
+      expect(noOutcome.runWorker).toHaveBeenCalledTimes(1);
+
+      const ambiguousOutcome = await dispatchControlFlowPrefix({
+        prefix,
+        workerRun: async () => ({ exitCode: 0, stdout: "maybe", stderr: "" }),
+      });
+      expect(ambiguousOutcome.result).toEqual({
+        kind: "ready-for-completion",
+        shouldVerify: false,
+        cliExecutionOptionsForVerification: undefined,
+        verificationFailureMessage: "Verification failed after all repair attempts. Task not checked.",
+        verificationFailureRunReason: "Verification failed after all repair attempts.",
+        skipRemainingSiblingsReason: undefined,
+        toolExpansionInsertedChildCount: undefined,
+      });
+      expect(ambiguousOutcome.runWorker).toHaveBeenCalledTimes(1);
+
+      const errorOutcome = await dispatchControlFlowPrefix({
+        prefix,
+        workerRun: async () => {
+          throw new Error("worker unavailable");
+        },
+      });
+      expect(errorOutcome.result).toEqual({
+        kind: "execution-failed",
+        executionFailureMessage: "Failed to evaluate end condition: worker unavailable",
+        executionFailureRunReason: "End condition worker invocation failed.",
+        executionFailureExitCode: 1,
+      });
+      expect(errorOutcome.runWorker).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("advances for-loop metadata and returns transition details for loop handlers", async () => {
     const task = createTask(path.join(cwd, "tasks.md"), "for: This, That", {

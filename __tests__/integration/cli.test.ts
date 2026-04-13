@@ -2057,6 +2057,168 @@ describe.sequential("CLI integration", () => {
     ].join("\n"));
   });
 
+  describe("run optional/skip control-flow aliases", () => {
+    async function runControlFlowAliasScenario(params: {
+      prefix: "optional" | "skip";
+      scenario: "true" | "false" | "ambiguous" | "error";
+    }): Promise<{
+      roadmapPath: string;
+      workerProbePath: string;
+      result: Awaited<ReturnType<typeof runCli>>;
+    }> {
+      const workspace = makeTempWorkspace();
+      const roadmapPath = path.join(workspace, "roadmap.md");
+      const workerScriptPath = path.join(workspace, `${params.prefix}-condition-worker.cjs`);
+      const workerProbePath = path.join(workspace, `${params.prefix}-worker-probe.log`);
+
+      fs.writeFileSync(roadmapPath, [
+        `- [ ] ${params.prefix}: there is no output to process`,
+        "- [ ] Ship release notes",
+        "- [ ] Publish changelog",
+        "",
+      ].join("\n"), "utf-8");
+
+      const conditionLogic = (() => {
+        if (params.scenario === "true") {
+          return [
+            "  fs.appendFileSync(probePath, 'evaluate\\n', 'utf-8');",
+            "  console.log('{\"decision\":\"yes\"}');",
+            "  process.exit(0);",
+          ].join("\n");
+        }
+
+        if (params.scenario === "false") {
+          return [
+            "  fs.appendFileSync(probePath, 'evaluate\\n', 'utf-8');",
+            "  console.log('{\"decision\":\"no\"}');",
+            "  process.exit(0);",
+          ].join("\n");
+        }
+
+        if (params.scenario === "ambiguous") {
+          return [
+            "  fs.appendFileSync(probePath, 'evaluate\\n', 'utf-8');",
+            "  console.log('maybe');",
+            "  process.exit(0);",
+          ].join("\n");
+        }
+
+        return [
+          "  fs.appendFileSync(probePath, 'evaluate\\n', 'utf-8');",
+          "  process.exit(11);",
+        ].join("\n");
+      })();
+
+      fs.writeFileSync(workerScriptPath, [
+        "const fs = require('node:fs');",
+        "const promptPath = process.argv[process.argv.length - 1];",
+        "const prompt = fs.readFileSync(promptPath, 'utf-8');",
+        `const probePath = ${JSON.stringify(workerProbePath.replace(/\\/g, "/"))};`,
+        "if (prompt.includes('You are evaluating an end-condition for a Markdown task runner.')) {",
+        conditionLogic,
+        "}",
+        "fs.appendFileSync(probePath, 'execute\\n', 'utf-8');",
+        "process.exit(0);",
+        "",
+      ].join("\n"), "utf-8");
+
+      const result = await runCli([
+        "run",
+        "roadmap.md",
+        "--all",
+        "--no-verify",
+        "--worker",
+        "node",
+        workerScriptPath.replace(/\\/g, "/"),
+      ], workspace);
+
+      return {
+        roadmapPath,
+        workerProbePath,
+        result,
+      };
+    }
+
+    it.each(["optional", "skip"] as const)(
+      "%s: true condition skips remaining siblings",
+      async (prefix) => {
+        const { result, roadmapPath, workerProbePath } = await runControlFlowAliasScenario({
+          prefix,
+          scenario: "true",
+        });
+
+        expect(result.code).toBe(0);
+        expect(fs.readFileSync(workerProbePath, "utf-8")).toBe("evaluate\n");
+        expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+          `- [x] ${prefix}: there is no output to process`,
+          "- [x] Ship release notes",
+          "  - skipped: there is no output to process",
+          "- [x] Publish changelog",
+          "  - skipped: there is no output to process",
+          "",
+        ].join("\n"));
+      },
+    );
+
+    it.each(["optional", "skip"] as const)(
+      "%s: false condition continues with sibling execution",
+      async (prefix) => {
+        const { result, roadmapPath, workerProbePath } = await runControlFlowAliasScenario({
+          prefix,
+          scenario: "false",
+        });
+
+        expect(result.code).toBe(0);
+        expect(fs.readFileSync(workerProbePath, "utf-8")).toBe("evaluate\nexecute\nexecute\n");
+        expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+          `- [x] ${prefix}: there is no output to process`,
+          "- [x] Ship release notes",
+          "- [x] Publish changelog",
+          "",
+        ].join("\n"));
+      },
+    );
+
+    it.each(["optional", "skip"] as const)(
+      "%s: ambiguous condition defaults to no and continues",
+      async (prefix) => {
+        const { result, roadmapPath, workerProbePath } = await runControlFlowAliasScenario({
+          prefix,
+          scenario: "ambiguous",
+        });
+
+        expect(result.code).toBe(0);
+        expect(fs.readFileSync(workerProbePath, "utf-8")).toBe("evaluate\nexecute\nexecute\n");
+        expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+          `- [x] ${prefix}: there is no output to process`,
+          "- [x] Ship release notes",
+          "- [x] Publish changelog",
+          "",
+        ].join("\n"));
+      },
+    );
+
+    it.each(["optional", "skip"] as const)(
+      "%s: worker error returns execution failure without checking tasks",
+      async (prefix) => {
+        const { result, roadmapPath, workerProbePath } = await runControlFlowAliasScenario({
+          prefix,
+          scenario: "error",
+        });
+
+        expect(result.code).toBe(1);
+        expect(fs.readFileSync(workerProbePath, "utf-8")).toBe("evaluate\n");
+        expect(result.errors.some((line) => line.includes("End condition worker exited with code 11."))).toBe(true);
+        expect(fs.readFileSync(roadmapPath, "utf-8")).toBe([
+          `- [ ] ${prefix}: there is no output to process`,
+          "- [ ] Ship release notes",
+          "- [ ] Publish changelog",
+          "",
+        ].join("\n"));
+      },
+    );
+  });
+
   it("run returns execution error for memory prefix with empty payload and does not write memory files", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");

@@ -181,7 +181,7 @@ describe("cliOutputPort", () => {
     expect(output).toContain("Verify phase (2/5 attempts) — checking");
   });
 
-  it("renders interactive spinner/progress updates in TTY mode", () => {
+  it("renders stable progress lines in TTY mode", () => {
     const hadIsTTY = Object.prototype.hasOwnProperty.call(process.stdout, "isTTY");
     const previousIsTTY = (process.stdout as { isTTY?: boolean }).isTTY;
     Object.defineProperty(process.stdout, "isTTY", {
@@ -189,6 +189,7 @@ describe("cliOutputPort", () => {
       writable: true,
       value: true,
     });
+
     const previousCi = process.env.CI;
     delete process.env.CI;
 
@@ -203,71 +204,10 @@ describe("cliOutputPort", () => {
           detail: "still running",
         },
       });
-      cliOutputPort.emit({
-        kind: "progress",
-        progress: {
-          label: "Verify phase",
-          current: 2,
-          total: 4,
-          unit: "attempts",
-          detail: "checking",
-        },
-      });
       cliOutputPort.emit({ kind: "info", message: "done" });
 
-      expect(logSpy).toHaveBeenCalledTimes(1);
-      const infoOutput = stripAnsi(logSpy.mock.calls[0]?.[0] as string);
-      expect(infoOutput).toContain("done");
-
-      const writes = writeSpy.mock.calls.map((call) => stripAnsi(String(call[0] ?? "")));
-      expect(writes.some((line) => line.includes("Delegated rundown run") && line.includes("still running"))).toBe(true);
-      expect(writes.some((line) => line.includes("Verify phase") && line.includes("2/4 attempts") && line.includes("["))).toBe(true);
-      expect(writes.some((line) => line === "\n")).toBe(true);
-    } finally {
-      if (previousCi === undefined) {
-        delete process.env.CI;
-      } else {
-        process.env.CI = previousCi;
-      }
-
-      if (hadIsTTY) {
-        Object.defineProperty(process.stdout, "isTTY", {
-          configurable: true,
-          writable: true,
-          value: previousIsTTY,
-        });
-      } else {
-        Reflect.deleteProperty(process.stdout, "isTTY");
-      }
-    }
-  });
-
-  it("degrades progress rendering to stable lines in CI even with TTY", () => {
-    const hadIsTTY = Object.prototype.hasOwnProperty.call(process.stdout, "isTTY");
-    const previousIsTTY = (process.stdout as { isTTY?: boolean }).isTTY;
-    Object.defineProperty(process.stdout, "isTTY", {
-      configurable: true,
-      writable: true,
-      value: true,
-    });
-
-    const previousCi = process.env.CI;
-    process.env.CI = "true";
-
-    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
-
-    try {
-      cliOutputPort.emit({
-        kind: "progress",
-        progress: {
-          label: "Delegated rundown run",
-          detail: "still running",
-        },
-      });
-
       expect(writeSpy).not.toHaveBeenCalled();
-      expect(logSpy).toHaveBeenCalledTimes(1);
+      expect(logSpy).toHaveBeenCalledTimes(2);
       const output = stripAnsi(logSpy.mock.calls[0]?.[0] as string);
       expect(output).toContain("⏳");
       expect(output).toContain("Delegated rundown run — still running");
@@ -620,6 +560,54 @@ describe("cliOutputPort", () => {
       expect(errorSpy).toHaveBeenCalledTimes(1);
       const output = stripAnsi(errorSpy.mock.calls[0]?.[0] as string);
       expect(output).toBe("└ ✖ Failed — repairs exhausted");
+    } finally {
+      if (previousCi === undefined) {
+        delete process.env.CI;
+      } else {
+        process.env.CI = previousCi;
+      }
+
+      if (hadIsTTY) {
+        Object.defineProperty(process.stdout, "isTTY", {
+          configurable: true,
+          writable: true,
+          value: previousIsTTY,
+        });
+      } else {
+        Reflect.deleteProperty(process.stdout, "isTTY");
+      }
+    }
+  });
+
+  it("renders stable progress lines in CI with TTY", () => {
+    const hadIsTTY = Object.prototype.hasOwnProperty.call(process.stdout, "isTTY");
+    const previousIsTTY = (process.stdout as { isTTY?: boolean }).isTTY;
+    Object.defineProperty(process.stdout, "isTTY", {
+      configurable: true,
+      writable: true,
+      value: true,
+    });
+
+    const previousCi = process.env.CI;
+    process.env.CI = "true";
+
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      cliOutputPort.emit({
+        kind: "progress",
+        progress: {
+          label: "Delegated rundown run",
+          detail: "still running",
+        },
+      });
+
+      expect(writeSpy).not.toHaveBeenCalled();
+      expect(logSpy).toHaveBeenCalledTimes(1);
+      const output = stripAnsi(logSpy.mock.calls[0]?.[0] as string);
+      expect(output).toContain("⏳");
+      expect(output).toContain("Delegated rundown run — still running");
     } finally {
       if (previousCi === undefined) {
         delete process.env.CI;

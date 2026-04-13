@@ -2,10 +2,6 @@ import type { ApplicationOutputEvent, ApplicationOutputPort } from "../domain/po
 import pc from "picocolors";
 import { formatTaskDetailLines } from "./task-detail-lines.js";
 
-const ANSI_ESCAPE_PATTERN = /\u001B\[[0-9;]*m/g;
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const SPINNER_FRAME_INTERVAL_MS = 80;
-
 interface ProgressPayload {
   label: string;
   detail?: string;
@@ -14,27 +10,11 @@ interface ProgressPayload {
   unit?: string;
 }
 
-interface ProgressRenderState {
-  active: boolean;
-  frameIndex: number;
-  lineWidth: number;
-  timer: ReturnType<typeof setInterval> | null;
-  latestProgress: ProgressPayload | null;
-}
-
-const progressRenderState: ProgressRenderState = {
-  active: false,
-  frameIndex: 0,
-  lineWidth: 0,
-  timer: null,
-  latestProgress: null,
-};
-
 let groupDepth = 0;
 let quietMode = false;
 
 /**
- * Waits for all queued line animations to finish before returning.
+ * Preserved for compatibility with callers that previously waited for animations.
  */
 export function drainAnimationQueue(): Promise<void> {
   return Promise.resolve();
@@ -44,7 +24,6 @@ export function drainAnimationQueue(): Promise<void> {
  * Resets mutable render state between CLI invocations.
  */
 export function resetCliOutputPortState(): void {
-  flushProgressLine();
   groupDepth = 0;
   quietMode = false;
 }
@@ -54,9 +33,6 @@ export function resetCliOutputPortState(): void {
  */
 export function setCliOutputPortQuietMode(enabled: boolean): void {
   quietMode = enabled;
-  if (enabled) {
-    flushProgressLine();
-  }
 }
 
 /**
@@ -211,111 +187,6 @@ function styleTextMessage(message: string): string {
 }
 
 /**
- * Computes the printable width of text by removing ANSI color sequences.
- */
-function printableWidth(text: string): number {
-  return text.replace(ANSI_ESCAPE_PATTERN, "").length;
-}
-
-/**
- * Commits any in-place progress line before emitting a normal newline-based message.
- */
-function flushProgressLine(): void {
-  if (!progressRenderState.active) {
-    stopSpinnerTimer();
-    progressRenderState.latestProgress = null;
-    return;
-  }
-
-  process.stdout.write("\n");
-  progressRenderState.active = false;
-  progressRenderState.lineWidth = 0;
-  progressRenderState.latestProgress = null;
-  stopSpinnerTimer();
-}
-
-/**
- * Renders bounded progress payloads with a deterministic block-style progress bar.
- */
-function renderBoundedProgress(progress: ProgressPayload): string {
-  const width = 28;
-  const current = Math.max(0, progress.current ?? 0);
-  const total = Math.max(1, progress.total ?? 1);
-  const ratio = Math.min(1, current / total);
-  const filled = Math.round(ratio * width);
-  const bar = `[${"█".repeat(filled)}${"░".repeat(width - filled)}]`;
-  const unit = progress.unit ? ` ${progress.unit}` : "";
-  const detail = progress.detail ? ` - ${progress.detail}` : "";
-  return `${progress.label} ${bar} ${current}/${total}${unit}${detail}`;
-}
-
-/**
- * Updates an in-place progress line when interactive rendering is enabled.
- */
-function renderProgressFrame(progress: ProgressPayload): void {
-  const hasCounters = typeof progress.current === "number" && typeof progress.total === "number";
-  const frame = SPINNER_FRAMES[progressRenderState.frameIndex % SPINNER_FRAMES.length];
-
-  const message = hasCounters
-    ? `${pc.blue("#")} ${renderBoundedProgress(progress)}`
-    : `${pc.blue(frame)} ${formatProgressLine(progress)}`;
-  const width = printableWidth(message);
-  const padding = Math.max(0, progressRenderState.lineWidth - width);
-
-  process.stdout.write(`\r${message}${" ".repeat(padding)}`);
-  progressRenderState.active = true;
-  progressRenderState.lineWidth = width;
-}
-
-/**
- * Starts the spinner timer when unbounded progress is active.
- */
-function startSpinnerTimer(): void {
-  if (progressRenderState.timer) {
-    return;
-  }
-
-  progressRenderState.timer = setInterval(() => {
-    progressRenderState.frameIndex = (progressRenderState.frameIndex + 1) % SPINNER_FRAMES.length;
-
-    if (!progressRenderState.active || !progressRenderState.latestProgress) {
-      return;
-    }
-
-    renderProgressFrame(progressRenderState.latestProgress);
-  }, SPINNER_FRAME_INTERVAL_MS);
-  progressRenderState.timer.unref?.();
-}
-
-/**
- * Stops and clears the spinner timer.
- */
-function stopSpinnerTimer(): void {
-  if (!progressRenderState.timer) {
-    return;
-  }
-
-  clearInterval(progressRenderState.timer);
-  progressRenderState.timer = null;
-}
-
-/**
- * Updates an in-place progress line when interactive rendering is enabled.
- */
-function renderInteractiveProgress(progress: ProgressPayload): void {
-  const hasCounters = typeof progress.current === "number" && typeof progress.total === "number";
-  progressRenderState.latestProgress = progress;
-
-  if (hasCounters) {
-    stopSpinnerTimer();
-  } else {
-    startSpinnerTimer();
-  }
-
-  renderProgressFrame(progress);
-}
-
-/**
  * CLI implementation of the application output port.
  *
  * Routes domain output events to console channels with consistent color and structure.
@@ -341,7 +212,6 @@ export const cliOutputPort: ApplicationOutputPort = {
     // Delegate formatting by event kind to keep each output path explicit.
     switch (event.kind) {
       case "group-start": {
-        flushProgressLine();
         const counter = event.counter ? `[${event.counter.current}/${event.counter.total}] ` : "";
         const parentPrefix = groupLinePrefix();
         if (isInteractiveProgressEnabled()) {
@@ -353,7 +223,6 @@ export const cliOutputPort: ApplicationOutputPort = {
         return;
       }
       case "group-end": {
-        flushProgressLine();
         groupDepth = Math.max(0, groupDepth - 1);
         const isSuccess = event.status === "success";
         const statusLabel = isSuccess ? `${pc.green("✔")} Done` : `${pc.red("✖")} Failed`;
@@ -369,39 +238,28 @@ export const cliOutputPort: ApplicationOutputPort = {
         return;
       }
       case "info":
-        flushProgressLine();
         {
           const linePrefix = withGroupPrefix(pc.blue("ℹ"));
           console.log(`${linePrefix} ${styleInfoMessage(event.message)}`);
         }
         return;
       case "warn":
-        flushProgressLine();
         console.error(withGroupPrefix(`${pc.yellow("⚠")} ${event.message}`));
         return;
       case "error":
-        flushProgressLine();
         console.error(withGroupPrefix(`${pc.red("✖")} ${event.message}`));
         return;
       case "success":
-        flushProgressLine();
         {
           const linePrefix = withGroupPrefix(pc.green("✔"));
           console.log(`${linePrefix} ${event.message}`);
         }
         return;
       case "progress":
-        if (isInteractiveProgressEnabled()) {
-          renderInteractiveProgress(event.progress);
-          return;
-        }
-
-        flushProgressLine();
         console.log(pc.blue("⏳") + " " + formatProgressLine(event.progress));
         return;
       case "task":
         {
-          flushProgressLine();
           // Prefer explicitly supplied nested details, then fall back to task payload data.
           const children = event.children ?? event.task.children;
           const subItems = event.subItems ?? event.task.subItems;
@@ -422,11 +280,9 @@ export const cliOutputPort: ApplicationOutputPort = {
         }
         return;
       case "text":
-        flushProgressLine();
         console.log(withGroupPrefixMultiline(styleTextMessage(event.text)));
         return;
       case "stderr":
-        flushProgressLine();
         {
           const formatted = withGroupPrefixMultiline(event.text);
           if (formatted.length === 0) {

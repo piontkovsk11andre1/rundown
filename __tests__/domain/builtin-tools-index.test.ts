@@ -12,15 +12,21 @@ describe("builtin tools registry", () => {
     });
   });
 
-  it("maps return/skip/quit as end aliases", () => {
+  it("maps skip/end/return/quit/break to the canonical optional handler", () => {
+    const optional = resolveBuiltinTool("optional");
     const end = resolveBuiltinTool("end");
-    const aliasNames = ["return", "skip", "quit"];
+    const aliasNames = ["skip", "end", "return", "quit", "break"];
+
+    expect(optional?.kind).toBe("handler");
+    expect(end?.kind).toBe("handler");
+    expect(optional?.handler).toBe(end?.handler);
+    expect(optional?.frontmatter).toEqual(end?.frontmatter);
 
     for (const aliasName of aliasNames) {
       const alias = resolveBuiltinTool(aliasName);
       expect(alias?.kind).toBe("handler");
-      expect(alias?.handler).toBe(end?.handler);
-      expect(alias?.frontmatter).toEqual(end?.frontmatter);
+      expect(alias?.handler).toBe(optional?.handler);
+      expect(alias?.frontmatter).toEqual(optional?.frontmatter);
     }
   });
 

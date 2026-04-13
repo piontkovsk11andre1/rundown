@@ -2057,9 +2057,9 @@ describe.sequential("CLI integration", () => {
     ].join("\n"));
   });
 
-  describe("run optional/skip control-flow aliases", () => {
+  describe("run control-flow prefix compatibility aliases", () => {
     async function runControlFlowAliasScenario(params: {
-      prefix: "optional" | "skip";
+      prefix: "optional" | "skip" | "end" | "return" | "quit" | "break";
       scenario: "true" | "false" | "ambiguous" | "error";
     }): Promise<{
       roadmapPath: string;
@@ -2139,7 +2139,7 @@ describe.sequential("CLI integration", () => {
       };
     }
 
-    it.each(["optional", "skip"] as const)(
+    it.each(["optional", "skip", "end", "return", "quit", "break"] as const)(
       "%s: true condition skips remaining siblings",
       async (prefix) => {
         const { result, roadmapPath, workerProbePath } = await runControlFlowAliasScenario({
@@ -2160,7 +2160,7 @@ describe.sequential("CLI integration", () => {
       },
     );
 
-    it.each(["optional", "skip"] as const)(
+    it.each(["optional", "skip", "end", "return", "quit", "break"] as const)(
       "%s: false condition continues with sibling execution",
       async (prefix) => {
         const { result, roadmapPath, workerProbePath } = await runControlFlowAliasScenario({
@@ -2179,7 +2179,7 @@ describe.sequential("CLI integration", () => {
       },
     );
 
-    it.each(["optional", "skip"] as const)(
+    it.each(["optional", "skip", "end", "return", "quit", "break"] as const)(
       "%s: ambiguous condition defaults to no and continues",
       async (prefix) => {
         const { result, roadmapPath, workerProbePath } = await runControlFlowAliasScenario({
@@ -2198,7 +2198,7 @@ describe.sequential("CLI integration", () => {
       },
     );
 
-    it.each(["optional", "skip"] as const)(
+    it.each(["optional", "skip", "end", "return", "quit", "break"] as const)(
       "%s: worker error returns execution failure without checking tasks",
       async (prefix) => {
         const { result, roadmapPath, workerProbePath } = await runControlFlowAliasScenario({

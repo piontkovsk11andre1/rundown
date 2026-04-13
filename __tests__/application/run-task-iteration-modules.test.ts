@@ -1492,7 +1492,7 @@ describe("task-execution-dispatch", () => {
   }
 
   async function dispatchControlFlowPrefix(params: {
-    prefix: "optional" | "skip";
+    prefix: "optional" | "skip" | "end" | "return" | "quit" | "break";
     workerRun: (prompt: unknown) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
   }) {
     const task = createTask(path.join(cwd, "tasks.md"), params.prefix + ": there is no output to process");
@@ -2577,7 +2577,7 @@ describe("task-execution-dispatch", () => {
     expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
   });
 
-  it.each(["optional", "skip"] as const)(
+  it.each(["optional", "skip", "end", "return", "quit", "break"] as const)(
     "keeps control-flow outcomes for %s: true/false/ambiguous/error",
     async (prefix) => {
       const yesOutcome = await dispatchControlFlowPrefix({

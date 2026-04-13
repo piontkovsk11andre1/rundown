@@ -742,7 +742,7 @@ program
 
 program
   .command("intro")
-  .description("Display an animated introduction to rundown — concepts, workflow, and commands.")
+  .description("Display an introduction to rundown — concepts, workflow, and commands.")
   .action(withCliAction(createIntroCommandAction({ version: cliVersion, getApp })));
 
 /**

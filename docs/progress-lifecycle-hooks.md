@@ -12,7 +12,7 @@ without changing raw stdout/stderr forwarding semantics.
 - Lifecycle status uses structured output events (`info`, and optional future
   `progress`) and is always-on.
 - Raw worker stdout/stderr remains gated by `showAgentOutput`.
-- Heartbeat or spinner is used for unbounded waits; bounded loops use attempt
+- Heartbeat status lines are used for unbounded waits; bounded loops use attempt
   counters.
 - Messages must be parse-safe and stable in non-TTY output.
 

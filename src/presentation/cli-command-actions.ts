@@ -1764,7 +1764,7 @@ export function createWorkerHealthCommandAction({
 /**
  * Creates the `intro` command action handler.
  *
- * The returned action renders an animated CLI presentation introducing rundown.
+ * The returned action renders a CLI introduction presenting rundown concepts.
  * This command has no app dependencies — it only needs the CLI version string.
  */
 export function createIntroCommandAction({

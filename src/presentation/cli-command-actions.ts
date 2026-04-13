@@ -224,6 +224,14 @@ interface MigrateCommandOptions {
   runId?: string;
 }
 
+interface DocsCommandOptions {
+  action?: "publish";
+  dir?: string;
+  label?: string;
+}
+
+type DocsCommandHandler = (options: DocsCommandOptions) => CliActionResult;
+
 type MigrateCommandHandler = (options: MigrateCommandOptions) => CliActionResult;
 
 interface TestCommandOptions {
@@ -1055,17 +1063,12 @@ export function createMigrateCommandAction({
  */
 export function createDocsPublishCommandAction({
   getApp,
-  getWorkerFromSeparator,
-}: WorkerActionDependencies): (opts: CliOpts) => CliActionResult {
+}: Pick<WorkerActionDependencies, "getApp">): (opts: CliOpts) => CliActionResult {
   return (opts: CliOpts) => {
-    return resolveMigrateCommandHandler(getApp())({
-      action: "save",
+    return resolveDocsCommandHandler(getApp())({
+      action: "publish",
       dir: normalizeOptionalString(opts.dir),
       label: normalizeOptionalString(opts.label),
-      confirm: false,
-      workerPattern: resolveWorkerPattern(opts.worker, getWorkerFromSeparator),
-      keepArtifacts: false,
-      showAgentOutput: false,
     });
   };
 }
@@ -1823,6 +1826,21 @@ function resolveMigrateCommandHandler(appInstance: CliApp): MigrateCommandHandle
   }
 
   throw new Error("The `migrate` command is not available in this build.");
+}
+
+/**
+ * Resolves the active docs command implementation for the current app build.
+ */
+function resolveDocsCommandHandler(appInstance: CliApp): DocsCommandHandler {
+  const maybeDocsHandler = appInstance as CliApp & {
+    docsTask?: DocsCommandHandler;
+  };
+
+  if (typeof maybeDocsHandler.docsTask === "function") {
+    return maybeDocsHandler.docsTask;
+  }
+
+  throw new Error("The `docs` command is not available in this build.");
 }
 
 /**

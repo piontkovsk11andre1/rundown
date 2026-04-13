@@ -360,11 +360,9 @@ docsCommand
   .description("Publish docs/current/ into the next immutable docs/rev.N/ snapshot.")
   .option("--dir <path>", "Migrations directory (default: ./migrations)", "./migrations")
   .option("--label <text>", "Optional label to store in revision metadata")
-  .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
   .allowUnknownOption(false)
   .action(withCliAction(createDocsPublishCommandAction({
     getApp,
-    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
   })));
 
 docsCommand

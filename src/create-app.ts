@@ -31,6 +31,7 @@ import { createReverifyTask, type ReverifyTaskOptions } from "./application/reve
 import { createRevertTask, type RevertTaskOptions } from "./application/revert-task.js";
 import { createUndoTask, type UndoTaskOptions } from "./application/undo-task.js";
 import { createMigrateTask, type MigrateTaskOptions } from "./application/migrate-task.js";
+import { createDocsTask, type DocsTaskOptions } from "./application/docs-task.js";
 import { createTestSpecs, type TestSpecsOptions } from "./application/test-specs.js";
 import {
   createStartProject,
@@ -124,6 +125,7 @@ export type App = {
   revertTask: (options: RevertTaskOptions) => Promise<number>;
   undoTask: (options: UndoTaskOptions) => Promise<number>;
   migrateTask: (options: MigrateTaskOptions) => Promise<number>;
+  docsTask: (options: DocsTaskOptions) => Promise<number>;
   testSpecs: (options: TestSpecsOptions) => Promise<number>;
   planTask: (options: PlanTaskCommandOptions) => Promise<number>;
   researchTask: (options: ResearchTaskCommandOptions) => Promise<number>;
@@ -521,6 +523,10 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       runTask: runTaskUseCase(ports),
       undoTask: undoTaskUseCase(ports),
     }),
+    docsTask: (ports) => createDocsTask({
+      fileSystem: ports.fileSystem,
+      output: ports.output,
+    }),
     testSpecs: (ports) => testSpecsUseCase(ports),
     planTask: (ports) => {
       const runPlanTask = planTaskUseCase(ports);
@@ -655,6 +661,7 @@ function createAppFromFactories(
   const revertTask = factories.revertTask(ports);
   const undoTask = factories.undoTask(ports);
   const migrateTask = factories.migrateTask(ports);
+  const docsTask = factories.docsTask(ports);
   const testSpecs = factories.testSpecs(ports);
   const planTask = factories.planTask(ports);
   const researchTask = factories.researchTask(ports);
@@ -688,6 +695,7 @@ function createAppFromFactories(
     revertTask,
     undoTask,
     migrateTask,
+    docsTask,
     testSpecs,
     planTask,
     researchTask,

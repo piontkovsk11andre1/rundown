@@ -7,6 +7,7 @@ import {
 } from "../../src/domain/exit-codes.js";
 import type { ApplicationOutputEvent } from "../../src/domain/ports/output-port.js";
 import {
+  createDocsPublishCommandAction,
   createHelpCommandAction,
   createLoopCommandAction,
   createMigrateCommandAction,
@@ -480,5 +481,29 @@ describe("createMigrateCommandAction", () => {
       appendFile: true,
     });
     expect(request?.slugWorkerPattern).toBeUndefined();
+  });
+});
+
+describe("createDocsPublishCommandAction", () => {
+  it("routes docs publish to docsTask publish action", async () => {
+    const docsTask = vi.fn(async () => 0);
+    const app = { docsTask } as unknown as CliApp;
+    const action = createDocsPublishCommandAction({
+      getApp: () => app,
+    });
+
+    const exitCode = await action({
+      dir: "migrations",
+      label: "Initial baseline",
+      worker: "opencode run --model gpt-5.3-codex",
+    });
+
+    expect(exitCode).toBe(0);
+    expect(docsTask).toHaveBeenCalledTimes(1);
+    expect(docsTask).toHaveBeenCalledWith({
+      action: "publish",
+      dir: "migrations",
+      label: "Initial baseline",
+    });
   });
 });

@@ -407,6 +407,86 @@ program
     getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
   })));
 
+const configCommand = program
+  .command("config")
+  .description("Inspect and update rundown config using local/global/effective scopes.")
+  .configureHelp({ showGlobalOptions: true })
+  .addHelpText(
+    "after",
+    [
+      "",
+      "Scope selection:",
+      "  - local: <config-dir>/config.json (project overrides)",
+      "  - global: user-level config defaults shared across workspaces",
+      "  - effective: merged read view",
+      "",
+      "Precedence (low -> high):",
+      "  built-in defaults -> global -> local -> CLI flags",
+      "",
+      "Defaults:",
+      "  - read operations (get, list): --scope effective",
+      "  - write operations (set, unset): --scope local",
+      "",
+      "Notes:",
+      "  - effective is read-only",
+      "  - this build wires command/help surface; config value operations are introduced in a follow-up migration step",
+    ].join("\n"),
+  );
+
+configCommand
+  .command("get")
+  .description("Read one config value by dotted key path.")
+  .argument("<key>", "Config key path (for example defaults.worker)")
+  .option("--scope <effective|local|global>", "Config scope", "effective")
+  .option("--json", "Emit machine-readable JSON output", false)
+  .option("--show-source", "Include source attribution where available", false)
+  .allowUnknownOption(false)
+  .action(withCliAction(() => {
+    throw new Error("The `config get` command is not yet available in this build. The CLI surface and help text are wired; value operations are added in a follow-up step.");
+  }));
+
+configCommand
+  .command("list")
+  .description("List config keys/values for a scope.")
+  .option("--scope <effective|local|global>", "Config scope", "effective")
+  .option("--json", "Emit machine-readable JSON output", false)
+  .option("--show-source", "Include source attribution where available", false)
+  .allowUnknownOption(false)
+  .action(withCliAction(() => {
+    throw new Error("The `config list` command is not yet available in this build. The CLI surface and help text are wired; value operations are added in a follow-up step.");
+  }));
+
+configCommand
+  .command("set")
+  .description("Set a config value by dotted key path.")
+  .argument("<key>", "Config key path (for example defaults.worker)")
+  .argument("<value>", "Value to set")
+  .option("--scope <local|global>", "Writable config scope", "local")
+  .option("--type <auto|string|number|boolean|json>", "Value parsing mode", "auto")
+  .allowUnknownOption(false)
+  .action(withCliAction(() => {
+    throw new Error("The `config set` command is not yet available in this build. The CLI surface and help text are wired; value operations are added in a follow-up step.");
+  }));
+
+configCommand
+  .command("unset")
+  .description("Remove a config value by dotted key path.")
+  .argument("<key>", "Config key path to remove")
+  .option("--scope <local|global>", "Writable config scope", "local")
+  .allowUnknownOption(false)
+  .action(withCliAction(() => {
+    throw new Error("The `config unset` command is not yet available in this build. The CLI surface and help text are wired; value operations are added in a follow-up step.");
+  }));
+
+configCommand
+  .command("path")
+  .description("Print the resolved config file path for a scope.")
+  .option("--scope <effective|local|global>", "Config scope", "effective")
+  .allowUnknownOption(false)
+  .action(withCliAction(() => {
+    throw new Error("The `config path` command is not yet available in this build. The CLI surface and help text are wired; value operations are added in a follow-up step.");
+  }));
+
 program
   .command("next")
   .description("Show the next unchecked task without executing it.")

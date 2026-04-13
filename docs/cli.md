@@ -55,7 +55,7 @@ rundown --help
 
 Scaffold a prediction-oriented project workspace.
 
-`start` creates a design-first project structure and prepares migration/spec workflows:
+By default, `start` creates a design-first project structure and prepares migration/spec workflows:
 
 - `design/current/`
 - `design/current/Target.md`
@@ -64,6 +64,15 @@ Scaffold a prediction-oriented project workspace.
 - `migrations/0001-initialize.md`
 - `specs/`
 - `.rundown/`
+
+Use `--design-dir`, `--specs-dir`, and `--migrations-dir` to override these workspace directories at bootstrap time. Rundown persists the resolved mapping in `.rundown/config.json` and reuses it across prediction flows (`migrate`, `docs`, `test`, and related commands).
+
+Directory override rules:
+
+- Paths must be relative to the project root.
+- Paths must resolve inside the project root (for example, `../outside` is rejected).
+- Workspace targets must be distinct and non-nested (no duplicates or parent/child overlaps).
+- Invalid values fail fast with actionable CLI errors that name the offending option.
 
 Compatibility note: legacy `docs/current/Design.md` and root `Design.md` are still read as fallbacks when `design/current/` is not available.
 
@@ -87,6 +96,7 @@ Options:
 Examples:
 
 ```bash
+rundown start "Ship auth flow" -- opencode run
 rundown start "Ship auth flow" --design-dir design --specs-dir specs --migrations-dir migrations -- opencode run
 rundown start "Ship auth flow" --dir ./predict-auth --design-dir docs --specs-dir checks --migrations-dir changes -- opencode run
 ```

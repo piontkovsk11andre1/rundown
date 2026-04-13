@@ -168,6 +168,169 @@ describe("createWorkerConfigAdapter", () => {
     });
   });
 
+  it("deep-merges nested healthPolicy objects with local keys overriding global keys", () => {
+    const configDir = makeTempConfigDir();
+    writeConfig(
+      configDir,
+      JSON.stringify({
+        healthPolicy: {
+          cooldownSecondsByFailureClass: {
+            transport_unavailable: 30,
+          },
+          unavailableReevaluation: {
+            probeCooldownSeconds: 45,
+          },
+          maxFailoverAttemptsPerRun: 9,
+        },
+      }),
+    );
+    const globalConfigPath = writeGlobalConfig(
+      JSON.stringify({
+        healthPolicy: {
+          cooldownSecondsByFailureClass: {
+            usage_limit: 120,
+            transport_unavailable: 60,
+          },
+          unavailableReevaluation: {
+            mode: "cooldown",
+          },
+          maxFailoverAttemptsPerTask: 2,
+        },
+      }),
+    );
+
+    const adapter = createWorkerConfigAdapter({
+      resolveGlobalConfigPath: () => ({ discoveredPath: globalConfigPath }),
+    });
+
+    expect(adapter.load(configDir)).toEqual({
+      workers: undefined,
+      commands: undefined,
+      profiles: undefined,
+      traceStatistics: {
+        enabled: false,
+        fields: ["total_time", "tokens_estimated"],
+      },
+      healthPolicy: {
+        cooldownSecondsByFailureClass: {
+          usage_limit: 120,
+          transport_unavailable: 30,
+        },
+        unavailableReevaluation: {
+          mode: "cooldown",
+          probeCooldownSeconds: 45,
+        },
+        maxFailoverAttemptsPerTask: 2,
+        maxFailoverAttemptsPerRun: 9,
+      },
+    });
+  });
+
+  it("keeps global nested healthPolicy values when local nested objects are empty", () => {
+    const configDir = makeTempConfigDir();
+    writeConfig(
+      configDir,
+      JSON.stringify({
+        healthPolicy: {
+          cooldownSecondsByFailureClass: {},
+          unavailableReevaluation: {},
+        },
+      }),
+    );
+    const globalConfigPath = writeGlobalConfig(
+      JSON.stringify({
+        healthPolicy: {
+          cooldownSecondsByFailureClass: {
+            usage_limit: 90,
+          },
+          unavailableReevaluation: {
+            mode: "manual",
+          },
+        },
+      }),
+    );
+
+    const adapter = createWorkerConfigAdapter({
+      resolveGlobalConfigPath: () => ({ discoveredPath: globalConfigPath }),
+    });
+
+    expect(adapter.load(configDir)).toEqual({
+      workers: undefined,
+      commands: undefined,
+      profiles: undefined,
+      traceStatistics: {
+        enabled: false,
+        fields: ["total_time", "tokens_estimated"],
+      },
+      healthPolicy: {
+        cooldownSecondsByFailureClass: {
+          usage_limit: 90,
+        },
+        unavailableReevaluation: {
+          mode: "manual",
+        },
+      },
+    });
+  });
+
+  it("uses replace semantics for arrays and map entries during layering", () => {
+    const configDir = makeTempConfigDir();
+    writeConfig(
+      configDir,
+      JSON.stringify({
+        workers: {
+          default: ["opencode", "run", "--model", "local-default"],
+          fallbacks: [["codex", "exec"]],
+        },
+        commands: {
+          plan: ["opencode", "run", "--model", "local-plan"],
+        },
+        profiles: {
+          fast: ["opencode", "run", "--model", "local-fast"],
+        },
+      }),
+    );
+    const globalConfigPath = writeGlobalConfig(
+      JSON.stringify({
+        workers: {
+          default: ["opencode", "run", "--model", "global-default"],
+          fallbacks: [["claude", "-p", "$bootstrap"], ["aider", "--message-file", "$file"]],
+        },
+        commands: {
+          plan: ["opencode", "run", "--model", "global-plan"],
+          research: ["opencode", "run", "--model", "global-research"],
+        },
+        profiles: {
+          fast: ["opencode", "run", "--model", "global-fast"],
+          deep: ["opencode", "run", "--model", "global-deep"],
+        },
+      }),
+    );
+
+    const adapter = createWorkerConfigAdapter({
+      resolveGlobalConfigPath: () => ({ discoveredPath: globalConfigPath }),
+    });
+
+    expect(adapter.load(configDir)).toEqual({
+      workers: {
+        default: ["opencode", "run", "--model", "local-default"],
+        fallbacks: [["codex", "exec"]],
+      },
+      commands: {
+        plan: ["opencode", "run", "--model", "local-plan"],
+        research: ["opencode", "run", "--model", "global-research"],
+      },
+      profiles: {
+        fast: ["opencode", "run", "--model", "local-fast"],
+        deep: ["opencode", "run", "--model", "global-deep"],
+      },
+      traceStatistics: {
+        enabled: false,
+        fields: ["total_time", "tokens_estimated"],
+      },
+    });
+  });
+
   it("throws with clear message when global config JSON is malformed", () => {
     const configDir = makeTempConfigDir();
     const globalConfigPath = writeGlobalConfig("{not valid json");

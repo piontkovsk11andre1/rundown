@@ -941,6 +941,20 @@ Discovery behavior:
 - Global/effective reads use deterministic ordered discovery and load the first existing file.
 - If no global file exists, global scope is treated as empty.
 
+Layer merge semantics (`global` -> `local`):
+
+- Object sections merge by key so local can override only the keys it sets.
+- Array-valued fields are replace-by-value (no concatenation): local replaces global when present.
+- Map entries (`commands.<name>`, `profiles.<name>`) are replace-by-entry: same key in local replaces global key.
+- Nested health policy objects deep-merge by key (`cooldownSecondsByFailureClass`, `unavailableReevaluation`).
+
+Edge-case behavior:
+
+- Missing sections do not clear lower-priority values; only explicitly provided keys override.
+- Empty nested objects (for example `{}`) do not erase lower-priority nested values.
+- Invalid JSON or schema at the discovered global path fails fast with a path-specific error before applying local merges.
+- If both global and local omit a section, that section is omitted from effective output.
+
 Scope defaults:
 
 - read operations (`get`, `list`): `effective`

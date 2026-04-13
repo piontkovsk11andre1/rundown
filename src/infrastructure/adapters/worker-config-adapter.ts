@@ -384,7 +384,7 @@ function cloneHealthPolicy(value: WorkerHealthPolicyConfig | undefined): WorkerH
     return undefined;
   }
 
-  return {
+  const cloned: WorkerHealthPolicyConfig = {
     cooldownSecondsByFailureClass: value.cooldownSecondsByFailureClass
       ? { ...value.cooldownSecondsByFailureClass }
       : undefined,
@@ -395,6 +395,18 @@ function cloneHealthPolicy(value: WorkerHealthPolicyConfig | undefined): WorkerH
       ? { ...value.unavailableReevaluation }
       : undefined,
   };
+
+  if (
+    cloned.cooldownSecondsByFailureClass === undefined
+    && cloned.maxFailoverAttemptsPerTask === undefined
+    && cloned.maxFailoverAttemptsPerRun === undefined
+    && cloned.fallbackStrategy === undefined
+    && cloned.unavailableReevaluation === undefined
+  ) {
+    return undefined;
+  }
+
+  return cloned;
 }
 
 function mergeWorkers(base: WorkersConfig | undefined, override: WorkersConfig | undefined): WorkersConfig | undefined {
@@ -423,10 +435,12 @@ function mergeProfileMaps(
     return undefined;
   }
 
-  return {
+  const merged = {
     ...(cloneCommandProfiles(base) ?? {}),
     ...(cloneCommandProfiles(override) ?? {}),
   };
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 function mergeCommandProfiles(
@@ -450,7 +464,8 @@ function mergeCommandProfiles(
     }
     merged[key as WorkerConfigCommandName] = [...command];
   }
-  return merged;
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 function mergeHealthPolicy(
@@ -470,7 +485,7 @@ function mergeHealthPolicy(
     ...(override?.unavailableReevaluation ?? {}),
   };
 
-  return {
+  const merged: WorkerHealthPolicyConfig = {
     cooldownSecondsByFailureClass: Object.keys(mergedCooldowns).length > 0
       ? mergedCooldowns
       : undefined,
@@ -481,6 +496,18 @@ function mergeHealthPolicy(
       ? mergedUnavailableReevaluation
       : undefined,
   };
+
+  if (
+    merged.cooldownSecondsByFailureClass === undefined
+    && merged.maxFailoverAttemptsPerTask === undefined
+    && merged.maxFailoverAttemptsPerRun === undefined
+    && merged.fallbackStrategy === undefined
+    && merged.unavailableReevaluation === undefined
+  ) {
+    return undefined;
+  }
+
+  return merged;
 }
 
 function mergeWorkerConfig(

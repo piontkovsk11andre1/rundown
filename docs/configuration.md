@@ -220,6 +220,19 @@ Discovery rules:
 - If no global file exists, global scope is treated as empty (backward compatible behavior).
 - Invalid global config fails fast with a path-specific parse/validation error; local config is not modified.
 
+Layer merge semantics (`global` -> `local`):
+
+- Objects merge deterministically by key; local keys override matching global keys.
+- Arrays use replace semantics (no append/union during layer merge).
+- Command/profile maps merge by entry; local `commands.<name>` or `profiles.<name>` replaces the same global entry.
+- `healthPolicy` uses deterministic nested key merge for `cooldownSecondsByFailureClass` and `unavailableReevaluation`.
+
+Edge cases:
+
+- Omitting a key in local preserves the global value for that key.
+- Providing empty nested objects (for example `healthPolicy.unavailableReevaluation: {}`) does not clear global nested keys.
+- Sections omitted in both layers remain omitted from the effective config.
+
 Planned defaults and constraints:
 
 - Read commands (`get`, `list`) default to `effective`.

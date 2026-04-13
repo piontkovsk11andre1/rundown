@@ -143,12 +143,18 @@ Options:
 
 #### `rundown docs diff [target]`
 
-Show revision diff context between the latest immutable revision and `docs/current/`.
+Show revision diff context using either shorthand target or explicit selectors.
 
-Current shorthand targets:
+Shorthand targets:
 
 - omitted / `current`: diff summary output
 - `preview`: diff summary + source reference listing
+
+Explicit selector form:
+
+- `--from <rev|current> --to <rev|current>`
+- In this build, `--to` must be `current` (for deterministic compare-to-draft behavior)
+- You cannot combine shorthand `[target]` with explicit selectors
 
 Synopsis:
 
@@ -161,8 +167,8 @@ Options:
 | Option | Description | Default |
 |---|---|---|
 | `--dir <path>` | Migration directory to operate on (used to resolve project root). | `./migrations` |
-| `--from <rev|current>` | Reserved for explicit selector form. Not yet active in this build. | unset |
-| `--to <rev|current>` | Reserved for explicit selector form. Not yet active in this build. | unset |
+| `--from <rev|current>` | Explicit source selector (use with `--to`). | unset |
+| `--to <rev|current>` | Explicit destination selector (use with `--from`; must be `current` in this build). | unset |
 
 Migration file naming:
 

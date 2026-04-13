@@ -370,8 +370,8 @@ docsCommand
   .description("Show revision diff summary for docs/current/ against the latest revision.")
   .argument("[target]", "Diff target shorthand: current (default) | preview")
   .option("--dir <path>", "Migrations directory (default: ./migrations)", "./migrations")
-  .option("--from <rev|current>", "Explicit source revision selector (reserved)")
-  .option("--to <rev|current>", "Explicit destination revision selector (reserved)")
+  .option("--from <rev|current>", "Explicit source revision selector (use with --to)")
+  .option("--to <rev|current>", "Explicit destination revision selector (use with --from)")
   .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
   .allowUnknownOption(false)
   .action(withCliAction(createDocsDiffCommandAction({

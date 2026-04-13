@@ -1084,17 +1084,14 @@ export function createDocsDiffCommandAction({
   getWorkerFromSeparator,
 }: WorkerActionDependencies): (target: string | undefined, opts: CliOpts) => CliActionResult {
   return (target: string | undefined, opts: CliOpts) => {
-    const from = normalizeOptionalString(opts.from);
-    const to = normalizeOptionalString(opts.to);
-    const normalizedTarget = normalizeOptionalString(target);
+    const resolvedDiffMode = resolveDocsDiffMode({
+      target: normalizeOptionalString(target),
+      from: normalizeOptionalString(opts.from),
+      to: normalizeOptionalString(opts.to),
+    });
 
-    if (from !== undefined || to !== undefined) {
-      throw new Error("`docs diff` selector flags are not available in this build yet. Use `rundown docs diff` or `rundown docs diff preview`.");
-    }
-
-    const migrateAction = resolveDocsDiffMigrateAction(normalizedTarget);
     return resolveMigrateCommandHandler(getApp())({
-      action: migrateAction,
+      action: resolvedDiffMode,
       dir: normalizeOptionalString(opts.dir),
       confirm: false,
       workerPattern: resolveWorkerPattern(opts.worker, getWorkerFromSeparator),
@@ -1886,4 +1883,59 @@ function resolveDocsDiffMigrateAction(target: string | undefined): "diff" | "pre
   }
 
   throw new Error("Invalid docs diff target: " + target + ". Allowed: current, preview.");
+}
+
+function resolveDocsDiffMode(input: {
+  target: string | undefined;
+  from: string | undefined;
+  to: string | undefined;
+}): "diff" | "preview" {
+  const { target, from, to } = input;
+  const hasExplicitSelectors = from !== undefined || to !== undefined;
+
+  if (!hasExplicitSelectors) {
+    return resolveDocsDiffMigrateAction(target);
+  }
+
+  if (target !== undefined) {
+    throw new Error("Invalid docs diff selector usage: [target] shorthand cannot be combined with --from/--to.");
+  }
+
+  if (from === undefined || to === undefined) {
+    throw new Error("Invalid docs diff selector usage: --from and --to must be provided together.");
+  }
+
+  parseDocsDiffRevisionSelector(from, "from");
+  const toSelector = parseDocsDiffRevisionSelector(to, "to");
+
+  if (toSelector !== "current") {
+    throw new Error(
+      "Unsupported docs diff selector combination in this build: --to "
+      + to
+      + ". Use --to current, or use shorthand `rundown docs diff [current|preview]`.",
+    );
+  }
+
+  return "diff";
+}
+
+function parseDocsDiffRevisionSelector(value: string, optionName: "from" | "to"): "current" | `rev.${number}` {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "current") {
+    return "current";
+  }
+
+  const revisionMatch = /^rev\.([1-9][0-9]*)$/i.exec(normalized);
+  if (!revisionMatch) {
+    throw new Error(
+      "Invalid docs diff --"
+      + optionName
+      + " selector: "
+      + value
+      + ". Allowed: current, rev.<n> (for example: rev.1).",
+    );
+  }
+
+  const index = Number.parseInt(revisionMatch[1] ?? "", 10);
+  return `rev.${index}`;
 }

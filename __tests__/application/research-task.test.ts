@@ -247,6 +247,224 @@ describe("research-task", () => {
     expect(prompt).not.toContain(path.resolve("/real/invocation/.rundown/workspace.link"));
   });
 
+  it("prefers canonical design/current context over legacy docs/current in research templates", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, events } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\nBuild a new release process.\n",
+    });
+
+    const canonicalCurrentDir = path.join(cwd, "design", "current");
+    const canonicalRevisionDir = path.join(cwd, "design", "rev.1");
+    const canonicalTargetFile = path.join(canonicalCurrentDir, "Target.md");
+    const legacyCurrentDir = path.join(cwd, "docs", "current");
+    const legacyDesignFile = path.join(legacyCurrentDir, "Design.md");
+    const normalize = (value: string): string => value.replace(/\\/g, "/").replace(/\/+/g, "/").toLowerCase();
+    const isWorkspacePath = (value: string, ...segments: string[]): boolean => {
+      const suffix = normalize("/workspace" + (segments.length > 0 ? "/" + segments.join("/") : ""));
+      return normalize(value).endsWith(suffix);
+    };
+
+    vi.mocked(dependencies.fileSystem.stat).mockImplementation((filePath: string) => {
+      if (isWorkspacePath(filePath, "design", "current")
+        || isWorkspacePath(filePath, "design", "rev.1")
+        || isWorkspacePath(filePath, "design")
+        || isWorkspacePath(filePath, "docs", "current")
+        || isWorkspacePath(filePath, "docs")) {
+        return { isDirectory: true, isFile: false };
+      }
+
+      if (isWorkspacePath(filePath, "design", "current", "Target.md")
+        || isWorkspacePath(filePath, "docs", "current", "Design.md")) {
+        return { isDirectory: false, isFile: true };
+      }
+
+      return null;
+    });
+    vi.mocked(dependencies.fileSystem.readdir).mockImplementation((dirPath: string) => {
+      if (isWorkspacePath(dirPath, "design", "current")) {
+        return [{ name: "Target.md", isDirectory: false, isFile: true }];
+      }
+      if (isWorkspacePath(dirPath, "design")) {
+        return [
+          { name: "current", isDirectory: true, isFile: false },
+          { name: "rev.1", isDirectory: true, isFile: false },
+        ];
+      }
+      if (isWorkspacePath(dirPath, "docs", "current")) {
+        return [{ name: "Design.md", isDirectory: false, isFile: true }];
+      }
+      if (isWorkspacePath(dirPath, "docs")) {
+        return [{ name: "current", isDirectory: true, isFile: false }];
+      }
+
+      return [];
+    });
+    vi.mocked(dependencies.fileSystem.readText).mockImplementation((filePath: string) => {
+      if (isWorkspacePath(filePath, "roadmap.md")) {
+        return "# Roadmap\nBuild a new release process.\n";
+      }
+      if (isWorkspacePath(filePath, "design", "current", "Target.md")) {
+        return "canonical design";
+      }
+      if (isWorkspacePath(filePath, "docs", "current", "Design.md")) {
+        return "legacy design";
+      }
+
+      return "";
+    });
+    vi.mocked(dependencies.templateLoader.load).mockReturnValue([
+      "DESIGN={{design}}",
+      "SOURCES={{designContextSourceReferences}}",
+      "SOURCES_JSON={{designContextSourceReferencesJson}}",
+      "HAS_MANAGED={{designContextHasManagedDocs}}",
+    ].join("\n"));
+
+    const researchTask = createResearchTask(dependencies);
+    const code = await researchTask(createOptions({ source: markdownFile, printPrompt: true }));
+
+    expect(code).toBe(0);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    const normalizedPrompt = prompt.replace(/\\/g, "/");
+    expect(normalizedPrompt).toContain("DESIGN=canonical design");
+    expect(normalizedPrompt).not.toContain("DESIGN=legacy design");
+    expect(normalizedPrompt).toContain("SOURCES=- C:/workspace/design/current\n- C:/workspace/design/rev.1");
+    expect(normalizedPrompt).toContain("SOURCES_JSON=");
+    expect(normalizedPrompt).toContain("design/current");
+    expect(normalizedPrompt).toContain("design/rev.1");
+    expect(normalizedPrompt).toContain("HAS_MANAGED=true");
+  });
+
+  it("falls back to legacy docs/current design context when canonical design/current is absent", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, events } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\nBuild a new release process.\n",
+    });
+
+    const legacyCurrentDir = path.join(cwd, "docs", "current");
+    const legacyRevisionDir = path.join(cwd, "docs", "rev.1");
+    const legacyDesignFile = path.join(legacyCurrentDir, "Design.md");
+    const normalize = (value: string): string => value.replace(/\\/g, "/").replace(/\/+/g, "/").toLowerCase();
+    const isWorkspacePath = (value: string, ...segments: string[]): boolean => {
+      const suffix = normalize("/workspace" + (segments.length > 0 ? "/" + segments.join("/") : ""));
+      return normalize(value).endsWith(suffix);
+    };
+
+    vi.mocked(dependencies.fileSystem.stat).mockImplementation((filePath: string) => {
+      if (isWorkspacePath(filePath, "docs", "current")
+        || isWorkspacePath(filePath, "docs", "rev.1")
+        || isWorkspacePath(filePath, "docs")) {
+        return { isDirectory: true, isFile: false };
+      }
+      if (isWorkspacePath(filePath, "docs", "current", "Design.md")) {
+        return { isDirectory: false, isFile: true };
+      }
+
+      return null;
+    });
+    vi.mocked(dependencies.fileSystem.readdir).mockImplementation((dirPath: string) => {
+      if (isWorkspacePath(dirPath, "docs", "current")) {
+        return [{ name: "Design.md", isDirectory: false, isFile: true }];
+      }
+      if (isWorkspacePath(dirPath, "docs")) {
+        return [
+          { name: "current", isDirectory: true, isFile: false },
+          { name: "rev.1", isDirectory: true, isFile: false },
+        ];
+      }
+
+      return [];
+    });
+    vi.mocked(dependencies.fileSystem.readText).mockImplementation((filePath: string) => {
+      if (isWorkspacePath(filePath, "roadmap.md")) {
+        return "# Roadmap\nBuild a new release process.\n";
+      }
+      if (isWorkspacePath(filePath, "docs", "current", "Design.md")) {
+        return "legacy design";
+      }
+
+      return "";
+    });
+    vi.mocked(dependencies.templateLoader.load).mockReturnValue([
+      "DESIGN={{design}}",
+      "SOURCES={{designContextSourceReferences}}",
+      "SOURCES_JSON={{designContextSourceReferencesJson}}",
+      "HAS_MANAGED={{designContextHasManagedDocs}}",
+    ].join("\n"));
+
+    const researchTask = createResearchTask(dependencies);
+    const code = await researchTask(createOptions({ source: markdownFile, printPrompt: true }));
+
+    expect(code).toBe(0);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    const normalizedPrompt = prompt.replace(/\\/g, "/");
+    expect(normalizedPrompt).toContain("DESIGN=legacy design");
+    expect(normalizedPrompt).toContain("SOURCES=- C:/workspace/docs/current\n- C:/workspace/docs/rev.1");
+    expect(normalizedPrompt).toContain("SOURCES_JSON=");
+    expect(normalizedPrompt).toContain("docs/current");
+    expect(normalizedPrompt).toContain("docs/rev.1");
+    expect(normalizedPrompt).toContain("HAS_MANAGED=true");
+  });
+
+  it("falls back to root Design.md in research context when managed workspaces are absent", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, events } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\nBuild a new release process.\n",
+    });
+
+    const legacyRootDesignPath = path.join(cwd, "Design.md");
+    const normalize = (value: string): string => value.replace(/\\/g, "/").replace(/\/+/g, "/").toLowerCase();
+    const isWorkspacePath = (value: string, ...segments: string[]): boolean => {
+      const suffix = normalize("/workspace" + (segments.length > 0 ? "/" + segments.join("/") : ""));
+      return normalize(value).endsWith(suffix);
+    };
+
+    vi.mocked(dependencies.fileSystem.stat).mockImplementation((filePath: string) => {
+      if (isWorkspacePath(filePath, "Design.md")) {
+        return { isDirectory: false, isFile: true };
+      }
+
+      return null;
+    });
+    vi.mocked(dependencies.fileSystem.readdir).mockReturnValue([]);
+    vi.mocked(dependencies.fileSystem.readText).mockImplementation((filePath: string) => {
+      if (isWorkspacePath(filePath, "roadmap.md")) {
+        return "# Roadmap\nBuild a new release process.\n";
+      }
+      if (isWorkspacePath(filePath, "Design.md")) {
+        return "legacy root design";
+      }
+
+      return "";
+    });
+    vi.mocked(dependencies.templateLoader.load).mockReturnValue([
+      "DESIGN={{design}}",
+      "SOURCES={{designContextSourceReferences}}",
+      "SOURCES_JSON={{designContextSourceReferencesJson}}",
+      "HAS_MANAGED={{designContextHasManagedDocs}}",
+    ].join("\n"));
+
+    const researchTask = createResearchTask(dependencies);
+    const code = await researchTask(createOptions({ source: markdownFile, printPrompt: true }));
+
+    expect(code).toBe(0);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    const normalizedPrompt = prompt.replace(/\\/g, "/");
+    expect(normalizedPrompt).toContain("DESIGN=legacy root design");
+    expect(normalizedPrompt).toContain("SOURCES=- C:/workspace/Design.md");
+    expect(normalizedPrompt).toContain("SOURCES_JSON=");
+    expect(normalizedPrompt).toContain("Design.md");
+    expect(normalizedPrompt).toContain("HAS_MANAGED=false");
+  });
+
   it("reports dry-run details without executing research worker", async () => {
     const cwd = "/workspace";
     const markdownFile = path.join(cwd, "roadmap.md");

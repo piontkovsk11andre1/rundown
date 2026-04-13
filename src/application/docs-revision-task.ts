@@ -11,6 +11,11 @@ import {
 type DocsRevisionAction = "publish" | "diff";
 type DocsRevisionDiffTarget = "current" | "preview";
 
+const CANONICAL_WORKSPACE_DIR = "design";
+const LEGACY_WORKSPACE_DIR = "docs";
+const CANONICAL_PRIMARY_FILE = "Target.md";
+const LEGACY_PRIMARY_FILE = "Design.md";
+
 export interface DocsRevisionTaskOptions {
   action?: DocsRevisionAction;
   dir?: string;
@@ -80,10 +85,13 @@ export function createDocsRevisionTask(
     }
 
     if (saveResult.kind === "unchanged") {
+      const relativeSourcePath = formatRelativeWorkspacePath(projectRoot, saveResult.sourcePath);
       emit({
         kind: "info",
         message:
-          "No design changes detected in docs/current/ since "
+          "No design changes detected in "
+          + relativeSourcePath
+          + " since "
           + saveResult.latestRevision.name
           + "; skipped creating a new revision snapshot.",
       });
@@ -91,12 +99,15 @@ export function createDocsRevisionTask(
     }
 
     const savedRevision = saveResult.revision;
+    const relativeSourcePath = formatRelativeWorkspacePath(projectRoot, savedRevision.sourcePath);
     emit({
       kind: "success",
       message:
         "Saved design revision "
         + savedRevision.name
-        + " from docs/current/ to "
+        + " from "
+        + relativeSourcePath
+        + " to "
         + savedRevision.absolutePath
         + (savedRevision.metadata.label.length > 0 ? " [label: " + savedRevision.metadata.label + "]" : "")
         + " ("
@@ -109,8 +120,13 @@ export function createDocsRevisionTask(
       emit({
         kind: "warn",
         message:
-          "Saved empty design revision from docs/current/. "
-          + "Add docs/current/Design.md (and supporting docs) for richer migrate/test context.",
+          "Saved empty design revision from "
+          + relativeSourcePath
+          + ". Add "
+          + relativeSourcePath
+          + "/"
+          + (relativeSourcePath === LEGACY_WORKSPACE_DIR + "/current" ? LEGACY_PRIMARY_FILE : CANONICAL_PRIMARY_FILE)
+          + " (and supporting docs) for richer migrate/test context.",
       });
     }
 
@@ -156,15 +172,40 @@ function ensureManagedDesignWorkspaceForRevisionCommands(
   projectRoot: string,
   emit: ApplicationOutputPort["emit"],
 ): { ok: true } | { ok: false; message: string } {
-  const docsCurrentDir = path.join(projectRoot, "docs", "current");
-  if (isDirectory(fileSystem, docsCurrentDir)) {
+  const canonicalCurrentDir = path.join(projectRoot, CANONICAL_WORKSPACE_DIR, "current");
+  if (isDirectory(fileSystem, canonicalCurrentDir)) {
     return { ok: true };
   }
 
-  const legacyDesignPath = path.join(projectRoot, "Design.md");
+  const legacyCurrentDir = path.join(projectRoot, LEGACY_WORKSPACE_DIR, "current");
+  if (isDirectory(fileSystem, legacyCurrentDir)) {
+    return { ok: true };
+  }
+
+  const canonicalRootDir = path.join(projectRoot, CANONICAL_WORKSPACE_DIR);
+  const legacyRootDir = path.join(projectRoot, LEGACY_WORKSPACE_DIR);
+  const bootstrapTarget = isDirectory(fileSystem, canonicalRootDir)
+    ? {
+      currentDir: canonicalCurrentDir,
+      primaryFile: CANONICAL_PRIMARY_FILE,
+      label: CANONICAL_WORKSPACE_DIR + "/current/" + CANONICAL_PRIMARY_FILE,
+    }
+    : isDirectory(fileSystem, legacyRootDir)
+      ? {
+        currentDir: legacyCurrentDir,
+        primaryFile: LEGACY_PRIMARY_FILE,
+        label: LEGACY_WORKSPACE_DIR + "/current/" + LEGACY_PRIMARY_FILE,
+      }
+      : {
+        currentDir: canonicalCurrentDir,
+        primaryFile: CANONICAL_PRIMARY_FILE,
+        label: CANONICAL_WORKSPACE_DIR + "/current/" + CANONICAL_PRIMARY_FILE,
+      };
+
+  const legacyDesignPath = path.join(projectRoot, LEGACY_PRIMARY_FILE);
   if (isFile(fileSystem, legacyDesignPath)) {
-    fileSystem.mkdir(docsCurrentDir, { recursive: true });
-    const bootstrappedDesignPath = path.join(docsCurrentDir, "Design.md");
+    fileSystem.mkdir(bootstrapTarget.currentDir, { recursive: true });
+    const bootstrappedDesignPath = path.join(bootstrapTarget.currentDir, bootstrapTarget.primaryFile);
     if (!isFile(fileSystem, bootstrappedDesignPath)) {
       fileSystem.writeText(bootstrappedDesignPath, fileSystem.readText(legacyDesignPath));
     }
@@ -172,7 +213,9 @@ function ensureManagedDesignWorkspaceForRevisionCommands(
     emit({
       kind: "info",
       message:
-        "Bootstrapped docs/current/ from legacy Design.md to initialize revision workflow.",
+        bootstrapTarget.currentDir === legacyCurrentDir
+          ? "Bootstrapped docs/current/ from legacy Design.md to initialize revision workflow."
+          : "Bootstrapped design/current/Target.md from legacy Design.md to initialize revision workflow.",
     });
     return { ok: true };
   }
@@ -181,9 +224,14 @@ function ensureManagedDesignWorkspaceForRevisionCommands(
     ok: false,
     message:
       "Design working directory is missing: "
-      + docsCurrentDir
-      + ". Create docs/current/ (or run `rundown start ...`) before using revision commands.",
+      + canonicalCurrentDir
+      + ". Create design/current/Target.md (preferred), or use legacy docs/current/Design.md, before using revision commands.",
   };
+}
+
+function formatRelativeWorkspacePath(projectRoot: string, absolutePath: string): string {
+  const relative = path.relative(projectRoot, absolutePath).replace(/\\/g, "/");
+  return relative.length > 0 ? relative : ".";
 }
 
 function resolveWorkspaceRootFromCurrentDir(fileSystem: FileSystem, currentDir: string): string {

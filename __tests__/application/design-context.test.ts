@@ -267,4 +267,32 @@ describe("design-context canonical workspace resolution", () => {
     expect(resolvedContext.sourcePaths.map(normalizePath)).toEqual(["/repo/docs/current/Design.md"]);
     expect(resolvedContext.design).toBe("legacy only");
   });
+
+  it("falls back to legacy docs/current/Design.md when canonical current exists but is empty", () => {
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        "/repo/design": [
+          { name: "current", isDirectory: true, isFile: false },
+        ],
+        "/repo/design/current": [],
+        "/repo/docs": [
+          { name: "current", isDirectory: true, isFile: false },
+        ],
+        "/repo/docs/current": [{ name: "Design.md", isDirectory: false, isFile: true }],
+      },
+      files: {
+        "/repo/docs/current/Design.md": "legacy only\n",
+      },
+      stats: {
+        "/repo/design": { isDirectory: true, isFile: false },
+        "/repo/design/current": { isDirectory: true, isFile: false },
+        "/repo/docs": { isDirectory: true, isFile: false },
+        "/repo/docs/current": { isDirectory: true, isFile: false },
+      },
+    });
+
+    const resolvedContext = resolveDesignContext(fileSystem, "/repo");
+    expect(resolvedContext.sourcePaths.map(normalizePath)).toEqual(["/repo/docs/current/Design.md"]);
+    expect(resolvedContext.design).toBe("legacy only");
+  });
 });

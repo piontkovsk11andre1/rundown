@@ -91,6 +91,11 @@ const LEGACY_PRIMARY_FILE = "Design.md";
 
 export function resolveDesignContext(fileSystem: FileSystem, projectRoot: string): DesignContextResolution {
   const managedCurrentCandidates = getManagedCurrentWorkspaceCandidates(projectRoot);
+  let firstEmptyManagedCandidate: {
+    currentDir: string;
+    relativeCurrentDir: string;
+    primaryFileName: string;
+  } | null = null;
 
   for (const candidate of managedCurrentCandidates) {
     const hasManagedCurrentDraft = isDirectory(fileSystem, candidate.currentDir);
@@ -110,19 +115,7 @@ export function resolveDesignContext(fileSystem: FileSystem, projectRoot: string
     }
 
     if (hasManagedCurrentDraft) {
-      return {
-        design: "",
-        sourcePaths: [candidate.currentDir],
-        isLowContext: true,
-        lowContextGuidance:
-          "Design draft is empty: "
-          + candidate.relativeCurrentDir
-          + "/ has no files. Add "
-          + candidate.relativeCurrentDir
-          + "/"
-          + candidate.primaryFileName
-          + " (and supporting docs) for richer migrate/test context.",
-      };
+      firstEmptyManagedCandidate ??= candidate;
     }
   }
 
@@ -137,22 +130,38 @@ export function resolveDesignContext(fileSystem: FileSystem, projectRoot: string
   }
 
   const legacyDesignPath = path.join(projectRoot, LEGACY_PRIMARY_FILE);
-  if (!isFile(fileSystem, legacyDesignPath)) {
+  if (isFile(fileSystem, legacyDesignPath)) {
+    return {
+      design: fileSystem.readText(legacyDesignPath),
+      sourcePaths: [legacyDesignPath],
+      isLowContext: false,
+      lowContextGuidance: "",
+    };
+  }
+
+  if (firstEmptyManagedCandidate) {
     return {
       design: "",
-      sourcePaths: [],
+      sourcePaths: [firstEmptyManagedCandidate.currentDir],
       isLowContext: true,
       lowContextGuidance:
-        "No design context found. Add design/current/Target.md (preferred), "
-        + "or fall back to docs/current/Design.md and root Design.md for legacy projects.",
+        "Design draft is empty: "
+        + firstEmptyManagedCandidate.relativeCurrentDir
+        + "/ has no files. Add "
+        + firstEmptyManagedCandidate.relativeCurrentDir
+        + "/"
+        + firstEmptyManagedCandidate.primaryFileName
+        + " (and supporting docs) for richer migrate/test context.",
     };
   }
 
   return {
-    design: fileSystem.readText(legacyDesignPath),
-    sourcePaths: [legacyDesignPath],
-    isLowContext: false,
-    lowContextGuidance: "",
+    design: "",
+    sourcePaths: [],
+    isLowContext: true,
+    lowContextGuidance:
+      "No design context found. Add design/current/Target.md (preferred), "
+      + "or fall back to docs/current/Design.md and root Design.md for legacy projects.",
   };
 }
 
@@ -160,21 +169,26 @@ export function resolveDesignContextSourceReferences(
   fileSystem: FileSystem,
   projectRoot: string,
 ): DesignContextSourceReferencesResolution {
-  const workspace = resolveDesignWorkspaceForRevisions(fileSystem, projectRoot);
-  const revisions = discoverDesignRevisionDirectories(fileSystem, projectRoot);
-  const sourceReferences: string[] = [];
-
-  if (isDirectory(fileSystem, workspace.currentDir)) {
-    sourceReferences.push(workspace.currentDir);
-  }
-
-  for (const revision of revisions) {
-    sourceReferences.push(revision.absolutePath);
-  }
-
-  if (sourceReferences.length > 0) {
+  const canonicalSourceReferences = collectManagedSourceReferencesForWorkspace(
+    fileSystem,
+    projectRoot,
+    CANONICAL_WORKSPACE_DIR,
+  );
+  if (canonicalSourceReferences.length > 0) {
     return {
-      sourceReferences,
+      sourceReferences: canonicalSourceReferences,
+      hasManagedDocs: true,
+    };
+  }
+
+  const legacySourceReferences = collectManagedSourceReferencesForWorkspace(
+    fileSystem,
+    projectRoot,
+    LEGACY_WORKSPACE_DIR,
+  );
+  if (legacySourceReferences.length > 0) {
+    return {
+      sourceReferences: legacySourceReferences,
       hasManagedDocs: true,
     };
   }
@@ -967,6 +981,47 @@ function getManagedCurrentWorkspaceCandidates(projectRoot: string): Array<{
       primaryFileName: LEGACY_PRIMARY_FILE,
     },
   ];
+}
+
+function collectManagedSourceReferencesForWorkspace(
+  fileSystem: FileSystem,
+  projectRoot: string,
+  workspaceDirectory: string,
+): string[] {
+  const rootDir = path.join(projectRoot, workspaceDirectory);
+  const currentDir = path.join(rootDir, "current");
+  const sourceReferences: string[] = [];
+
+  if (isDirectory(fileSystem, currentDir)) {
+    sourceReferences.push(currentDir);
+  }
+
+  if (!isDirectory(fileSystem, rootDir)) {
+    return sourceReferences;
+  }
+
+  const revisions = fileSystem.readdir(rootDir)
+    .filter((entry) => entry.isDirectory && parseDesignRevisionDirectoryName(entry.name) !== null)
+    .map((entry) => ({
+      name: entry.name,
+      absolutePath: path.join(rootDir, entry.name),
+      parsed: parseDesignRevisionDirectoryName(entry.name),
+    }))
+    .sort((left, right) => {
+      const leftIndex = left.parsed?.index ?? Number.MAX_SAFE_INTEGER;
+      const rightIndex = right.parsed?.index ?? Number.MAX_SAFE_INTEGER;
+      if (leftIndex !== rightIndex) {
+        return leftIndex - rightIndex;
+      }
+
+      return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+    });
+
+  for (const revision of revisions) {
+    sourceReferences.push(revision.absolutePath);
+  }
+
+  return sourceReferences;
 }
 
 function resolveDesignWorkspaceForRevisions(fileSystem: FileSystem, projectRoot: string): {

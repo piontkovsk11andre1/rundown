@@ -286,7 +286,7 @@ program
 
 program
   .command("start")
-  .description("Scaffold a new prediction project with a design/current/ design workspace.")
+  .description("Scaffold a new prediction project with a design/current/Target.md workspace.")
   .argument("<description>", "Seed description for design/current/Target.md")
   .option("--dir <path>", "Target project directory (default: current working directory)")
   .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
@@ -310,10 +310,10 @@ program
     "after",
     [
       "",
-      "Design docs workflow:",
+      "Design workflow:",
       "  - Active draft edits live in design/current/ (default primary file: design/current/Target.md)",
-      "  - Historical snapshots are stored under docs/rev.N/ as immutable revisions",
-      "  - Legacy root Design.md remains supported as a compatibility fallback",
+      "  - Historical snapshots are stored under design/rev.N/ as immutable revisions",
+      "  - Legacy docs/current/Design.md and root Design.md remain supported as compatibility fallbacks",
     ].join("\n"),
   );
 
@@ -343,7 +343,7 @@ migrateCommand.addHelpText(
   [
     "",
     "Revision-aware behavior:",
-    "  - Reads design context from docs/current/** (with legacy root Design.md fallback)",
+    "  - Reads design context from design/current/** first (falls back to docs/current/** and root Design.md)",
     "  - Migration generation includes revision diff context from previous revision vs current draft",
   ].join("\n"),
 );
@@ -355,7 +355,7 @@ const docsCommand = program
 
 docsCommand
   .command("publish")
-  .description("Publish docs/current/ into the next immutable docs/rev.N/ snapshot.")
+  .description("Publish design/current/ into the next immutable design/rev.N/ snapshot.")
   .option("--dir <path>", "Migrations directory (default: ./migrations)", "./migrations")
   .option("--label <text>", "Optional label to store in revision metadata")
   .allowUnknownOption(false)
@@ -365,7 +365,7 @@ docsCommand
 
 docsCommand
   .command("diff")
-  .description("Show revision diff summary for docs/current/ against the latest revision.")
+  .description("Show revision diff summary for design/current/ against the latest revision.")
   .argument("[target]", "Diff target shorthand: current (default) | preview")
   .option("--dir <path>", "Migrations directory (default: ./migrations)", "./migrations")
   .option("--from <rev|current>", "Explicit source revision selector (use with --to)")

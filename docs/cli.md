@@ -57,15 +57,15 @@ Scaffold a prediction-oriented project workspace.
 
 `start` creates a design-first project structure and prepares migration/spec workflows:
 
-- `docs/current/`
-- `docs/current/Design.md`
+- `design/current/`
+- `design/current/Target.md`
 - `AGENTS.md`
 - `migrations/`
 - `migrations/0001-initialize.md`
 - `specs/`
 - `.rundown/`
 
-Compatibility note: legacy root `Design.md` is still read as a fallback when `docs/current/` is not present.
+Compatibility note: legacy `docs/current/Design.md` and root `Design.md` are still read as fallbacks when `design/current/` is not available.
 
 Synopsis:
 
@@ -87,7 +87,7 @@ Generate and manage prediction migrations.
 
 Without an action, `migrate` generates the next migration proposal based on design and migration context.
 
-Design context resolution is revision-aware: it prefers `docs/current/**`, includes revision/archive directories (`docs/rev.*/**`) as context sources, and falls back to legacy root `Design.md` for older projects.
+Design context resolution is revision-aware: it prefers `design/current/**`, includes revision/archive directories (`design/rev.*/**`) as context sources, and falls back to legacy `docs/current/**`, `docs/rev.*/**`, and root `Design.md` for older projects.
 
 Synopsis:
 
@@ -124,9 +124,9 @@ Use `docs` commands for revision snapshots and revision diffs; use `migrate` com
 
 #### `rundown docs publish`
 
-Publish `docs/current/` into the next immutable `docs/rev.N/` snapshot.
+Publish `design/current/` into the next immutable `design/rev.N/` snapshot.
 
-No-change behavior is preserved: when `docs/current/` is byte-for-byte unchanged from the latest revision directory, no new `docs/rev.N/` directory is created and the command reports a no-op.
+No-change behavior is preserved: when `design/current/` is byte-for-byte unchanged from the latest revision directory, no new `design/rev.N/` directory is created and the command reports a no-op.
 
 Synopsis:
 

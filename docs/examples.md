@@ -393,3 +393,51 @@ What happens:
 6. When mixed explicit intent prefixes appear in task text, the first explicit prefix wins (`verify: fast: ...` is verify-only; `fast: verify: ...` is fast-execution).
 7. `optional:` / `skip:` are the preferred control-flow prefixes; legacy `end:` / `return:` / `quit:` / `break:` remain compatibility aliases.
 8. Unknown prefixes are treated as normal task text and do not fail resolution.
+
+## 20. Publish docs revisions and diff before migration
+
+Use `rundown docs` when you want to manage design-document revisions directly.
+
+```bash
+# Publish docs/current into the next immutable docs/rev.N snapshot
+rundown docs publish --dir ./migrations
+
+# Add optional label metadata to the published revision
+rundown docs publish --dir ./migrations --label "Auth v2 baseline"
+
+# Shorthand diff against current draft
+rundown docs diff --dir ./migrations
+
+# Preview diff with revision source references
+rundown docs diff preview --dir ./migrations
+
+# Explicit selector form
+rundown docs diff --dir ./migrations --from rev.3 --to current
+```
+
+What happens:
+
+1. `docs publish` snapshots `docs/current/` into `docs/rev.N/` with monotonic revision numbering.
+2. If there is no byte-level change from the latest revision, publish is a no-op.
+3. `docs diff` supports shorthand (`current` / `preview`) and explicit `--from/--to` selectors.
+4. Diff output is deterministic and suitable for both human review and migration context.
+
+## 21. Generate migrations after docs revision work
+
+After publishing or reviewing diffs, switch back to `migrate` for migration lifecycle commands.
+
+```bash
+# Propose next migration from revision-aware context
+rundown migrate --dir ./migrations -- opencode run
+
+# Generate satellites for the latest migration position
+rundown migrate context --dir ./migrations -- opencode run
+rundown migrate snapshot --dir ./migrations -- opencode run
+rundown migrate backlog --dir ./migrations -- opencode run
+
+# Execute or roll back migration tasks
+rundown migrate up --dir ./migrations -- opencode run
+rundown migrate down 1 --dir ./migrations -- opencode run
+```
+
+`migrate` intentionally excludes docs-revision actions; use `rundown docs publish` and `rundown docs diff` for revision lifecycle work.

@@ -21,9 +21,16 @@ This makes the checkbox a consequence of successful work, not a guess.
 In addition to execute/verify task running, rundown supports a prediction-oriented migration workflow:
 
 - `start` bootstraps a design-first project workspace.
+- `docs publish` snapshots `docs/current/` into the next immutable `docs/rev.N/` revision.
+- `docs diff [target]` compares revision state for `docs/current/` using shorthand or explicit selectors.
 - `migrate` advances a numbered migration track and generates satellite artifacts.
 - `undo` semantically reverses prior task outcomes using saved artifacts.
 - `test` verifies assertion specs against predicted migration state.
+
+Command-boundary rule:
+
+- `rundown docs ...` is for design-doc revision lifecycle (`publish`, `diff`).
+- `rundown migrate ...` is for migration lifecycle (proposal generation, execution, satellites, user-session flow).
 
 Prediction migration naming convention:
 

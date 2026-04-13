@@ -18,7 +18,7 @@ import type {
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import { resolveDesignContext, resolveDesignContextSourceReferences } from "./design-context.js";
-import { resolveWorkspaceLink } from "../domain/workspace-link.js";
+import { resolveEffectiveWorkspaceRoot } from "../domain/workspace-link.js";
 import {
   resolvePredictionWorkspaceDirectories,
   resolvePredictionWorkspacePath,
@@ -207,15 +207,11 @@ export function createTestSpecs(
 }
 
 function resolveWorkspaceRootFromCurrentDir(fileSystem: FileSystem, currentDir: string): string {
-  const resolution = resolveWorkspaceLink({
+  return resolveEffectiveWorkspaceRoot({
     currentDir,
     fileSystem,
     pathOperations: path,
   });
-
-  return resolution.status === "resolved"
-    ? resolution.workspaceRoot
-    : path.resolve(currentDir);
 }
 
 function slugifySpecName(value: string): string {

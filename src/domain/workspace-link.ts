@@ -35,6 +35,10 @@ export interface ResolveWorkspaceLinkInput {
   pathOperations: PathOperationsPort;
 }
 
+export interface ResolveEffectiveWorkspaceRootInput extends ResolveWorkspaceLinkInput {
+  maxHops?: number;
+}
+
 /**
  * Resolves a linked workspace root from `.rundown/workspace.link`.
  *
@@ -98,4 +102,39 @@ export function resolveWorkspaceLink(input: ResolveWorkspaceLinkInput): Workspac
     relativeTarget,
     workspaceRoot,
   };
+}
+
+/**
+ * Resolves the effective workspace root by following workspace.link chains.
+ *
+ * If the initial directory is not linked (or the link is invalid), this returns
+ * the normalized current directory. When links chain through multiple
+ * workspaces, traversal stops at the first directory without a valid link.
+ */
+export function resolveEffectiveWorkspaceRoot(input: ResolveEffectiveWorkspaceRootInput): string {
+  const maxHops = Math.max(1, input.maxHops ?? 32);
+  let workspaceRoot = input.pathOperations.resolve(input.currentDir);
+  const visited = new Set<string>([workspaceRoot]);
+
+  for (let hop = 0; hop < maxHops; hop += 1) {
+    const resolution = resolveWorkspaceLink({
+      currentDir: workspaceRoot,
+      fileSystem: input.fileSystem,
+      pathOperations: input.pathOperations,
+    });
+
+    if (resolution.status !== "resolved") {
+      return workspaceRoot;
+    }
+
+    const nextWorkspaceRoot = input.pathOperations.resolve(resolution.workspaceRoot);
+    if (visited.has(nextWorkspaceRoot)) {
+      return workspaceRoot;
+    }
+
+    visited.add(nextWorkspaceRoot);
+    workspaceRoot = nextWorkspaceRoot;
+  }
+
+  return workspaceRoot;
 }

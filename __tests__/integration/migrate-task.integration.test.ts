@@ -790,6 +790,69 @@ describeIfSatelliteMigrateAvailable("migrate satellite regeneration integration"
     expect(fs.existsSync(path.join(linkedInvocationDir, ".workspace-cwd-marker"))).toBe(false);
   });
 
+  it("uses configured directories from effective source workspace through chained links", async () => {
+    const sandbox = makeTempWorkspace();
+    const sourceWorkspace = path.join(sandbox, "source-workspace");
+    const intermediateWorkspace = path.join(sandbox, "intermediate-workspace");
+    const linkedInvocationDir = path.join(sandbox, "linked-invocation");
+
+    fs.mkdirSync(sourceWorkspace, { recursive: true });
+    fs.mkdirSync(intermediateWorkspace, { recursive: true });
+    fs.mkdirSync(linkedInvocationDir, { recursive: true });
+    scaffoldPredictionProjectWithSatelliteTemplates(sourceWorkspace);
+
+    fs.writeFileSync(
+      path.join(sourceWorkspace, ".rundown", "config.json"),
+      JSON.stringify({
+        workspace: {
+          directories: {
+            design: "design-docs",
+            specs: "quality-specs",
+            migrations: "changesets",
+          },
+        },
+      }, null, 2) + "\n",
+      "utf-8",
+    );
+
+    fs.mkdirSync(path.join(sourceWorkspace, "changesets"), { recursive: true });
+    fs.writeFileSync(path.join(sourceWorkspace, "changesets", "0001-initialize.md"), "# 0001 initialize\n", "utf-8");
+
+    fs.mkdirSync(path.join(intermediateWorkspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(
+      path.join(intermediateWorkspace, ".rundown", "workspace.link"),
+      path.relative(intermediateWorkspace, sourceWorkspace).replace(/\\/g, "/"),
+      "utf-8",
+    );
+
+    fs.mkdirSync(path.join(linkedInvocationDir, ".rundown"), { recursive: true });
+    fs.writeFileSync(
+      path.join(linkedInvocationDir, ".rundown", "workspace.link"),
+      path.relative(linkedInvocationDir, intermediateWorkspace).replace(/\\/g, "/"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "migrate",
+      "snapshot",
+      "--",
+      "node",
+      "-e",
+      [
+        "console.log('# Snapshot');",
+        "console.log('');",
+        "console.log('effective-source-workspace-ok');",
+        "process.exit(0);",
+      ].join("\n"),
+    ], linkedInvocationDir);
+
+    expect(result.code).toBe(0);
+    expect(fs.existsSync(path.join(sourceWorkspace, "changesets", "0001--snapshot.md"))).toBe(true);
+    expect(fs.existsSync(path.join(sourceWorkspace, "migrations", "0001--snapshot.md"))).toBe(false);
+    expect(fs.existsSync(path.join(intermediateWorkspace, "changesets", "0001--snapshot.md"))).toBe(false);
+    expect(fs.existsSync(path.join(linkedInvocationDir, "changesets", "0001--snapshot.md"))).toBe(false);
+  });
+
   for (const action of SATELLITE_ACTIONS) {
     it(`rerunning migrate ${action} overwrites the same satellite file`, async () => {
       const workspace = makeTempWorkspace();

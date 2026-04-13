@@ -41,7 +41,7 @@ import {
   type PredictionTrackedFile,
   type PredictionTrackedFileKind,
 } from "../domain/prediction-reconciliation.js";
-import { resolveWorkspaceLink } from "../domain/workspace-link.js";
+import { resolveEffectiveWorkspaceRoot } from "../domain/workspace-link.js";
 import {
   prepareDesignRevisionDiffContext,
   resolveDesignContext,
@@ -593,15 +593,11 @@ function emitLowDesignContextGuidance(
 }
 
 function resolveWorkspaceRootFromCurrentDir(fileSystem: FileSystem, currentDir: string): string {
-  const resolution = resolveWorkspaceLink({
+  return resolveEffectiveWorkspaceRoot({
     currentDir,
     fileSystem,
     pathOperations: path,
   });
-
-  return resolution.status === "resolved"
-    ? resolution.workspaceRoot
-    : path.resolve(currentDir);
 }
 
 function isDirectory(fileSystem: FileSystem, absolutePath: string): boolean {

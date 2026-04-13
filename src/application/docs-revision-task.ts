@@ -2,7 +2,7 @@ import path from "node:path";
 import { EXIT_CODE_FAILURE, EXIT_CODE_SUCCESS } from "../domain/exit-codes.js";
 import type { FileSystem } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
-import { resolveWorkspaceLink } from "../domain/workspace-link.js";
+import { resolveEffectiveWorkspaceRoot } from "../domain/workspace-link.js";
 import {
   prepareDesignRevisionDiffContext,
   saveDesignRevisionSnapshot,
@@ -252,15 +252,11 @@ function formatRelativeWorkspacePath(projectRoot: string, absolutePath: string):
 }
 
 function resolveWorkspaceRootFromCurrentDir(fileSystem: FileSystem, currentDir: string): string {
-  const resolution = resolveWorkspaceLink({
+  return resolveEffectiveWorkspaceRoot({
     currentDir,
     fileSystem,
     pathOperations: path,
   });
-
-  return resolution.status === "resolved"
-    ? resolution.workspaceRoot
-    : path.resolve(currentDir);
 }
 
 function isDirectory(fileSystem: FileSystem, absolutePath: string): boolean {

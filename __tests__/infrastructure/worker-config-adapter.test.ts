@@ -42,6 +42,73 @@ function writeGlobalConfig(source: string): string {
 }
 
 describe("createWorkerConfigAdapter", () => {
+  it("returns effective config value source attribution", () => {
+    const configDir = makeTempConfigDir();
+    writeConfig(
+      configDir,
+      JSON.stringify({
+        workers: {
+          tui: ["opencode", "run", "--model", "local-tui"],
+        },
+        commands: {
+          plan: ["opencode", "run", "--model", "local-plan"],
+        },
+      }),
+    );
+    const globalConfigPath = writeGlobalConfig(
+      JSON.stringify({
+        workers: {
+          default: ["opencode", "run", "--model", "global-default"],
+        },
+        commands: {
+          plan: ["opencode", "run", "--model", "global-plan"],
+          research: ["opencode", "run", "--model", "global-research"],
+        },
+      }),
+    );
+
+    const adapter = createWorkerConfigAdapter({
+      resolveGlobalConfigPath: () => ({ discoveredPath: globalConfigPath }),
+    });
+
+    const loaded = adapter.loadWithSources?.(configDir);
+
+    expect(loaded).toBeDefined();
+    expect(loaded?.globalConfigPath).toBe(globalConfigPath);
+    expect(loaded?.localConfigPath).toBe(path.join(configDir, "config.json"));
+    expect(loaded?.valueSources).toMatchObject({
+      "workers.default": "global",
+      "workers.tui": "local",
+      "commands.plan": "mixed",
+      "commands.research": "global",
+      "traceStatistics.enabled": "built-in",
+      "traceStatistics.fields": "built-in",
+    });
+  });
+
+  it("attributes all effective values to local when only local config exists", () => {
+    const configDir = makeTempConfigDir();
+    writeConfig(
+      configDir,
+      JSON.stringify({
+        workers: {
+          default: ["opencode", "run", "--model", "local-default"],
+        },
+      }),
+    );
+
+    const adapter = createWorkerConfigAdapter();
+    const loaded = adapter.loadWithSources?.(configDir);
+
+    expect(loaded).toBeDefined();
+    expect(loaded?.globalConfigPath).toBeUndefined();
+    expect(loaded?.valueSources).toMatchObject({
+      "workers.default": "local",
+      "traceStatistics.enabled": "built-in",
+      "traceStatistics.fields": "built-in",
+    });
+  });
+
   it("loads a valid config", () => {
     const configDir = makeTempConfigDir();
     writeConfig(

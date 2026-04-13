@@ -18,6 +18,9 @@ import {
   type WorkerCommand,
   type WorkerCommandProfiles,
   type WorkerConfig,
+  type WorkerConfigLoadWithSourcesResult,
+  type WorkerConfigValueSource,
+  type WorkerConfigValueSourceMap,
   type WorkerConfigCommandName,
   type WorkersConfig,
 } from "../../domain/worker-config.js";
@@ -550,6 +553,82 @@ function applyBuiltInDefaults(config: WorkerConfig | undefined): WorkerConfig | 
   };
 }
 
+function valueAtPath(root: unknown, pathSegments: readonly string[]): unknown {
+  let current: unknown = root;
+  for (const segment of pathSegments) {
+    if (!isPlainObject(current)) {
+      return undefined;
+    }
+
+    current = current[segment];
+  }
+
+  return current;
+}
+
+function resolveValueSource(
+  pathSegments: readonly string[],
+  builtInConfig: WorkerConfig | undefined,
+  globalConfig: WorkerConfig | undefined,
+  localConfig: WorkerConfig | undefined,
+): WorkerConfigValueSource | undefined {
+  const sources: WorkerConfigValueSource[] = [];
+  if (valueAtPath(builtInConfig, pathSegments) !== undefined) {
+    sources.push("built-in");
+  }
+  if (valueAtPath(globalConfig, pathSegments) !== undefined) {
+    sources.push("global");
+  }
+  if (valueAtPath(localConfig, pathSegments) !== undefined) {
+    sources.push("local");
+  }
+
+  if (sources.length === 0) {
+    return undefined;
+  }
+  if (sources.length === 1) {
+    return sources[0];
+  }
+  return "mixed";
+}
+
+function collectValueSources(
+  config: WorkerConfig | undefined,
+  builtInConfig: WorkerConfig | undefined,
+  globalConfig: WorkerConfig | undefined,
+  localConfig: WorkerConfig | undefined,
+): WorkerConfigValueSourceMap {
+  if (!config) {
+    return {};
+  }
+
+  const valueSources: WorkerConfigValueSourceMap = {};
+
+  const walk = (value: unknown, pathSegments: string[]): void => {
+    if (pathSegments.length > 0) {
+      const pathKey = pathSegments.join(".");
+      const source = resolveValueSource(pathSegments, builtInConfig, globalConfig, localConfig);
+      if (source !== undefined) {
+        valueSources[pathKey] = source;
+      }
+    }
+
+    if (!isPlainObject(value)) {
+      return;
+    }
+
+    for (const [key, child] of Object.entries(value)) {
+      if (child === undefined) {
+        continue;
+      }
+      walk(child, [...pathSegments, key]);
+    }
+  };
+
+  walk(config, []);
+  return valueSources;
+}
+
 function loadConfigFile(configPath: string, scope: "global" | "local", optional: boolean): WorkerConfig | undefined {
   let parsed: unknown;
   try {
@@ -590,6 +669,34 @@ function loadConfigFile(configPath: string, scope: "global" | "local", optional:
 export function createWorkerConfigAdapter(options: CreateWorkerConfigAdapterOptions = {}): WorkerConfigPort {
   const resolveGlobalPath = options.resolveGlobalConfigPath ?? resolveGlobalConfigPath;
 
+  const loadWithSources = (configDir: string): WorkerConfigLoadWithSourcesResult => {
+    const localConfigPath = path.join(configDir, WORKER_CONFIG_FILE_NAME);
+    const localConfig = loadConfigFile(localConfigPath, "local", true);
+    const globalConfigPath = resolveGlobalPath().discoveredPath;
+    const globalConfig = globalConfigPath
+      ? loadConfigFile(globalConfigPath, "global", false)
+      : undefined;
+    const layeredConfig = mergeWorkerConfig(globalConfig, localConfig);
+    const config = applyBuiltInDefaults(layeredConfig);
+    const builtInConfig = config
+      && globalConfig?.traceStatistics === undefined
+      && localConfig?.traceStatistics === undefined
+      ? {
+        traceStatistics: {
+          enabled: false,
+          fields: [...DEFAULT_TRACE_STATISTICS_FIELDS],
+        },
+      }
+      : undefined;
+
+    return {
+      config,
+      valueSources: collectValueSources(config, builtInConfig, globalConfig, localConfig),
+      localConfigPath,
+      globalConfigPath,
+    };
+  };
+
   return {
     /**
      * Loads worker configuration from disk.
@@ -597,13 +704,10 @@ export function createWorkerConfigAdapter(options: CreateWorkerConfigAdapterOpti
      * Returns `undefined` when the configuration file does not exist.
      */
     load(configDir) {
-      const configPath = path.join(configDir, WORKER_CONFIG_FILE_NAME);
-      const localConfig = loadConfigFile(configPath, "local", true);
-      const globalConfigPath = resolveGlobalPath().discoveredPath;
-      const globalConfig = globalConfigPath
-        ? loadConfigFile(globalConfigPath, "global", false)
-        : undefined;
-      return applyBuiltInDefaults(mergeWorkerConfig(globalConfig, localConfig));
+      return loadWithSources(configDir).config;
+    },
+    loadWithSources(configDir): WorkerConfigLoadWithSourcesResult {
+      return loadWithSources(configDir);
     },
   };
 }

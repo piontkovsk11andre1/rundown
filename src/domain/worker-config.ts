@@ -120,6 +120,19 @@ export interface WorkerConfig {
   healthPolicy?: WorkerHealthPolicyConfig;
 }
 
+export const WORKER_CONFIG_VALUE_SOURCES = ["built-in", "global", "local", "mixed"] as const;
+
+export type WorkerConfigValueSource = typeof WORKER_CONFIG_VALUE_SOURCES[number];
+
+export type WorkerConfigValueSourceMap = Record<string, WorkerConfigValueSource>;
+
+export interface WorkerConfigLoadWithSourcesResult {
+  config: WorkerConfig | undefined;
+  valueSources: WorkerConfigValueSourceMap;
+  localConfigPath: string;
+  globalConfigPath: string | undefined;
+}
+
 /**
  * Returns worker config with trace-statistics defaults applied only when
  * tracing is enabled and traceStatistics config is not provided.

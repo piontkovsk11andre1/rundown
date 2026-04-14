@@ -69,4 +69,47 @@ describe("resolveWorkspaceRootForPathSensitiveCommand", () => {
       isLinkedWorkspace: true,
     });
   });
+
+  it("lists candidate workspaces and actionable guidance when selection is ambiguous", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-workspace-selection-"));
+    tempDirs.push(root);
+
+    const invocationDir = path.join(root, "linked-invocation");
+    const workspaceA = path.join(root, "workspace-a");
+    const workspaceB = path.join(root, "workspace-b");
+
+    fs.mkdirSync(path.join(invocationDir, ".rundown"), { recursive: true });
+    fs.mkdirSync(workspaceA, { recursive: true });
+    fs.mkdirSync(workspaceB, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(invocationDir, ".rundown", "workspace.link"),
+      JSON.stringify({
+        schemaVersion: WORKSPACE_LINK_SCHEMA_VERSION,
+        records: [
+          { id: "alpha", workspacePath: path.relative(invocationDir, workspaceA).replace(/\\/g, "/") },
+          { id: "beta", workspacePath: path.relative(invocationDir, workspaceB).replace(/\\/g, "/") },
+        ],
+      }),
+      "utf-8",
+    );
+
+    const selection = resolveWorkspaceRootForPathSensitiveCommand({
+      fileSystem: createNodeFileSystem(),
+      invocationDir,
+    });
+
+    expect(selection.ok).toBe(false);
+    if (selection.ok) {
+      return;
+    }
+
+    expect(selection.message).toContain("Workspace selection is ambiguous");
+    expect(selection.message).toContain("Candidates:");
+    expect(selection.message).toContain("alpha:");
+    expect(selection.message).toContain("beta:");
+    expect(selection.message).toContain("use --workspace ../workspace-a");
+    expect(selection.message).toContain("use --workspace ../workspace-b");
+    expect(selection.message).toContain("Re-run the command with --workspace <dir>");
+  });
 });

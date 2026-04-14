@@ -133,14 +133,14 @@ function buildAmbiguousWorkspaceSelectionMessage(input: {
   const candidates = parsedSchema.schema.records
     .map((record) => {
       const absoluteWorkspacePath = path.resolve(invocationDir, record.workspacePath);
-      return `- ${record.id}: ${absoluteWorkspacePath} (${record.workspacePath})`;
+      return `- ${record.id}: ${absoluteWorkspacePath} (use --workspace ${record.workspacePath})`;
     })
     .join("\n");
 
   return [
     `Workspace selection is ambiguous for ${invocationDir}.`,
     `Multiple workspace records are configured in ${workspaceLinkPath} and no default is defined.`,
-    "Provide --workspace <dir> to select the workspace explicitly.",
+    "Re-run the command with --workspace <dir> to select the workspace explicitly.",
     "Candidates:",
     candidates,
   ].join("\n");

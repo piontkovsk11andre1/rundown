@@ -293,7 +293,7 @@ describe("createDocsTask", () => {
       expect(outputEvents.some(
         (event) => event.kind === "error"
           && event.message.includes("Workspace selection is ambiguous")
-          && event.message.includes("Provide --workspace <dir>"),
+          && event.message.includes("--workspace <dir>"),
       )).toBe(true);
     } finally {
       cwdSpy.mockRestore();

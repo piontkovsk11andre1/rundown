@@ -4,6 +4,10 @@ import {
   EXIT_CODE_FAILURE,
   EXIT_CODE_SUCCESS,
 } from "../domain/exit-codes.js";
+import {
+  parseWorkspaceLinkSchema,
+  serializeWorkspaceLinkSchema,
+} from "../domain/workspace-link.js";
 import { DEFAULT_PREDICTION_WORKSPACE_DIRECTORIES } from "./prediction-workspace-paths.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import type {
@@ -105,7 +109,6 @@ export function createStartProject(
       targetDirectory,
       workspaceDirectories.specsDir,
     );
-    const workspaceLinkPath = dependencies.pathOperations.join(targetDirectory, ".rundown", "workspace.link");
     const initialMigrationPath = dependencies.pathOperations.join(
       migrationsDir,
       "0001-initialize.md",
@@ -142,12 +145,13 @@ export function createStartProject(
       return EXIT_CODE_FAILURE;
     }
 
-    writeFileIfMissing(
-      dependencies.fileSystem,
-      workspaceLinkPath,
-      buildWorkspaceLinkTarget(dependencies.pathOperations, targetDirectory, invocationDirectory),
+    persistWorkspaceLinkMetadata({
+      fileSystem: dependencies.fileSystem,
+      pathOperations: dependencies.pathOperations,
+      invocationDirectory,
+      targetDirectory,
       emit,
-    );
+    });
 
     if (!dependencies.fileSystem.exists(designCurrentDir)) {
       dependencies.fileSystem.mkdir(designCurrentDir, { recursive: true });
@@ -244,14 +248,169 @@ function buildInitialMigrationMarkdown(description: string): string {
 
 function buildWorkspaceLinkTarget(
   pathOperations: PathOperationsPort,
-  targetDirectory: string,
-  workspaceRoot: string,
+  fromDirectory: string,
+  toDirectory: string,
 ): string {
-  const relativeTarget = pathOperations.relative(targetDirectory, workspaceRoot);
+  const relativeTarget = pathOperations.relative(fromDirectory, toDirectory);
   const normalizedTarget = relativeTarget.length > 0
     ? relativeTarget
     : ".";
   return normalizedTarget.replace(/\\/g, "/");
+}
+
+function persistWorkspaceLinkMetadata(input: {
+  fileSystem: FileSystem;
+  pathOperations: PathOperationsPort;
+  invocationDirectory: string;
+  targetDirectory: string;
+  emit: ApplicationOutputPort["emit"];
+}): void {
+  const {
+    fileSystem,
+    pathOperations,
+    invocationDirectory,
+    targetDirectory,
+    emit,
+  } = input;
+
+  const normalizedInvocationDirectory = pathOperations.resolve(invocationDirectory);
+  const normalizedTargetDirectory = pathOperations.resolve(targetDirectory);
+  const targetWorkspaceLinkPath = pathOperations.join(normalizedTargetDirectory, ".rundown", "workspace.link");
+
+  writeFileIfChanged(
+    fileSystem,
+    targetWorkspaceLinkPath,
+    serializeWorkspaceLinkSchema({
+      sourceFormat: "legacy-single-path",
+      records: [{
+        id: "source",
+        workspacePath: buildWorkspaceLinkTarget(
+          pathOperations,
+          normalizedTargetDirectory,
+          normalizedInvocationDirectory,
+        ),
+        isDefault: true,
+      }],
+    }),
+    emit,
+  );
+
+  if (normalizedInvocationDirectory === normalizedTargetDirectory) {
+    return;
+  }
+
+  const sourceWorkspaceLinkPath = pathOperations.join(normalizedInvocationDirectory, ".rundown", "workspace.link");
+  const targetPathFromSource = buildWorkspaceLinkTarget(
+    pathOperations,
+    normalizedInvocationDirectory,
+    normalizedTargetDirectory,
+  );
+  const sourceWorkspaceLinkContent = buildUpdatedSourceWorkspaceLinkContent({
+    fileSystem,
+    sourceWorkspaceLinkPath,
+    targetPathFromSource,
+  });
+
+  writeFileIfChanged(fileSystem, sourceWorkspaceLinkPath, sourceWorkspaceLinkContent, emit);
+}
+
+function buildUpdatedSourceWorkspaceLinkContent(input: {
+  fileSystem: FileSystem;
+  sourceWorkspaceLinkPath: string;
+  targetPathFromSource: string;
+}): string {
+  const { fileSystem, sourceWorkspaceLinkPath, targetPathFromSource } = input;
+  const existingContent = fileSystem.exists(sourceWorkspaceLinkPath)
+    ? fileSystem.readText(sourceWorkspaceLinkPath)
+    : undefined;
+
+  const records: Array<{ id: string; workspacePath: string; isDefault?: boolean }> = [];
+  let defaultRecordId: string | undefined;
+  const usedRecordIds = new Set<string>();
+
+  if (existingContent !== undefined) {
+    const parsed = parseWorkspaceLinkSchema(existingContent);
+    if (parsed.status === "ok") {
+      for (const record of parsed.schema.records) {
+        records.push({
+          id: record.id,
+          workspacePath: record.workspacePath,
+          isDefault: record.isDefault,
+        });
+        usedRecordIds.add(record.id);
+      }
+      defaultRecordId = parsed.schema.defaultRecordId;
+    }
+  }
+
+  const existingRecord = records.find((record) => record.workspacePath === targetPathFromSource);
+  if (!existingRecord) {
+    const proposedId = toWorkspaceRecordId(targetPathFromSource);
+    const recordId = makeUniqueRecordId(proposedId, usedRecordIds);
+    usedRecordIds.add(recordId);
+    records.push({
+      id: recordId,
+      workspacePath: targetPathFromSource,
+      isDefault: false,
+    });
+  }
+
+  return serializeWorkspaceLinkSchema({
+    records,
+    ...(defaultRecordId !== undefined ? { defaultRecordId } : {}),
+  });
+}
+
+function toWorkspaceRecordId(workspacePath: string): string {
+  const segments = workspacePath.split("/").filter((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+  const raw = (segments[segments.length - 1] ?? "workspace").toLowerCase();
+  const sanitized = raw
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "");
+
+  if (sanitized.length > 0 && /^[a-z0-9]/.test(sanitized)) {
+    return sanitized;
+  }
+
+  return "workspace";
+}
+
+function makeUniqueRecordId(baseId: string, usedIds: Set<string>): string {
+  if (!usedIds.has(baseId)) {
+    return baseId;
+  }
+
+  for (let suffix = 2; suffix < 10_000; suffix += 1) {
+    const candidate = `${baseId}-${String(suffix)}`;
+    if (!usedIds.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(`Failed to allocate workspace record id for "${baseId}".`);
+}
+
+function writeFileIfChanged(
+  fileSystem: FileSystem,
+  filePath: string,
+  content: string,
+  emit: ApplicationOutputPort["emit"],
+): void {
+  if (fileSystem.exists(filePath)) {
+    const existingContent = fileSystem.readText(filePath);
+    if (existingContent === content) {
+      emit({ kind: "info", message: filePath + " already up to date." });
+      return;
+    }
+
+    fileSystem.writeText(filePath, content);
+    emit({ kind: "success", message: "Updated " + filePath });
+    return;
+  }
+
+  fileSystem.writeText(filePath, content);
+  emit({ kind: "success", message: "Created " + filePath });
 }
 
 function writeFileIfMissing(

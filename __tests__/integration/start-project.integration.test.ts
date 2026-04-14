@@ -28,7 +28,7 @@ const hasStartTaskUseCase = fs.existsSync(START_TASK_FILE_PATH);
 const describeIfStartAvailable = hasStartCommand && hasStartTaskUseCase ? describe : describe.skip;
 
 describeIfStartAvailable("start-project integration", () => {
-  it("documents current inverted link-creation behavior from existing workspace", async () => {
+  it("writes workspace link metadata to both source and target when started from an existing workspace", async () => {
     const workspace = makeTempWorkspace();
     const projectDirName = "linked-target";
     const projectDir = path.join(workspace, projectDirName);
@@ -51,7 +51,19 @@ describeIfStartAvailable("start-project integration", () => {
 
     expect(fs.existsSync(path.join(projectDir, ".rundown", "workspace.link"))).toBe(true);
     expect(fs.readFileSync(path.join(projectDir, ".rundown", "workspace.link"), "utf-8").trim()).toBe("..");
-    expect(fs.existsSync(path.join(workspace, ".rundown", "workspace.link"))).toBe(false);
+
+    const sourceWorkspaceLinkPath = path.join(workspace, ".rundown", "workspace.link");
+    expect(fs.existsSync(sourceWorkspaceLinkPath)).toBe(true);
+    const sourceLink = JSON.parse(fs.readFileSync(sourceWorkspaceLinkPath, "utf-8")) as {
+      schemaVersion: number;
+      records: Array<{ id: string; workspacePath: string; default?: boolean }>;
+      defaultRecordId?: string;
+    };
+
+    expect(sourceLink.schemaVersion).toBe(1);
+    expect(sourceLink.records).toHaveLength(1);
+    expect(sourceLink.records[0]?.workspacePath).toBe(projectDirName);
+    expect(sourceLink.defaultRecordId).toBeUndefined();
   });
 
   it("does not create nested .git when scaffolding inside an existing repository", async () => {

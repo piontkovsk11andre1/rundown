@@ -86,13 +86,13 @@ class InMemoryFileSystem implements FileSystem {
 
 describe("parseDesignRevisionDirectoryName", () => {
   it("parses valid revision directory names", () => {
+    expect(parseDesignRevisionDirectoryName("rev.0")).toEqual({ index: 0 });
     expect(parseDesignRevisionDirectoryName("rev.1")).toEqual({ index: 1 });
     expect(parseDesignRevisionDirectoryName("REV.42")).toEqual({ index: 42 });
     expect(parseDesignRevisionDirectoryName(" rev.7 ")).toEqual({ index: 7 });
   });
 
   it("returns null for malformed revision directory names", () => {
-    expect(parseDesignRevisionDirectoryName("rev.0")).toBeNull();
     expect(parseDesignRevisionDirectoryName("rev.-1")).toBeNull();
     expect(parseDesignRevisionDirectoryName("rev.1-draft")).toBeNull();
     expect(parseDesignRevisionDirectoryName("rev.one")).toBeNull();
@@ -125,6 +125,13 @@ describe("discoverDesignRevisionDirectories", () => {
     const revisions = discoverDesignRevisionDirectories(fileSystem, projectRoot);
 
     expect(revisions).toEqual([
+      {
+        index: 0,
+        name: "rev.0",
+        absolutePath: "/repo/docs/rev.0",
+        metadata: { createdAt: "", label: "" },
+        metadataPath: "/repo/docs/rev.0.meta.json",
+      },
       {
         index: 1,
         name: "rev.001",
@@ -618,13 +625,20 @@ describe("prepareDesignRevisionDiffContext", () => {
     expect(diff.summary).toBe("Compared rev.2 -> rev.4: 0 added 1 modified 0 removed");
   });
 
-  it("returns no comparison when no previous revision exists", () => {
+  it("treats first revision as migration from nothing", () => {
     const fileSystem = new InMemoryFileSystem({
       directories: {
         "/repo/docs": [
           { name: "current", isDirectory: true, isFile: false },
         ],
-        "/repo/docs/current": [],
+        "/repo/docs/current": [
+          { name: "Design.md", isDirectory: false, isFile: true },
+          { name: "notes.md", isDirectory: false, isFile: true },
+        ],
+      },
+      files: {
+        "/repo/docs/current/Design.md": "current\n",
+        "/repo/docs/current/notes.md": "note\n",
       },
       stats: {
         "/repo/docs": { isDirectory: true, isFile: false },
@@ -634,10 +648,54 @@ describe("prepareDesignRevisionDiffContext", () => {
 
     const diff = prepareDesignRevisionDiffContext(fileSystem, "/repo");
 
-    expect(diff.hasComparison).toBe(false);
-    expect(diff.summary).toBe("No previous design revision found; cannot compute a revision diff yet.");
+    expect(diff.hasComparison).toBe(true);
+    expect(diff.summary).toBe("Compared nothing -> current: 2 added 0 modified 0 removed");
+    expect(diff.addedCount).toBe(2);
+    expect(diff.modifiedCount).toBe(0);
+    expect(diff.removedCount).toBe(0);
     expect(diff.sourceReferences).toEqual(["/repo/docs/current"]);
-    expect(diff.changes).toEqual([]);
+    expect(diff.changes).toEqual([
+      {
+        relativePath: "Design.md",
+        kind: "added",
+        fromPath: "",
+        toPath: "/repo/docs/current/Design.md",
+      },
+      {
+        relativePath: "notes.md",
+        kind: "added",
+        fromPath: "",
+        toPath: "/repo/docs/current/notes.md",
+      },
+    ]);
+  });
+
+  it("compares rev.0 against rev.1 when rev.1 is selected", () => {
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        "/repo/docs": [
+          { name: "rev.0", isDirectory: true, isFile: false },
+          { name: "rev.1", isDirectory: true, isFile: false },
+        ],
+        "/repo/docs/rev.0": [{ name: "Design.md", isDirectory: false, isFile: true }],
+        "/repo/docs/rev.1": [{ name: "Design.md", isDirectory: false, isFile: true }],
+      },
+      files: {
+        "/repo/docs/rev.0/Design.md": "zero\n",
+        "/repo/docs/rev.1/Design.md": "one\n",
+      },
+      stats: {
+        "/repo/docs": { isDirectory: true, isFile: false },
+        "/repo/docs/rev.0": { isDirectory: true, isFile: false },
+        "/repo/docs/rev.1": { isDirectory: true, isFile: false },
+      },
+    });
+
+    const diff = prepareDesignRevisionDiffContext(fileSystem, "/repo", { target: "rev.1" });
+
+    expect(diff.hasComparison).toBe(true);
+    expect(diff.fromRevision?.name).toBe("rev.0");
+    expect(diff.summary).toBe("Compared rev.0 -> rev.1: 0 added 1 modified 0 removed");
   });
 });
 

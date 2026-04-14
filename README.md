@@ -95,6 +95,32 @@ Context body.
     - [ ] verify: Tests run ok
 ```
 
+### Single-file or multi-file
+
+A single Markdown file can seed an entire project:
+
+```markdown
+# Roadmap
+
+For each task in this file create a numbered migration file
+in current dir with seed produced from the task item.
+Then run explore on the file.
+
+- [ ] Add this feature
+- [ ] Add that feature
+- [ ] Extend something
+```
+
+```bash
+rundown all roadmap.md
+```
+
+This executes the TODO items, producing research and plan output — each with its own TODO items you can then execute:
+
+```bash
+rundown all .
+```
+
 …and more.
 
 > See [docs/configuration.md](docs/configuration.md) for profiles, workers, and per-command overrides.

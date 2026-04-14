@@ -2055,14 +2055,14 @@ function parseDocsDiffRevisionSelector(value: string, optionName: "from" | "to")
     return "current";
   }
 
-  const revisionMatch = /^rev\.([1-9][0-9]*)$/i.exec(normalized);
+  const revisionMatch = /^rev\.([0-9]+)$/i.exec(normalized);
   if (!revisionMatch) {
     throw new Error(
       "Invalid docs diff --"
       + optionName
       + " selector: "
       + value
-      + ". Allowed: current, rev.<n> (for example: rev.1).",
+      + ". Allowed: current, rev.<n> (for example: rev.0).",
     );
   }
 

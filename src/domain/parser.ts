@@ -112,7 +112,7 @@ const CLI_ARGS_DIRECTIVE_PATTERN = /^cli[-\s]?args\s*:\s*(.*)$/i;
 // Detects directive list items that switch tasks to verify-only intent.
 const VERIFY_DIRECTIVE_PATTERN = /^(?:verify|confirm|check)\s*:\s*$/i;
 // Detects directive list items that switch tasks to fast-execution intent.
-const FAST_DIRECTIVE_PATTERN = /^(?:fast|raw)\s*:\s*$/i;
+const FAST_DIRECTIVE_PATTERN = /^(?:fast|raw|quick)\s*:\s*$/i;
 // Detects directive list items that switch tasks to parallel-group intent.
 const PARALLEL_DIRECTIVE_PATTERN = /^(?:parallel|concurrent|par)\s*:\s*$/i;
 // Detects explicit verify-only task prefixes with payload text.
@@ -120,7 +120,7 @@ const VERIFY_TASK_PREFIX_PATTERN = /^(?:verify|confirm|check)\s*:/i;
 // Detects memory-capture task prefixes with payload text.
 const MEMORY_TASK_PREFIX_PATTERN = /^(?:memory|memorize|remember|inventory)\s*:/i;
 // Detects fast-execution task prefixes with payload text.
-const FAST_TASK_PREFIX_PATTERN = /^(?:fast|raw)\s*:/i;
+const FAST_TASK_PREFIX_PATTERN = /^(?:fast|raw|quick)\s*:/i;
 
 /** Context inherited while walking nested directive list items. */
 interface DirectiveContext {

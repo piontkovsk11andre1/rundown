@@ -32,7 +32,7 @@ const MEMORY_CAPTURE_PREFIX = /^(memory|memorize|remember|inventory)\s*:\s*/i;
 // Prefix marker that groups direct child tasks for parallel execution.
 const PARALLEL_GROUP_PREFIX = /^(parallel|concurrent|par)\s*:\s*/i;
 // Prefix marker that requests execution without verification.
-const FAST_EXECUTION_PREFIX = /^(fast|raw)\s*:/i;
+const FAST_EXECUTION_PREFIX = /^(fast|raw|quick)\s*:/i;
 
 function extractParallelGroupPayload(taskText: string): string | null {
   const prefixMatch = taskText.match(PARALLEL_GROUP_PREFIX);

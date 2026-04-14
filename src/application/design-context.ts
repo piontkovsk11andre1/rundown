@@ -275,7 +275,7 @@ export function parseDesignRevisionDirectoryName(name: string): { index: number 
   }
 
   const parsedIndex = Number.parseInt(indexText, 10);
-  if (!Number.isSafeInteger(parsedIndex) || parsedIndex < 1) {
+  if (!Number.isSafeInteger(parsedIndex) || parsedIndex < 0) {
     return null;
   }
 
@@ -390,15 +390,16 @@ export function prepareDesignRevisionDiffContext(
 
   const previousRevision = findPreviousRevisionForTarget(revisions, target);
   if (!previousRevision) {
+    const initialDiff = computeInitialDirectoryDiff(fileSystem, target.absolutePath);
     return {
       fromRevision: null,
       toTarget: target,
-      hasComparison: false,
-      summary: "No previous design revision found; cannot compute a revision diff yet.",
-      addedCount: 0,
+      hasComparison: true,
+      summary: formatInitialDesignDiffSummary(target.name, initialDiff.addedCount),
+      addedCount: initialDiff.addedCount,
       removedCount: 0,
       modifiedCount: 0,
-      changes: [],
+      changes: initialDiff.changes,
       sourceReferences,
     };
   }
@@ -797,6 +798,37 @@ function formatDesignDiffSummary(
     String(diff.modifiedCount) + " modified",
     String(diff.removedCount) + " removed",
   ].join(" ");
+}
+
+function computeInitialDirectoryDiff(
+  fileSystem: FileSystem,
+  targetRoot: string,
+): {
+  addedCount: number;
+  changes: DesignRevisionDiffFileChange[];
+} {
+  const files = collectDirectoryFileMap(fileSystem, targetRoot);
+  const orderedPaths = [...files.keys()].sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+  const changes: DesignRevisionDiffFileChange[] = orderedPaths.map((relativePath) => {
+    const toEntry = files.get(relativePath)!;
+    return {
+      relativePath,
+      kind: "added",
+      fromPath: "",
+      toPath: toEntry.absolutePath,
+    };
+  });
+
+  return {
+    addedCount: changes.length,
+    changes,
+  };
+}
+
+function formatInitialDesignDiffSummary(targetName: string, addedCount: number): string {
+  return "Compared nothing -> " + targetName + ": "
+    + String(addedCount)
+    + " added 0 modified 0 removed";
 }
 
 function formatDesignWorkspaceContext(

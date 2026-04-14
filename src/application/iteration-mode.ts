@@ -90,7 +90,7 @@ export function resolveIterationVerificationMode(params: {
   }
 
   if (isFastExecution && (configuredShouldVerify || configuredOnlyVerify || hasTaskDerivedVerifyOnly)) {
-    emit({ kind: "info", message: "Task uses fast/raw intent (" + taskIntent.reason + "); skipping verification." });
+    emit({ kind: "info", message: "Task uses fast/raw/quick intent (" + taskIntent.reason + "); skipping verification." });
   }
 
   return { onlyVerify, shouldVerify, taskIntentDecision: taskIntent, prefixChain };

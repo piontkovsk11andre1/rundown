@@ -69,6 +69,10 @@ export function createStartProject(
     const targetDirectory = dirOption
       ? dependencies.pathOperations.resolve(dirOption)
       : invocationDirectory;
+    const targetDirectoryExistedBeforeStart = dependencies.fileSystem.exists(targetDirectory);
+    const targetDirectoryHadFilesBeforeStart = targetDirectoryExistedBeforeStart
+      && dependencies.fileSystem.stat(targetDirectory)?.isDirectory === true
+      && dependencies.fileSystem.readdir(targetDirectory).length > 0;
 
     if (!dependencies.fileSystem.exists(targetDirectory)) {
       dependencies.fileSystem.mkdir(targetDirectory, { recursive: true });
@@ -174,7 +178,9 @@ export function createStartProject(
     writeFileIfMissing(
       dependencies.fileSystem,
       initialMigrationPath,
-      buildInitialMigrationMarkdown(description),
+      buildInitialMigrationMarkdown(description, {
+        seedFromExistingWorkspace: targetDirectoryHadFilesBeforeStart,
+      }),
       emit,
     );
 
@@ -231,7 +237,26 @@ function buildDesignMarkdown(description: string): string {
   return "# " + description + "\n\n" + description + "\n";
 }
 
-function buildInitialMigrationMarkdown(description: string): string {
+function buildInitialMigrationMarkdown(
+  description: string,
+  options?: {
+    seedFromExistingWorkspace?: boolean;
+  },
+): string {
+  if (options?.seedFromExistingWorkspace) {
+    return [
+      "# 0001 initialize",
+      "",
+      "Seed migration generated from project description:",
+      "",
+      "> " + description,
+      "",
+      "- [ ] Research target documents and existing project materials",
+      "- [ ] Create revision 0 target baseline from design/current/Target.md",
+      "",
+    ].join("\n");
+  }
+
   return [
     "# 0001 initialize",
     "",

@@ -640,6 +640,19 @@ function formatScopeLabel(scope: WorkerConfigWritableScope): string {
   return scope === "global" ? "global worker config" : "worker config";
 }
 
+function formatLoadScopeLabel(scope: "global" | "local"): string {
+  return scope === "global" ? "global worker config" : "worker config";
+}
+
+function formatConfigRepairGuidance(scope: "global" | "local", configPath: string): string {
+  const shared = `Repair guidance: ensure \"${configPath}\" contains valid JSON with a top-level object (for example: {}).`;
+  if (scope === "local") {
+    return `${shared} To reset project defaults, back up and remove the file, then run \`rundown init --overwrite-config\`.`;
+  }
+
+  return `${shared} To reset global defaults, back up and remove the file, then run \`rundown config set workers.default '[\"opencode\",\"run\"]' --type json --scope global\`.`;
+}
+
 function parseKeyPath(keyPath: string): string[] {
   const trimmed = keyPath.trim();
   if (trimmed.length === 0) {
@@ -665,11 +678,12 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
 }
 
 function readWritableConfigDocument(configPath: string, scope: WorkerConfigWritableScope): Record<string, unknown> {
+  const guidance = formatConfigRepairGuidance(scope, configPath);
   try {
     const source = fs.readFileSync(configPath, "utf-8");
     const parsed = JSON.parse(source);
     if (!isJsonObject(parsed)) {
-      throw new Error(`Failed to parse ${formatScopeLabel(scope)} at "${configPath}": expected top-level JSON object.`);
+      throw new Error(`Failed to parse ${formatScopeLabel(scope)} at "${configPath}": expected top-level JSON object. ${guidance}`);
     }
     return parsed;
   } catch (error) {
@@ -679,7 +693,7 @@ function readWritableConfigDocument(configPath: string, scope: WorkerConfigWrita
     }
 
     if (error instanceof SyntaxError) {
-      throw new Error(`Failed to parse ${formatScopeLabel(scope)} at "${configPath}": invalid JSON (${error.message}).`);
+      throw new Error(`Failed to parse ${formatScopeLabel(scope)} at "${configPath}": invalid JSON (${error.message}). ${guidance}`);
     }
 
     if (error instanceof Error) {
@@ -870,6 +884,8 @@ function applyConfigMutation(
 }
 
 function loadConfigFile(configPath: string, scope: "global" | "local", optional: boolean): WorkerConfig | undefined {
+  const scopeLabel = formatLoadScopeLabel(scope);
+  const guidance = formatConfigRepairGuidance(scope, configPath);
   let parsed: unknown;
   try {
     const source = fs.readFileSync(configPath, "utf-8");
@@ -880,25 +896,16 @@ function loadConfigFile(configPath: string, scope: "global" | "local", optional:
     }
 
     if (error instanceof SyntaxError) {
-      if (scope === "local") {
-        throw new Error(`Failed to parse worker config at \"${configPath}\": invalid JSON (${error.message}).`);
-      }
-      throw new Error(`Failed to parse global worker config at \"${configPath}\": invalid JSON (${error.message}).`);
+      throw new Error(`Failed to parse ${scopeLabel} at "${configPath}": invalid JSON (${error.message}). ${guidance}`);
     }
 
-    if (scope === "local") {
-      throw new Error(`Failed to read worker config at \"${configPath}\": ${String(error)}.`);
-    }
-    throw new Error(`Failed to read global worker config at \"${configPath}\": ${String(error)}.`);
+    throw new Error(`Failed to read ${scopeLabel} at "${configPath}": ${String(error)}. ${guidance}`);
   }
 
   try {
     return validateWorkerConfig(parsed);
   } catch (error) {
-    if (scope === "local") {
-      throw new Error(`Invalid worker config at \"${configPath}\": ${(error as Error).message}`);
-    }
-    throw new Error(`Invalid global worker config at \"${configPath}\": ${(error as Error).message}`);
+    throw new Error(`Invalid ${scopeLabel} at "${configPath}": ${(error as Error).message} ${guidance}`);
   }
 }
 

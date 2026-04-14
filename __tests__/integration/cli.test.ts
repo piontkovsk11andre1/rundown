@@ -13326,6 +13326,45 @@ describe.sequential("CLI integration", () => {
     expect(result.code).toBe(1);
     expect(fs.readFileSync(configPath, "utf-8")).toBe("{not valid json");
     expect(result.errors.some((line) => stripAnsi(line).includes("Failed to parse worker config at"))).toBe(true);
+    expect(result.errors.some((line) => stripAnsi(line).includes("Repair guidance:"))).toBe(true);
+    expect(result.errors.some((line) => stripAnsi(line).includes("rundown init --overwrite-config"))).toBe(true);
+  });
+
+  it("config set fails with actionable guidance when global config JSON is malformed", async () => {
+    const workspace = makeTempWorkspace();
+
+    const appDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-cli-malformed-global-"));
+    tempDirs.push(appDataDir);
+    const previousAppData = process.env.APPDATA;
+
+    process.env.APPDATA = appDataDir;
+    try {
+      const globalConfigPath = path.join(appDataDir, "rundown", "config.json");
+      fs.mkdirSync(path.dirname(globalConfigPath), { recursive: true });
+      fs.writeFileSync(globalConfigPath, "{not valid json", "utf-8");
+
+      const result = await runCli([
+        "config",
+        "set",
+        "workers.default",
+        '["opencode","run"]',
+        "--type",
+        "json",
+        "--scope",
+        "global",
+      ], workspace);
+
+      expect(result.code).toBe(1);
+      expect(result.errors.some((line) => stripAnsi(line).includes("Failed to parse global worker config at"))).toBe(true);
+      expect(result.errors.some((line) => stripAnsi(line).includes("Repair guidance:"))).toBe(true);
+      expect(result.errors.some((line) => stripAnsi(line).includes("rundown config set"))).toBe(true);
+    } finally {
+      if (previousAppData === undefined) {
+        delete process.env.APPDATA;
+      } else {
+        process.env.APPDATA = previousAppData;
+      }
+    }
   });
 
   it("init creates .rundown defaults and exits with 0", async () => {

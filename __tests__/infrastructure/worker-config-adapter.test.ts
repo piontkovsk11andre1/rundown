@@ -598,9 +598,15 @@ describe("createWorkerConfigAdapter", () => {
       resolveGlobalConfigPath: () => ({ discoveredPath: globalConfigPath }),
     });
 
-    expect(() => adapter.load(configDir)).toThrow(
-      `Failed to parse global worker config at \"${globalConfigPath}\": invalid JSON`,
-    );
+    try {
+      adapter.load(configDir);
+      throw new Error("Expected adapter.load to throw for malformed global JSON.");
+    } catch (error) {
+      const message = (error as Error).message;
+      expect(message).toContain(`Failed to parse global worker config at "${globalConfigPath}": invalid JSON`);
+      expect(message).toContain(`Repair guidance: ensure "${globalConfigPath}" contains valid JSON with a top-level object`);
+      expect(message).toContain("rundown config set");
+    }
   });
 
   it("throws when config.json contains malformed JSON", () => {
@@ -609,9 +615,15 @@ describe("createWorkerConfigAdapter", () => {
 
     const adapter = createWorkerConfigAdapter();
 
-    expect(() => adapter.load(configDir)).toThrow(
-      `Failed to parse worker config at \"${configPath}\": invalid JSON`,
-    );
+    try {
+      adapter.load(configDir);
+      throw new Error("Expected adapter.load to throw for malformed local JSON.");
+    } catch (error) {
+      const message = (error as Error).message;
+      expect(message).toContain(`Failed to parse worker config at "${configPath}": invalid JSON`);
+      expect(message).toContain(`Repair guidance: ensure "${configPath}" contains valid JSON with a top-level object`);
+      expect(message).toContain("rundown init --overwrite-config");
+    }
   });
 
   it("throws with descriptive message for invalid schema", () => {

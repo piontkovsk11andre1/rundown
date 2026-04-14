@@ -46,11 +46,10 @@ Each touch splits the prediction into *before* and *after*. We want to:
 
 But each action is also part of a session — a group we want to observe on its own. For all of this we need **non-probabilistic, deterministic automation** that guarantees each interaction with the real world happened in the correct order, at the correct time, and that the materialized result matches the prediction.
 
+This is what `rundown` is for.
+
 ---
 
-## Rundown
-
-This is what `rundown` is for.
 
 ### The workload protocol
 

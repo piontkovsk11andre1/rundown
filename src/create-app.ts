@@ -702,6 +702,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       fileSystem: ports.fileSystem,
       pathOperations: ports.pathOperations,
       workingDirectory: ports.workingDirectory,
+      interactiveInput: ports.interactiveInput,
     }),
   };
 }

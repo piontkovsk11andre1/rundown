@@ -13699,6 +13699,31 @@ describe.sequential("CLI integration", () => {
     expect(result.errors.map(stripAnsi)).toContain("⚠ Preserved .rundown/vars.json (already exists).");
   });
 
+  it("init is idempotent and preserves existing config files on repeated runs", async () => {
+    const workspace = makeTempWorkspace();
+    const configDir = path.join(workspace, ".rundown");
+
+    const firstResult = await runCli(["init"], workspace);
+    expect(firstResult.code).toBe(0);
+
+    fs.writeFileSync(path.join(configDir, "config.json"), "{\n  \"custom\": true\n}\n", "utf-8");
+    fs.writeFileSync(path.join(configDir, "vars.json"), "{\n  \"name\": \"Ada\"\n}\n", "utf-8");
+
+    const secondResult = await runCli(["init"], workspace);
+
+    expect(secondResult.code).toBe(0);
+    expect(fs.readFileSync(path.join(configDir, "config.json"), "utf-8")).toBe("{\n  \"custom\": true\n}\n");
+    expect(fs.readFileSync(path.join(configDir, "vars.json"), "utf-8")).toBe("{\n  \"name\": \"Ada\"\n}\n");
+
+    const secondLogs = secondResult.logs.map(stripAnsi);
+    const secondErrors = secondResult.errors.map(stripAnsi);
+    expect(secondLogs).not.toContain("✔ Created .rundown/config.json");
+    expect(secondLogs).not.toContain("✔ Created .rundown/vars.json");
+    expect(secondErrors).toContain("⚠ Preserved .rundown/config.json (already exists).");
+    expect(secondErrors).toContain("⚠ Preserved .rundown/vars.json (already exists).");
+    expect(secondLogs.at(-1)).toBe("✔ Initialized .rundown/ with default templates.");
+  });
+
   it("init --overwrite-config replaces existing vars.json and config.json", async () => {
     const workspace = makeTempWorkspace();
     const configDir = path.join(workspace, ".rundown");

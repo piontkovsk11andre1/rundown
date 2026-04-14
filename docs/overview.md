@@ -29,6 +29,12 @@ In addition to execute/verify task running, rundown supports a prediction-orient
 - `undo` semantically reverses prior task outcomes using saved artifacts.
 - `test` verifies assertion specs against predicted migration state.
 
+Prediction-to-execution narrative:
+
+- `migrate` and design commands shape planning context.
+- `research -> plan -> run` moves from enriched intent to executable tasks.
+- This narrative is documentation alignment only; it does not change verify/repair behavior, lockfile location/ownership rules, or runtime artifact lifecycle contracts.
+
 Command-boundary rule:
 
 - `rundown design ...` is for design-doc revision lifecycle (`release`, `diff`).

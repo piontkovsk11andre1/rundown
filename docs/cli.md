@@ -769,6 +769,13 @@ Run `research` and then `plan` on the same existing Markdown document.
 1. `rundown research <source>` enriches context and structure,
 2. `rundown plan <source>` synthesizes actionable TODO items.
 
+Together with `rundown run <source>`, this forms the standard prediction-to-execution path: `research -> plan -> run`.
+
+Contract note:
+
+- This flow description aligns command intent and examples only.
+- It does not alter verification/repair semantics, per-source lockfile behavior, or runtime artifact retention/cleanup rules.
+
 Synopsis:
 
 ```bash

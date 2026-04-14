@@ -29,6 +29,7 @@ export interface InitProjectOptions {
   defaultWorker?: string;
   tuiWorker?: string;
   gitignore?: boolean;
+  overwriteConfig?: boolean;
 }
 
 /**
@@ -108,6 +109,19 @@ export function createInitProject(
       emit({ kind: "success", message: `Created ${displayFilePath}` });
     };
 
+    const writeConfigArtifact = (name: "config.json" | "vars.json", content: string) => {
+      const filePath = `${configDir}/${name}`;
+      const displayFilePath = `${displayConfigDir}/${name}`;
+      const exists = dependencies.fileSystem.exists(filePath);
+      if (exists && !options.overwriteConfig) {
+        emit({ kind: "warn", message: `${displayFilePath} already exists, skipping.` });
+        return;
+      }
+
+      dependencies.fileSystem.writeText(filePath, content);
+      emit({ kind: "success", message: `${exists ? "Updated" : "Created"} ${displayFilePath}` });
+    };
+
     // Seed default workflow templates and project configuration files.
     write("execute.md", DEFAULT_TASK_TEMPLATE);
     write("discuss-finished.md", DEFAULT_DISCUSS_FINISHED_TEMPLATE);
@@ -124,7 +138,7 @@ export function createInitProject(
     write("migrate-backlog.md", DEFAULT_MIGRATE_BACKLOG_TEMPLATE);
     write("migrate-review.md", DEFAULT_MIGRATE_REVIEW_TEMPLATE);
     write("migrate-ux.md", DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE);
-    write("vars.json", DEFAULT_VARS_FILE_CONTENT);
+    writeConfigArtifact("vars.json", DEFAULT_VARS_FILE_CONTENT);
 
     // Generate config content: embed worker(s) when provided, otherwise use default.
     const hasWorkerOptions = options.defaultWorker || options.tuiWorker;
@@ -136,7 +150,7 @@ export function createInitProject(
         },
       }, null, 2) + "\n"
       : DEFAULT_CONFIG_CONTENT;
-    write("config.json", configContent);
+    writeConfigArtifact("config.json", configContent);
 
     // Append .rundown to .gitignore when requested.
     if (options.gitignore) {

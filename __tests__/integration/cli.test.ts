@@ -10826,7 +10826,8 @@ describe.sequential("CLI integration", () => {
     expect(result.code).toBe(0);
     const helpOutput = result.stdoutWrites.join("\n");
     const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
-    expect(compactHelpOutput).toContain("Create a .rundown/ directory with default templates (plan, execute, verify, repair, trace), scaffold tools/, and initialize vars.json/config.json as empty JSON objects. Use --config-dir to control where it is created.");
+    expect(compactHelpOutput).toContain("Create a .rundown/ directory with default templates (plan, execute, verify, repair, trace), scaffold tools/, and initialize vars.json/config.json when missing. Existing vars.json/config.json are preserved unless --overwrite-config is set. Use --config-dir to control where it is created.");
+    expect(compactHelpOutput).toContain("--overwrite-config Overwrite existing vars.json/config.json during init");
   });
 
   it("unlock --help shows source argument", async () => {
@@ -13410,6 +13411,38 @@ describe.sequential("CLI integration", () => {
     ]);
     expect(result.logs.map(stripAnsi)[0]).toBe("✔ Created .rundown/tools/");
     expect(result.logs.map(stripAnsi).at(-1)).toBe("✔ Initialized .rundown/ with default templates.");
+  });
+
+  it("init preserves existing vars.json and config.json by default", async () => {
+    const workspace = makeTempWorkspace();
+    const configDir = path.join(workspace, ".rundown");
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(path.join(configDir, "config.json"), "{\n  \"custom\": true\n}\n", "utf-8");
+    fs.writeFileSync(path.join(configDir, "vars.json"), "{\n  \"name\": \"Ada\"\n}\n", "utf-8");
+
+    const result = await runCli(["init"], workspace);
+
+    expect(result.code).toBe(0);
+    expect(fs.readFileSync(path.join(configDir, "config.json"), "utf-8")).toBe("{\n  \"custom\": true\n}\n");
+    expect(fs.readFileSync(path.join(configDir, "vars.json"), "utf-8")).toBe("{\n  \"name\": \"Ada\"\n}\n");
+    expect(result.errors.map(stripAnsi)).toContain("⚠ .rundown/config.json already exists, skipping.");
+    expect(result.errors.map(stripAnsi)).toContain("⚠ .rundown/vars.json already exists, skipping.");
+  });
+
+  it("init --overwrite-config replaces existing vars.json and config.json", async () => {
+    const workspace = makeTempWorkspace();
+    const configDir = path.join(workspace, ".rundown");
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(path.join(configDir, "config.json"), "{\n  \"custom\": true\n}\n", "utf-8");
+    fs.writeFileSync(path.join(configDir, "vars.json"), "{\n  \"name\": \"Ada\"\n}\n", "utf-8");
+
+    const result = await runCli(["init", "--overwrite-config"], workspace);
+
+    expect(result.code).toBe(0);
+    expect(fs.readFileSync(path.join(configDir, "config.json"), "utf-8")).toBe("{}\n");
+    expect(fs.readFileSync(path.join(configDir, "vars.json"), "utf-8")).toBe("{}\n");
+    expect(result.logs.map(stripAnsi)).toContain("✔ Updated .rundown/config.json");
+    expect(result.logs.map(stripAnsi)).toContain("✔ Updated .rundown/vars.json");
   });
 });
 

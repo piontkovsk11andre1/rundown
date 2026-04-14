@@ -152,6 +152,52 @@ describe("init-project", () => {
     );
   });
 
+  it("preserves existing vars.json and config.json by default", async () => {
+    const { dependencies, fileSystem, events } = createDependencies();
+    vi.mocked(fileSystem.exists).mockImplementation((targetPath: string) => {
+      return targetPath === "/workspace/.rundown/vars.json"
+        || targetPath === "/workspace/.rundown/config.json";
+    });
+    const initProject = createInitProject(dependencies);
+
+    const code = await initProject();
+
+    expect(code).toBe(0);
+    expect(vi.mocked(fileSystem.writeText)).not.toHaveBeenCalledWith(
+      "/workspace/.rundown/vars.json",
+      expect.any(String),
+    );
+    expect(vi.mocked(fileSystem.writeText)).not.toHaveBeenCalledWith(
+      "/workspace/.rundown/config.json",
+      expect.any(String),
+    );
+    expect(events.some((event) => event.kind === "warn" && event.message.endsWith("/vars.json already exists, skipping."))).toBe(true);
+    expect(events.some((event) => event.kind === "warn" && event.message.endsWith("/config.json already exists, skipping."))).toBe(true);
+  });
+
+  it("overwrites existing vars.json and config.json when overwriteConfig is enabled", async () => {
+    const { dependencies, fileSystem, events } = createDependencies();
+    vi.mocked(fileSystem.exists).mockImplementation((targetPath: string) => {
+      return targetPath === "/workspace/.rundown/vars.json"
+        || targetPath === "/workspace/.rundown/config.json";
+    });
+    const initProject = createInitProject(dependencies);
+
+    const code = await initProject({ overwriteConfig: true });
+
+    expect(code).toBe(0);
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/.rundown/vars.json",
+      "{}\n",
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/.rundown/config.json",
+      "{}\n",
+    );
+    expect(events.some((event) => event.kind === "success" && event.message.startsWith("Updated ") && event.message.endsWith("/vars.json"))).toBe(true);
+    expect(events.some((event) => event.kind === "success" && event.message.startsWith("Updated ") && event.message.endsWith("/config.json"))).toBe(true);
+  });
+
   it("creates .gitignore with .rundown when --gitignore is set and no .gitignore exists", async () => {
     const { dependencies, fileSystem, events } = createDependencies();
     const initProject = createInitProject(dependencies);

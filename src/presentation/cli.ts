@@ -819,9 +819,10 @@ program
 
 program
   .command("init")
-  .description("Create a .rundown/ directory with default templates (plan, execute, verify, repair, trace), scaffold tools/, and initialize vars.json/config.json as empty JSON objects. Use --config-dir to control where it is created.")
+  .description("Create a .rundown/ directory with default templates (plan, execute, verify, repair, trace), scaffold tools/, and initialize vars.json/config.json when missing. Existing vars.json/config.json are preserved unless --overwrite-config is set. Use --config-dir to control where it is created.")
   .option("--default-worker <command>", "Set default worker CLI command in config.json")
   .option("--tui-worker <command>", "Set TUI worker CLI command in config.json")
+  .option("--overwrite-config", "Overwrite existing vars.json/config.json during init", false)
   .option("--gitignore", "Add .rundown to .gitignore", false)
   .action(withCliAction(createInitCommandAction({ getApp })));
 

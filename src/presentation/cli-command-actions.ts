@@ -1687,8 +1687,13 @@ export function createUnlockCommandAction({
  */
 export function createInitCommandAction({
   getApp,
-}: Pick<WorkerActionDependencies, "getApp">): (options: { defaultWorker?: string; tuiWorker?: string; gitignore?: boolean }) => CliActionResult {
-  return (options) => getApp().initProject({ defaultWorker: options.defaultWorker, tuiWorker: options.tuiWorker, gitignore: options.gitignore });
+}: Pick<WorkerActionDependencies, "getApp">): (options: { defaultWorker?: string; tuiWorker?: string; gitignore?: boolean; overwriteConfig?: boolean }) => CliActionResult {
+  return (options) => getApp().initProject({
+    defaultWorker: options.defaultWorker,
+    tuiWorker: options.tuiWorker,
+    gitignore: options.gitignore,
+    overwriteConfig: options.overwriteConfig,
+  });
 }
 
 /**

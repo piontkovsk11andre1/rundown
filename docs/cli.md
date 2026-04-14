@@ -458,6 +458,8 @@ rundown discuss <source> [options] --worker <pattern>
 
 `discuss` uses the same source resolution and task-selection logic as `run`, but opens a discussion-oriented worker session (default `--mode tui`) instead of executing the task implementation flow.
 
+When interactive execution is unavailable (for example CI/non-TTY), run `discuss` with `--mode wait` for deterministic non-interactive behavior.
+
 `--worker` is optional when rundown can resolve a worker for `discuss` from `.rundown/config.json`.
 
 During this session, the agent may edit the Markdown source task text to improve scope and clarity (for example rewriting task wording, splitting tasks, or adding sub-items). `discuss` does not mutate checkbox completion state.
@@ -1452,6 +1454,13 @@ If the worker does not provide details, rundown prints fallback reasons (for exa
 - `--mode wait` â€” start the worker and wait
 - `--mode tui` â€” start an interactive terminal session and continue after exit
 - `--mode detached` â€” start the worker without waiting
+
+CI/non-TTY expectations:
+
+- Commands that prefer interactive mode (`discuss`, and explicit `--mode tui` invocations) should be run with `--mode wait` when no TTY is available.
+- Deterministic prediction flows in CI should use `--mode wait` (`research`, `plan`, and `run` when immediate verification is required).
+- `plan` is already wait-only, so it remains compatible with non-interactive environments by default.
+- Use `detached` only when asynchronous dispatch is intentional and immediate verification is not required.
 
 ### Worker patterns and prompt delivery
 

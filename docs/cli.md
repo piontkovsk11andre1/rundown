@@ -385,13 +385,13 @@ rundown all roadmap.md
 rundown run tasks.md --show-agent-output
 ```
 
-PowerShell-safe form:
+PowerShell-safe worker form:
 
 ```powershell
-rundown run docs/
-rundown run docs/ --all
+rundown run docs/ --worker '["opencode","run"]'
+rundown run docs/ --all --worker '["opencode","run"]'
 rundown all docs/
-rundown run docs/ --show-agent-output
+rundown run docs/ --show-agent-output --worker '["opencode","run"]'
 ```
 
 Agent output notes (`run --show-agent-output`):
@@ -469,7 +469,7 @@ rundown discuss <source> [options] --worker <pattern>
 
 When interactive execution is unavailable (for example CI/non-TTY), run `discuss` with `--mode wait` for deterministic non-interactive behavior.
 
-`--worker` is optional when rundown can resolve a worker for `discuss` from `.rundown/config.json`.
+`--worker` is optional when rundown can resolve a worker for `discuss` from effective config.
 
 During this session, the agent may edit the Markdown source task text to improve scope and clarity (for example rewriting task wording, splitting tasks, or adding sub-items). `discuss` does not mutate checkbox completion state.
 
@@ -514,7 +514,7 @@ By default, `reverify` targets the latest completed task in the current reposito
 
 Use this when you want a deterministic confidence check against an exact historical task context (for example, before a release or push) without advancing task selection.
 
-`--worker` is optional when rundown can resolve a worker for `reverify` from `.rundown/config.json`.
+`--worker` is optional when rundown can resolve a worker for `reverify` from effective config.
 
 Options:
 
@@ -707,7 +707,7 @@ Options:
 Worker resolution:
 
 - `--worker <pattern>` and separator form `-- <command>` are both supported.
-- If neither is provided, `plan` resolves the worker from `.rundown/config.json` using the standard resolution cascade.
+- If neither is provided, `plan` resolves the worker from effective config using the standard resolution cascade.
 - For OpenCode workers, continuation/resume session arguments are rejected so each scan runs in a clean session.
 
 Scan loop and convergence semantics:
@@ -839,7 +839,7 @@ rundown explore docs/spec.md
 rundown explore docs/spec.md --scan-count 3 --deep 1
 
 # PowerShell-safe worker form
-rundown explore docs/spec.md
+rundown explore docs/spec.md --worker '["opencode","run"]'
 ```
 
 ### `rundown make <seed-text> <markdown-file>`
@@ -1293,14 +1293,17 @@ rundown run <source> --worker <pattern>
 
 If both are provided, `--worker` takes precedence.
 
-`--worker` is optional when rundown can resolve a worker from `.rundown/config.json`.
+`--worker` is optional when rundown can resolve a worker from effective config.
 
 With a freshly initialized empty config (`{}`), no worker is resolved by default. In that case, provide one explicitly using either `--worker <pattern>` or `-- <command>`.
 
 Worker resolution cascade (lowest to highest priority):
 
-- `defaults` in `.rundown/config.json`
-- `commands.<command>` in `.rundown/config.json` (`run`, `plan`, `make`, `discuss`, `research`, `reverify`, `help`)
+- Built-in defaults
+- Global config
+- Local `<config-dir>/config.json`
+- `defaults` on effective config
+- `commands.<command>` on effective config (`run`, `plan`, `make`, `discuss`, `research`, `verify`, `memory`, `reverify`, `help`)
 - Markdown frontmatter `profile: <name>`
 - Parent directive item `- profile=<name>` for child checkbox tasks
 - Parent directive item `- cli-args: <args>` for child `cli:` checkbox tasks (appends `<args>` to each child inline CLI command)
@@ -1493,13 +1496,13 @@ Examples:
 
 ```bash
 # Attach prompt file and provide a bootstrap message for the worker
-rundown run roadmap.md
+rundown run roadmap.md --worker '["opencode","run","$bootstrap","$file"]'
 
 # Worker receives bootstrap text as its prompt flag
-rundown run roadmap.md
+rundown run roadmap.md --worker '["opencode","run","--prompt","$bootstrap","$file"]'
 
 # No placeholder used -> rundown appends $file automatically
-rundown run roadmap.md
+rundown run roadmap.md --worker '["opencode","run"]'
 ```
 
 ### `rundown research <markdown-file>`
@@ -1546,7 +1549,7 @@ Options:
 Worker resolution:
 
 - `--worker <pattern>` and separator form `-- <command>` are both supported.
-- If neither is provided, `research` resolves the worker from `.rundown/config.json` using the standard cascade.
+- If neither is provided, `research` resolves the worker from effective config using the standard resolution cascade.
 - Custom research prompts can be supplied via `.rundown/research.md`; otherwise the built-in default research template is used.
 
 Examples:
@@ -1856,7 +1859,7 @@ rundown discuss docs/spec.md --mode tui --worker '["opencode"]'
 Use a `$file` worker pattern for robust prompt delivery:
 
 ```powershell
-rundown run docs/
+rundown run docs/ --worker '["opencode","run","$file"]'
 ```
 
 ## Practical default for OpenCode

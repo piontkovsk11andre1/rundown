@@ -1,6 +1,7 @@
 # Configuration
 
-`rundown` supports layered worker configuration from `.rundown/config.json`.
+`rundown` supports layered worker configuration across built-in defaults,
+optional user-level global config, and repository-local config.
 
 This lets you:
 
@@ -11,9 +12,17 @@ This lets you:
 - apply profiles from file frontmatter, directive parent list items, or `profile=` prefix modifiers,
 - override everything from the CLI when needed.
 
-## Config file
+## Config files
 
-Path: `<config-dir>/config.json` (typically `.rundown/config.json`).
+Local path: `<config-dir>/config.json` (typically `.rundown/config.json`).
+
+Global path (user-level defaults):
+
+- Linux: `$XDG_CONFIG_HOME/rundown/config.json` (fallback: `~/.config/rundown/config.json`)
+- macOS: `~/Library/Application Support/rundown/config.json` (discovery also checks XDG and `~/.config`)
+- Windows: `%APPDATA%\rundown\config.json` (discovery also checks `%LOCALAPPDATA%`, `%USERPROFILE%\AppData\Roaming`, then `~/.config`)
+
+Global config is optional. If no global file exists, rundown behaves as before and uses local config only.
 
 When created by `rundown init`, this file starts as an empty JSON object (`{}`).
 
@@ -167,7 +176,13 @@ Notes:
 
 ## Resolution cascade
 
-Worker resolution applies this precedence (lowest to highest):
+Rundown first builds an effective config with this layer precedence (lowest to highest):
+
+1. built-in defaults
+2. global config
+3. local `<config-dir>/config.json`
+
+Then worker resolution applies command/task precedence on that effective config:
 
 1. `config.defaults`
 2. `config.commands.<command>`
@@ -182,25 +197,17 @@ Notes:
 - Referencing an unknown profile name is an error.
 - If no worker is resolved from CLI or config, worker-required commands fail with guidance to configure `.rundown/config.json`.
 
-## Config command surface (planned)
+## Config command
 
-`rundown config` is the planned CLI surface for inspect/update operations without manual JSON edits.
+`rundown config` is the CLI surface for inspect/update operations without manual JSON edits.
 
-Planned subcommands:
-
-- `rundown config get <key>`
-- `rundown config list`
-- `rundown config set <key> <value>`
-- `rundown config unset <key>`
-- `rundown config path`
-
-Planned scope selection:
+Scope selection:
 
 - `--scope effective` (default for reads): merged, read-only view.
 - `--scope local`: `<config-dir>/config.json`.
 - `--scope global`: user-level defaults shared across rundown workspaces.
 
-Planned global config path strategy (canonical write target + discovery fallbacks):
+Global config path strategy (canonical write target + discovery fallbacks):
 
 - Linux:
   - canonical: `$XDG_CONFIG_HOME/rundown/config.json`
@@ -233,14 +240,19 @@ Edge cases:
 - Providing empty nested objects (for example `healthPolicy.unavailableReevaluation: {}`) does not clear global nested keys.
 - Sections omitted in both layers remain omitted from the effective config.
 
-Planned defaults and constraints:
+Defaults and constraints:
 
 - Read commands (`get`, `list`) default to `effective`.
 - Write commands (`set`, `unset`) default to `local`.
 - `effective` rejects writes (`set`/`unset`).
 - `--show-source` on effective reads includes value attribution where practical.
 
-Planned examples:
+Current build note:
+
+- `set` and `unset` are available for writable scopes (`local`, `global`).
+- `get`, `list`, and `path` are wired in CLI help and validated options; value-read operations are introduced in a follow-up build.
+
+Examples:
 
 ```bash
 rundown config get defaults.worker

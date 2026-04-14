@@ -919,7 +919,7 @@ Example:
 rundown init
 ```
 
-### `rundown config` (planned command surface)
+### `rundown config`
 
 Manage rundown configuration without editing JSON files manually.
 
@@ -961,6 +961,11 @@ Scope defaults:
 - write operations (`set`, `unset`): `local`
 
 `effective` is read-only.
+
+Current build note:
+
+- `set` and `unset` are available for writable scopes (`local`, `global`).
+- `get`, `list`, and `path` are wired in help and option parsing; value-read operations are introduced in a follow-up build.
 
 Synopsis:
 

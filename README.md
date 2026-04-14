@@ -396,11 +396,11 @@ Useful capabilities that stay out of the way until you need them:
 - trigger hooks on success or failure
 - inspect or clean execution records with `rundown artifacts`
 
-## Planned `config` command surface
+## `config` command surface
 
-Rundown is adding a first-class config command so you can inspect/update config without hand-editing JSON.
+Rundown includes a first-class config command so you can inspect/update config without hand-editing JSON.
 
-Planned subcommands:
+Subcommands:
 
 - `rundown config get <key>`
 - `rundown config list`
@@ -408,17 +408,22 @@ Planned subcommands:
 - `rundown config unset <key>`
 - `rundown config path`
 
-Planned scope model:
+Scope model:
 
 - `--scope effective` (default for reads): merged view (`built-in -> global -> local -> CLI`), read-only.
 - `--scope local` (default for writes): repository config at `<config-dir>/config.json`.
 - `--scope global`: user-level defaults shared across rundown workspaces.
 
-Planned global config path conventions:
+Global config path conventions:
 
 - Linux: `$XDG_CONFIG_HOME/rundown/config.json` (fallback `~/.config/rundown/config.json`)
 - macOS: `~/Library/Application Support/rundown/config.json` (discovery also checks XDG and `~/.config`)
 - Windows: `%APPDATA%\rundown\config.json` (discovery also checks `%LOCALAPPDATA%`, `%USERPROFILE%\AppData\Roaming`, then `~/.config`)
+
+Current build note:
+
+- `set` and `unset` are available for writable scopes (`local`, `global`).
+- `get`, `list`, and `path` are wired in CLI help and option parsing; value-read operations are introduced in a follow-up build.
 
 Examples:
 

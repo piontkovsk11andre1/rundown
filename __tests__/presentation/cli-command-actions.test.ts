@@ -16,6 +16,8 @@ import {
   createReverifyCommandAction,
   createRunCommandAction,
   createStartCommandAction,
+  createWorkspaceRemoveCommandAction,
+  createWorkspaceUnlinkCommandAction,
   createWorkerHealthCommandAction,
 } from "../../src/presentation/cli-command-actions.js";
 import type { CliApp } from "../../src/presentation/cli-app-init.js";
@@ -420,6 +422,56 @@ describe("createWorkerHealthCommandAction", () => {
     expect(exitCode).toBe(0);
     expect(viewWorkerHealthStatus).toHaveBeenCalledTimes(1);
     expect(viewWorkerHealthStatus).toHaveBeenCalledWith({ json: true });
+  });
+});
+
+describe("workspace command actions", () => {
+  it("forwards normalized options to workspaceUnlinkTask", async () => {
+    const workspaceUnlinkTask = vi.fn(async () => 0);
+    const app = { workspaceUnlinkTask } as unknown as CliApp;
+    const action = createWorkspaceUnlinkCommandAction({
+      getApp: () => app,
+    });
+
+    const exitCode = await action({
+      workspace: "../linked-project",
+      all: true,
+      dryRun: true,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(workspaceUnlinkTask).toHaveBeenCalledTimes(1);
+    expect(workspaceUnlinkTask).toHaveBeenCalledWith({
+      workspace: "../linked-project",
+      all: true,
+      dryRun: true,
+    });
+  });
+
+  it("forwards remove options including deleteFiles/force", async () => {
+    const workspaceRemoveTask = vi.fn(async () => 0);
+    const app = { workspaceRemoveTask } as unknown as CliApp;
+    const action = createWorkspaceRemoveCommandAction({
+      getApp: () => app,
+    });
+
+    const exitCode = await action({
+      workspace: "record-id",
+      all: false,
+      deleteFiles: true,
+      dryRun: false,
+      force: true,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(workspaceRemoveTask).toHaveBeenCalledTimes(1);
+    expect(workspaceRemoveTask).toHaveBeenCalledWith({
+      workspace: "record-id",
+      all: false,
+      deleteFiles: true,
+      dryRun: false,
+      force: true,
+    });
   });
 });
 

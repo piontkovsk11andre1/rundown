@@ -53,6 +53,8 @@ import {
   createConfigPathCommandAction,
   createConfigSetCommandAction,
   createConfigUnsetCommandAction,
+  createWorkspaceRemoveCommandAction,
+  createWorkspaceUnlinkCommandAction,
   createWorkerHealthCommandAction,
   createNextCommandAction,
   createPlanCommandAction,
@@ -828,6 +830,31 @@ program
   .argument("<source>", "Markdown source file path used to derive <config-dir>/locks/<basename>.lock")
   .allowUnknownOption(false)
   .action(withCliAction(createUnlockCommandAction({ getApp })));
+
+const workspaceCommand = program
+  .command("workspace")
+  .description("Manage linked workspace records and cleanup flows.")
+  .configureHelp({ showGlobalOptions: true });
+
+workspaceCommand
+  .command("unlink")
+  .description("Remove workspace link record(s) from the current directory without deleting files.")
+  .option("--workspace <dir|id>", "Select a workspace record by relative path or record id")
+  .option("--all", "Unlink all workspace records in the current workspace link file", false)
+  .option("--dry-run", "Show which workspace records would be unlinked without writing changes", false)
+  .allowUnknownOption(false)
+  .action(withCliAction(createWorkspaceUnlinkCommandAction({ getApp })));
+
+workspaceCommand
+  .command("remove")
+  .description("Remove workspace link record(s) and optionally delete linked workspace files.")
+  .option("--workspace <dir|id>", "Select a workspace record by relative path or record id")
+  .option("--all", "Remove all workspace records in the current workspace link file", false)
+  .option("--delete-files", "Delete selected linked workspace files/directories after confirmation", false)
+  .option("--dry-run", "Preview records/files that would be removed without changing disk", false)
+  .option("--force", "Skip confirmation prompts for destructive cleanup operations", false)
+  .allowUnknownOption(false)
+  .action(withCliAction(createWorkspaceRemoveCommandAction({ getApp })));
 
 program
   .command("init")

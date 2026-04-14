@@ -1687,6 +1687,44 @@ export function createUnlockCommandAction({
 }
 
 /**
+ * Creates the `workspace unlink` command action handler.
+ *
+ * The returned action forwards normalized selector and safety flags to the
+ * workspace unlink application use case.
+ */
+export function createWorkspaceUnlinkCommandAction({
+  getApp,
+}: Pick<WorkerActionDependencies, "getApp">): (opts: CliOpts) => CliActionResult {
+  return (opts: CliOpts) => {
+    return getApp().workspaceUnlinkTask({
+      workspace: normalizeOptionalString(opts.workspace),
+      all: Boolean(opts.all as boolean | undefined),
+      dryRun: Boolean(opts.dryRun as boolean | undefined),
+    });
+  };
+}
+
+/**
+ * Creates the `workspace remove` command action handler.
+ *
+ * The returned action forwards normalized selector, deletion, and safety flags
+ * to the workspace remove application use case.
+ */
+export function createWorkspaceRemoveCommandAction({
+  getApp,
+}: Pick<WorkerActionDependencies, "getApp">): (opts: CliOpts) => CliActionResult {
+  return (opts: CliOpts) => {
+    return getApp().workspaceRemoveTask({
+      workspace: normalizeOptionalString(opts.workspace),
+      all: Boolean(opts.all as boolean | undefined),
+      deleteFiles: Boolean(opts.deleteFiles as boolean | undefined),
+      dryRun: Boolean(opts.dryRun as boolean | undefined),
+      force: Boolean(opts.force as boolean | undefined),
+    });
+  };
+}
+
+/**
  * Creates the `init` command action handler.
  *
  * The returned action initializes project configuration through the application boundary.

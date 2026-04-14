@@ -3935,6 +3935,44 @@ describe("CLI plan and utility command normalization", () => {
 
     expect(call).toEqual({ source: "tasks.md" });
   });
+
+  it("passes workspace unlink options to the application layer", async () => {
+    const workspaceUnlinkTask = vi.fn(async () => 0);
+    const call = await invokeWorkspaceUnlinkAndCaptureCall([
+      "workspace",
+      "unlink",
+      "--workspace",
+      "../linked-project",
+      "--all",
+      "--dry-run",
+    ], workspaceUnlinkTask);
+
+    expect(call).toEqual({
+      workspace: "../linked-project",
+      all: true,
+      dryRun: true,
+    });
+  });
+
+  it("passes workspace remove options to the application layer", async () => {
+    const workspaceRemoveTask = vi.fn(async () => 0);
+    const call = await invokeWorkspaceRemoveAndCaptureCall([
+      "workspace",
+      "remove",
+      "--workspace",
+      "record-id",
+      "--delete-files",
+      "--force",
+    ], workspaceRemoveTask);
+
+    expect(call).toEqual({
+      workspace: "record-id",
+      all: false,
+      deleteFiles: true,
+      dryRun: false,
+      force: true,
+    });
+  });
 });
 
 async function invokeRunAndCaptureCall(args: string[], runTask: ReturnType<typeof vi.fn>): Promise<RunTaskCall> {
@@ -5061,6 +5099,88 @@ async function invokeUnlockAndCaptureCall(args: string[], unlockTask: ReturnType
 
   expect(unlockTask).toHaveBeenCalledTimes(1);
   return withLegacyWorkerCommand(unlockTask.mock.calls[0][0] as RunTaskCall);
+}
+
+async function invokeWorkspaceUnlinkAndCaptureCall(
+  args: string[],
+  workspaceUnlinkTask: ReturnType<typeof vi.fn>,
+): Promise<RunTaskCall> {
+  const previousEnv = captureEnv();
+
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
+
+  vi.doMock("../../src/create-app.js", () => ({
+    createApp: () => ({
+      runTask: vi.fn(async () => 0),
+      reverifyTask: vi.fn(async () => 0),
+      revertTask: vi.fn(async () => 0),
+      nextTask: vi.fn(async () => 0),
+      listTasks: vi.fn(async () => 0),
+      planTask: vi.fn(async () => 0),
+      unlockTask: vi.fn(async () => 0),
+      workspaceUnlinkTask,
+      workspaceRemoveTask: vi.fn(async () => 0),
+      initProject: vi.fn(async () => 0),
+      manageArtifacts: vi.fn(() => 0),
+    }),
+  }));
+
+  try {
+    const { parseCliArgs } = await import("../../src/presentation/cli.js");
+    await parseCliArgs(normalizeLegacyWorkerPatternArgs(args));
+  } catch (error) {
+    const message = String(error);
+    if (!/CLI exited with code \d+/.test(message)) {
+      throw error;
+    }
+  } finally {
+    restoreEnv(previousEnv);
+  }
+
+  expect(workspaceUnlinkTask).toHaveBeenCalledTimes(1);
+  return workspaceUnlinkTask.mock.calls[0][0] as RunTaskCall;
+}
+
+async function invokeWorkspaceRemoveAndCaptureCall(
+  args: string[],
+  workspaceRemoveTask: ReturnType<typeof vi.fn>,
+): Promise<RunTaskCall> {
+  const previousEnv = captureEnv();
+
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
+
+  vi.doMock("../../src/create-app.js", () => ({
+    createApp: () => ({
+      runTask: vi.fn(async () => 0),
+      reverifyTask: vi.fn(async () => 0),
+      revertTask: vi.fn(async () => 0),
+      nextTask: vi.fn(async () => 0),
+      listTasks: vi.fn(async () => 0),
+      planTask: vi.fn(async () => 0),
+      unlockTask: vi.fn(async () => 0),
+      workspaceUnlinkTask: vi.fn(async () => 0),
+      workspaceRemoveTask,
+      initProject: vi.fn(async () => 0),
+      manageArtifacts: vi.fn(() => 0),
+    }),
+  }));
+
+  try {
+    const { parseCliArgs } = await import("../../src/presentation/cli.js");
+    await parseCliArgs(normalizeLegacyWorkerPatternArgs(args));
+  } catch (error) {
+    const message = String(error);
+    if (!/CLI exited with code \d+/.test(message)) {
+      throw error;
+    }
+  } finally {
+    restoreEnv(previousEnv);
+  }
+
+  expect(workspaceRemoveTask).toHaveBeenCalledTimes(1);
+  return workspaceRemoveTask.mock.calls[0][0] as RunTaskCall;
 }
 
 function normalizeLegacyWorkerPatternArgs(args: string[]): string[] {

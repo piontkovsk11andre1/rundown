@@ -195,7 +195,66 @@ Notes:
 
 - CLI worker command always wins.
 - Referencing an unknown profile name is an error.
-- If no worker is resolved from CLI or config, worker-required commands fail with guidance to configure `.rundown/config.json`.
+- If no worker is resolved from CLI or config, worker-required commands fail with guidance to configure `defaults.worker` or `commands.<name>.worker` in config.
+
+## Command-level worker overrides
+
+Use command overrides as the primary control surface for predictable behavior across prediction flows instead of repeating ad-hoc CLI worker flags.
+
+Recommended commands to set explicitly:
+
+- `commands.plan`: deterministic planning worker (commonly `["opencode", "run"]`).
+- `commands.research`: deterministic research worker for prediction inputs.
+- `commands.verify`: verification-specific worker/model defaults.
+- `commands.memory`: memory-capture worker/model defaults.
+
+Common companion overrides:
+
+- `commands.run`: execution defaults when no profile/CLI override is present.
+- `commands.discuss`: interactive defaults (commonly `["opencode"]`).
+
+Example:
+
+```json
+{
+  "defaults": {
+    "worker": ["opencode", "run"]
+  },
+  "commands": {
+    "plan": {
+      "workerArgs": ["--model", "opus-4.6"]
+    },
+    "research": {
+      "workerArgs": ["--model", "opus-4.6"]
+    },
+    "verify": {
+      "workerArgs": ["--model", "gpt-5.3-codex"]
+    },
+    "memory": {
+      "workerArgs": ["--model", "gpt-5.3-codex"]
+    },
+    "discuss": {
+      "worker": ["opencode"]
+    }
+  }
+}
+```
+
+## CLI override behavior
+
+CLI worker flags are highest precedence and override resolved config for that invocation only.
+
+- `--worker <command...>`: explicit and cross-shell-safe form (recommended, especially in PowerShell).
+- `-- <command...>`: separator form with the same precedence and behavior.
+
+Examples:
+
+```bash
+rundown plan --worker opencode run
+rundown research --worker opencode run
+rundown discuss --worker opencode
+rundown run --worker opencode run
+```
 
 ## Config command
 

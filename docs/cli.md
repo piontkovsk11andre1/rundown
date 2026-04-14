@@ -67,6 +67,13 @@ By default, `start` creates a design-first project structure and prepares migrat
 
 Use `--design-dir`, `--specs-dir`, and `--migrations-dir` to override these workspace directories at bootstrap time. Rundown persists the resolved mapping in `.rundown/config.json` and reuses it across prediction flows (`migrate`, `docs`, `test`, and related commands).
 
+Linked-workspace behavior:
+
+- When `start` is invoked from a linked directory, rundown writes link metadata in both places:
+  - target workspace `.rundown/workspace.link` points back to the source workspace (legacy single-path format for compatibility)
+  - source workspace `.rundown/workspace.link` is updated in multi-record schema so one source can link to multiple targets
+- Existing single-link repositories remain compatible; legacy single-path `workspace.link` still resolves.
+
 Directory override rules:
 
 - Paths must be relative to the project root.
@@ -133,8 +140,15 @@ Options:
 | Option | Description | Default |
 |---|---|---|
 | `--dir <path>` | Migration directory to operate on. | `./migrations` |
+| `--workspace <dir>` | Explicit workspace root for linked/multi-workspace resolution. Required when link metadata is ambiguous. | unset |
 | `--confirm` | Print generated content and ask before each write. Non-TTY uses default yes. | off |
 | `--worker <pattern>` | Worker pattern override (alternative to `-- <command>`). | unset |
+
+Workspace selection notes (`migrate`, `docs publish`, `docs diff`):
+
+- By default, path-sensitive commands resolve workspace from `.rundown/workspace.link`.
+- If link metadata has multiple records and no default, command resolution is ambiguous and the command fails with candidate paths.
+- Use `--workspace <dir>` to select the effective workspace explicitly (relative to invocation directory).
 
 ### `rundown docs`
 
@@ -159,6 +173,7 @@ Options:
 | Option | Description | Default |
 |---|---|---|
 | `--dir <path>` | Migration directory to operate on (used to resolve project root). | `./migrations` |
+| `--workspace <dir>` | Explicit workspace root for linked/multi-workspace resolution. | unset |
 | `--label <text>` | Optional label stored in revision sidecar metadata. | unset |
 
 #### `rundown docs diff [target]`
@@ -187,6 +202,7 @@ Options:
 | Option | Description | Default |
 |---|---|---|
 | `--dir <path>` | Migration directory to operate on (used to resolve project root). | `./migrations` |
+| `--workspace <dir>` | Explicit workspace root for linked/multi-workspace resolution. | unset |
 | `--from <rev|current>` | Explicit source selector (use with `--to`). | unset |
 | `--to <rev|current>` | Explicit destination selector (use with `--from`; must be `current` in this build). | unset |
 

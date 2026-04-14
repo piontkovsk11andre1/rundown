@@ -323,6 +323,11 @@ program
       "  - Historical snapshots are stored under design/rev.N/ as immutable revisions",
       "  - Legacy docs/current/Design.md and root Design.md remain supported as compatibility fallbacks",
       "",
+      "Linked workspace behavior:",
+      "  - When started from a linked directory, start writes link metadata in both target and source workspaces",
+      "  - Source .rundown/workspace.link supports multiple records for multiple started targets",
+      "  - New target workspace receives a single legacy-compatible link to the source workspace",
+      "",
       "Examples:",
       "  - rundown start \"Ship auth flow\" --design-dir design --specs-dir specs --migrations-dir migrations -- opencode run",
       "  - rundown start \"Ship auth flow\" --dir ./predict-auth --design-dir docs --specs-dir checks --migrations-dir changes -- opencode run",
@@ -358,6 +363,11 @@ migrateCommand.addHelpText(
     "Revision-aware behavior:",
     "  - Reads design context from design/current/** first (falls back to docs/current/** and root Design.md)",
     "  - Migration generation includes revision diff context from previous revision vs current draft",
+    "",
+    "Linked workspace selection:",
+    "  - Use --workspace <dir> to choose the effective workspace explicitly",
+    "  - Required when .rundown/workspace.link has multiple records with no default",
+    "  - Without --workspace, ambiguous multi-record links fail with candidate guidance",
   ].join("\n"),
 );
 
@@ -396,7 +406,9 @@ docsCommand
       "Examples:",
       "  - rundown docs diff",
       "  - rundown docs diff preview",
+      "  - rundown docs diff --workspace ../source-workspace",
       "  - rundown docs publish --label \"Initial baseline\"",
+      "  - rundown docs publish --workspace ../source-workspace --label \"Initial baseline\"",
     ].join("\n"),
   );
 

@@ -431,6 +431,9 @@ After publishing or reviewing diffs, switch back to `migrate` for migration life
 # Propose next migration from revision-aware context
 rundown migrate --dir ./migrations -- opencode run
 
+# When workspace.link has multiple records, select explicitly
+rundown migrate --dir ./migrations --workspace ../source-workspace -- opencode run
+
 # Generate satellites for the latest migration position
 rundown migrate context --dir ./migrations -- opencode run
 rundown migrate snapshot --dir ./migrations -- opencode run
@@ -442,3 +445,5 @@ rundown migrate down 1 --dir ./migrations -- opencode run
 ```
 
 `migrate` intentionally excludes docs-revision actions; use `rundown docs publish` and `rundown docs diff` for revision lifecycle work.
+
+If linked workspace resolution is ambiguous (for example `.rundown/workspace.link` has multiple records and no default), `migrate`/`docs` commands fail with candidate guidance and require `--workspace <dir>`.

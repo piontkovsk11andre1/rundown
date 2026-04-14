@@ -10925,6 +10925,44 @@ describe.sequential("CLI integration", () => {
     expect(compactHelpOutput).toContain("Additional nested planning depth passes after top-level scans (default: 0)");
   });
 
+  it("start --help documents linked workspace behavior", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli(["start", "Ship auth flow", "--help"], workspace);
+
+    expect(result.code).toBe(0);
+    const helpOutput = result.stdoutWrites.join("\n");
+    const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("Linked workspace behavior:");
+    expect(compactHelpOutput).toContain("start writes link metadata in both target and source workspaces");
+    expect(compactHelpOutput).toContain("supports multiple records for multiple started targets");
+  });
+
+  it("migrate --help explains explicit workspace selection for ambiguous links", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli(["migrate", "--help"], workspace);
+
+    expect(result.code).toBe(0);
+    const helpOutput = result.stdoutWrites.join("\n");
+    const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("--workspace <dir> Workspace directory to use for linked/multi-workspace resolution");
+    expect(compactHelpOutput).toContain("Linked workspace selection:");
+    expect(compactHelpOutput).toContain("Required when .rundown/workspace.link has multiple records with no default");
+  });
+
+  it("docs diff --help includes --workspace examples", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli(["docs", "diff", "--help"], workspace);
+
+    expect(result.code).toBe(0);
+    const helpOutput = result.stdoutWrites.join("\n");
+    const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("--workspace <dir> Workspace directory to use for linked/multi-workspace resolution");
+    expect(compactHelpOutput).toContain("rundown docs diff --workspace ../source-workspace");
+  });
+
   it("explore --help shows variadic argument and plan-phase options", async () => {
     const workspace = makeTempWorkspace();
 

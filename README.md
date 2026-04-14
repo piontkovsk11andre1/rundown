@@ -160,6 +160,7 @@ Note: `rundown revert` only works for tasks originally executed with both `--com
 - `docs diff [target]` shows revision changes for `design/current/`; use `preview` to include revision source references.
 - `migrate` generates the next migration and produces satellite artifacts (`context`, `snapshot`, `backlog`, `review`, `user-experience`, `user-session`).
 - Command split is intentional: use `rundown docs ...` for revision lifecycle and `rundown migrate ...` for migration lifecycle.
+- Linked-workspace aware commands (`migrate`, `docs publish`, `docs diff`) accept `--workspace <dir>` for explicit workspace selection when `.rundown/workspace.link` has multiple records or ambiguity.
 - For existing repositories, legacy `docs/current/Design.md` and root `Design.md` remain compatibility fallbacks when `design/current/` is not present.
 - `undo` semantically reverses previously completed work from task artifacts (AI-level undo, not git-commit revert).
 - `test` verifies spec assertions against the predicted migration state (design + migration context), not the current implementation files.

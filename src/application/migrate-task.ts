@@ -92,6 +92,11 @@ export interface MigrateTaskDependencies {
   runExplore?: (source: string, cwd: string) => Promise<number>;
   runTask?: (options: {
     source: string;
+    cwd?: string;
+    invocationDir?: string;
+    workspaceDir?: string;
+    workspaceLinkPath?: string;
+    isLinkedWorkspace?: boolean;
     mode: "wait";
     workerPattern: ParsedWorkerPattern;
     sortMode: "name-sort";
@@ -149,6 +154,7 @@ export function createMigrateTask(
     }
 
     const workspaceRoot = workspaceSelection.workspaceRoot;
+    const executionContext = workspaceSelection.executionContext;
     const workspaceDirectories = resolvePredictionWorkspaceDirectories({
       fileSystem: dependencies.fileSystem,
       workspaceRoot,
@@ -214,6 +220,11 @@ export function createMigrateTask(
 
       const runExitCode = await dependencies.runTask({
         source: migrationsDir,
+        cwd: workspaceRoot,
+        invocationDir: executionContext.invocationDir,
+        workspaceDir: executionContext.workspaceDir,
+        workspaceLinkPath: executionContext.workspaceLinkPath,
+        isLinkedWorkspace: executionContext.isLinkedWorkspace,
         mode: "wait",
         workerPattern: resolvedWorker.workerPattern,
         sortMode: "name-sort",

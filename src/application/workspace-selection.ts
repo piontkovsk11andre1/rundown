@@ -10,6 +10,12 @@ export type WorkspaceSelectionResult =
   | {
     ok: true;
     workspaceRoot: string;
+    executionContext: {
+      invocationDir: string;
+      workspaceDir: string;
+      workspaceLinkPath: string;
+      isLinkedWorkspace: boolean;
+    };
   }
   | {
     ok: false;
@@ -22,6 +28,7 @@ export function resolveWorkspaceRootForPathSensitiveCommand(input: {
   workspaceOption?: string;
 }): WorkspaceSelectionResult {
   const invocationDir = path.resolve(input.invocationDir);
+  const invocationWorkspaceLinkPath = resolveWorkspaceLinkPathForInvocation(input.fileSystem, invocationDir);
 
   if (typeof input.workspaceOption === "string" && input.workspaceOption.trim().length > 0) {
     const selectedWorkspaceDir = path.resolve(invocationDir, input.workspaceOption);
@@ -40,13 +47,21 @@ export function resolveWorkspaceRootForPathSensitiveCommand(input: {
       };
     }
 
+    const workspaceRoot = resolveEffectiveWorkspaceRoot({
+      currentDir: selectedWorkspaceDir,
+      fileSystem: input.fileSystem,
+      pathOperations: path,
+    });
+
     return {
       ok: true,
-      workspaceRoot: resolveEffectiveWorkspaceRoot({
-        currentDir: selectedWorkspaceDir,
-        fileSystem: input.fileSystem,
-        pathOperations: path,
-      }),
+      workspaceRoot,
+      executionContext: {
+        invocationDir,
+        workspaceDir: workspaceRoot,
+        workspaceLinkPath: invocationWorkspaceLinkPath,
+        isLinkedWorkspace: invocationDir !== workspaceRoot || invocationWorkspaceLinkPath.length > 0,
+      },
     };
   }
 
@@ -74,14 +89,30 @@ export function resolveWorkspaceRootForPathSensitiveCommand(input: {
     };
   }
 
+  const workspaceRoot = resolveEffectiveWorkspaceRoot({
+    currentDir: invocationDir,
+    fileSystem: input.fileSystem,
+    pathOperations: path,
+  });
+
   return {
     ok: true,
-    workspaceRoot: resolveEffectiveWorkspaceRoot({
-      currentDir: invocationDir,
-      fileSystem: input.fileSystem,
-      pathOperations: path,
-    }),
+    workspaceRoot,
+    executionContext: {
+      invocationDir,
+      workspaceDir: workspaceRoot,
+      workspaceLinkPath: workspaceLinkResolution.status === "resolved"
+        ? path.resolve(workspaceLinkResolution.linkPath)
+        : invocationWorkspaceLinkPath,
+      isLinkedWorkspace: invocationDir !== workspaceRoot || invocationWorkspaceLinkPath.length > 0,
+    },
   };
+}
+
+function resolveWorkspaceLinkPathForInvocation(fileSystem: FileSystem, invocationDir: string): string {
+  const candidateLinkPath = path.join(invocationDir, ".rundown", "workspace.link");
+  const candidateLinkStats = fileSystem.stat(candidateLinkPath);
+  return candidateLinkStats?.isFile ? candidateLinkPath : "";
 }
 
 function buildAmbiguousWorkspaceSelectionMessage(input: {

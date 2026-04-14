@@ -1795,10 +1795,35 @@ Forwarding behavior:
 
 Prefer `--worker` because it avoids argument splitting issues around `--`.
 
-Example:
+Examples:
 
 ```powershell
-rundown run docs/
+# Recommended PowerShell form: explicit JSON worker pattern
+rundown run docs/ --worker '["opencode","run"]'
+rundown research docs/spec.md --mode wait --worker '["opencode","run"]'
+rundown discuss docs/spec.md --mode tui --worker '["opencode"]'
+
+# Separator form is supported, but more shell-sensitive on Windows
+rundown run docs/ -- opencode run
+rundown discuss docs/spec.md --mode tui -- opencode
+```
+
+### POSIX shells (bash/zsh/fish)
+
+Use either separator form or `--worker`; both are reliable in POSIX shells.
+
+Examples:
+
+```bash
+# Separator form
+rundown run docs/ -- opencode run
+rundown research docs/spec.md --mode wait -- opencode run
+rundown discuss docs/spec.md --mode tui -- opencode
+
+# Explicit worker pattern form
+rundown run docs/ --worker '["opencode","run"]'
+rundown research docs/spec.md --mode wait --worker '["opencode","run"]'
+rundown discuss docs/spec.md --mode tui --worker '["opencode"]'
 ```
 
 ### Large prompts on Windows
@@ -1820,16 +1845,16 @@ A clean setup is:
 Examples:
 
 ```bash
-rundown run roadmap.md --mode wait
-rundown run roadmap.md --mode tui
-rundown run roadmap.md --mode detached
+rundown run roadmap.md --mode wait -- opencode run
+rundown run roadmap.md --mode tui -- opencode
+rundown run roadmap.md --mode detached -- opencode run
 
 # Deterministic prediction flow commands
-rundown research docs/spec.md --mode wait
-rundown plan docs/spec.md --mode wait --scan-count 3
+rundown research docs/spec.md --mode wait -- opencode run
+rundown plan docs/spec.md --mode wait --scan-count 3 -- opencode run
 
 # Interactive planning discussion
-rundown discuss docs/spec.md --mode tui
+rundown discuss docs/spec.md --mode tui -- opencode
 ```
 
 ## Exit codes

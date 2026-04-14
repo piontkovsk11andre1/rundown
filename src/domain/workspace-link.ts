@@ -276,6 +276,7 @@ export function parseWorkspaceLinkSchema(rawContent: string): ParseWorkspaceLink
 export function serializeWorkspaceLinkSchema(input: {
   records: Array<{ id: string; workspacePath: string; isDefault?: boolean }>;
   defaultRecordId?: string;
+  sourceFormat?: WorkspaceLinkSourceFormat;
 }): string {
   const parsed = parseWorkspaceLinkSchema(JSON.stringify({
     schemaVersion: WORKSPACE_LINK_SCHEMA_VERSION,
@@ -289,6 +290,19 @@ export function serializeWorkspaceLinkSchema(input: {
 
   if (parsed.status === "error") {
     throw new Error(parsed.message);
+  }
+
+  if (input.sourceFormat === "legacy-single-path") {
+    if (parsed.schema.records.length !== 1) {
+      throw new Error("legacy workspace.link format supports exactly one record.");
+    }
+
+    const legacyRecord = parsed.schema.records[0];
+    if (!legacyRecord) {
+      throw new Error("legacy workspace.link format requires a single workspace record.");
+    }
+
+    return `${legacyRecord.workspacePath}\n`;
   }
 
   const document: WorkspaceLinkDocumentV1 = {

@@ -313,4 +313,25 @@ describe("serializeWorkspaceLinkSchema", () => {
     expect(serialized).toContain("\"defaultRecordId\": \"source\"");
     expect(serialized.endsWith("\n")).toBe(true);
   });
+
+  it("serializes legacy single-record format when requested", () => {
+    const serialized = serializeWorkspaceLinkSchema({
+      sourceFormat: "legacy-single-path",
+      records: [
+        { id: "default", workspacePath: "../workspace/source", isDefault: true },
+      ],
+    });
+
+    expect(serialized).toBe("../workspace/source\n");
+  });
+
+  it("rejects legacy serialization when multiple records are provided", () => {
+    expect(() => serializeWorkspaceLinkSchema({
+      sourceFormat: "legacy-single-path",
+      records: [
+        { id: "source", workspacePath: "../workspace/source", isDefault: true },
+        { id: "alt", workspacePath: "../workspace/alt" },
+      ],
+    })).toThrow("legacy workspace.link format supports exactly one record.");
+  });
 });

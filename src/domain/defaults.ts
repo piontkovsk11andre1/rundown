@@ -571,6 +571,8 @@ Rules:
 - Names must be kebab-case; rundown will format the final migration filename automatically.
 - Keep each alternative independent and actionable.
 - Rank by expected value for the project right now.
+- Keep migration/prediction guidance aligned with current OpenCode defaults: deterministic flows (\`research\`, \`plan\`, \`run\`, \`reverify\`) use \`["opencode", "run"]\`, and interactive refinement (\`discuss\`) uses \`["opencode"]\`.
+- When referencing prompt delivery, treat file-based transport as the default/recommended path and avoid suggesting long inline-argument prompt passing.
 `;
 
 /**
@@ -632,6 +634,8 @@ Rules:
 - Preserve still-valid context from previous context.
 - Focus on durable facts, constraints, and decisions.
 - Remove or correct outdated assumptions.
+- If referencing worker behavior, keep OpenCode defaults consistent: deterministic flows (\`research\`, \`plan\`, \`run\`, \`reverify\`) use \`["opencode", "run"]\`, and interactive refinement (\`discuss\`) uses \`["opencode"]\`.
+- Treat file-based prompt staging as the default/recommended transport path and avoid suggesting long inline prompt arguments.
 - Return Markdown only.
 `;
 
@@ -694,6 +698,8 @@ Write a concise state snapshot in Markdown covering:
 - Immediate next opportunities
 
 Use concrete references to migration history where relevant.
+
+If you reference worker usage or prompt transport, keep guidance aligned with current OpenCode defaults: deterministic flows use \`["opencode", "run"]\`, interactive \`discuss\` uses \`["opencode"]\`, and file-based prompt staging remains the default/recommended transport.
 `;
 
 /**
@@ -755,6 +761,8 @@ Rules:
 - Separate near-term tasks from longer-term debt.
 - Keep items specific enough to become migrations.
 - Remove stale items already addressed.
+- If backlog notes mention worker behavior, keep OpenCode defaults consistent: deterministic flows (\`research\`, \`plan\`, \`run\`, \`reverify\`) use \`["opencode", "run"]\`, and interactive refinement (\`discuss\`) uses \`["opencode"]\`.
+- Keep prompt-transport references aligned with file-based prompt staging as the default/recommended path.
 `;
 
 /**
@@ -814,6 +822,8 @@ Write a Markdown review with:
 - Drift: where trajectory diverges and why
 - Risk: implications of drift
 - Recommendations: concrete corrective next migrations
+
+If recommendations mention worker setup or prompt delivery, keep OpenCode guidance consistent with deterministic \`["opencode", "run"]\`, interactive \`["opencode"]\` for \`discuss\`, and file-based prompt transport as the default/recommended path.
 `;
 
 /**
@@ -877,6 +887,8 @@ Write a Markdown UX analysis with:
 For open questions, use this exact checklist format:
 
 - [ ] question: <clear user/product question>
+
+If UX analysis references worker modes or prompt delivery behavior, keep guidance aligned with current OpenCode defaults: deterministic flows use \`["opencode", "run"]\`, interactive \`discuss\` uses \`["opencode"]\`, and file-based prompt transport remains the default/recommended path.
 `;
 
 /**
@@ -1047,6 +1059,8 @@ Heuristics:
 - Use \`profile=\` when task complexity or cost/speed trade-offs suggest a non-default worker.
 - Use directive parents when multiple adjacent tasks share the same prefix.
 - Prefer plain \`- [ ]\` items when no special behavior is needed.
+- If new tasks mention worker invocation, keep OpenCode guidance consistent: deterministic flows (\`research\`, \`plan\`, \`run\`, \`reverify\`) should use \`opencode run\`, while interactive \`discuss\` should use \`opencode\`.
+- Prefer file-based prompt staging expectations over long inline prompt-argument transport in generated tasks or guidance.
 
 Rules:
 - Add only unchecked TODO items using \`- [ ]\` syntax.
@@ -1201,6 +1215,11 @@ Guidelines:
 - Do NOT add implementation code. This phase is about context and planning
   guidance, not execution.
 - Write in the same voice and style as the existing document.
+- When adding or normalizing worker examples, keep OpenCode usage consistent:
+  deterministic \`research\`/\`plan\`/\`run\`/\`reverify\` flows should use \`opencode run\`,
+  while interactive \`discuss\` flow should use \`opencode\`.
+- Preserve prompt-transport expectations: file-based prompt staging is the default
+  and preferred path, especially for large contexts and Windows/PowerShell usage.
 
 Return the full updated Markdown document and nothing else.
 {{traceInstructions}}

@@ -46,8 +46,14 @@ import {
   type ManageArtifactsOptions,
 } from "./application/manage-artifacts.js";
 import {
+  createConfigGet,
+  createConfigList,
+  createConfigPath,
   createConfigSet,
   createConfigUnset,
+  type ConfigGetOptions,
+  type ConfigListOptions,
+  type ConfigPathOptions,
   type ConfigSetOptions,
   type ConfigUnsetOptions,
 } from "./application/config-mutation.js";
@@ -146,6 +152,9 @@ export type App = {
   initProject: (options?: InitProjectOptions) => Promise<number>;
   startProject: (options?: StartProjectOptions) => Promise<number>;
   manageArtifacts: (options: ManageArtifactsOptions) => number;
+  configGet: (options: ConfigGetOptions) => number;
+  configList: (options: ConfigListOptions) => number;
+  configPath: (options: ConfigPathOptions) => number;
   configSet: (options: ConfigSetOptions) => number;
   configUnset: (options: ConfigUnsetOptions) => number;
   emitOutput?: (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
@@ -649,6 +658,21 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       configDir: ports.configDir,
       output: ports.output,
     }),
+    configGet: (ports) => createConfigGet({
+      workerConfigPort: ports.workerConfigPort,
+      configDir: ports.configDir,
+      output: ports.output,
+    }),
+    configList: (ports) => createConfigList({
+      workerConfigPort: ports.workerConfigPort,
+      configDir: ports.configDir,
+      output: ports.output,
+    }),
+    configPath: (ports) => createConfigPath({
+      workerConfigPort: ports.workerConfigPort,
+      configDir: ports.configDir,
+      output: ports.output,
+    }),
     configSet: (ports) => createConfigSet({
       workerConfigPort: ports.workerConfigPort,
       configDir: ports.configDir,
@@ -694,6 +718,9 @@ function createAppFromFactories(
   const initProject = factories.initProject(ports);
   const startProject = factories.startProject(ports);
   const manageArtifacts = factories.manageArtifacts(ports);
+  const configGet = factories.configGet(ports);
+  const configList = factories.configList(ports);
+  const configPath = factories.configPath(ports);
   const configSet = factories.configSet(ports);
   const configUnset = factories.configUnset(ports);
   const inFlightRunTasks = new Set<Promise<number>>();
@@ -730,6 +757,9 @@ function createAppFromFactories(
     initProject,
     startProject,
     manageArtifacts,
+    configGet,
+    configList,
+    configPath,
     configSet,
     configUnset,
     emitOutput: (event) => {

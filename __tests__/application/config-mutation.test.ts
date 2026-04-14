@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  createConfigGet,
+  createConfigList,
+  createConfigPath,
   createConfigSet,
   createConfigUnset,
   type ConfigMutationDependencies,
@@ -114,6 +117,96 @@ describe("config-mutation", () => {
       valueType: "json",
     })).toThrow("Invalid config value for --type json");
   });
+
+  it("reads scoped values via config get", () => {
+    const { dependencies, events } = createDependencies();
+    const getConfig = createConfigGet(dependencies);
+
+    const code = getConfig({
+      scope: "global",
+      key: "workers.default",
+      json: false,
+      showSource: false,
+    });
+
+    expect(code).toBe(0);
+    expect(dependencies.workerConfigPort.readValue).toHaveBeenCalledWith(
+      "/workspace/.rundown",
+      "global",
+      "workers.default",
+    );
+    expect(events).toContainEqual({
+      kind: "text",
+      text: JSON.stringify(["opencode", "run"], null, 2),
+    });
+  });
+
+  it("includes source attribution for effective get --show-source --json", () => {
+    const { dependencies, events } = createDependencies();
+    const getConfig = createConfigGet(dependencies);
+
+    const code = getConfig({
+      scope: "effective",
+      key: "workers.default",
+      json: true,
+      showSource: true,
+    });
+
+    expect(code).toBe(0);
+    expect(events).toContainEqual({
+      kind: "text",
+      text: JSON.stringify({
+        scope: "effective",
+        value: ["opencode", "run"],
+        source: "global",
+      }, null, 2),
+    });
+  });
+
+  it("lists effective config as json with sources", () => {
+    const { dependencies, events } = createDependencies();
+    const listConfig = createConfigList(dependencies);
+
+    const code = listConfig({
+      scope: "effective",
+      json: true,
+      showSource: true,
+    });
+
+    expect(code).toBe(0);
+    expect(dependencies.workerConfigPort.listValues).toHaveBeenCalledWith("/workspace/.rundown", "effective");
+    expect(events).toContainEqual({
+      kind: "text",
+      text: JSON.stringify({
+        scope: "effective",
+        config: {
+          workers: {
+            default: ["opencode", "run"],
+          },
+        },
+        sources: {
+          "workers.default": "global",
+        },
+      }, null, 2),
+    });
+  });
+
+  it("resolves config path by scope", () => {
+    const { dependencies, events } = createDependencies();
+    const configPath = createConfigPath(dependencies);
+
+    const code = configPath({ scope: "global" });
+
+    expect(code).toBe(0);
+    expect(dependencies.workerConfigPort.getConfigPaths).toHaveBeenCalledWith("/workspace/.rundown");
+    expect(events).toContainEqual({
+      kind: "text",
+      text: JSON.stringify({
+        scope: "global",
+        path: "/home/test/.config/rundown/config.json",
+      }, null, 2),
+    });
+  });
 });
 
 function createDependencies(options: {
@@ -128,6 +221,29 @@ function createDependencies(options: {
   const dependencies: ConfigMutationDependencies = {
     workerConfigPort: {
       load: vi.fn(() => undefined),
+      loadWithSources: vi.fn(() => ({
+        config: {
+          workers: {
+            default: ["opencode", "run"],
+          },
+        },
+        valueSources: {
+          "workers.default": "global" as const,
+        },
+        localConfigPath: "/workspace/.rundown/config.json",
+        globalConfigPath: "/home/test/.config/rundown/config.json",
+      })),
+      readValue: vi.fn(() => ["opencode", "run"]),
+      listValues: vi.fn(() => ({
+        workers: {
+          default: ["opencode", "run"],
+        },
+      })),
+      getConfigPaths: vi.fn(() => ({
+        localConfigPath: "/workspace/.rundown/config.json",
+        globalConfigPath: "/home/test/.config/rundown/config.json",
+        globalCanonicalPath: "/home/test/.config/rundown/config.json",
+      })),
       setValue: vi.fn(() => ({
         configPath: "/workspace/.rundown/config.json",
         changed: options.setChanged ?? true,

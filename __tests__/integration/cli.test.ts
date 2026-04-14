@@ -493,6 +493,127 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("Dry run — would run: opencode run"))).toBe(true);
   });
 
+  it("run discovers global config defaults when local config is absent", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] Write docs\n", "utf-8");
+    const appDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-cli-run-global-"));
+    tempDirs.push(appDataDir);
+    const previousAppData = process.env.APPDATA;
+
+    process.env.APPDATA = appDataDir;
+    try {
+      const globalConfigPath = path.join(appDataDir, "rundown", "config.json");
+      fs.mkdirSync(path.dirname(globalConfigPath), { recursive: true });
+      fs.writeFileSync(globalConfigPath, JSON.stringify({
+        workers: {
+          default: ["opencode", "run", "--model", "global-default"],
+        },
+      }, null, 2), "utf-8");
+
+      const result = await runCli([
+        "run",
+        "roadmap.md",
+        "--dry-run",
+      ], workspace);
+
+      expect(result.code).toBe(0);
+      expect(result.logs.some((line) => line.includes("Dry run — would run: opencode run --model global-default"))).toBe(true);
+    } finally {
+      if (previousAppData === undefined) {
+        delete process.env.APPDATA;
+      } else {
+        process.env.APPDATA = previousAppData;
+      }
+    }
+  });
+
+  it("run prefers local config over discovered global defaults", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] Write docs\n", "utf-8");
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, ".rundown", "config.json"), JSON.stringify({
+      workers: {
+        default: ["opencode", "run", "--model", "local-default"],
+      },
+    }, null, 2), "utf-8");
+
+    const appDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-cli-run-local-overrides-"));
+    tempDirs.push(appDataDir);
+    const previousAppData = process.env.APPDATA;
+
+    process.env.APPDATA = appDataDir;
+    try {
+      const globalConfigPath = path.join(appDataDir, "rundown", "config.json");
+      fs.mkdirSync(path.dirname(globalConfigPath), { recursive: true });
+      fs.writeFileSync(globalConfigPath, JSON.stringify({
+        workers: {
+          default: ["opencode", "run", "--model", "global-default"],
+        },
+      }, null, 2), "utf-8");
+
+      const result = await runCli([
+        "run",
+        "roadmap.md",
+        "--dry-run",
+      ], workspace);
+
+      expect(result.code).toBe(0);
+      expect(result.logs.some((line) => line.includes("Dry run — would run: opencode run --model local-default"))).toBe(true);
+      expect(result.logs.some((line) => line.includes("--model global-default"))).toBe(false);
+    } finally {
+      if (previousAppData === undefined) {
+        delete process.env.APPDATA;
+      } else {
+        process.env.APPDATA = previousAppData;
+      }
+    }
+  });
+
+  it("run CLI worker override takes precedence over local and global config", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] Write docs\n", "utf-8");
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, ".rundown", "config.json"), JSON.stringify({
+      workers: {
+        default: ["opencode", "run", "--model", "local-default"],
+      },
+    }, null, 2), "utf-8");
+
+    const appDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-cli-run-override-"));
+    tempDirs.push(appDataDir);
+    const previousAppData = process.env.APPDATA;
+
+    process.env.APPDATA = appDataDir;
+    try {
+      const globalConfigPath = path.join(appDataDir, "rundown", "config.json");
+      fs.mkdirSync(path.dirname(globalConfigPath), { recursive: true });
+      fs.writeFileSync(globalConfigPath, JSON.stringify({
+        workers: {
+          default: ["opencode", "run", "--model", "global-default"],
+        },
+      }, null, 2), "utf-8");
+
+      const result = await runCli([
+        "run",
+        "roadmap.md",
+        "--dry-run",
+        "--worker",
+        "custom-agent --mode cli",
+      ], workspace);
+
+      expect(result.code).toBe(0);
+      expect(result.logs.some((line) => line.includes("Dry run — would run: custom-agent --mode cli"))).toBe(true);
+      expect(result.logs.some((line) => line.includes("--model local-default"))).toBe(false);
+      expect(result.logs.some((line) => line.includes("--model global-default"))).toBe(false);
+    } finally {
+      if (previousAppData === undefined) {
+        delete process.env.APPDATA;
+      } else {
+        process.env.APPDATA = previousAppData;
+      }
+    }
+  });
+
   it("run keeps agent output hidden by default when worker comes from config defaults", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");
@@ -13245,6 +13366,116 @@ describe.sequential("CLI integration", () => {
       },
     });
     expect(result.logs.some((line) => stripAnsi(line).includes("Updated local config: workers.default"))).toBe(true);
+  });
+
+  it("config get reads effective scope values", async () => {
+    const workspace = makeTempWorkspace();
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, ".rundown", "config.json"), JSON.stringify({
+      workers: {
+        default: ["opencode", "run", "--model", "local"],
+      },
+    }, null, 2) + "\n", "utf-8");
+
+    const appDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-cli-config-get-"));
+    tempDirs.push(appDataDir);
+    const previousAppData = process.env.APPDATA;
+
+    process.env.APPDATA = appDataDir;
+    try {
+      fs.mkdirSync(path.join(appDataDir, "rundown"), { recursive: true });
+      fs.writeFileSync(path.join(appDataDir, "rundown", "config.json"), JSON.stringify({
+        workers: {
+          default: ["opencode", "run", "--model", "global"],
+        },
+      }, null, 2) + "\n", "utf-8");
+
+      const result = await runCli([
+        "config",
+        "get",
+        "workers.default",
+        "--scope",
+        "effective",
+        "--json",
+      ], workspace);
+
+      expect(result.code).toBe(0);
+      const parsed = JSON.parse(result.logs.map(stripAnsi).join("\n"));
+      expect(parsed).toEqual({
+        scope: "effective",
+        value: ["opencode", "run", "--model", "local"],
+      });
+    } finally {
+      if (previousAppData === undefined) {
+        delete process.env.APPDATA;
+      } else {
+        process.env.APPDATA = previousAppData;
+      }
+    }
+  });
+
+  it("config list and path support scope-specific reads", async () => {
+    const workspace = makeTempWorkspace();
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, ".rundown", "config.json"), JSON.stringify({
+      commands: {
+        plan: ["opencode", "run", "--model", "local-plan"],
+      },
+    }, null, 2) + "\n", "utf-8");
+
+    const appDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-cli-config-list-"));
+    tempDirs.push(appDataDir);
+    const previousAppData = process.env.APPDATA;
+
+    process.env.APPDATA = appDataDir;
+    try {
+      fs.mkdirSync(path.join(appDataDir, "rundown"), { recursive: true });
+      const globalConfigPath = path.join(appDataDir, "rundown", "config.json");
+      fs.writeFileSync(globalConfigPath, JSON.stringify({
+        workers: {
+          default: ["opencode", "run", "--model", "global-default"],
+        },
+      }, null, 2) + "\n", "utf-8");
+
+      const listResult = await runCli([
+        "config",
+        "list",
+        "--scope",
+        "global",
+        "--json",
+      ], workspace);
+
+      expect(listResult.code).toBe(0);
+      const listPayload = JSON.parse(listResult.logs.map(stripAnsi).join("\n"));
+      expect(listPayload).toEqual({
+        scope: "global",
+        config: {
+          workers: {
+            default: ["opencode", "run", "--model", "global-default"],
+          },
+        },
+      });
+
+      const pathResult = await runCli([
+        "config",
+        "path",
+        "--scope",
+        "global",
+      ], workspace);
+
+      expect(pathResult.code).toBe(0);
+      const pathPayload = JSON.parse(pathResult.logs.map(stripAnsi).join("\n"));
+      expect(pathPayload).toEqual({
+        scope: "global",
+        path: globalConfigPath,
+      });
+    } finally {
+      if (previousAppData === undefined) {
+        delete process.env.APPDATA;
+      } else {
+        process.env.APPDATA = previousAppData;
+      }
+    }
   });
 
   it("config unset removes local keys and preserves valid JSON", async () => {

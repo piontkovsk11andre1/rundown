@@ -420,11 +420,6 @@ Global config path conventions:
 - macOS: `~/Library/Application Support/rundown/config.json` (discovery also checks XDG and `~/.config`)
 - Windows: `%APPDATA%\rundown\config.json` (discovery also checks `%LOCALAPPDATA%`, `%USERPROFILE%\AppData\Roaming`, then `~/.config`)
 
-Current build note:
-
-- `set` and `unset` are available for writable scopes (`local`, `global`).
-- `get`, `list`, and `path` are wired in CLI help and option parsing; value-read operations are introduced in a follow-up build.
-
 Examples:
 
 ```bash

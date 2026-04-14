@@ -365,6 +365,101 @@ describe("createWorkerConfigAdapter", () => {
     });
   });
 
+  it("readValue resolves scope-aware key reads", () => {
+    const configDir = makeTempConfigDir();
+    writeConfig(
+      configDir,
+      JSON.stringify({
+        workers: {
+          default: ["opencode", "run", "--model", "local"],
+        },
+      }),
+    );
+    const globalConfigPath = writeGlobalConfig(
+      JSON.stringify({
+        workers: {
+          default: ["opencode", "run", "--model", "global"],
+          tui: ["opencode", "run", "--model", "global-tui"],
+        },
+      }),
+    );
+
+    const adapter = createWorkerConfigAdapter({
+      resolveGlobalConfigPath: () => ({ discoveredPath: globalConfigPath }),
+    });
+
+    expect(adapter.readValue?.(configDir, "local", "workers.default")).toEqual([
+      "opencode",
+      "run",
+      "--model",
+      "local",
+    ]);
+    expect(adapter.readValue?.(configDir, "global", "workers.default")).toEqual([
+      "opencode",
+      "run",
+      "--model",
+      "global",
+    ]);
+    expect(adapter.readValue?.(configDir, "effective", "workers.default")).toEqual([
+      "opencode",
+      "run",
+      "--model",
+      "local",
+    ]);
+    expect(adapter.readValue?.(configDir, "effective", "workers.tui")).toEqual([
+      "opencode",
+      "run",
+      "--model",
+      "global-tui",
+    ]);
+  });
+
+  it("listValues returns scoped config documents", () => {
+    const configDir = makeTempConfigDir();
+    writeConfig(
+      configDir,
+      JSON.stringify({
+        commands: {
+          plan: ["opencode", "run", "--model", "local-plan"],
+        },
+      }),
+    );
+    const globalConfigPath = writeGlobalConfig(
+      JSON.stringify({
+        workers: {
+          default: ["opencode", "run", "--model", "global-default"],
+        },
+      }),
+    );
+
+    const adapter = createWorkerConfigAdapter({
+      resolveGlobalConfigPath: () => ({ discoveredPath: globalConfigPath }),
+    });
+
+    expect(adapter.listValues?.(configDir, "global")).toEqual({
+      workers: {
+        default: ["opencode", "run", "--model", "global-default"],
+      },
+    });
+    expect(adapter.listValues?.(configDir, "local")).toEqual({
+      commands: {
+        plan: ["opencode", "run", "--model", "local-plan"],
+      },
+    });
+    expect(adapter.listValues?.(configDir, "effective")).toEqual({
+      workers: {
+        default: ["opencode", "run", "--model", "global-default"],
+      },
+      commands: {
+        plan: ["opencode", "run", "--model", "local-plan"],
+      },
+      traceStatistics: {
+        enabled: false,
+        fields: ["total_time", "tokens_estimated"],
+      },
+    });
+  });
+
   it("merges global defaults with local overrides", () => {
     const configDir = makeTempConfigDir();
     writeConfig(

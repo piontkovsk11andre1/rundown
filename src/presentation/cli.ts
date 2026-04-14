@@ -48,6 +48,9 @@ import {
   createMemoryViewCommandAction,
   createMemoryCleanCommandAction,
   createMemoryValidateCommandAction,
+  createConfigGetCommandAction,
+  createConfigListCommandAction,
+  createConfigPathCommandAction,
   createConfigSetCommandAction,
   createConfigUnsetCommandAction,
   createWorkerHealthCommandAction,
@@ -438,7 +441,7 @@ const configCommand = program
       "",
       "Notes:",
       "  - effective is read-only",
-      "  - set/unset are available; get/list/path are introduced in a follow-up migration step",
+      "  - reads default to effective; writes default to local",
     ].join("\n"),
   );
 
@@ -450,9 +453,7 @@ configCommand
   .option("--json", "Emit machine-readable JSON output", false)
   .option("--show-source", "Include source attribution where available", false)
   .allowUnknownOption(false)
-  .action(withCliAction(() => {
-    throw new Error("The `config get` command is not yet available in this build. The CLI surface and help text are wired; value operations are added in a follow-up step.");
-  }));
+  .action(withCliAction(createConfigGetCommandAction({ getApp })));
 
 configCommand
   .command("list")
@@ -461,9 +462,7 @@ configCommand
   .option("--json", "Emit machine-readable JSON output", false)
   .option("--show-source", "Include source attribution where available", false)
   .allowUnknownOption(false)
-  .action(withCliAction(() => {
-    throw new Error("The `config list` command is not yet available in this build. The CLI surface and help text are wired; value operations are added in a follow-up step.");
-  }));
+  .action(withCliAction(createConfigListCommandAction({ getApp })));
 
 configCommand
   .command("set")
@@ -488,9 +487,7 @@ configCommand
   .description("Print the resolved config file path for a scope.")
   .option("--scope <effective|local|global>", "Config scope", "effective")
   .allowUnknownOption(false)
-  .action(withCliAction(() => {
-    throw new Error("The `config path` command is not yet available in this build. The CLI surface and help text are wired; value operations are added in a follow-up step.");
-  }));
+  .action(withCliAction(createConfigPathCommandAction({ getApp })));
 
 program
   .command("next")

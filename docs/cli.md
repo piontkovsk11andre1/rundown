@@ -962,11 +962,6 @@ Scope defaults:
 
 `effective` is read-only.
 
-Current build note:
-
-- `set` and `unset` are available for writable scopes (`local`, `global`).
-- `get`, `list`, and `path` are wired in help and option parsing; value-read operations are introduced in a follow-up build.
-
 Synopsis:
 
 ```bash

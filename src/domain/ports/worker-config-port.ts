@@ -2,6 +2,8 @@
 import type {
   WorkerConfig,
   WorkerConfigLoadWithSourcesResult,
+  WorkerConfigPathsResult,
+  WorkerConfigReadableScope,
   WorkerConfigSetValueInput,
   WorkerConfigUnsetValueInput,
   WorkerConfigMutationResult,
@@ -19,6 +21,9 @@ export interface WorkerConfigPort {
    */
   load(configDir: string): WorkerConfig | undefined;
   loadWithSources?(configDir: string): WorkerConfigLoadWithSourcesResult;
+  readValue?(configDir: string, scope: WorkerConfigReadableScope, keyPath: string): unknown;
+  listValues?(configDir: string, scope: WorkerConfigReadableScope): WorkerConfig | undefined;
+  getConfigPaths?(configDir: string): WorkerConfigPathsResult;
   setValue?(configDir: string, input: WorkerConfigSetValueInput): WorkerConfigMutationResult;
   unsetValue?(configDir: string, input: WorkerConfigUnsetValueInput): WorkerConfigMutationResult;
 }

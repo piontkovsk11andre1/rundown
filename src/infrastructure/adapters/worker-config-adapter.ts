@@ -20,6 +20,8 @@ import {
   type WorkerConfig,
   type WorkerConfigLoadWithSourcesResult,
   type WorkerConfigMutationResult,
+  type WorkerConfigPathsResult,
+  type WorkerConfigReadableScope,
   type WorkerConfigSetValueInput,
   type WorkerConfigUnsetValueInput,
   type WorkerConfigValueSource,
@@ -35,6 +37,31 @@ interface CreateWorkerConfigAdapterOptions {
   readonly resolveGlobalConfigPath?: () => {
     discoveredPath: string | undefined;
     canonicalPath?: string | undefined;
+  };
+}
+
+function normalizeGlobalResolution(
+  resolution: {
+    discoveredPath: string | undefined;
+    canonicalPath?: string | undefined;
+  } | GlobalConfigPathResolution,
+): GlobalConfigPathResolution {
+  if ("candidates" in resolution && Array.isArray(resolution.candidates)) {
+    return resolution;
+  }
+
+  const candidates: string[] = [];
+  if (resolution.canonicalPath) {
+    candidates.push(resolution.canonicalPath);
+  }
+  if (resolution.discoveredPath && !candidates.includes(resolution.discoveredPath)) {
+    candidates.push(resolution.discoveredPath);
+  }
+
+  return {
+    canonicalPath: resolution.canonicalPath,
+    discoveredPath: resolution.discoveredPath,
+    candidates,
   };
 }
 
@@ -573,6 +600,37 @@ function valueAtPath(root: unknown, pathSegments: readonly string[]): unknown {
   return current;
 }
 
+function resolveConfigForScope(
+  configDir: string,
+  scope: WorkerConfigReadableScope,
+  globalResolution: GlobalConfigPathResolution,
+): WorkerConfig | undefined {
+  const localConfigPath = path.join(configDir, WORKER_CONFIG_FILE_NAME);
+  const localConfig = loadConfigFile(localConfigPath, "local", true);
+  const globalConfigPath = globalResolution.discoveredPath;
+  const globalConfig = globalConfigPath
+    ? loadConfigFile(globalConfigPath, "global", false)
+    : undefined;
+
+  if (scope === "local") {
+    return localConfig;
+  }
+
+  if (scope === "global") {
+    return globalConfig;
+  }
+
+  return applyBuiltInDefaults(mergeWorkerConfig(globalConfig, localConfig));
+}
+
+function resolveConfigPaths(configDir: string, globalResolution: GlobalConfigPathResolution): WorkerConfigPathsResult {
+  return {
+    localConfigPath: path.join(configDir, WORKER_CONFIG_FILE_NAME),
+    globalConfigPath: globalResolution.discoveredPath,
+    globalCanonicalPath: globalResolution.canonicalPath,
+  };
+}
+
 function resolveValueSource(
   pathSegments: readonly string[],
   builtInConfig: WorkerConfig | undefined,
@@ -919,7 +977,8 @@ export function createWorkerConfigAdapter(options: CreateWorkerConfigAdapterOpti
   const loadWithSources = (configDir: string): WorkerConfigLoadWithSourcesResult => {
     const localConfigPath = path.join(configDir, WORKER_CONFIG_FILE_NAME);
     const localConfig = loadConfigFile(localConfigPath, "local", true);
-    const globalConfigPath = resolveGlobalPath().discoveredPath;
+    const globalResolution = normalizeGlobalResolution(resolveGlobalPath());
+    const globalConfigPath = globalResolution.discoveredPath;
     const globalConfig = globalConfigPath
       ? loadConfigFile(globalConfigPath, "global", false)
       : undefined;
@@ -955,6 +1014,20 @@ export function createWorkerConfigAdapter(options: CreateWorkerConfigAdapterOpti
     },
     loadWithSources(configDir): WorkerConfigLoadWithSourcesResult {
       return loadWithSources(configDir);
+    },
+    readValue(configDir, scope, keyPath): unknown {
+      const keySegments = parseKeyPath(keyPath);
+      const globalResolution = normalizeGlobalResolution(resolveGlobalPath());
+      const config = resolveConfigForScope(configDir, scope, globalResolution);
+      return valueAtPath(config, keySegments);
+    },
+    listValues(configDir, scope): WorkerConfig | undefined {
+      const globalResolution = normalizeGlobalResolution(resolveGlobalPath());
+      return resolveConfigForScope(configDir, scope, globalResolution);
+    },
+    getConfigPaths(configDir): WorkerConfigPathsResult {
+      const globalResolution = normalizeGlobalResolution(resolveGlobalPath());
+      return resolveConfigPaths(configDir, globalResolution);
     },
     setValue(configDir, input): WorkerConfigMutationResult {
       const configPath = resolveWritableConfigPath(input.scope, configDir, resolveGlobalPath);

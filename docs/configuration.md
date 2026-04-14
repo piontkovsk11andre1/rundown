@@ -247,11 +247,6 @@ Defaults and constraints:
 - `effective` rejects writes (`set`/`unset`).
 - `--show-source` on effective reads includes value attribution where practical.
 
-Current build note:
-
-- `set` and `unset` are available for writable scopes (`local`, `global`).
-- `get`, `list`, and `path` are wired in CLI help and validated options; value-read operations are introduced in a follow-up build.
-
 Examples:
 
 ```bash

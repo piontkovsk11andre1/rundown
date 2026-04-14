@@ -135,6 +135,8 @@ export interface WorkerConfigLoadWithSourcesResult {
 
 export type WorkerConfigWritableScope = "local" | "global";
 
+export type WorkerConfigReadableScope = "effective" | "local" | "global";
+
 export interface WorkerConfigSetValueInput {
   scope: WorkerConfigWritableScope;
   keyPath: string;
@@ -149,6 +151,12 @@ export interface WorkerConfigUnsetValueInput {
 export interface WorkerConfigMutationResult {
   configPath: string;
   changed: boolean;
+}
+
+export interface WorkerConfigPathsResult {
+  localConfigPath: string;
+  globalConfigPath: string | undefined;
+  globalCanonicalPath: string | undefined;
 }
 
 /**

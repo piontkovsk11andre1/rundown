@@ -243,6 +243,7 @@ interface TestCommandOptions {
 type TestCommandHandler = (options: TestCommandOptions) => CliActionResult;
 
 type ConfigMutationScope = "local" | "global";
+type ConfigReadScope = "effective" | "local" | "global";
 type ConfigValueType = "auto" | "string" | "number" | "boolean" | "json";
 
 function resolveWorkerPattern(
@@ -1793,6 +1794,41 @@ export function createConfigUnsetCommandAction({
   };
 }
 
+export function createConfigGetCommandAction({
+  getApp,
+}: Pick<WorkerActionDependencies, "getApp">): (key: string, opts: CliOpts) => CliActionResult {
+  return (key: string, opts: CliOpts) => {
+    return getApp().configGet({
+      scope: parseConfigReadScope(opts.scope as string | undefined),
+      key,
+      json: Boolean(opts.json as boolean | undefined),
+      showSource: Boolean(opts.showSource as boolean | undefined),
+    });
+  };
+}
+
+export function createConfigListCommandAction({
+  getApp,
+}: Pick<WorkerActionDependencies, "getApp">): (opts: CliOpts) => CliActionResult {
+  return (opts: CliOpts) => {
+    return getApp().configList({
+      scope: parseConfigReadScope(opts.scope as string | undefined),
+      json: Boolean(opts.json as boolean | undefined),
+      showSource: Boolean(opts.showSource as boolean | undefined),
+    });
+  };
+}
+
+export function createConfigPathCommandAction({
+  getApp,
+}: Pick<WorkerActionDependencies, "getApp">): (opts: CliOpts) => CliActionResult {
+  return (opts: CliOpts) => {
+    return getApp().configPath({
+      scope: parseConfigReadScope(opts.scope as string | undefined),
+    });
+  };
+}
+
 /**
  * Creates the `intro` command action handler.
  *
@@ -1904,6 +1940,15 @@ function parseConfigMutationScope(value: string | undefined): ConfigMutationScop
   }
 
   throw new Error(`Invalid --scope value: ${value}. Allowed: local, global.`);
+}
+
+function parseConfigReadScope(value: string | undefined): ConfigReadScope {
+  const resolved = (value ?? "effective").trim().toLowerCase();
+  if (resolved === "effective" || resolved === "local" || resolved === "global") {
+    return resolved;
+  }
+
+  throw new Error(`Invalid --scope value: ${value}. Allowed: effective, local, global.`);
 }
 
 function parseConfigValueType(value: string | undefined): ConfigValueType {

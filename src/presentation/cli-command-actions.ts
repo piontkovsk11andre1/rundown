@@ -212,6 +212,7 @@ interface MigrateCommandOptions {
   action?: MigrateAction;
   downCount?: number;
   dir?: string;
+  workspace?: string;
   confirm: boolean;
   workerPattern: ParsedWorkerPattern;
   slugWorkerPattern?: ParsedWorkerPattern;
@@ -223,6 +224,7 @@ interface MigrateCommandOptions {
 interface DocsCommandOptions {
   action?: "publish" | "diff";
   dir?: string;
+  workspace?: string;
   label?: string;
   target?: "current" | "preview";
 }
@@ -1048,6 +1050,7 @@ export function createMigrateCommandAction({
       action: normalizedAction,
       downCount: parseLastCount(count),
       dir: normalizeOptionalString(opts.dir),
+      workspace: normalizeOptionalString(opts.workspace),
       confirm: Boolean(opts.confirm as boolean | undefined),
       workerPattern,
       ...(slugWorkerPattern ? { slugWorkerPattern } : {}),
@@ -1071,6 +1074,7 @@ export function createDocsPublishCommandAction({
     return resolveDocsCommandHandler(getApp())({
       action: "publish",
       dir: normalizeOptionalString(opts.dir),
+      workspace: normalizeOptionalString(opts.workspace),
       label: normalizeOptionalString(opts.label),
     });
   };
@@ -1095,6 +1099,7 @@ export function createDocsDiffCommandAction({
     return resolveDocsCommandHandler(getApp())({
       action: "diff",
       dir: normalizeOptionalString(opts.dir),
+      workspace: normalizeOptionalString(opts.workspace),
       target: resolvedDiffMode,
     });
   };

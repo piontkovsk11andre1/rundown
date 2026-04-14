@@ -434,6 +434,7 @@ describe("createMigrateCommandAction", () => {
 
     const exitCode = await action("up", undefined, {
       dir: "migrations",
+      workspace: "../workspace-source",
       worker: "opencode run --model gpt-5.3-codex",
       slugWorker: "opencode run --model gpt-5.3-mini",
     });
@@ -443,6 +444,7 @@ describe("createMigrateCommandAction", () => {
     expect(migrateTask).toHaveBeenCalledWith(expect.objectContaining({
       action: "up",
       dir: "migrations",
+      workspace: "../workspace-source",
       workerPattern: {
         command: ["opencode", "run", "--model", "gpt-5.3-codex"],
         usesBootstrap: false,
@@ -510,6 +512,7 @@ describe("createDocsPublishCommandAction", () => {
 
     const exitCode = await action({
       dir: "migrations",
+      workspace: "../workspace-source",
       label: "Initial baseline",
       worker: "opencode run --model gpt-5.3-codex",
     });
@@ -519,6 +522,7 @@ describe("createDocsPublishCommandAction", () => {
     expect(docsTask).toHaveBeenCalledWith({
       action: "publish",
       dir: "migrations",
+      workspace: "../workspace-source",
       label: "Initial baseline",
     });
   });
@@ -534,9 +538,11 @@ describe("createDocsDiffCommandAction", () => {
 
     const defaultExitCode = await action(undefined, {
       dir: "migrations",
+      workspace: "../workspace-source",
     });
     const previewExitCode = await action("preview", {
       dir: "migrations",
+      workspace: "../workspace-source",
     });
 
     expect(defaultExitCode).toBe(0);
@@ -545,11 +551,13 @@ describe("createDocsDiffCommandAction", () => {
       action: "diff",
       target: "current",
       dir: "migrations",
+      workspace: "../workspace-source",
     }));
     expect(docsTask).toHaveBeenNthCalledWith(2, expect.objectContaining({
       action: "diff",
       target: "preview",
       dir: "migrations",
+      workspace: "../workspace-source",
     }));
   });
 

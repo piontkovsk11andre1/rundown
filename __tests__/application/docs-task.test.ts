@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDocsTask } from "../../src/application/docs-task.js";
+import { WORKSPACE_LINK_SCHEMA_VERSION } from "../../src/domain/workspace-link.js";
 import type { ApplicationOutputEvent } from "../../src/domain/ports/output-port.js";
 import type {
   FileSystem,
@@ -209,6 +210,160 @@ describe("createDocsTask", () => {
       expect(code).toBe(0);
       expect(fileSystem.readText("/repo/design/current/Target.md")).toBe("legacy\n");
       expect(outputEvents.some((event) => event.kind === "info" && event.message.includes("Bootstrapped design/current/Target.md from legacy Design.md"))).toBe(true);
+    } finally {
+      cwdSpy.mockRestore();
+    }
+  });
+
+  it("requires --workspace when workspace.link has multiple records without a default", async () => {
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        "/linked": [
+          { name: ".rundown", isDirectory: true, isFile: false },
+        ],
+        "/linked/.rundown": [
+          { name: "workspace.link", isDirectory: false, isFile: true },
+        ],
+        "/repo-a": [
+          { name: "migrations", isDirectory: true, isFile: false },
+          { name: "design", isDirectory: true, isFile: false },
+        ],
+        "/repo-a/migrations": [],
+        "/repo-a/design": [
+          { name: "current", isDirectory: true, isFile: false },
+        ],
+        "/repo-a/design/current": [
+          { name: "Target.md", isDirectory: false, isFile: true },
+        ],
+        "/repo-b": [
+          { name: "migrations", isDirectory: true, isFile: false },
+          { name: "design", isDirectory: true, isFile: false },
+        ],
+        "/repo-b/migrations": [],
+        "/repo-b/design": [
+          { name: "current", isDirectory: true, isFile: false },
+        ],
+        "/repo-b/design/current": [
+          { name: "Target.md", isDirectory: false, isFile: true },
+        ],
+      },
+      files: {
+        "/linked/.rundown/workspace.link": JSON.stringify({
+          schemaVersion: WORKSPACE_LINK_SCHEMA_VERSION,
+          records: [
+            { id: "workspace-a", workspacePath: "../repo-a" },
+            { id: "workspace-b", workspacePath: "../repo-b" },
+          ],
+        }),
+        "/repo-a/design/current/Target.md": "# A\n",
+        "/repo-b/design/current/Target.md": "# B\n",
+      },
+      stats: {
+        "/linked": { isDirectory: true, isFile: false },
+        "/linked/.rundown": { isDirectory: true, isFile: false },
+        "/linked/.rundown/workspace.link": { isDirectory: false, isFile: true },
+        "/repo-a": { isDirectory: true, isFile: false },
+        "/repo-a/migrations": { isDirectory: true, isFile: false },
+        "/repo-a/design": { isDirectory: true, isFile: false },
+        "/repo-a/design/current": { isDirectory: true, isFile: false },
+        "/repo-a/design/current/Target.md": { isDirectory: false, isFile: true },
+        "/repo-b": { isDirectory: true, isFile: false },
+        "/repo-b/migrations": { isDirectory: true, isFile: false },
+        "/repo-b/design": { isDirectory: true, isFile: false },
+        "/repo-b/design/current": { isDirectory: true, isFile: false },
+        "/repo-b/design/current/Target.md": { isDirectory: false, isFile: true },
+      },
+    });
+    const outputEvents: ApplicationOutputEvent[] = [];
+
+    const docsTask = createDocsTask({
+      fileSystem,
+      output: {
+        emit: (event) => {
+          outputEvents.push(event);
+        },
+      },
+    });
+
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/linked");
+    try {
+      const code = await docsTask({ action: "diff", dir: "migrations", target: "current" });
+
+      expect(code).toBe(1);
+      expect(outputEvents.some(
+        (event) => event.kind === "error"
+          && event.message.includes("Workspace selection is ambiguous")
+          && event.message.includes("Provide --workspace <dir>"),
+      )).toBe(true);
+    } finally {
+      cwdSpy.mockRestore();
+    }
+  });
+
+  it("resolves workspace from --workspace when workspace.link selection is ambiguous", async () => {
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        "/linked": [
+          { name: ".rundown", isDirectory: true, isFile: false },
+        ],
+        "/linked/.rundown": [
+          { name: "workspace.link", isDirectory: false, isFile: true },
+        ],
+        "/repo-a": [
+          { name: "migrations", isDirectory: true, isFile: false },
+          { name: "design", isDirectory: true, isFile: false },
+        ],
+        "/repo-a/migrations": [],
+        "/repo-a/design": [
+          { name: "current", isDirectory: true, isFile: false },
+        ],
+        "/repo-a/design/current": [
+          { name: "Target.md", isDirectory: false, isFile: true },
+        ],
+      },
+      files: {
+        "/linked/.rundown/workspace.link": JSON.stringify({
+          schemaVersion: WORKSPACE_LINK_SCHEMA_VERSION,
+          records: [
+            { id: "workspace-a", workspacePath: "../repo-a" },
+            { id: "workspace-b", workspacePath: "../repo-b" },
+          ],
+        }),
+        "/repo-a/design/current/Target.md": "# A\n",
+      },
+      stats: {
+        "/linked": { isDirectory: true, isFile: false },
+        "/linked/.rundown": { isDirectory: true, isFile: false },
+        "/linked/.rundown/workspace.link": { isDirectory: false, isFile: true },
+        "/repo-a": { isDirectory: true, isFile: false },
+        "/repo-a/migrations": { isDirectory: true, isFile: false },
+        "/repo-a/design": { isDirectory: true, isFile: false },
+        "/repo-a/design/current": { isDirectory: true, isFile: false },
+        "/repo-a/design/current/Target.md": { isDirectory: false, isFile: true },
+      },
+    });
+    const outputEvents: ApplicationOutputEvent[] = [];
+
+    const docsTask = createDocsTask({
+      fileSystem,
+      output: {
+        emit: (event) => {
+          outputEvents.push(event);
+        },
+      },
+    });
+
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/linked");
+    try {
+      const code = await docsTask({
+        action: "diff",
+        dir: "migrations",
+        target: "current",
+        workspace: "../repo-a",
+      });
+
+      expect(code).toBe(0);
+      expect(outputEvents.some((event) => event.kind === "info" && event.message.includes("Design revision diff"))).toBe(true);
     } finally {
       cwdSpy.mockRestore();
     }

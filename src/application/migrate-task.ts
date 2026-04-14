@@ -41,7 +41,6 @@ import {
   type PredictionTrackedFile,
   type PredictionTrackedFileKind,
 } from "../domain/prediction-reconciliation.js";
-import { resolveEffectiveWorkspaceRoot } from "../domain/workspace-link.js";
 import {
   prepareDesignRevisionDiffContext,
   resolveDesignContext,
@@ -51,6 +50,7 @@ import {
   resolvePredictionWorkspaceDirectories,
   resolvePredictionWorkspacePath,
 } from "./prediction-workspace-paths.js";
+import { resolveWorkspaceRootForPathSensitiveCommand } from "./workspace-selection.js";
 
 type MigrateAction =
   | "up"
@@ -71,6 +71,7 @@ export interface MigrateTaskOptions {
   action?: MigrateAction;
   downCount?: number;
   dir?: string;
+  workspace?: string;
   confirm?: boolean;
   workerPattern: ParsedWorkerPattern;
   slugWorkerPattern?: ParsedWorkerPattern;
@@ -137,7 +138,17 @@ export function createMigrateTask(
 
   return async function migrateTask(options: MigrateTaskOptions): Promise<number> {
     const invocationDir = process.cwd();
-    const workspaceRoot = resolveWorkspaceRootFromCurrentDir(dependencies.fileSystem, invocationDir);
+    const workspaceSelection = resolveWorkspaceRootForPathSensitiveCommand({
+      fileSystem: dependencies.fileSystem,
+      invocationDir,
+      workspaceOption: options.workspace,
+    });
+    if (!workspaceSelection.ok) {
+      emit({ kind: "error", message: workspaceSelection.message });
+      return EXIT_CODE_FAILURE;
+    }
+
+    const workspaceRoot = workspaceSelection.workspaceRoot;
     const workspaceDirectories = resolvePredictionWorkspaceDirectories({
       fileSystem: dependencies.fileSystem,
       workspaceRoot,
@@ -589,14 +600,6 @@ function emitLowDesignContextGuidance(
   emit({
     kind: "warn",
     message: designContext.lowContextGuidance,
-  });
-}
-
-function resolveWorkspaceRootFromCurrentDir(fileSystem: FileSystem, currentDir: string): string {
-  return resolveEffectiveWorkspaceRoot({
-    currentDir,
-    fileSystem,
-    pathOperations: path,
   });
 }
 

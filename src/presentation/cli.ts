@@ -338,6 +338,7 @@ const migrateCommand = program
   )
   .argument("[count]", "Optional number of runs to undo for down")
   .option("--dir <path>", "Migrations directory (default: configured workspace, fallback: ./migrations)")
+  .option("--workspace <dir>", "Workspace directory to use for linked/multi-workspace resolution")
   .option("--confirm", "Show generated content and confirm before writing files", false)
   .option("--run <id|latest>", "Choose artifact run id or 'latest' for down", "latest")
   .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
@@ -369,6 +370,7 @@ docsCommand
   .command("publish")
   .description("Publish design/current/ into the next immutable design/rev.N/ snapshot.")
   .option("--dir <path>", "Migrations directory (default: configured workspace, fallback: ./migrations)")
+  .option("--workspace <dir>", "Workspace directory to use for linked/multi-workspace resolution")
   .option("--label <text>", "Optional label to store in revision metadata")
   .allowUnknownOption(false)
   .action(withCliAction(createDocsPublishCommandAction({
@@ -380,6 +382,7 @@ docsCommand
   .description("Show revision diff summary for design/current/ against the latest revision.")
   .argument("[target]", "Diff target shorthand: current (default) | preview")
   .option("--dir <path>", "Migrations directory (default: configured workspace, fallback: ./migrations)")
+  .option("--workspace <dir>", "Workspace directory to use for linked/multi-workspace resolution")
   .option("--from <rev|current>", "Explicit source revision selector (use with --to)")
   .option("--to <rev|current>", "Explicit destination revision selector (use with --from)")
   .allowUnknownOption(false)

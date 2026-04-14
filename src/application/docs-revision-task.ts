@@ -2,7 +2,6 @@ import path from "node:path";
 import { EXIT_CODE_FAILURE, EXIT_CODE_SUCCESS } from "../domain/exit-codes.js";
 import type { FileSystem } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
-import { resolveEffectiveWorkspaceRoot } from "../domain/workspace-link.js";
 import {
   prepareDesignRevisionDiffContext,
   saveDesignRevisionSnapshot,
@@ -11,6 +10,7 @@ import {
   resolvePredictionWorkspaceDirectories,
   resolvePredictionWorkspacePath,
 } from "./prediction-workspace-paths.js";
+import { resolveWorkspaceRootForPathSensitiveCommand } from "./workspace-selection.js";
 
 type DocsRevisionAction = "publish" | "diff";
 type DocsRevisionDiffTarget = "current" | "preview";
@@ -22,6 +22,7 @@ const LEGACY_PRIMARY_FILE = "Design.md";
 export interface DocsRevisionTaskOptions {
   action?: DocsRevisionAction;
   dir?: string;
+  workspace?: string;
   label?: string;
   target?: DocsRevisionDiffTarget;
 }
@@ -43,7 +44,17 @@ export function createDocsRevisionTask(
     }
 
     const invocationDir = process.cwd();
-    const workspaceRoot = resolveWorkspaceRootFromCurrentDir(dependencies.fileSystem, invocationDir);
+    const workspaceSelection = resolveWorkspaceRootForPathSensitiveCommand({
+      fileSystem: dependencies.fileSystem,
+      invocationDir,
+      workspaceOption: options.workspace,
+    });
+    if (!workspaceSelection.ok) {
+      emit({ kind: "error", message: workspaceSelection.message });
+      return EXIT_CODE_FAILURE;
+    }
+
+    const workspaceRoot = workspaceSelection.workspaceRoot;
     const workspaceDirectories = resolvePredictionWorkspaceDirectories({
       fileSystem: dependencies.fileSystem,
       workspaceRoot,
@@ -249,14 +260,6 @@ function ensureManagedDesignWorkspaceForRevisionCommands(
 function formatRelativeWorkspacePath(projectRoot: string, absolutePath: string): string {
   const relative = path.relative(projectRoot, absolutePath).replace(/\\/g, "/");
   return relative.length > 0 ? relative : ".";
-}
-
-function resolveWorkspaceRootFromCurrentDir(fileSystem: FileSystem, currentDir: string): string {
-  return resolveEffectiveWorkspaceRoot({
-    currentDir,
-    fileSystem,
-    pathOperations: path,
-  });
 }
 
 function isDirectory(fileSystem: FileSystem, absolutePath: string): boolean {

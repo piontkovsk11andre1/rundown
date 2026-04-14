@@ -1297,9 +1297,21 @@ If both are provided, `--worker` takes precedence.
 
 `--worker` is optional when rundown can resolve a worker from effective config.
 
+Worker-required commands:
+
+- `run`
+- `research`
+- `plan`
+- `discuss`
+- `reverify`
+
+These commands always require a resolved worker, whether provided by CLI or config.
+
 With a freshly initialized empty config (`{}`), no worker is resolved by default. In that case, provide one explicitly using either `--worker <pattern>` or `-- <command>`.
 
 If `.rundown/config.json` is partial, rundown uses only the keys that are present and preserves normal precedence; omitted worker keys are not auto-filled by command-specific guesses. For worker-required commands, unresolved worker config fails with actionable guidance instead of silently falling back to incompatible worker settings.
+
+When worker resolution is missing for any worker-required command, rundown exits non-zero and prints clear remediation steps: set `defaults.worker` or `commands.<name>.worker`, or pass `--worker <pattern>` / `-- <command>` for that invocation.
 
 Worker resolution cascade (lowest to highest priority):
 

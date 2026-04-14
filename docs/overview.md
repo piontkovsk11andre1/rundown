@@ -322,6 +322,16 @@ When `opencode` is your primary worker, use explicit command defaults by interac
 
 This keeps deterministic phases on the non-interactive runner while preserving an interactive TUI session for discussion.
 
+Worker-required commands are:
+
+- `research`
+- `plan`
+- `discuss`
+- `run`
+- `reverify`
+
+If none of these commands can resolve a worker from CLI/config precedence, rundown fails fast with actionable guidance to configure `defaults.worker` or `commands.<name>.worker`, or provide `--worker <pattern>` / `-- <command>` for that run.
+
 ## Prompt transport
 
 Rundown uses file-based prompt transport for worker execution.

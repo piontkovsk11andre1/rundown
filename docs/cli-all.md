@@ -1,6 +1,6 @@
-# CLI: `all`
+# CLI: `all` (legacy alias)
 
-`rundown all <source>` is shorthand for `rundown run <source> --all`.
+`rundown all <source>` remains available as a legacy compatibility alias for `rundown run <source> --all`.
 
 It scans the selected source, executes runnable tasks in order, verifies each result, and continues until all tasks are complete or a failure occurs.
 

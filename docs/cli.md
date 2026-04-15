@@ -21,8 +21,6 @@ rundown --config-dir ../../.rundown run TODO.md
 rundown --config-dir /workspace/rundown-config run docs/todos.md
 ```
 
-## Help mode (no args)
-
 ## `--agents` output mode
 
 Use `--agents` at the root to print deterministic, Markdown-safe AGENTS guidance to stdout and exit `0`.

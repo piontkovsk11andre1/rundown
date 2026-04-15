@@ -767,6 +767,47 @@ describe("CLI run option normalization", () => {
     }
   });
 
+  it("materialize preserves forced all+revertable defaults while honoring explicit commit CLI overrides", async () => {
+    const runTask = vi.fn(async () => 0);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-materialize-precedence-"));
+    const configDir = path.join(tempRoot, ".rundown");
+
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify({
+      run: {
+        revertable: false,
+        commit: false,
+        commitMessage: "cfg: {{task}}",
+        commitMode: "file-done",
+      },
+    }, null, 2) + "\n", "utf-8");
+
+    try {
+      const call = await invokeRunAndCaptureCall([
+        "--config-dir",
+        configDir,
+        "materialize",
+        "tasks.md",
+        "--commit-mode",
+        "per-task",
+        "--commit-message",
+        "cli: {{task}}",
+        "--worker",
+        "opencode",
+        "run",
+      ], runTask);
+
+      expect(call.source).toBe("tasks.md");
+      expect(call.runAll).toBe(true);
+      expect(call.keepArtifacts).toBe(true);
+      expect(call.commitAfterComplete).toBe(true);
+      expect(call.commitMode).toBe("per-task");
+      expect(call.commitMessageTemplate).toBe("cli: {{task}}");
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("shows run-like options in materialize help text", async () => {
     const runTask = vi.fn(async () => 0);
     const result = await invokeRunAndCaptureHelpOutput([

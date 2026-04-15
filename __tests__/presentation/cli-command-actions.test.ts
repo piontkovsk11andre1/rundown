@@ -536,6 +536,62 @@ describe("createMaterializeCommandAction", () => {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it("preserves explicit commit CLI overrides while forcing materialize defaults", async () => {
+    const runTask = vi.fn(async () => 0);
+    const app = { runTask } as unknown as CliApp;
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-materialize-precedence-"));
+    const configDir = path.join(tempRoot, ".rundown");
+
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify({
+      run: {
+        revertable: false,
+        commit: false,
+        commitMessage: "cfg: {{task}}",
+        commitMode: "file-done",
+      },
+    }, null, 2) + "\n", "utf8");
+
+    try {
+      const action = createMaterializeCommandAction({
+        getApp: () => app,
+        getWorkerFromSeparator: () => ["opencode", "run"],
+        runnerModes: ["wait", "tui", "detached"],
+        getInvocationArgv: () => [
+          "--config-dir",
+          configDir,
+          "materialize",
+          "tasks.md",
+          "--commit-mode",
+          "per-task",
+          "--commit-message",
+          "cli: {{task}}",
+          "--",
+          "opencode",
+          "run",
+        ],
+      });
+
+      const exitCode = await action("tasks.md", {
+        commitMode: "per-task",
+        commitMessage: "cli: {{task}}",
+      });
+
+      expect(exitCode).toBe(0);
+      expect(runTask).toHaveBeenCalledTimes(1);
+      expect(runTask).toHaveBeenCalledWith(expect.objectContaining({
+        source: "tasks.md",
+        runAll: true,
+        keepArtifacts: true,
+        commitAfterComplete: true,
+        commitMode: "per-task",
+        commitMessageTemplate: "cli: {{task}}",
+      }));
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("createWorkerHealthCommandAction", () => {

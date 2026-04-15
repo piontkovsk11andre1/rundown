@@ -1146,6 +1146,7 @@ Use built-in prefixes when they improve execution quality:
 - \`fast:\` executes the task but skips the verification phase entirely. Use it for small, mechanical changes where per-task verification is wasteful (e.g. renaming a variable, adding an import). Group several such steps under a \`fast:\` directive parent when they make more sense verified together at the end.
 - \`profile=<name>\` to choose a worker profile for specific tasks.
 - \`memory:\` for research/context-capture tasks that gather reusable context for later steps when the task does not specify a file to write/edit/create.
+- Author new memory-capture TODOs with the canonical \`memory:\` prefix only; \`remember:\`, \`memorize:\`, and \`inventory:\` remain execution-level compatibility aliases and should not be newly authored in plans.
 - If task text includes write/edit/create/update filesystem intent, keep it as a normal execution TODO (not \`memory:\`).
 - \`include: <path>\` to delegate subtasks to another Markdown file.
 
@@ -1236,6 +1237,7 @@ Use built-in prefixes when they improve execution quality for child tasks:
 - \`fast:\` executes the task but skips the verification phase entirely. Use it for small, mechanical changes where per-task verification is wasteful.
 - \`profile=<name>\` to choose a worker profile for specific child tasks.
 - \`memory:\` for child tasks that gather reusable context for later steps when the task does not specify a file to write/edit/create.
+- Author new child memory-capture TODOs with the canonical \`memory:\` prefix only; \`remember:\`, \`memorize:\`, and \`inventory:\` remain execution-level compatibility aliases and should not be newly authored in deep plans.
 - If child task text includes write/edit/create/update filesystem intent, keep it as a normal execution TODO (not \`memory:\`).
 - \`include: <path>\` to delegate child subtasks to another Markdown file.
 

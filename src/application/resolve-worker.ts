@@ -365,7 +365,8 @@ function resolveWorkerSelectionForInvocation(input: ResolveWorkerForInvocationIn
 
   const resolvedPhaseRoute = resolveRunWorkerPhaseRoute(input);
   const hasExplicitPhaseWorker = (resolvedPhaseRoute?.route.worker?.length ?? 0) > 0;
-  const includeConfiguredFallbacks = hasExplicitPhaseWorker
+  const usesExplicitPhaseWorker = hasExplicitPhaseWorker && !hasCliWorkerCommand;
+  const includeConfiguredFallbacks = usesExplicitPhaseWorker
     ? resolvedPhaseRoute?.route.useFallbacks === true
     : true;
 
@@ -398,10 +399,10 @@ function resolveWorkerSelectionForInvocation(input: ResolveWorkerForInvocationIn
 
   const candidates = buildWorkerCandidates(resolvedWorkerCommand, input, {
     includeConfiguredFallbacks,
-    includeRuntimeFallback: !hasExplicitPhaseWorker,
+    includeRuntimeFallback: !usesExplicitPhaseWorker,
   });
   const healthIndex = buildWorkerHealthIndex(input.workerHealthEntries);
-  const effectiveProfileName = hasExplicitPhaseWorker
+  const effectiveProfileName = usesExplicitPhaseWorker
     ? undefined
     : resolveEffectiveProfileName(input, frontmatterProfile, supportsInlineTaskProfile);
   const profileHealthEntry = effectiveProfileName
@@ -419,7 +420,7 @@ function resolveWorkerSelectionForInvocation(input: ResolveWorkerForInvocationIn
     };
   });
 
-  const forcePrimarySelection = hasExplicitPhaseWorker && !includeConfiguredFallbacks;
+  const forcePrimarySelection = usesExplicitPhaseWorker && !includeConfiguredFallbacks;
   const selectedCandidateIndex = forcePrimarySelection && evaluatedCandidates.length > 0
     ? 0
     : evaluatedCandidates.findIndex((candidate) => candidate.eligibility.eligible);
@@ -432,7 +433,7 @@ function resolveWorkerSelectionForInvocation(input: ResolveWorkerForInvocationIn
 
   if (input.verbose && input.emit && selectedCandidate) {
     const sourceDescription = describeConfigResolutionSource(input, frontmatterProfile);
-    const resolvedSourceDescription = hasExplicitPhaseWorker
+    const resolvedSourceDescription = usesExplicitPhaseWorker
       ? `from ${resolvedPhaseRoute?.sourceDescription}`
       : sourceDescription;
     const selectedCommandLabel = selectedCandidate.workerCommand.join(" ");

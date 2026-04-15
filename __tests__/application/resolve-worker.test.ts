@@ -940,4 +940,71 @@ describe("resolve-worker", () => {
 
     expect(command).toEqual(["fallback", "one"]);
   });
+
+  it("keeps health failover for inherited phase routing when no explicit phase worker is configured", () => {
+    const nowIso = "2026-04-12T09:32:38.339Z";
+    const command = resolveWorkerForInvocation({
+      commandName: "run",
+      workerConfig: {
+        workers: {
+          default: ["default", "worker"],
+          fallbacks: [["fallback", "one"]],
+        },
+        run: {
+          workerRouting: {
+            verify: {
+              useFallbacks: false,
+              worker: ["verify", "explicit"],
+            },
+          },
+        },
+      },
+      source: "- [ ] task\n",
+      cliWorkerCommand: [],
+      runWorkerPhase: "repair",
+      workerHealthEntries: [
+        {
+          key: buildWorkerHealthWorkerKey(["default", "worker"]),
+          source: "worker",
+          status: WORKER_HEALTH_STATUS_UNAVAILABLE,
+        },
+      ],
+      evaluateWorkerHealthAtMs: Date.parse(nowIso),
+    });
+
+    expect(command).toEqual(["fallback", "one"]);
+  });
+
+  it("treats CLI worker as inherited routing even when phase has explicit worker configured", () => {
+    const nowIso = "2026-04-12T09:32:38.339Z";
+    const command = resolveWorkerForInvocation({
+      commandName: "run",
+      workerConfig: {
+        workers: {
+          default: ["default", "worker"],
+          fallbacks: [["fallback", "one"]],
+        },
+        run: {
+          workerRouting: {
+            resolve: {
+              worker: ["phase", "explicit"],
+            },
+          },
+        },
+      },
+      source: "- [ ] task\n",
+      cliWorkerCommand: ["cli", "worker"],
+      runWorkerPhase: "resolve",
+      workerHealthEntries: [
+        {
+          key: buildWorkerHealthWorkerKey(["cli", "worker"]),
+          source: "worker",
+          status: WORKER_HEALTH_STATUS_UNAVAILABLE,
+        },
+      ],
+      evaluateWorkerHealthAtMs: Date.parse(nowIso),
+    });
+
+    expect(command).toEqual(["fallback", "one"]);
+  });
 });

@@ -20,16 +20,42 @@ Arguments:
 
 Options:
 
+- `--mode <mode>`: Runner execution mode: `wait`, `tui`, `detached` (default: `wait`).
+- `--sort <sort>`: File sort mode: `name-sort`, `none`, `old-first`, `new-first`.
+- `--verify` / `--no-verify`: Enable or disable verification after task execution (verification is enabled by default).
+- `--only-verify`: Skip execution and run verification directly.
+- `--force-execute`: Force execute phase even for verify-only task text.
+- `--force-attempts <n>`: Default outer retry attempts for `force:`-prefixed tasks.
+- `--repair-attempts <n>`: Max repair attempts on verification failure.
+- `--resolve-repair-attempts <n>`: Max resolve-informed repair attempts after diagnosis.
+- `--no-repair`: Disable repair even when repair attempts are set.
+- `--dry-run`: Show what would be executed without running it.
+- `--print-prompt`: Print the rendered prompt and exit.
+- `--keep-artifacts`: Preserve runtime prompts, logs, and metadata under `<config-dir>/runs`.
+- `--trace`: Enable structured JSONL trace output at `<config-dir>/runs/<id>/trace.jsonl`.
 - `--all`: Process runnable tasks sequentially until completion or first failure.
+- `--trace-stats`: Insert inline task trace statistics under completed TODOs in source Markdown.
+- `--trace-only`: Skip task execution and run only trace enrichment on the latest completed artifact run.
+- `--vars-file [path]`: Load extra template variables from a JSON file (default: `<config-dir>/vars.json`).
+- `--var <key=value>`: Inject a template variable into prompts (repeatable).
+- `--commit`: Auto-commit checked task file after successful completion.
+- `--commit-message <template>`: Commit message template (supports `{{task}}` and `{{file}}`).
+- `--commit-mode <per-task|file-done>`: Commit timing for `--commit` (default: `per-task`). `file-done` is for effective run-all (`--all`, `all`, `--redo`, `--clean`).
+- `--revertable`: Shorthand for `--commit --keep-artifacts`.
+- `--on-complete <command>`: Run a shell command after successful task completion.
+- `--on-fail <command>`: Run a shell command when a task fails (execution or verification failure).
 - `--show-agent-output`: Show worker-derived `text`/`stderr` transcript output for supported stages.
-- `--commit`: Create a git commit after successful completion (task-scoped by default).
-- `--commit-mode <per-task|file-done>`: Control commit timing for `--commit` (default `per-task`). `file-done` defers to one final commit for effective run-all flows.
+- `-v, --verbose`: Show detailed per-phase run diagnostics (within grouped output).
+- `-q, --quiet`: Suppress info-level output (info, success, progress, grouped status).
 - `--redo`: Re-run previously completed tasks before continuing normal task selection.
 - `--reset-after`: Reset completion state after processing so tasks can be run again.
-- `--clean`: Clear prior run bookkeeping before starting execution.
-- `--trace-stats`: Insert inline task trace statistics under completed TODOs in the source Markdown.
-- `--trace-only`: Skip task execution and run only trace enrichment on the latest completed artifact run.
-- Supports additional shared run/execution options; see [cli.md](cli.md) for the full command set.
+- `--clean`: Shorthand for `--redo --reset-after`.
+- `--rounds <n>`: Repeat clean cycles `N` times (default: `1`).
+- `--force-unlock`: Break stale source lockfiles before acquiring run locks.
+- `--worker <pattern>`: Optional worker pattern override (alternative to `-- <command>`).
+- `--ignore-cli-block`: Disable execution of `cli` fenced blocks during prompt expansion.
+- `--cache-cli-blocks`: Cache `cli` fenced block command output for the duration of the run.
+- `--cli-block-timeout <ms>`: Timeout in milliseconds for executing `cli` fenced blocks (`0` disables timeout).
 
 Examples:
 

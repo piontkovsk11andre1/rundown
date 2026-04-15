@@ -2627,6 +2627,125 @@ describe("run-task-execution helpers", () => {
     expect(fileSystem.readText(taskFile)).toContain("  - answer: CliResourceModule");
   });
 
+  it("keeps get-result/for-item metadata as non-executable sub-items across execution and reruns", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] metadatainject: seed metadata",
+        "- [ ] inspect: metadata remains non-executable",
+      ].join("\n") + "\n",
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "metadatainject: seed metadata"),
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      const source = fileSystem.readText(taskFile);
+      const next = parseTasks(source, taskFile).find((task) => !task.checked);
+      if (!next) {
+        return null;
+      }
+      return [{
+        task: next,
+        source: "tasks.md",
+        contextBefore: "",
+      }];
+    });
+
+    const inspectionSnapshots: Array<{ taskCount: number; metadataTaskCount: number; metadataSubItems: string[] }> = [];
+    dependencies.toolResolver = {
+      resolve: (toolName) => {
+        if (toolName === "metadatainject") {
+          return {
+            name: "metadatainject",
+            kind: "handler",
+            handler: async (context) => {
+              const source = context.fileSystem.readText(context.task.file);
+              const lines = source.split("\n");
+              const taskLineIndex = context.task.line - 1;
+              const existingMetadataStart = taskLineIndex + 1;
+              const existingMetadata = [
+                lines[existingMetadataStart],
+                lines[existingMetadataStart + 1],
+              ];
+              const hasMetadata = existingMetadata[0] === "  - get-result: Alpha"
+                && existingMetadata[1] === "  - for-item: Beta";
+              if (!hasMetadata) {
+                lines.splice(taskLineIndex + 1, 0, "  - get-result: Alpha", "  - for-item: Beta");
+                context.fileSystem.writeText(context.task.file, lines.join("\n"));
+              }
+              return {
+                skipExecution: true,
+                shouldVerify: false,
+              };
+            },
+            frontmatter: { skipExecution: true, shouldVerify: false },
+          };
+        }
+
+        if (toolName === "inspect") {
+          return {
+            name: "inspect",
+            kind: "handler",
+            handler: async (context) => {
+              const source = context.fileSystem.readText(context.task.file);
+              const parsedTasks = parseTasks(source, context.task.file);
+              const metadataTaskCount = parsedTasks.filter((task) => /^(?:get-result|for-item)\s*:/i.test(task.text)).length;
+              const metadataSubItems = parsedTasks[0]?.subItems.map((subItem) => subItem.text) ?? [];
+              inspectionSnapshots.push({
+                taskCount: parsedTasks.length,
+                metadataTaskCount,
+                metadataSubItems,
+              });
+
+              const metadataPreservedAsSubItems = metadataSubItems.includes("get-result: Alpha")
+                && metadataSubItems.includes("for-item: Beta");
+              if (metadataTaskCount === 0 && metadataPreservedAsSubItems) {
+                return { skipExecution: true, shouldVerify: false };
+              }
+
+              return {
+                exitCode: 1,
+                failureMessage: "Metadata was promoted to executable tasks.",
+                failureReason: "Expected get-result:/for-item: to remain sub-items and not become checkbox tasks.",
+              };
+            },
+            frontmatter: { skipExecution: true, shouldVerify: false },
+          };
+        }
+
+        return undefined;
+      },
+      listKnownToolNames: () => ["metadatainject", "inspect"],
+    };
+
+    const runTask = createRunTaskExecution(dependencies);
+
+    const firstCode = await runTask(createOptions({ verify: false, runAll: true }));
+    expect(firstCode).toBe(0);
+
+    const secondCode = await runTask(createOptions({ verify: false, runAll: true, redo: true }));
+    expect(secondCode).toBe(0);
+
+    expect(inspectionSnapshots).toHaveLength(2);
+    expect(inspectionSnapshots[0]).toEqual({
+      taskCount: 2,
+      metadataTaskCount: 0,
+      metadataSubItems: ["get-result: Alpha", "for-item: Beta"],
+    });
+    expect(inspectionSnapshots[1]).toEqual({
+      taskCount: 2,
+      metadataTaskCount: 0,
+      metadataSubItems: ["get-result: Alpha", "for-item: Beta"],
+    });
+    expect(fileSystem.readText(taskFile)).toContain("  - get-result: Alpha");
+    expect(fileSystem.readText(taskFile)).toContain("  - for-item: Beta");
+  });
+
   it("auto-completes parallel tasks with no children without invoking worker execution", async () => {
     const cwd = "/workspace";
     const taskFile = `${cwd}/tasks.md`;

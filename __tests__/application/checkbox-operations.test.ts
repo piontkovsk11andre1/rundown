@@ -1054,7 +1054,7 @@ describe("checkbox-operations", () => {
     ].join("\n"));
   });
 
-  it("removes get-result metadata annotations during checkbox reset", () => {
+  it("preserves get-result metadata annotations during checkbox reset", () => {
     const fileSystem = createFileSystem({
       "todo.md": [
         "- [x] get: Find current module names",
@@ -1068,6 +1068,8 @@ describe("checkbox-operations", () => {
 
     expect(fileSystem.readText("todo.md")).toBe([
       "- [ ] get: Find current module names",
+      "  - get-result: CliResourceModule",
+      "  - get-result: CliArgsModule",
       "- [ ] Next task",
     ].join("\n"));
   });
@@ -1093,7 +1095,7 @@ describe("checkbox-operations", () => {
     ].join("\n"));
   });
 
-  it("removes for-loop metadata annotations during checkbox reset", () => {
+  it("preserves for-item metadata annotations and removes only for-current during checkbox reset", () => {
     const fileSystem = createFileSystem({
       "todo.md": [
         "- [x] for: Alpha, Beta",
@@ -1108,7 +1110,45 @@ describe("checkbox-operations", () => {
 
     expect(fileSystem.readText("todo.md")).toBe([
       "- [ ] for: Alpha, Beta",
+      "  - for-item: Alpha",
+      "  - for-item: Beta",
       "  - [ ] Do once",
+    ].join("\n"));
+  });
+
+  it("keeps get-result/for-item metadata as non-executable sub-items during sibling skipping", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [x] end: no output",
+        "- [ ] Parent with metadata",
+        "  - get-result: Alpha",
+        "  - for-item: Beta",
+        "  - [ ] Child action",
+      ].join("\n"),
+    });
+    const task = createTask({
+      text: "end: no output",
+      line: 1,
+      index: 0,
+      file: "todo.md",
+      checked: true,
+    });
+
+    const result = skipRemainingSiblingsUsingFileSystem(task, "no output", fileSystem);
+
+    expect(result).toEqual({
+      skippedSiblingCount: 1,
+      skippedDescendantCount: 1,
+      skippedTaskTexts: ["Parent with metadata"],
+    });
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [x] end: no output",
+      "- [x] Parent with metadata",
+      "  - skipped: no output",
+      "  - get-result: Alpha",
+      "  - for-item: Beta",
+      "  - [x] Child action",
+      "    - skipped: no output",
     ].join("\n"));
   });
 

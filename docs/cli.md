@@ -1832,13 +1832,13 @@ Examples:
 
 ```bash
 # Attach prompt file and provide a bootstrap message for the worker
-rundown run roadmap.md
+rundown run roadmap.md --worker 'opencode run --file $file $bootstrap'
 
 # Worker receives bootstrap text as its prompt flag
-rundown run roadmap.md
+rundown run roadmap.md --worker 'opencode run --prompt "$bootstrap" --file $file'
 
 # No placeholder used -> rundown appends $file automatically
-rundown run roadmap.md
+rundown run roadmap.md --worker 'opencode run'
 ```
 
 ### `rundown research <markdown-file>`

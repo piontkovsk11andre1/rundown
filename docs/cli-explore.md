@@ -69,6 +69,6 @@ rundown explore docs/spec.md
 # Include nested TODO generation in the plan phase
 rundown explore docs/spec.md --scan-count 3 --deep 1
 
-# PowerShell-safe worker form
-rundown explore docs/spec.md
+# PowerShell-safe worker form (explicit worker override)
+rundown explore docs/spec.md --worker "opencode run"
 ```

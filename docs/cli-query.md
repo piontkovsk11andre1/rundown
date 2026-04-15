@@ -40,6 +40,8 @@ Options:
 | `-v, --verbose` | Show detailed per-task run diagnostics. | off |
 | `-q, --quiet` | Suppress info-level output. | off |
 | `--trace` | Write structured trace events to run and global trace logs. | off |
+| `--trace-stats` | Insert inline task trace statistics under completed TODOs in the source Markdown. | off |
+| `--trace-only` | Skip task execution and run only trace enrichment on the latest completed artifact run. | off |
 | `--force-unlock` | Break stale source lockfiles before phase locks. | off |
 | `--vars-file [path]` | Load template variables from JSON (default path: `<config-dir>/vars.json`). | unset |
 | `--var <key=value>` | Inject template variables (repeatable). | none |

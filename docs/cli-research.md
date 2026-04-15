@@ -33,6 +33,8 @@ Enrich a single Markdown document with context and structure before planning.
 | `--keep-artifacts` | Preserve runtime artifacts under `.rundown/runs/` even on success. | off |
 | `--show-agent-output` | Show worker stdout/stderr during execution (hidden by default). | off |
 | `--trace` | Write structured trace events to `.rundown/runs/<id>/trace.jsonl` and mirror them to `.rundown/logs/trace.jsonl`. | off |
+| `--trace-stats` | Insert inline task trace statistics under completed TODOs in the source Markdown. | off |
+| `--trace-only` | Skip task execution and run only trace enrichment on the latest completed artifact run. | off |
 | `--vars-file [path]` | Load template variables from JSON (default path: `<config-dir>/vars.json`). | unset |
 | `--var <key=value>` | Inject template variables (repeatable). | none |
 | `--worker <pattern>` | Worker pattern override (preferred on PowerShell). | unset |

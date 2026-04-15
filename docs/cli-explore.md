@@ -49,6 +49,8 @@ Options:
 | `-v, --verbose` | Show detailed per-task run diagnostics within grouped output for both phases. | off |
 | `-q, --quiet` | Suppress info-level output (info, success, progress, grouped status) across both phases. | off |
 | `--trace` | Write structured trace events to `.rundown/runs/<id>/trace.jsonl` and mirror to `.rundown/logs/trace.jsonl`. | off |
+| `--trace-stats` | Insert inline task trace statistics under completed TODOs in the source Markdown. | off |
+| `--trace-only` | Skip task execution and run only trace enrichment on the latest completed artifact run. | off |
 | `--vars-file [path]` | Load template variables from JSON (default path: `<config-dir>/vars.json`). | unset |
 | `--var <key=value>` | Inject template variables (repeatable). | none |
 | `--ignore-cli-block` | Skip `cli` fenced-block command execution during prompt expansion. | off |

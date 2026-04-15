@@ -27,6 +27,8 @@ Options:
 - `--redo`: Re-run previously completed tasks before continuing normal task selection.
 - `--reset-after`: Reset completion state after processing so tasks can be run again.
 - `--clean`: Clear prior run bookkeeping before starting execution.
+- `--trace-stats`: Insert inline task trace statistics under completed TODOs in the source Markdown.
+- `--trace-only`: Skip task execution and run only trace enrichment on the latest completed artifact run.
 - Supports additional shared run/execution options; see [cli.md](cli.md) for the full command set.
 
 Examples:

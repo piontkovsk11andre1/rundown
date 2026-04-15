@@ -5,7 +5,6 @@ import {
   resolveHarnessPresetKey,
 } from "../domain/harness-preset-registry.js";
 import type { ConfigDirResult } from "../domain/ports/config-dir-port.js";
-import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import type { WorkerConfigPort } from "../domain/ports/worker-config-port.js";
 
 export interface WithTaskOptions {
@@ -15,27 +14,24 @@ export interface WithTaskOptions {
 export interface WithTaskDependencies {
   workerConfigPort: WorkerConfigPort;
   configDir: ConfigDirResult | undefined;
-  output: ApplicationOutputPort;
+}
+
+export interface WithTaskConfiguredKeyResult {
+  keyPath: "workers.default" | "workers.tui" | "commands.discuss" | "workers.fallbacks";
+  status: "set" | "removed" | "preserved";
+  value?: readonly string[] | readonly string[][];
+}
+
+export interface WithTaskResult {
+  exitCode: number;
+  harnessKey: string;
+  changed: boolean;
+  configPath: string;
+  configuredKeys: readonly WithTaskConfiguredKeyResult[];
 }
 
 function resolveConfigDirPath(configDir: ConfigDirResult | undefined): string {
   return configDir?.configDir ?? process.cwd();
-}
-
-function formatWorkerCommand(command: readonly string[]): string {
-  return JSON.stringify(command);
-}
-
-function formatConfiguredKeyLine(keyPath: string, value: string): string {
-  return `- ${keyPath} = ${value}`;
-}
-
-function formatRemovedKeyLine(keyPath: string): string {
-  return `- ${keyPath} (removed)`;
-}
-
-function formatPreservedKeyLine(keyPath: string): string {
-  return `- ${keyPath} (preserved)`;
 }
 
 function hasPresetFallbackPolicy(presetPayload: { workers: { fallbacks?: string[][] } }): boolean {
@@ -50,10 +46,8 @@ function hasPresetFallbackPolicy(presetPayload: { workers: { fallbacks?: string[
  */
 export function createWithTask(
   dependencies: WithTaskDependencies,
-): (options: WithTaskOptions) => number {
-  const emit = dependencies.output.emit.bind(dependencies.output);
-
-  return (options: WithTaskOptions): number => {
+): (options: WithTaskOptions) => WithTaskResult {
+  return (options: WithTaskOptions): WithTaskResult => {
     const harnessKey = resolveHarnessPresetKey(options.harness);
     if (!harnessKey) {
       throw new Error(
@@ -115,51 +109,53 @@ export function createWithTask(
       || discussResult.changed
       || fallbackResult?.changed === true;
 
-    emit({
-      kind: changed ? "success" : "info",
-      message: changed
-        ? `Applied harness preset: ${harnessKey}`
-        : `No change: harness preset ${harnessKey} is already configured.`,
-    });
-    emit({ kind: "info", message: `Path: ${configPath}` });
-    emit({ kind: "info", message: "Configured keys:" });
-    emit({
-      kind: "info",
-      message: formatConfiguredKeyLine(
-        "workers.default",
-        formatWorkerCommand(presetPayload.workers.default),
-      ),
-    });
-    emit({
-      kind: "info",
-      message: presetPayload.workers.tui
-        ? formatConfiguredKeyLine(
-          "workers.tui",
-          formatWorkerCommand(presetPayload.workers.tui),
-        )
-        : formatRemovedKeyLine("workers.tui"),
-    });
-    emit({
-      kind: "info",
-      message: presetPayload.commands?.discuss
-        ? formatConfiguredKeyLine(
-          "commands.discuss",
-          formatWorkerCommand(presetPayload.commands.discuss),
-        )
-        : formatRemovedKeyLine("commands.discuss"),
-    });
-    emit({
-      kind: "info",
-      message: hasPresetFallbackPolicy(presetPayload)
-        ? (presetPayload.workers.fallbacks && presetPayload.workers.fallbacks.length > 0
-          ? formatConfiguredKeyLine(
-            "workers.fallbacks",
-            JSON.stringify(presetPayload.workers.fallbacks),
-          )
-          : formatRemovedKeyLine("workers.fallbacks"))
-        : formatPreservedKeyLine("workers.fallbacks"),
-    });
-
-    return EXIT_CODE_SUCCESS;
+    return {
+      exitCode: EXIT_CODE_SUCCESS,
+      harnessKey,
+      changed,
+      configPath,
+      configuredKeys: [
+        {
+          keyPath: "workers.default",
+          status: "set",
+          value: [...presetPayload.workers.default],
+        },
+        presetPayload.workers.tui
+          ? {
+            keyPath: "workers.tui",
+            status: "set",
+            value: [...presetPayload.workers.tui],
+          }
+          : {
+            keyPath: "workers.tui",
+            status: "removed",
+          },
+        presetPayload.commands?.discuss
+          ? {
+            keyPath: "commands.discuss",
+            status: "set",
+            value: [...presetPayload.commands.discuss],
+          }
+          : {
+            keyPath: "commands.discuss",
+            status: "removed",
+          },
+        hasPresetFallbackPolicy(presetPayload)
+          ? (presetPayload.workers.fallbacks && presetPayload.workers.fallbacks.length > 0
+            ? {
+              keyPath: "workers.fallbacks",
+              status: "set",
+              value: presetPayload.workers.fallbacks.map((command) => [...command]),
+            }
+            : {
+              keyPath: "workers.fallbacks",
+              status: "removed",
+            })
+          : {
+            keyPath: "workers.fallbacks",
+            status: "preserved",
+          },
+      ],
+    };
   };
 }

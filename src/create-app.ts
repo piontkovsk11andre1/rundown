@@ -57,7 +57,11 @@ import {
   type ConfigSetOptions,
   type ConfigUnsetOptions,
 } from "./application/config-mutation.js";
-import { createWithTask, type WithTaskOptions } from "./application/with-task.js";
+import {
+  createWithTask,
+  type WithTaskOptions,
+  type WithTaskResult,
+} from "./application/with-task.js";
 import {
   createWorkspaceRemoveTask,
   createWorkspaceUnlinkTask,
@@ -165,7 +169,7 @@ export type App = {
   configPath: (options: ConfigPathOptions) => number;
   configSet: (options: ConfigSetOptions) => number;
   configUnset: (options: ConfigUnsetOptions) => number;
-  withTask: (options: WithTaskOptions) => number;
+  withTask: (options: WithTaskOptions) => WithTaskResult;
   workspaceUnlinkTask: (options: WorkspaceUnlinkOptions) => Promise<number>;
   workspaceRemoveTask: (options: WorkspaceRemoveOptions) => Promise<number>;
   emitOutput?: (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
@@ -700,7 +704,6 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
     withTask: (ports) => createWithTask({
       workerConfigPort: ports.workerConfigPort,
       configDir: ports.configDir,
-      output: ports.output,
     }),
     workspaceUnlinkTask: (ports) => createWorkspaceUnlinkTask({
       output: ports.output,

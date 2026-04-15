@@ -4,7 +4,6 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createWithTask } from "../../src/application/with-task.js";
 import { createWorkerConfigAdapter } from "../../src/infrastructure/adapters/worker-config-adapter.js";
-import type { ApplicationOutputEvent } from "../../src/domain/ports/output-port.js";
 
 const tempDirs: string[] = [];
 
@@ -22,7 +21,6 @@ describe("with-task", () => {
   it("creates .rundown/config.json when missing and writes preset keys", () => {
     const workspaceDir = makeTempWorkspace();
     const configDir = path.join(workspaceDir, ".rundown");
-    const events: ApplicationOutputEvent[] = [];
 
     const withTask = createWithTask({
       workerConfigPort: createWorkerConfigAdapter(),
@@ -30,14 +28,37 @@ describe("with-task", () => {
         configDir,
         isExplicit: true,
       },
-      output: {
-        emit: (event) => events.push(event),
-      },
     });
 
-    const code = withTask({ harness: "opencode" });
+    const result = withTask({ harness: "opencode" });
 
-    expect(code).toBe(0);
+    expect(result).toEqual({
+      exitCode: 0,
+      harnessKey: "opencode",
+      changed: true,
+      configPath: path.join(configDir, "config.json"),
+      configuredKeys: [
+        {
+          keyPath: "workers.default",
+          status: "set",
+          value: ["opencode", "run", "--file", "$file", "$bootstrap"],
+        },
+        {
+          keyPath: "workers.tui",
+          status: "set",
+          value: ["opencode"],
+        },
+        {
+          keyPath: "commands.discuss",
+          status: "set",
+          value: ["opencode"],
+        },
+        {
+          keyPath: "workers.fallbacks",
+          status: "preserved",
+        },
+      ],
+    });
     const configPath = path.join(configDir, "config.json");
     expect(fs.existsSync(configPath)).toBe(true);
 
@@ -50,25 +71,6 @@ describe("with-task", () => {
       commands: {
         discuss: ["opencode"],
       },
-    });
-
-    expect(events).toContainEqual({ kind: "success", message: "Applied harness preset: opencode" });
-    expect(events).toContainEqual({ kind: "info", message: "Configured keys:" });
-    expect(events).toContainEqual({
-      kind: "info",
-      message: "- workers.default = [\"opencode\",\"run\",\"--file\",\"$file\",\"$bootstrap\"]",
-    });
-    expect(events).toContainEqual({
-      kind: "info",
-      message: "- workers.tui = [\"opencode\"]",
-    });
-    expect(events).toContainEqual({
-      kind: "info",
-      message: "- commands.discuss = [\"opencode\"]",
-    });
-    expect(events).toContainEqual({
-      kind: "info",
-      message: "- workers.fallbacks (preserved)",
     });
   });
 
@@ -105,14 +107,13 @@ describe("with-task", () => {
         configDir,
         isExplicit: true,
       },
-      output: {
-        emit: () => {},
-      },
     });
 
-    const code = withTask({ harness: "gemini" });
+    const result = withTask({ harness: "gemini" });
 
-    expect(code).toBe(0);
+    expect(result.exitCode).toBe(0);
+    expect(result.harnessKey).toBe("gemini");
+    expect(result.changed).toBe(true);
 
     const parsed = JSON.parse(fs.readFileSync(configPath, "utf8")) as {
       workers?: {
@@ -146,7 +147,6 @@ describe("with-task", () => {
   it("re-applying the same preset is idempotent", () => {
     const workspaceDir = makeTempWorkspace();
     const configDir = path.join(workspaceDir, ".rundown");
-    const events: ApplicationOutputEvent[] = [];
 
     const withTask = createWithTask({
       workerConfigPort: createWorkerConfigAdapter(),
@@ -154,23 +154,19 @@ describe("with-task", () => {
         configDir,
         isExplicit: true,
       },
-      output: {
-        emit: (event) => events.push(event),
-      },
     });
 
-    expect(withTask({ harness: "pi" })).toBe(0);
+    const first = withTask({ harness: "pi" });
+    expect(first.exitCode).toBe(0);
     const configPath = path.join(configDir, "config.json");
     const before = fs.readFileSync(configPath, "utf8");
 
-    expect(withTask({ harness: "pi" })).toBe(0);
+    const second = withTask({ harness: "pi" });
+    expect(second.exitCode).toBe(0);
     const after = fs.readFileSync(configPath, "utf8");
 
     expect(after).toBe(before);
-    expect(events).toContainEqual({
-      kind: "info",
-      message: "No change: harness preset pi is already configured.",
-    });
+    expect(second.changed).toBe(false);
   });
 
   it("fails with actionable supported list when harness is unknown", () => {
@@ -182,9 +178,6 @@ describe("with-task", () => {
       configDir: {
         configDir,
         isExplicit: true,
-      },
-      output: {
-        emit: () => {},
       },
     });
 

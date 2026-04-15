@@ -48,6 +48,10 @@ import type {
 } from "./cli-invocation-types.js";
 import { resolveInvocationWorkspaceContext } from "./invocation-workspace-context.js";
 import { getAgentsTemplate } from "../domain/agents-template.js";
+import type {
+  WithTaskConfiguredKeyResult,
+  WithTaskResult,
+} from "../application/with-task.js";
 
 type CliActionResult = number | Promise<number>;
 type CliOpts = Record<string, string | string[] | boolean>;
@@ -297,7 +301,7 @@ interface TestCommandOptions {
 }
 
 type TestCommandHandler = (options: TestCommandOptions) => CliActionResult;
-type WithCommandHandler = (options: { harness: string }) => CliActionResult;
+type WithCommandHandler = (options: { harness: string }) => WithTaskResult;
 
 type ConfigMutationScope = "local" | "global";
 type ConfigReadScope = "effective" | "local" | "global";
@@ -1929,7 +1933,26 @@ export function createInitCommandAction({
 export function createWithCommandAction({
   getApp,
 }: Pick<WorkerActionDependencies, "getApp">): (harness: string) => CliActionResult {
-  return (harness: string) => resolveWithCommandHandler(getApp())({ harness });
+  return (harness: string) => {
+    const app = getApp();
+    const result = resolveWithCommandHandler(app)({ harness });
+    const emit = app.emitOutput;
+
+    emit?.({
+      kind: result.changed ? "success" : "info",
+      message: result.changed
+        ? `Applied harness preset: ${result.harnessKey}`
+        : `No change: harness preset ${result.harnessKey} is already configured.`,
+    });
+    emit?.({ kind: "info", message: `Path: ${result.configPath}` });
+    emit?.({ kind: "info", message: "Configured keys:" });
+
+    for (const configuredKey of result.configuredKeys) {
+      emit?.({ kind: "info", message: formatWithConfiguredKeyLine(configuredKey) });
+    }
+
+    return result.exitCode;
+  };
 }
 
 /**
@@ -2171,6 +2194,18 @@ function resolveWithCommandHandler(appInstance: CliApp): WithCommandHandler {
   }
 
   throw new Error("The `with` command is not available in this build.");
+}
+
+function formatWithConfiguredKeyLine(configuredKey: WithTaskConfiguredKeyResult): string {
+  if (configuredKey.status === "set") {
+    return `- ${configuredKey.keyPath} = ${JSON.stringify(configuredKey.value)}`;
+  }
+
+  if (configuredKey.status === "removed") {
+    return `- ${configuredKey.keyPath} (removed)`;
+  }
+
+  return `- ${configuredKey.keyPath} (preserved)`;
 }
 
 function isMigrateAction(value: string): value is MigrateAction {

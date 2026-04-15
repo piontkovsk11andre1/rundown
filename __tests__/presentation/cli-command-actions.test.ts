@@ -482,9 +482,37 @@ describe("createWorkerHealthCommandAction", () => {
 });
 
 describe("createWithCommandAction", () => {
-  it("forwards harness argument to withTask", () => {
-    const withTask = vi.fn(() => 0);
+  it("forwards harness argument to withTask and renders output", () => {
+    const emitOutput = vi.fn<(event: ApplicationOutputEvent) => void>();
+    const withTask = vi.fn(() => ({
+      exitCode: 0,
+      harnessKey: "opencode",
+      changed: true,
+      configPath: "/workspace/.rundown/config.json",
+      configuredKeys: [
+        {
+          keyPath: "workers.default",
+          status: "set",
+          value: ["opencode", "run", "--file", "$file", "$bootstrap"],
+        },
+        {
+          keyPath: "workers.tui",
+          status: "set",
+          value: ["opencode"],
+        },
+        {
+          keyPath: "commands.discuss",
+          status: "set",
+          value: ["opencode"],
+        },
+        {
+          keyPath: "workers.fallbacks",
+          status: "preserved",
+        },
+      ] as const,
+    }));
     const app = { withTask } as unknown as CliApp;
+    (app as unknown as { emitOutput: typeof emitOutput }).emitOutput = emitOutput;
     const action = createWithCommandAction({
       getApp: () => app,
     });
@@ -494,6 +522,13 @@ describe("createWithCommandAction", () => {
     expect(exitCode).toBe(0);
     expect(withTask).toHaveBeenCalledTimes(1);
     expect(withTask).toHaveBeenCalledWith({ harness: "opencode" });
+    expect(emitOutput).toHaveBeenCalledWith({ kind: "success", message: "Applied harness preset: opencode" });
+    expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Path: /workspace/.rundown/config.json" });
+    expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Configured keys:" });
+    expect(emitOutput).toHaveBeenCalledWith({
+      kind: "info",
+      message: "- workers.default = [\"opencode\",\"run\",\"--file\",\"$file\",\"$bootstrap\"]",
+    });
   });
 });
 

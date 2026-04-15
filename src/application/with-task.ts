@@ -1,11 +1,14 @@
 import { EXIT_CODE_SUCCESS } from "../domain/exit-codes.js";
 import {
   getHarnessPresetPayload,
-  listHarnessPresetKeys,
   resolveHarnessPresetKey,
+  normalizeHarnessPresetAlias,
+  type HarnessPresetPayload,
 } from "../domain/harness-preset-registry.js";
 import type { ConfigDirResult } from "../domain/ports/config-dir-port.js";
+import type { InteractiveInputPort } from "../domain/ports/interactive-input-port.js";
 import type { WorkerConfigPort } from "../domain/ports/worker-config-port.js";
+import { parseWorkerPattern } from "../domain/worker-pattern.js";
 
 export interface WithTaskOptions {
   harness: string;
@@ -14,6 +17,7 @@ export interface WithTaskOptions {
 export interface WithTaskDependencies {
   workerConfigPort: WorkerConfigPort;
   configDir: ConfigDirResult | undefined;
+  interactiveInput: InteractiveInputPort;
 }
 
 export interface WithTaskConfiguredKeyResult {
@@ -25,6 +29,7 @@ export interface WithTaskConfiguredKeyResult {
 export interface WithTaskResult {
   exitCode: number;
   harnessKey: string;
+  source: "preset" | "custom";
   changed: boolean;
   configPath: string;
   configuredKeys: readonly WithTaskConfiguredKeyResult[];
@@ -46,21 +51,22 @@ function hasPresetFallbackPolicy(presetPayload: { workers: { fallbacks?: string[
  */
 export function createWithTask(
   dependencies: WithTaskDependencies,
-): (options: WithTaskOptions) => WithTaskResult {
-  return (options: WithTaskOptions): WithTaskResult => {
+): (options: WithTaskOptions) => Promise<WithTaskResult> {
+  return async (options: WithTaskOptions): Promise<WithTaskResult> => {
     const harnessKey = resolveHarnessPresetKey(options.harness);
-    if (!harnessKey) {
-      throw new Error(
-        `Unknown harness preset: ${options.harness}. Supported presets: ${listHarnessPresetKeys().join(", ")}. Run \`rundown with <harness>\` using one of the supported names.`,
-      );
-    }
 
     if (!dependencies.workerConfigPort.setValue || !dependencies.workerConfigPort.unsetValue) {
       throw new Error("The `with` command is not available in this build.");
     }
 
     const configDirPath = resolveConfigDirPath(dependencies.configDir);
-    const presetPayload = getHarnessPresetPayload(harnessKey);
+    const resultSource = harnessKey ? "preset" : "custom";
+    const resolvedHarnessKey = (harnessKey
+      ?? normalizeHarnessPresetAlias(options.harness))
+      || options.harness.trim();
+    const presetPayload = harnessKey
+      ? getHarnessPresetPayload(harnessKey)
+      : await promptUnknownHarnessPreset(options.harness, dependencies.interactiveInput);
 
     const defaultResult = dependencies.workerConfigPort.setValue(configDirPath, {
       scope: "local",
@@ -111,7 +117,8 @@ export function createWithTask(
 
     return {
       exitCode: EXIT_CODE_SUCCESS,
-      harnessKey,
+      harnessKey: resolvedHarnessKey,
+      source: resultSource,
       changed,
       configPath,
       configuredKeys: [
@@ -157,5 +164,60 @@ export function createWithTask(
           },
       ],
     };
+  };
+}
+
+async function promptUnknownHarnessPreset(
+  harness: string,
+  interactiveInput: InteractiveInputPort,
+): Promise<HarnessPresetPayload> {
+  const suggestedBaseCommand = normalizeHarnessPresetAlias(harness) || "worker";
+  const defaultWorkerPrompt = `${suggestedBaseCommand} run --file $file $bootstrap`;
+  const tuiWorkerPrompt = suggestedBaseCommand;
+
+  if (interactiveInput.prepareForPrompt) {
+    await interactiveInput.prepareForPrompt();
+  }
+
+  const defaultWorkerResult = await interactiveInput.prompt({
+    kind: "text",
+    message: `Unknown harness \"${harness}\". Enter deterministic CLI invocation (workers.default)`,
+    defaultValue: defaultWorkerPrompt,
+    required: true,
+  });
+
+  const configureTuiResult = await interactiveInput.prompt({
+    kind: "confirm",
+    message: "Configure a separate interactive invocation for workers.tui and commands.discuss?",
+    defaultValue: true,
+  });
+  const shouldConfigureTui = configureTuiResult.value.trim().toLowerCase() === "true";
+
+  const defaultWorker = parseWorkerPattern(defaultWorkerResult.value).command;
+
+  if (!shouldConfigureTui) {
+    return {
+      workers: {
+        default: defaultWorker,
+      },
+    };
+  }
+
+  const tuiWorkerResult = await interactiveInput.prompt({
+    kind: "text",
+    message: "Enter interactive invocation (workers.tui / commands.discuss)",
+    defaultValue: tuiWorkerPrompt,
+    required: true,
+  });
+  const tuiWorker = parseWorkerPattern(tuiWorkerResult.value).command;
+
+  return {
+    workers: {
+      default: defaultWorker,
+      tui: tuiWorker,
+    },
+    commands: {
+      discuss: tuiWorker,
+    },
   };
 }

@@ -169,7 +169,7 @@ export type App = {
   configPath: (options: ConfigPathOptions) => number;
   configSet: (options: ConfigSetOptions) => number;
   configUnset: (options: ConfigUnsetOptions) => number;
-  withTask: (options: WithTaskOptions) => WithTaskResult;
+  withTask: (options: WithTaskOptions) => Promise<WithTaskResult>;
   workspaceUnlinkTask: (options: WorkspaceUnlinkOptions) => Promise<number>;
   workspaceRemoveTask: (options: WorkspaceRemoveOptions) => Promise<number>;
   emitOutput?: (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
@@ -704,6 +704,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
     withTask: (ports) => createWithTask({
       workerConfigPort: ports.workerConfigPort,
       configDir: ports.configDir,
+      interactiveInput: ports.interactiveInput,
     }),
     workspaceUnlinkTask: (ports) => createWorkspaceUnlinkTask({
       output: ports.output,

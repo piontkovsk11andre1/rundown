@@ -301,7 +301,7 @@ interface TestCommandOptions {
 }
 
 type TestCommandHandler = (options: TestCommandOptions) => CliActionResult;
-type WithCommandHandler = (options: { harness: string }) => WithTaskResult;
+type WithCommandHandler = (options: { harness: string }) => Promise<WithTaskResult>;
 
 type ConfigMutationScope = "local" | "global";
 type ConfigReadScope = "effective" | "local" | "global";
@@ -1933,16 +1933,27 @@ export function createInitCommandAction({
 export function createWithCommandAction({
   getApp,
 }: Pick<WorkerActionDependencies, "getApp">): (harness: string) => CliActionResult {
-  return (harness: string) => {
+  return async (harness: string) => {
     const app = getApp();
-    const result = resolveWithCommandHandler(app)({ harness });
+    const result = await resolveWithCommandHandler(app)({ harness });
     const emit = app.emitOutput;
+
+    if (result.source === "custom") {
+      emit?.({
+        kind: "warn",
+        message: `Harness \"${harness}\" is not in the preset registry. Saved custom invocation mapping.`,
+      });
+    }
 
     emit?.({
       kind: result.changed ? "success" : "info",
-      message: result.changed
-        ? `Applied harness preset: ${result.harnessKey}`
-        : `No change: harness preset ${result.harnessKey} is already configured.`,
+      message: result.source === "preset"
+        ? (result.changed
+          ? `Applied harness preset: ${result.harnessKey}`
+          : `No change: harness preset ${result.harnessKey} is already configured.`)
+        : (result.changed
+          ? `Applied custom harness mapping: ${result.harnessKey}`
+          : `No change: custom harness mapping ${result.harnessKey} is already configured.`),
     });
     emit?.({ kind: "info", message: `Path: ${result.configPath}` });
     emit?.({ kind: "info", message: "Configured keys:" });

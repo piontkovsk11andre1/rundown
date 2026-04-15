@@ -482,11 +482,12 @@ describe("createWorkerHealthCommandAction", () => {
 });
 
 describe("createWithCommandAction", () => {
-  it("forwards harness argument to withTask and renders output", () => {
+  it("forwards harness argument to withTask and renders output", async () => {
     const emitOutput = vi.fn<(event: ApplicationOutputEvent) => void>();
-    const withTask = vi.fn(() => ({
+    const withTask = vi.fn(async () => ({
       exitCode: 0,
       harnessKey: "opencode",
+      source: "preset" as const,
       changed: true,
       configPath: "/workspace/.rundown/config.json",
       configuredKeys: [
@@ -517,7 +518,7 @@ describe("createWithCommandAction", () => {
       getApp: () => app,
     });
 
-    const exitCode = action("opencode");
+    const exitCode = await action("opencode");
 
     expect(exitCode).toBe(0);
     expect(withTask).toHaveBeenCalledTimes(1);
@@ -528,6 +529,55 @@ describe("createWithCommandAction", () => {
     expect(emitOutput).toHaveBeenCalledWith({
       kind: "info",
       message: "- workers.default = [\"opencode\",\"run\",\"--file\",\"$file\",\"$bootstrap\"]",
+    });
+  });
+
+  it("warns and reports custom source when unknown harness is configured interactively", async () => {
+    const emitOutput = vi.fn<(event: ApplicationOutputEvent) => void>();
+    const withTask = vi.fn(async () => ({
+      exitCode: 0,
+      harnessKey: "mytool",
+      source: "custom" as const,
+      changed: true,
+      configPath: "/workspace/.rundown/config.json",
+      configuredKeys: [
+        {
+          keyPath: "workers.default" as const,
+          status: "set" as const,
+          value: ["mytool", "run", "--file", "$file", "$bootstrap"],
+        },
+        {
+          keyPath: "workers.tui" as const,
+          status: "removed" as const,
+        },
+        {
+          keyPath: "commands.discuss" as const,
+          status: "removed" as const,
+        },
+        {
+          keyPath: "workers.fallbacks" as const,
+          status: "preserved" as const,
+        },
+      ],
+    }));
+
+    const app = { withTask } as unknown as CliApp;
+    (app as unknown as { emitOutput: typeof emitOutput }).emitOutput = emitOutput;
+    const action = createWithCommandAction({
+      getApp: () => app,
+    });
+
+    const exitCode = await action("mytool");
+
+    expect(exitCode).toBe(0);
+    expect(withTask).toHaveBeenCalledWith({ harness: "mytool" });
+    expect(emitOutput).toHaveBeenCalledWith({
+      kind: "warn",
+      message: "Harness \"mytool\" is not in the preset registry. Saved custom invocation mapping.",
+    });
+    expect(emitOutput).toHaveBeenCalledWith({
+      kind: "success",
+      message: "Applied custom harness mapping: mytool",
     });
   });
 });

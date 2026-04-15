@@ -4,7 +4,7 @@ Scan a file, directory, or glob, select the next runnable task, execute it, veri
 
 With `--all` (or the shorthand `all` command), process tasks sequentially until all are complete or a failure occurs.
 
-Agent stdout/stderr is hidden by default. Use `--show-agent-output` to display worker output for `execute`, `verify`, and `repair` stages while keeping `discuss` worker output silent.
+Agent stdout/stderr is hidden by default. Use `--show-agent-output` to display worker output only for the supported `execute`, `verify`, and `repair` stages.
 
 ## Global option: `--config-dir <path>`
 
@@ -93,8 +93,7 @@ rundown run docs/ --show-agent-output
 Agent output notes (`run --show-agent-output`):
 
 - Default behavior (option omitted): suppress worker-derived `text` and `stderr` transcript output across stages.
-- With `--show-agent-output`: show worker-derived `text` and `stderr` transcript output for `execute`, `verify`, and `repair` stages (including inline `cli:` task stdout/stderr).
-- `discuss` remains silent for worker transcript output even when `--show-agent-output` is set.
+- With `--show-agent-output`: show worker-derived `text` and `stderr` transcript output for the supported `execute`, `verify`, and `repair` stages (including inline `cli:` task stdout/stderr).
 - Still visible: rundown lifecycle/status messages (`info`, `warn`, `error`, `success`, `task`).
 - Still visible: hook output from `--on-complete` and `--on-fail` (intentionally out of scope for this option).
 - Artifacts/traces still capture output for audit/debug; terminal suppression does not disable persistence.

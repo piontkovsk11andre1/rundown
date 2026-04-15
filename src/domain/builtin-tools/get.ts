@@ -1,6 +1,7 @@
 import { computeChildIndent } from "../planner.js";
 import type { ToolHandlerContext, ToolHandlerFn } from "../ports/tool-handler-port.js";
 import type { ProcessRunMode } from "../ports/process-runner.js";
+import { escapeExtractionMetadataValue } from "../metadata-escape.js";
 
 const GET_RESULT_PREFIX_PATTERN = /^get-result\s*:\s*(.*)$/i;
 const GET_MODE_PREFIX_PATTERN = /^get-mode\s*:\s*(.*)$/i;
@@ -66,7 +67,7 @@ function renderGetResultValue(value: string): string {
     return value;
   }
 
-  return value.replace(/([\\`*_\[\]<>])/g, "\\$1");
+  return escapeExtractionMetadataValue(value);
 }
 
 function findExistingResults(subItems: readonly { text: string }[]): string[] {

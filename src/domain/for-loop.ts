@@ -1,11 +1,13 @@
 import type { SubItem, Task } from "./parser.js";
+import {
+  escapeExtractionMetadataValue,
+  unescapeExtractionMetadataValue,
+} from "./metadata-escape.js";
 
 const LOOP_HANDLER_SEGMENT_PATTERN = /(^|[;,]\s*)(?:for|each|foreach)\s*:/i;
 const FOR_ITEM_PATTERN = /^for-item\s*:\s*(.*)$/i;
 const FOR_CURRENT_PATTERN = /^for-current\s*:\s*(.*)$/i;
 const FOR_LOOP_PAYLOAD_SPLIT_PATTERN = /[\r\n,]+/;
-const FOR_LOOP_METADATA_ESCAPE_PATTERN = /([\\`*_[\]<>])/g;
-const FOR_LOOP_METADATA_UNESCAPE_PATTERN = /\\([\\`*_[\]<>])/g;
 
 export const FOR_LOOP_MISSING_CHILDREN_FAILURE_MESSAGE = "For loop task requires nested checkbox child tasks.";
 export const FOR_LOOP_MISSING_CHILDREN_FAILURE_REASON = "For loop task has no nested checkbox children.";
@@ -42,7 +44,7 @@ export function parseForCurrentValue(text: string): string | undefined {
 }
 
 export function unescapeForLoopMetadataValue(value: string): string {
-  return value.replace(FOR_LOOP_METADATA_UNESCAPE_PATTERN, "$1");
+  return unescapeExtractionMetadataValue(value);
 }
 
 export function normalizeForLoopItemValues(values: readonly string[]): string[] {
@@ -91,7 +93,7 @@ export function resolveForLoopItems(subItems: readonly SubItem[], payload: strin
 }
 
 export function escapeForLoopMetadataValue(value: string): string {
-  return value.replace(FOR_LOOP_METADATA_ESCAPE_PATTERN, "\\$1");
+  return escapeExtractionMetadataValue(value);
 }
 
 export function formatForLoopItemMetadataLine(value: string): string {

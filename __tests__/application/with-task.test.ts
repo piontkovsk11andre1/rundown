@@ -278,7 +278,25 @@ describe("with-task", () => {
     expect(result.source).toBe("custom");
     expect(result.harnessKey).toBe("mytool");
     expect(result.changed).toBe(true);
+    expect(vi.mocked(interactiveInput.prepareForPrompt)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(interactiveInput.prompt)).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(1, {
+      kind: "text",
+      message: "Unknown harness \"MyTool\". Enter deterministic CLI invocation (workers.default)",
+      defaultValue: "mytool run --file $file $bootstrap",
+      required: true,
+    });
+    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(2, {
+      kind: "confirm",
+      message: "Configure a separate interactive invocation for workers.tui and commands.discuss?",
+      defaultValue: true,
+    });
+    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(3, {
+      kind: "text",
+      message: "Enter interactive invocation (workers.tui / commands.discuss)",
+      defaultValue: "mytool",
+      required: true,
+    });
 
     const configPath = path.join(configDir, "config.json");
     const parsed = JSON.parse(fs.readFileSync(configPath, "utf8")) as {
@@ -327,6 +345,19 @@ describe("with-task", () => {
     expect(result.exitCode).toBe(0);
     expect(result.source).toBe("custom");
     expect(result.harnessKey).toBe("something-new");
+    expect(vi.mocked(interactiveInput.prepareForPrompt)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(1, {
+      kind: "text",
+      message: "Unknown harness \"something-new\". Enter deterministic CLI invocation (workers.default)",
+      defaultValue: "something-new run --file $file $bootstrap",
+      required: true,
+    });
+    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(2, {
+      kind: "confirm",
+      message: "Configure a separate interactive invocation for workers.tui and commands.discuss?",
+      defaultValue: true,
+    });
     const configuredTui = result.configuredKeys.find((entry) => entry.keyPath === "workers.tui");
     const configuredDiscuss = result.configuredKeys.find((entry) => entry.keyPath === "commands.discuss");
     expect(configuredTui?.status).toBe("removed");

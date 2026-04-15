@@ -733,6 +733,40 @@ describe("CLI run option normalization", () => {
     expect(call.keepArtifacts).toBe(true);
   });
 
+  it("keeps materialize revertable defaults with --config-dir and separator worker args", async () => {
+    const runTask = vi.fn(async () => 0);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-materialize-cli-"));
+    const configDir = path.join(tempRoot, ".rundown");
+
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify({
+      run: {
+        revertable: false,
+        commit: false,
+      },
+    }, null, 2) + "\n", "utf-8");
+
+    try {
+      const call = await invokeRunAndCaptureCall([
+        "--config-dir",
+        configDir,
+        "materialize",
+        "tasks.md",
+        "--",
+        "opencode",
+        "run",
+      ], runTask);
+
+      expect(call.source).toBe("tasks.md");
+      expect(call.workerCommand).toEqual(["opencode", "run"]);
+      expect(call.runAll).toBe(true);
+      expect(call.commitAfterComplete).toBe(true);
+      expect(call.keepArtifacts).toBe(true);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("shows run-like options in materialize help text", async () => {
     const runTask = vi.fn(async () => 0);
     const result = await invokeRunAndCaptureHelpOutput([

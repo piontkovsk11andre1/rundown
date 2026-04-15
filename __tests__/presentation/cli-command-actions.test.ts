@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -488,6 +490,51 @@ describe("createMaterializeCommandAction", () => {
       keepArtifacts: true,
       commitAfterComplete: true,
     }));
+  });
+
+  it("injects --revertable before worker separator for config-aware defaults", async () => {
+    const runTask = vi.fn(async () => 0);
+    const app = { runTask } as unknown as CliApp;
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-materialize-argv-"));
+    const configDir = path.join(tempRoot, ".rundown");
+
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify({
+      run: {
+        revertable: false,
+        commit: false,
+      },
+    }, null, 2) + "\n", "utf8");
+
+    try {
+      const action = createMaterializeCommandAction({
+        getApp: () => app,
+        getWorkerFromSeparator: () => ["opencode", "run"],
+        runnerModes: ["wait", "tui", "detached"],
+        getInvocationArgv: () => [
+          "--config-dir",
+          configDir,
+          "materialize",
+          "tasks.md",
+          "--",
+          "opencode",
+          "run",
+        ],
+      });
+
+      const exitCode = await action("tasks.md", {});
+
+      expect(exitCode).toBe(0);
+      expect(runTask).toHaveBeenCalledTimes(1);
+      expect(runTask).toHaveBeenCalledWith(expect.objectContaining({
+        source: "tasks.md",
+        runAll: true,
+        keepArtifacts: true,
+        commitAfterComplete: true,
+      }));
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
   });
 });
 

@@ -115,111 +115,111 @@ Human-readable CLI output uses deterministic local-time ISO-8601 timestamps (wit
 
 ### `rundown start <description>`
 
-See the command-focused reference: [docs/cli-start.md](cli-start.md).
+See the command-focused reference: [cli-start.md](cli-start.md).
 
 ### `rundown migrate [action]`
 
-See the command-focused reference: [docs/cli-migrate.md](cli-migrate.md).
+See the command-focused reference: [cli-migrate.md](cli-migrate.md).
 
 ### `rundown design`
 
-See the command-focused reference: [docs/cli-design.md](cli-design.md).
+See the command-focused reference: [cli-design.md](cli-design.md).
 
 ### `rundown run <source>`
 
-See the command-focused reference: [docs/cli-run.md](cli-run.md).
+See the command-focused reference: [cli-run.md](cli-run.md).
 
 ### `rundown call <source>`
 
-See the command-focused reference: [docs/cli-call.md](cli-call.md).
+See the command-focused reference: [cli-call.md](cli-call.md).
 
 ### `rundown materialize <source>`
 
-See the command-focused reference: [docs/cli-materialize.md](cli-materialize.md).
+See the command-focused reference: [cli-materialize.md](cli-materialize.md).
 
 ### `rundown loop <source>`
 
-See the command-focused reference: [docs/cli-loop.md](cli-loop.md).
+See the command-focused reference: [cli-loop.md](cli-loop.md).
 
 ### `rundown discuss <source>`
 
-See the command-focused reference: [docs/cli-discuss.md](cli-discuss.md).
+See the command-focused reference: [cli-discuss.md](cli-discuss.md).
 
 ### `rundown reverify`
 
-See the command-focused reference: [docs/cli-reverify.md](cli-reverify.md).
+See the command-focused reference: [cli-reverify.md](cli-reverify.md).
 
 ### `rundown revert`
 
-See the command-focused reference: [docs/cli-revert.md](cli-revert.md).
+See the command-focused reference: [cli-revert.md](cli-revert.md).
 
 ### `rundown undo`
 
-See the command-focused reference: [docs/cli-undo.md](cli-undo.md).
+See the command-focused reference: [cli-undo.md](cli-undo.md).
 
 ### `rundown test [action]`
 
-See the command-focused reference: [docs/cli-test.md](cli-test.md).
+See the command-focused reference: [cli-test.md](cli-test.md).
 
 ### `rundown plan <markdown-file>`
 
-See the command-focused reference: [docs/cli-plan.md](cli-plan.md).
+See the command-focused reference: [cli-plan.md](cli-plan.md).
 
 ### `rundown explore <markdown-file>`
 
-See the command-focused reference: [docs/cli-explore.md](cli-explore.md).
+See the command-focused reference: [cli-explore.md](cli-explore.md).
 
 ### `rundown make <seed-text> <markdown-file>`
 
-See the command-focused reference: [docs/cli-make.md](cli-make.md).
+See the command-focused reference: [cli-make.md](cli-make.md).
 
 ### `rundown do <seed-text> <markdown-file>`
 
-See the command-focused reference: [docs/cli-do.md](cli-do.md).
+See the command-focused reference: [cli-do.md](cli-do.md).
 
 ### `rundown query <text>`
 
-See the command-focused reference: [docs/cli-query.md](cli-query.md).
+See the command-focused reference: [cli-query.md](cli-query.md).
 
 ### `rundown memory-view <source>`
 
-See the command-focused reference: [docs/cli-memory-view.md](cli-memory-view.md).
+See the command-focused reference: [cli-memory-view.md](cli-memory-view.md).
 
 ### `rundown memory-validate <source>`
 
-See the command-focused reference: [docs/cli-memory-validate.md](cli-memory-validate.md).
+See the command-focused reference: [cli-memory-validate.md](cli-memory-validate.md).
 
 ### `rundown memory-clean <source>`
 
-See the command-focused reference: [docs/cli-memory-clean.md](cli-memory-clean.md).
+See the command-focused reference: [cli-memory-clean.md](cli-memory-clean.md).
 
 ### `rundown worker-health`
 
-See the command-focused reference: [docs/cli-worker-health.md](cli-worker-health.md).
+See the command-focused reference: [cli-worker-health.md](cli-worker-health.md).
 
 ### `rundown unlock <source>`
 
-See the command-focused reference: [docs/cli-unlock.md](cli-unlock.md).
+See the command-focused reference: [cli-unlock.md](cli-unlock.md).
 
 ### `rundown workspace`
 
-See the command-focused reference: [docs/cli-workspace.md](cli-workspace.md).
+See the command-focused reference: [cli-workspace.md](cli-workspace.md).
 
 ### `rundown next <source>`
 
-See the command-focused reference: [docs/cli-next.md](cli-next.md).
+See the command-focused reference: [cli-next.md](cli-next.md).
 
 ### `rundown list <source>`
 
-See the command-focused reference: [docs/cli-list.md](cli-list.md).
+See the command-focused reference: [cli-list.md](cli-list.md).
 
 ### `rundown artifacts`
 
-See the command-focused reference: [docs/cli-artifacts.md](cli-artifacts.md).
+See the command-focused reference: [cli-artifacts.md](cli-artifacts.md).
 
 ### `rundown log`
 
-See the command-focused reference: [docs/cli-log.md](cli-log.md).
+See the command-focused reference: [cli-log.md](cli-log.md).
 
 ## Source file locking
 
@@ -290,21 +290,21 @@ Each line is one JSON object with these stable fields:
 
 ### `rundown init`
 
-See the command-focused reference: [docs/cli-init.md](cli-init.md).
+See the command-focused reference: [cli-init.md](cli-init.md).
 
 ### `rundown with <harness>`
 
-See the command-focused reference: [docs/cli-with.md](cli-with.md).
+See the command-focused reference: [cli-with.md](cli-with.md).
 
 ### `rundown intro`
 
-See the command-focused reference: [docs/cli-intro.md](cli-intro.md).
+See the command-focused reference: [cli-intro.md](cli-intro.md).
 
 ### `rundown config`
 
-See the command-focused reference: [docs/cli-config.md](cli-config.md).
+See the command-focused reference: [cli-config.md](cli-config.md).
 
 ### `rundown research <markdown-file>`
 
-See the command-focused reference: [docs/cli-research.md](cli-research.md).
+See the command-focused reference: [cli-research.md](cli-research.md).
 

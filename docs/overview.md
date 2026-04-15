@@ -196,7 +196,7 @@ Those plain list bullets are informational only: they are visible in list output
 
 Use `rundown with <harness>` to quickly configure runnable worker defaults from a known harness preset.
 
-See the command-focused reference: [docs/cli-with.md](cli-with.md).
+See the command-focused reference: [cli-with.md](cli-with.md).
 
 ## Sorting
 

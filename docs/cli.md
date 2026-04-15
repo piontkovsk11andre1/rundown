@@ -722,6 +722,7 @@ Options:
 | Option | Description | Default |
 |---|---|---|
 | `--scan-count <n>` | Maximum clean-session scan iterations. Must be a safe positive integer. | `3` |
+| `--max-items <n>` | Maximum total TODO items allowed in the document after each scan merge. Planning stops once this cap is reached. Must be a safe non-negative integer. | unset |
 | `--deep <n>` | Additional nested planning passes after top-level scans. Must be a safe non-negative integer (`0` disables deep passes). | `0` |
 | `--mode <mode>` | Planner execution mode. Currently only `wait` is supported. | `wait` |
 | `--force-unlock` | Remove stale source lockfile before acquiring the planner lock. Active locks held by live processes are not removed. | off |

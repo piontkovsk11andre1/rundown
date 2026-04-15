@@ -99,6 +99,7 @@ interface IterationWorkerConfig {
   loadedWorkerConfig: ReturnType<RunTaskDependencies["workerConfigPort"]["load"]> | undefined;
   workerHealthEntries?: readonly WorkerHealthEntry[];
   evaluateWorkerHealthAtMs?: number;
+  runWorkerPhaseOverride?: "reset";
 }
 
 interface IterationVerifyConfig {
@@ -230,6 +231,7 @@ export async function runTaskIteration(params: {
   continueLoop: boolean;
   exitCode?: number;
   forceRetryableFailure?: boolean;
+  runFailureReason?: string;
   workerFailureClass?: WorkerFailureClass;
   executedWorkerCommand?: string[];
   executedWorkerProfileName?: string;
@@ -352,6 +354,7 @@ export async function runTaskIteration(params: {
     mode: execution.mode,
     workerHealthEntries: worker.workerHealthEntries,
     evaluateWorkerHealthAtMs: worker.evaluateWorkerHealthAtMs,
+    runWorkerPhase: worker.runWorkerPhaseOverride,
   });
   const resolvedWorkerCommand = resolvedWorker.workerCommand;
   const resolvedWorkerPattern = resolvedWorker.workerPattern;
@@ -614,6 +617,7 @@ export async function runTaskIteration(params: {
     return {
       continueLoop: false,
       forceRetryableFailure: dispatchResult.forceRetryableFailure === true,
+      runFailureReason: dispatchResult.executionFailureRunReason,
       executedWorkerCommand: selectedWorkerCommand,
       executedWorkerProfileName: selectedWorkerProfileName,
       workerFailureClass: classifyIterationFailure({
@@ -731,6 +735,9 @@ export async function runTaskIteration(params: {
     ...completionResult,
     executedWorkerCommand: selectedWorkerCommand,
     executedWorkerProfileName: selectedWorkerProfileName,
+    runFailureReason: completionResult.continueLoop
+      ? undefined
+      : completionResult.runFailureReason,
     workerFailureClass: completionResult.continueLoop
       ? undefined
       : classifyIterationFailure({

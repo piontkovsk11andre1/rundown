@@ -158,6 +158,7 @@ export async function completeTaskIteration(params: {
   exitCode?: number;
   forceRetryableFailure?: boolean;
   failureMessage?: string;
+  runFailureReason?: string;
   groupEnded?: boolean;
 }> {
   const {
@@ -384,6 +385,7 @@ export async function completeTaskIteration(params: {
         continueLoop: false,
         forceRetryableFailure: !usageLimitDetected && failureClass !== WORKER_FAILURE_CLASS_TRANSPORT_UNAVAILABLE,
         failureMessage: surfacedFailureMessage,
+        runFailureReason: usageLimitDetected ? RUN_REASON_USAGE_LIMIT_DETECTED : RUN_REASON_VERIFICATION_FAILED,
         exitCode: await failRun(
           2,
           "verification-failed",

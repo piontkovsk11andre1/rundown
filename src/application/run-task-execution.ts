@@ -99,6 +99,7 @@ import {
   type WorkerFailureClass,
   type WorkerHealthEntry,
 } from "../domain/worker-health.js";
+import { RUN_REASON_VERIFICATION_FAILED } from "../domain/run-reasons.js";
 
 type ArtifactContext = ArtifactRunContext;
 type EmitFn = (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
@@ -255,7 +256,7 @@ function isFailoverRetryableFailureClass(
 
 interface RetryBoundaryGitCheckpoint {
   stashHash: string;
-  reason: "failover" | "force";
+  reason: "failover" | "force" | "semantic-reset";
   taskFile: string;
   taskLine: number;
 }
@@ -702,6 +703,7 @@ export function createRunTaskExecution(
     let commitRetryBoundaryGitEnabled = false;
     let currentRound = 1;
     let runFailoverAttemptsUsed = 0;
+    let runSemanticResetAttemptsUsed = 0;
     // Use an injectable timestamp provider for prompt/template rendering.
     const nowIso = (): string => new Date().toISOString();
     // Create a trace session that aggregates run and task lifecycle events.
@@ -1048,9 +1050,15 @@ export function createRunTaskExecution(
             let selectedTaskResult = batchSelection;
             let activeForceExtraction = initialForceExtraction;
             let attempt = 0;
+            const hasSemanticResetRoute = (loadedWorkerConfig?.run?.workerRouting?.reset?.worker?.length ?? 0) > 0;
+            const maxSemanticResetAttemptsPerTask = hasSemanticResetRoute ? 1 : 0;
+            let taskSemanticResetAttemptsUsed = 0;
+            let usingSemanticResetRoute = false;
             const shouldTrackRetryBoundaryBaseline = deferCommitUntilPostRun
               && state.tasksCompleted > 0
-              && (maxTaskAttempts > 1 || maxFailoverAttemptsPerTask > 0);
+              && (maxTaskAttempts > 1
+                || maxFailoverAttemptsPerTask > 0
+                || maxSemanticResetAttemptsPerTask > 0);
             let forceRetryMetadata: {
               attemptNumber: number;
               maxAttempts: number;
@@ -1251,13 +1259,15 @@ export function createRunTaskExecution(
                   trace,
                   traceOnly,
                   forceRetryMetadata,
-                  persistFailureAnnotation: !initialForceExtraction.isForce || isFinalAttempt,
+                  persistFailureAnnotation: (!initialForceExtraction.isForce || isFinalAttempt)
+                    && (!hasSemanticResetRoute || usingSemanticResetRoute || taskSemanticResetAttemptsUsed >= maxSemanticResetAttemptsPerTask),
                 },
                 worker: {
                   workerPattern,
                   loadedWorkerConfig,
                   workerHealthEntries,
                   evaluateWorkerHealthAtMs: Date.now(),
+                  runWorkerPhaseOverride: usingSemanticResetRoute ? "reset" : undefined,
                 },
                 verifyConfig: {
                   configuredOnlyVerify,
@@ -1369,6 +1379,49 @@ export function createRunTaskExecution(
                 const retryBoundaryPreserveExitCode = await maybePreserveGitStateForRetryBoundary("failover");
                 if (retryBoundaryPreserveExitCode !== null) {
                   return retryBoundaryPreserveExitCode;
+                }
+                attempt--;
+                runFailed = false;
+                state.runCompleted = false;
+                dependencies.verificationStore.remove(selectedTaskResult.task);
+                state.deferredCommitContext = null;
+                resetArtifacts();
+                if (cacheCliBlocks) {
+                  cliBlockExecutor = createCachedCommandExecutor(defaultCliBlockExecutor);
+                }
+                continue;
+              }
+
+              const shouldRetrySemanticReset = didFail
+                && hasSemanticResetRoute
+                && iterationResult.runFailureReason === RUN_REASON_VERIFICATION_FAILED;
+              if (shouldRetrySemanticReset) {
+                if (taskSemanticResetAttemptsUsed >= maxSemanticResetAttemptsPerTask) {
+                  emit({
+                    kind: "error",
+                    message: "Semantic reset exhausted: per-task semantic reset attempt limit reached.",
+                  });
+                  await maybeRestoreGitStateAfterTerminalFailure();
+                  return exitCode;
+                }
+
+                taskSemanticResetAttemptsUsed++;
+                runSemanticResetAttemptsUsed++;
+                usingSemanticResetRoute = true;
+                emit({
+                  kind: "warn",
+                  message: "Verification/repair exhausted; retrying with configured reset worker"
+                    + " (semantic reset "
+                    + taskSemanticResetAttemptsUsed
+                    + "/"
+                    + maxSemanticResetAttemptsPerTask
+                    + ", run total "
+                    + runSemanticResetAttemptsUsed
+                    + ").",
+                });
+                const semanticResetRetryBoundaryPreserveExitCode = await maybePreserveGitStateForRetryBoundary("semantic-reset");
+                if (semanticResetRetryBoundaryPreserveExitCode !== null) {
+                  return semanticResetRetryBoundaryPreserveExitCode;
                 }
                 attempt--;
                 runFailed = false;

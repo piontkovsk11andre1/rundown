@@ -1819,6 +1819,128 @@ describe("run-task-execution helpers", () => {
     }));
   });
 
+  it("tracks semantic reset retries independently from failover budgets", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "task with reset route"),
+      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] task with reset route\n" }),
+      gitClient: createGitClientMock(),
+      workerConfig: {
+        workers: {
+          default: ["primary", "worker"],
+          fallbacks: [["fallback", "worker"]],
+        },
+        healthPolicy: {
+          maxFailoverAttemptsPerTask: 1,
+        },
+        run: {
+          workerRouting: {
+            reset: {
+              worker: ["reset", "worker"],
+            },
+          },
+        },
+      },
+    });
+
+    dependencies.workerExecutor.runWorker = vi
+      .fn()
+      .mockResolvedValueOnce({ exitCode: null, stdout: "", stderr: "timed out" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "" });
+    dependencies.taskVerification.verify = vi
+      .fn()
+      .mockResolvedValueOnce({ valid: false, formatWarning: undefined })
+      .mockResolvedValueOnce({ valid: true, formatWarning: undefined });
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({
+      verify: true,
+      noRepair: true,
+      workerCommand: [],
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(3);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      workerPattern: expect.objectContaining({ command: ["primary", "worker"] }),
+    }));
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      workerPattern: expect.objectContaining({ command: ["fallback", "worker"] }),
+    }));
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      workerPattern: expect.objectContaining({ command: ["reset", "worker"] }),
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "warn",
+      message: expect.stringContaining("retrying with next eligible fallback"),
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "warn",
+      message: expect.stringContaining("Verification/repair exhausted; retrying with configured reset worker"),
+    }));
+  });
+
+  it("allows semantic reset retry when failover attempts are disabled", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "verification failure with reset"),
+      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] verification failure with reset\n" }),
+      gitClient: createGitClientMock(),
+      workerConfig: {
+        workers: {
+          default: ["default", "worker"],
+          fallbacks: [["fallback", "worker"]],
+        },
+        healthPolicy: {
+          maxFailoverAttemptsPerTask: 0,
+        },
+        run: {
+          workerRouting: {
+            reset: {
+              worker: ["reset", "worker"],
+            },
+          },
+        },
+      },
+    });
+
+    dependencies.workerExecutor.runWorker = vi
+      .fn()
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "" });
+    dependencies.taskVerification.verify = vi
+      .fn()
+      .mockResolvedValueOnce({ valid: false, formatWarning: undefined })
+      .mockResolvedValueOnce({ valid: true, formatWarning: undefined });
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({
+      verify: true,
+      noRepair: true,
+      workerCommand: [],
+    }));
+
+    expect(code).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(2);
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      workerPattern: expect.objectContaining({ command: ["default", "worker"] }),
+    }));
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      workerPattern: expect.objectContaining({ command: ["reset", "worker"] }),
+    }));
+    expect(events.some((event) => event.kind === "error"
+      && event.message.includes("Failover exhausted"))).toBe(false);
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "warn",
+      message: expect.stringContaining("Verification/repair exhausted; retrying with configured reset worker"),
+    }));
+  });
+
   it("does not create retry-boundary stash entries when commit-mode retries start clean", async () => {
     const cwd = "/workspace";
     const taskFile = `${cwd}/tasks.md`;

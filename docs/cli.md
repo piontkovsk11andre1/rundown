@@ -391,6 +391,40 @@ Agent output notes (`run --show-agent-output`):
 - Still visible: hook output from `--on-complete` and `--on-fail` (intentionally out of scope for this option).
 - Artifacts/traces still capture output for audit/debug; terminal suppression does not disable persistence.
 
+### `rundown call <source>`
+
+Run a full clean pass across all tasks in one command.
+
+`call` is a convenience wrapper over `run` that forces these options per invocation:
+
+- `--all`
+- `--clean`
+- `--cache-cli-blocks`
+
+This makes `call` the preferred command when you want an end-to-end clean execution pass without repeating flags.
+
+Synopsis:
+
+```bash
+rundown call <source> [options] -- <command>
+rundown call <source> [options] --worker <pattern>
+```
+
+Behavior notes:
+
+- Accepts the same run-like options as `run` (verification/repair, commit/hook, output, vars, lock, and worker options).
+- Explicit user-supplied values for `--all`, `--clean`, and `--cache-cli-blocks` are ignored because `call` enforces them.
+
+Examples:
+
+```bash
+# Full clean pass across one task file
+rundown call roadmap.md
+
+# Full clean pass across a directory source
+rundown call docs/
+```
+
 ### `rundown loop <source>`
 
 Run repeated `call`-style full clean passes against a source, with a cooldown between iterations.
@@ -899,6 +933,41 @@ rundown make "Draft migration plan" "docs/migration.markdown"
 
 # Preview prompts without running workers
 rundown make "Release prep" "docs/release-prep.md" --print-prompt
+```
+
+### `rundown do <seed-text> <markdown-file>`
+
+Create a new Markdown task file from seed text (`make` workflow), then execute all tasks from that same file (`run --all`).
+
+`do` is a convenience composition command for end-to-end bootstrap + execution:
+
+1. create target file and write seed text,
+2. run `research`,
+3. run `plan`,
+4. run execution with `run --all` on the generated file.
+
+Execution is sequential and fail-fast across phases.
+
+Synopsis:
+
+```bash
+rundown do "<seed-text>" "<markdown-file>" [options] -- <command>
+rundown do "<seed-text>" "<markdown-file>" [options] --worker <pattern>
+```
+
+Options:
+
+- Supports `make`-phase options for bootstrap (`--scan-count`, `--dry-run`, `--print-prompt`, `--vars-file`, `--var`, `--worker`, etc.).
+- Supports run-like execution options for the final phase (`--sort`, `--verify/--no-verify`, `--repair-attempts`, `--commit`, `--on-complete`, `--on-fail`, `--redo`, `--clean`, `--rounds`, and related flags).
+
+Examples:
+
+```bash
+# End-to-end: create, enrich, plan, then execute all generated tasks
+rundown do "ship release checklist" "docs/release.md"
+
+# Same flow with explicit clean execution behavior
+rundown do "ship release checklist" "docs/release.md" --clean --rounds 2
 ```
 
 ### `rundown unlock <source>`

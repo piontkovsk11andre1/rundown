@@ -1050,6 +1050,7 @@ Default behavior:
 - Shows only runs with status `completed`.
 - Orders runs newest-first (same order as saved artifacts metadata).
 - Prints one compact line per run: short run ID, absolute local timestamp (ISO-8601 with numeric offset), relative timestamp, status, task summary, source, command, commit SHA (if present), and revertable indicator.
+- Text-mode absolute timestamps are local display values; persisted run metadata (`startedAt`/`completedAt`) remains UTC ISO-8601.
 - Non-revertable entries are dimmed in terminal output.
 
 Options:

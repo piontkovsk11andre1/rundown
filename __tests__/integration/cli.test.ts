@@ -9013,6 +9013,7 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("[2/2]") && line.includes("second task"))).toBe(true);
     expect(result.logs.some((line) => line.includes("[2/1]") && line.includes("second task"))).toBe(false);
     expect(result.logs.filter((line) => line.includes("Task checked:")).length).toBe(2);
+    expect(result.logs.some((line) => line.includes("All tasks completed (2 tasks total)"))).toBe(true);
     expect(fs.readFileSync(roadmapPath, "utf-8")).toBe("- [x] first task\n- [x] second task\n");
   });
 

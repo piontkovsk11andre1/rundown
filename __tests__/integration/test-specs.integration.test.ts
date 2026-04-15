@@ -527,6 +527,59 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
     expect(combinedOutput).toContain("PASS future-target.md");
   });
 
+  it("rundown test --future <n> prompt uses predicted context and excludes materialized source content", async () => {
+    const workspace = makeTempWorkspace();
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(
+      path.join(workspace, ".rundown", "test-future.md"),
+      "MODE={{testMode}}\nTARGET={{futureTarget}}\nDESIGN={{design}}\nSNAP={{latestSnapshot}}\nHISTORY={{migrationHistory}}\nINCLUDED={{includedDirectories}}\nEXCLUDED={{excludedDirectories}}",
+      "utf-8",
+    );
+    fs.writeFileSync(path.join(workspace, "Design.md"), "# Design\n\nFUTURE_TARGET_DESIGN_TOKEN\n", "utf-8");
+    fs.mkdirSync(path.join(workspace, "migrations"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(1, "initialize")), "# 0001 initialize\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "context")), "# Context\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "snapshot")), "FUTURE_TARGET_SNAPSHOT_TOKEN\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(2, "future-step")), "# 0002 future step\n", "utf-8");
+    fs.mkdirSync(path.join(workspace, "src"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, "src", "materialized-only.txt"), "MATERIALIZED_SOURCE_TOKEN\n", "utf-8");
+    fs.mkdirSync(path.join(workspace, "specs"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, "specs", "future-target-context.md"), "assert future target prompt scope", "utf-8");
+
+    const result = await runCli([
+      "test",
+      "--future",
+      "2",
+      "--",
+      "node",
+      "-e",
+      [
+        "const fs=require('node:fs');",
+        "const p=process.argv[process.argv.length-1];",
+        "const prompt=fs.readFileSync(p,'utf-8');",
+        "const hasMode=prompt.includes('MODE=future');",
+        "const hasTarget=prompt.includes('TARGET=2');",
+        "const hasDesignToken=prompt.includes('FUTURE_TARGET_DESIGN_TOKEN');",
+        "const hasSnapshotToken=prompt.includes('FUTURE_TARGET_SNAPSHOT_TOKEN');",
+        "const hasMigrationTwo=prompt.includes('2. Future Step.md');",
+        "const includesDesignAndMigrations=/INCLUDED=[\\s\\S]*design[\\s\\S]*migrations/i.test(prompt);",
+        "const excludesSpecsDir=/EXCLUDED=.*specs/i.test(prompt);",
+        "const hasMaterializedSourceToken=prompt.includes('MATERIALIZED_SOURCE_TOKEN');",
+        "if(hasMode&&hasTarget&&hasDesignToken&&hasSnapshotToken&&hasMigrationTwo&&includesDesignAndMigrations&&excludesSpecsDir&&!hasMaterializedSourceToken){console.log('OK');process.exit(0);}",
+        "console.log('NOT_OK: expected future target mode prompt to use only predicted context');process.exit(0);",
+      ].join(""),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n"));
+    expect(combinedOutput).toContain("PASS future-target-context.md");
+  });
+
   it("rundown test --future uses latest snapshot plus remaining migrations", async () => {
     const workspace = makeTempWorkspace();
     scaffoldPredictedState(workspace, {

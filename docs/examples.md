@@ -215,7 +215,7 @@ If historical metadata no longer maps to a unique task after major edits, `rever
 ## 13. Revert a previously completed task
 
 ```bash
-rundown revert --run latest -- opencode run
+rundown revert --run latest
 ```
 
 `revert` requires the original run to have been executed with both `--commit` and `--keep-artifacts`; otherwise no revertable run metadata is available.

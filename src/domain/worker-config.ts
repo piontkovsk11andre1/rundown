@@ -108,11 +108,52 @@ export const RUN_COMMIT_MODES = ["per-task", "file-done"] as const;
 
 export type RunCommitMode = typeof RUN_COMMIT_MODES[number];
 
+export const RUN_WORKER_ROUTING_PHASES = [
+  "execute",
+  "verify",
+  "repair",
+  "resolve",
+  "resolveRepair",
+  "reset",
+] as const;
+
+export type RunWorkerRoutingPhase = typeof RUN_WORKER_ROUTING_PHASES[number];
+
+export interface RunWorkerRouteConfig {
+  worker?: WorkerCommand;
+  useFallbacks?: boolean;
+}
+
+export interface RunWorkerAttemptSelector {
+  attempt?: number;
+  fromAttempt?: number;
+  toAttempt?: number;
+}
+
+export interface RunWorkerAttemptRouteConfig extends RunWorkerRouteConfig {
+  selector: RunWorkerAttemptSelector;
+}
+
+export interface RunAttemptScopedWorkerRoutingConfig {
+  default?: RunWorkerRouteConfig;
+  attempts?: RunWorkerAttemptRouteConfig[];
+}
+
+export interface RunWorkerRoutingConfig {
+  execute?: RunWorkerRouteConfig;
+  verify?: RunWorkerRouteConfig;
+  repair?: RunAttemptScopedWorkerRoutingConfig;
+  resolve?: RunWorkerRouteConfig;
+  resolveRepair?: RunAttemptScopedWorkerRoutingConfig;
+  reset?: RunWorkerRouteConfig;
+}
+
 export interface RunDefaultsConfig {
   revertable?: boolean;
   commit?: boolean;
   commitMessage?: string;
   commitMode?: RunCommitMode;
+  workerRouting?: RunWorkerRoutingConfig;
 }
 
 /**

@@ -774,6 +774,7 @@ export function createRunTaskExecution(
     let unexpectedError: unknown;
     let completedAllRoundsSuccessfully = false;
     let postRunResetApplied = false;
+    let terminalStopExitCode: number | null = null;
     let resolvedFiles: string[] = [];
     const pendingPreRunResetTraceEvents: Array<{ file: string; resetCount: number; dryRun: boolean }> = [];
     // Defer commit until post-run lifecycle when reset-after is active or when
@@ -1428,6 +1429,7 @@ export function createRunTaskExecution(
               const terminalStop = iterationResult.terminalStop;
 
               if (terminalStop?.stopRun) {
+                terminalStopExitCode = terminalStop.exitCode;
                 onTerminalStop?.(terminalStop);
                 emit({
                   kind: "info",
@@ -1710,6 +1712,10 @@ export function createRunTaskExecution(
 
         const shouldEmitRoundCompletion = rounds === 1 || round === rounds - 1;
         const roundExitCode = await runTaskLoop(files, shouldEmitRoundCompletion);
+        if (terminalStopExitCode !== null) {
+          totalTasksCompletedAcrossRounds += state.tasksCompleted;
+          break;
+        }
         if (roundExitCode !== 0 || !state.runCompleted) {
           return roundExitCode;
         }
@@ -1730,7 +1736,7 @@ export function createRunTaskExecution(
         }
       }
 
-      if (rounds > 1) {
+      if (rounds > 1 && terminalStopExitCode === null) {
         emit({
           kind: "success",
           message:
@@ -1786,6 +1792,11 @@ export function createRunTaskExecution(
           }
           throw error;
         }
+      }
+
+      if (terminalStopExitCode !== null) {
+        completedAllRoundsSuccessfully = true;
+        return terminalStopExitCode;
       }
 
       completedAllRoundsSuccessfully = true;

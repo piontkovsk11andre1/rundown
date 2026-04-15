@@ -1176,6 +1176,83 @@ describe("run-task-execution helpers", () => {
     expect(fileSystem.readText(taskFile)).toBe("- [x] force: 2, implement feature\n");
   });
 
+  it("applies --reset-after cleanup and deferred file-done commit after terminal stop in --all", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] exit: there is no output to process",
+        "- [ ] should remain pending",
+        "",
+      ].join("\n"),
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "exit: there is no output to process"),
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    dependencies.toolResolver = {
+      resolve: (toolName) => resolveBuiltinTool(toolName),
+      listKnownToolNames: () => listBuiltinToolNames(),
+    };
+
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      const source = fileSystem.readText(taskFile);
+      const next = parseTasks(source, taskFile).find((task) => !task.checked);
+      if (!next) {
+        return null;
+      }
+
+      return [{
+        task: next,
+        source: "tasks.md",
+        contextBefore: "",
+      }];
+    });
+
+    dependencies.processRunner.run = vi.fn(async ({ command }: { command: string }) => {
+      if (command === "git rev-parse --show-toplevel") {
+        return { exitCode: 0, stdout: `${cwd}\n`, stderr: "" };
+      }
+      return { exitCode: 0, stdout: "", stderr: "" };
+    });
+    dependencies.workerExecutor.runWorker = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "yes",
+      stderr: "",
+    }));
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({
+      verify: false,
+      runAll: true,
+      commitAfterComplete: true,
+      commitMode: "file-done",
+      resetAfter: true,
+    }));
+
+    expect(code).toBe(0);
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "info",
+      message: "Terminal stop requested by end: skipped 1 sibling task.",
+    }));
+    expect(fileSystem.readText(taskFile)).toBe([
+      "- [ ] exit: there is no output to process",
+      "- [ ] should remain pending",
+      "",
+    ].join("\n"));
+    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(1);
+
+    const gitCommands = vi.mocked(dependencies.gitClient.run).mock.calls.map(([args]) => args.join(" "));
+    expect(gitCommands.some((command) => command.startsWith("add "))).toBe(false);
+    expect(gitCommands.some((command) => command.startsWith("commit "))).toBe(false);
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "info",
+      message: "--commit: skipped - no changes to commit (working tree clean).",
+    }));
+  });
+
   it("runs --on-fail hook for each failed force retry attempt", async () => {
     const cwd = "/workspace";
     const taskFile = `${cwd}/tasks.md`;

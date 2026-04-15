@@ -212,7 +212,7 @@ const loopCommand = program
   .command("loop")
   .description("Run full clean call passes repeatedly with an optional cooldown between iterations.")
   .argument("<source>", "File, directory, or glob to scan for Markdown tasks")
-  .option("--cooldown <seconds>", "Cooldown delay in seconds between iterations", "60")
+  .option("--cooldown <seconds>", "Cooldown delay in seconds between iterations", "5")
   .option("--iterations <n>", "Stop after N iterations (default: unlimited)")
   .option("--continue-on-error", "Continue loop after iteration failure", false)
   .configureHelp({ showGlobalOptions: true });
@@ -926,7 +926,7 @@ program
 program
   .command("unlock")
   .description("Manually release a stale source lockfile.")
-  .argument("<source>", "Markdown source file path used to derive <config-dir>/locks/<basename>.lock")
+  .argument("<source>", "Markdown source file path used to derive <source-dir>/.rundown/<basename>.lock")
   .allowUnknownOption(false)
   .action(withCliAction(createUnlockCommandAction({ getApp })));
 

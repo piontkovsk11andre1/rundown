@@ -162,6 +162,47 @@ describe("createLoopCommandAction", () => {
     ]);
   });
 
+  it("throttles cooldown status for long waits", async () => {
+    vi.useFakeTimers();
+    const { action, runTask, outputEvents } = createLoopHarness(async () => 0);
+
+    const completion = Promise.resolve(action("tasks.md", {
+      worker: "opencode run",
+      iterations: "2",
+      cooldown: "12",
+    }));
+
+    await Promise.resolve();
+    expect(runTask).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(12_000);
+    await completion;
+
+    expect(runTask).toHaveBeenCalledTimes(2);
+    const cooldownMessages = outputEvents
+      .filter((event) => event.kind === "info")
+      .map((event) => {
+        if ("message" in event) {
+          return event.message;
+        }
+        return "";
+      })
+      .filter((message) => message.startsWith("Loop cooldown:"));
+    expect(cooldownMessages).toEqual([
+      "Loop cooldown: 12s remaining before iteration 2.",
+      "Loop cooldown: 10s remaining before iteration 2.",
+      "Loop cooldown: 9s remaining before iteration 2.",
+      "Loop cooldown: 8s remaining before iteration 2.",
+      "Loop cooldown: 7s remaining before iteration 2.",
+      "Loop cooldown: 6s remaining before iteration 2.",
+      "Loop cooldown: 5s remaining before iteration 2.",
+      "Loop cooldown: 4s remaining before iteration 2.",
+      "Loop cooldown: 3s remaining before iteration 2.",
+      "Loop cooldown: 2s remaining before iteration 2.",
+      "Loop cooldown: 1s remaining before iteration 2.",
+    ]);
+  });
+
   it("continues on failed iterations when --continue-on-error is enabled", async () => {
     const { action, runTask, outputEvents } = createLoopHarness(
       vi

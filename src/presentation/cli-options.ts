@@ -281,7 +281,7 @@ export function parseCooldown(value: string): number {
 export function parseLoopCooldownSeconds(value: string | undefined): number {
   return parseIntOption(value, {
     optionName: "cooldown",
-    defaultValue: 60,
+    defaultValue: 5,
     allowUndefined: false,
     min: 0,
     integerLabel: "non-negative integer",

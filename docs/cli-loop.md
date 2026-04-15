@@ -28,7 +28,7 @@ Options:
 
 | Option | Description | Default |
 |---|---|---|
-| `--cooldown <seconds>` | Delay between iterations. Must be a positive integer (`1` or higher). | `60` |
+| `--cooldown <seconds>` | Delay between iterations. Must be a positive integer (`1` or higher). | `5` |
 | `--iterations <n>` | Stop after `n` iterations. If omitted, loop runs until interrupted. | unlimited |
 | `--continue-on-error` | Continue looping after a failed iteration instead of exiting immediately. | off |
 

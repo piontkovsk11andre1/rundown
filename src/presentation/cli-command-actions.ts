@@ -1918,7 +1918,12 @@ async function emitLoopCooldownCountdown({
     if (interruptedBySignal) {
       break;
     }
-    emitCliInfo(app, `Loop cooldown: ${remainingSeconds}s remaining before iteration ${nextIteration}.`);
+    const shouldEmitTick = remainingSeconds === cooldownSeconds
+      || remainingSeconds < 10
+      || remainingSeconds % 10 === 0;
+    if (shouldEmitTick) {
+      emitCliInfo(app, `Loop cooldown: ${remainingSeconds}s remaining before iteration ${nextIteration}.`);
+    }
     activeSleep = cancellableSleep(1000);
     setActiveCooldownCanceller?.(() => {
       activeSleep?.cancel();

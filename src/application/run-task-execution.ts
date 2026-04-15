@@ -1428,18 +1428,6 @@ export function createRunTaskExecution(
               const executedWorkerProfileName = iterationResult.executedWorkerProfileName;
               const terminalStop = iterationResult.terminalStop;
 
-              if (terminalStop?.stopRun) {
-                terminalStopExitCode = terminalStop.exitCode;
-                onTerminalStop?.(terminalStop);
-                emit({
-                  kind: "info",
-                  message: "Terminal stop: ending run after current task (requested by "
-                    + terminalStop.requestedBy
-                    + ":).",
-                });
-                return terminalStop.exitCode;
-              }
-
               if (executedWorkerCommand.length > 0) {
                 const healthOutcomeClass: WorkerFailureClass = didFail
                   ? (iterationResult.workerFailureClass ?? WORKER_FAILURE_CLASS_EXECUTION_FAILURE_OTHER)
@@ -1467,6 +1455,18 @@ export function createRunTaskExecution(
                 if (dependencies.workerHealthStore && !dependencies.workerHealthStore.update) {
                   dependencies.workerHealthStore.write(workerHealthSnapshot, workerHealthStoreBaseDir);
                 }
+              }
+
+              if (terminalStop && (terminalStop.stopRun || terminalStop.stopLoop)) {
+                terminalStopExitCode = terminalStop.exitCode;
+                onTerminalStop?.(terminalStop);
+                emit({
+                  kind: "info",
+                  message: "Terminal stop: ending task selection after current task (requested by "
+                    + terminalStop.requestedBy
+                    + ":).",
+                });
+                return terminalStop.exitCode;
               }
 
               const shouldRetryFailover = didFail

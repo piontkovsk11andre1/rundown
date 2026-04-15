@@ -169,6 +169,66 @@ describe("with-task", () => {
     expect(second.changed).toBe(false);
   });
 
+  it("accepts case-insensitive aliases and writes canonical harness commands", () => {
+    const workspaceDir = makeTempWorkspace();
+    const configDir = path.join(workspaceDir, ".rundown");
+
+    const withTask = createWithTask({
+      workerConfigPort: createWorkerConfigAdapter(),
+      configDir: {
+        configDir,
+        isExplicit: true,
+      },
+    });
+
+    const result = withTask({ harness: "OpenAI-Codex" });
+    expect(result.exitCode).toBe(0);
+    expect(result.harnessKey).toBe("codex");
+
+    const configPath = path.join(configDir, "config.json");
+    const parsed = JSON.parse(fs.readFileSync(configPath, "utf8")) as {
+      workers?: {
+        default?: string[];
+        tui?: string[];
+      };
+      commands?: {
+        discuss?: string[];
+      };
+    };
+
+    expect(parsed.workers?.default).toEqual(["codex", "run", "--file", "$file", "$bootstrap"]);
+    expect(parsed.workers?.tui).toEqual(["codex"]);
+    expect(parsed.commands?.discuss).toEqual(["codex"]);
+  });
+
+  it("keeps persisted config stable across equivalent alias inputs", () => {
+    const workspaceDir = makeTempWorkspace();
+    const configDir = path.join(workspaceDir, ".rundown");
+
+    const withTask = createWithTask({
+      workerConfigPort: createWorkerConfigAdapter(),
+      configDir: {
+        configDir,
+        isExplicit: true,
+      },
+    });
+
+    const first = withTask({ harness: "OpenCode" });
+    expect(first.exitCode).toBe(0);
+    expect(first.harnessKey).toBe("opencode");
+
+    const configPath = path.join(configDir, "config.json");
+    const before = fs.readFileSync(configPath, "utf8");
+
+    const second = withTask({ harness: "open-code" });
+    expect(second.exitCode).toBe(0);
+    expect(second.harnessKey).toBe("opencode");
+
+    const after = fs.readFileSync(configPath, "utf8");
+    expect(after).toBe(before);
+    expect(second.changed).toBe(false);
+  });
+
   it("fails with actionable supported list when harness is unknown", () => {
     const workspaceDir = makeTempWorkspace();
     const configDir = path.join(workspaceDir, ".rundown");

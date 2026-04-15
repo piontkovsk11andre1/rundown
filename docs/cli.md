@@ -77,7 +77,10 @@ Behavior:
 - The canonical welcome is session-scoped: it appears exactly once per root invocation before any worker-generated help/discovery output.
 - In an interactive terminal (`stdout` and `stderr` are TTY), rundown attempts to launch a TUI help session.
 - The help session uses the configured `help` worker resolution path (or falls back through command/default worker config as configured).
-- The prompt is template-backed (`agent.md` warmup + `help.md`) and includes CLI usage and repository context so you can ask follow-up questions immediately.
+- The prompt is template-backed and ordered as warmup then guidance (`agent.md` -> `help.md`), including CLI usage and repository context so you can ask follow-up questions immediately.
+- `agent.md` resolves from the active config directory (`--config-dir` when provided, otherwise discovered `.rundown/`).
+- If `agent.md` is missing, unreadable, or effectively empty, rundown uses the built-in default warmup template and continues.
+- This no-arg warmup behavior applies only to root help startup and does not change deterministic worker conventions (`run`/`plan`/`research`/`reverify` use `opencode run`; `discuss` uses interactive `opencode`).
 - If TTY is unavailable (for example CI/piped output) or no worker can be resolved, rundown falls back to static Commander help and exits `0`.
 - Worker/config launch errors for this no-arg path also degrade to static help instead of failing hard.
 

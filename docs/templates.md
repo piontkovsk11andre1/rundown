@@ -84,6 +84,13 @@ Do not add release or packaging tasks for local prototypes.
 When `rundown` launches with no subcommand and opens live help, `.rundown/help.md`
 can use these placeholders:
 
+Root no-arg prompt composition contract:
+
+- Root no-arg help composes warmup first, then guidance: `.rundown/agent.md` followed by `.rundown/help.md`.
+- `agent.md` is resolved from the active config directory (explicit `--config-dir` or discovered `.rundown/`).
+- If `agent.md` is missing, unreadable, or effectively empty, rundown falls back to the built-in `DEFAULT_AGENT_TEMPLATE` warmup text.
+- This warmup+help composition is specific to root no-arg help mode and does not change worker-facing prompt contracts for `run`, `plan`, `research`, `reverify`, or `discuss`.
+
 Root help first-response contract:
 
 - The first assistant-visible output for root no-arg help mode must start with the canonical welcome line: "Welcome to rundown. Start with `plan`, `explore`, `run`, or `help`."

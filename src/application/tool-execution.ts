@@ -4,7 +4,12 @@ import type { ToolDefinition } from "../domain/ports/tool-resolver-port.js";
 import { insertSubitems } from "../domain/planner.js";
 import type { TemplateVars } from "../domain/template.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
-import type { TerminalStopSignal } from "../domain/terminal-control.js";
+import {
+  TERMINAL_PREFIX_ALIASES,
+  resolveTerminalStopExitCode,
+  type TerminalPrefixAlias,
+  type TerminalStopSignal,
+} from "../domain/terminal-control.js";
 import { pluralize } from "./run-task-utils.js";
 
 type EmitFn = (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
@@ -103,6 +108,7 @@ export async function executeToolChain(
 
     emit({ kind: "info", message: `Running tool: ${chain.handler.tool.name}` });
     const result = await handler(handlerContext);
+    const terminalStop = deriveTerminalStopSignal(result, chain.handler.tool.name, chain.handler.payload);
 
     if (result.exitCode != null && result.exitCode !== 0) {
       return {
@@ -134,7 +140,7 @@ export async function executeToolChain(
       shouldVerify: result.shouldVerify ?? false,
       forLoopItems: result.forLoopItems,
       ...(result.skipRemainingSiblings ? { skipRemainingSiblings: result.skipRemainingSiblings } : {}),
-      ...(result.terminalStop ? { terminalStop: result.terminalStop } : {}),
+      ...(terminalStop ? { terminalStop } : {}),
       childFile: result.childFile,
       childTaskCount: result.childTasks?.length ?? 0,
       modifierProfile: (context as ToolHandlerContext & { modifierProfile?: string }).modifierProfile,
@@ -205,6 +211,46 @@ async function resolveHandler(tool: ToolDefinition): Promise<ToolDefinition["han
   }
 
   return undefined;
+}
+
+function deriveTerminalStopSignal(
+  result: ToolHandlerResult,
+  handlerToolName: string,
+  payload: string,
+): TerminalStopSignal | undefined {
+  if (result.terminalStop) {
+    return result.terminalStop;
+  }
+
+  const stopRun = result.stopRun === true;
+  const stopLoop = result.stopLoop === true;
+  if (!stopRun && !stopLoop) {
+    return undefined;
+  }
+
+  const requestedBy = resolveRequestedByAlias(handlerToolName);
+  const trimmedPayload = payload.trim();
+  const isConditional = trimmedPayload.length > 0;
+
+  return {
+    requestedBy,
+    mode: isConditional ? "conditional" : "unconditional",
+    reason: isConditional
+      ? trimmedPayload
+      : requestedBy + ": (no condition)",
+    stopRun,
+    stopLoop,
+    exitCode: resolveTerminalStopExitCode(),
+  };
+}
+
+function resolveRequestedByAlias(handlerToolName: string): TerminalPrefixAlias {
+  const normalizedToolName = handlerToolName.trim().toLowerCase();
+  if (TERMINAL_PREFIX_ALIASES.includes(normalizedToolName as TerminalPrefixAlias)) {
+    return normalizedToolName as TerminalPrefixAlias;
+  }
+
+  return "end";
 }
 
 function describeValueType(value: unknown): string {

@@ -260,4 +260,37 @@ describe("executeToolChain handler signals", () => {
       modifierProfile: undefined,
     });
   });
+
+  it("normalizes legacy stopRun/stopLoop flags into terminalStop", async () => {
+    const rootDir = makeTempDir();
+    const tool: ToolDefinition = {
+      name: "exit",
+      kind: "handler",
+      handler: async () => ({
+        skipExecution: true,
+        shouldVerify: false,
+        stopRun: true,
+        stopLoop: true,
+      }),
+    };
+
+    const result = await executeToolChain(makeChain(tool, ""), makeContext(rootDir), () => undefined);
+
+    expect(result).toEqual({
+      kind: "tool-handled",
+      skipExecution: true,
+      shouldVerify: false,
+      terminalStop: {
+        requestedBy: "exit",
+        mode: "unconditional",
+        reason: "exit: (no condition)",
+        stopRun: true,
+        stopLoop: true,
+        exitCode: 0,
+      },
+      childFile: undefined,
+      childTaskCount: 0,
+      modifierProfile: undefined,
+    });
+  });
 });

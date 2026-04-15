@@ -236,6 +236,28 @@ describe("log-runs", () => {
     ]);
   });
 
+  it("renders compact absolute tokens with non-hour offsets deterministically", () => {
+    const runs: ArtifactRunMetadata[] = [
+      createRun({
+        runId: "run-half-hour-offset",
+        status: "completed",
+        completedAt: "2026-03-28T11:58:00.000Z",
+      }),
+    ];
+    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(-330);
+    const { logRuns, events } = createDependencies({ runs });
+
+    const code = logRuns({ revertable: false, json: false });
+
+    expect(code).toBe(0);
+    expect(events[0]).toEqual({
+      kind: "text",
+      text: `run-half-hour-of | ${formatExpectedCliTimestamp("2026-03-28T11:58:00.000Z")} (2m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | sha=- | revertable=no`,
+    });
+    expect(events[0]?.kind === "text" ? events[0].text : "").toContain("+05:30");
+    expect(events[1]).toEqual({ kind: "info", message: "1 run listed." });
+  });
+
   it("generates compact short IDs and preserves run order", () => {
     const runs: ArtifactRunMetadata[] = [
       createRun({ runId: "run-20260328T130000000Z-zzzzzzzz", status: "completed", extra: { commitSha: "sha-z" } }),

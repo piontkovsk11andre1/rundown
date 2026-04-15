@@ -49,6 +49,19 @@ describe("cliOutputPort", () => {
     expect(stripColorsOnly(errorSpy.mock.calls[1]?.[0] as string)).toBe(withTimestamp("✖ error message"));
   });
 
+  it("renders timestamp prefixes with non-hour local offsets deterministically", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(-330);
+    setCliOutputPortTimestampProvider(() => TIMESTAMP_SOURCE);
+
+    cliOutputPort.emit({ kind: "info", message: "info message" });
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const output = stripAnsiKeepTimestamp(logSpy.mock.calls[0]?.[0] as string);
+    expect(output).toBe(`[${formatExpectedCliTimestamp(TIMESTAMP_SOURCE)}] ℹ info message`);
+    expect(output).toMatch(/^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\+05:30\] ℹ info message$/);
+  });
+
   it("ignores unknown event kinds", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);

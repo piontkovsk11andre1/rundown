@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CLI_TIMESTAMP_FORMAT, formatCliTimestamp } from "../../src/domain/cli-timestamp.js";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("cli-timestamp", () => {
   it("documents local ISO-8601 with numeric offset as the canonical CLI format", () => {
@@ -21,6 +25,22 @@ describe("cli-timestamp", () => {
     expect(formatCliTimestamp("2026-04-14T08:26:01.557Z")).toMatch(
       /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}$/,
     );
+  });
+
+  it("renders non-hour local offsets using +/-HH:MM", () => {
+    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(-330);
+
+    const formatted = formatCliTimestamp("2026-04-14T08:26:01.557Z");
+
+    expect(formatted).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\+05:30$/);
+  });
+
+  it("renders west-of-UTC non-hour offsets with a negative sign", () => {
+    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(210);
+
+    const formatted = formatCliTimestamp("2026-04-14T08:26:01.557Z");
+
+    expect(formatted).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}-03:30$/);
   });
 });
 

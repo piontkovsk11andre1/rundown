@@ -35,7 +35,7 @@ Options:
 | `--deep <n>` | Additional nested plan depth passes after top-level scans. | `0` |
 | `--dry-run` | Show planned query orchestration without running workers. | off |
 | `--print-prompt` | Print rendered query prompts and exit `0`. | off |
-| `--keep-artifacts` | Preserve runtime prompts, logs, and metadata under `<config-dir>/runs`. | off |
+| `--keep-artifacts` | Preserve runtime prompts, logs, and metadata under `.rundown/runs/`. | off |
 | `--show-agent-output` | Show worker stdout/stderr during execution. | off |
 | `-v, --verbose` | Show detailed per-task run diagnostics. | off |
 | `-q, --quiet` | Suppress info-level output. | off |

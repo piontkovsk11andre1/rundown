@@ -1357,6 +1357,9 @@ describe("plan-task", () => {
     expect(firstPrompt).toContain("`memory:` for research/context-capture tasks that gather reusable context for later steps");
     expect(firstPrompt).toContain("there is no explicit target file write/edit/create in that task");
     expect(firstPrompt).toContain("Do NOT use `memory:` when the task asks to write/edit/create/update any file");
+    expect(firstPrompt).toContain("Explicit write-target examples that must remain normal execution TODOs");
+    expect(firstPrompt).toContain("- [ ] Write findings to docs/research-notes.md");
+    expect(firstPrompt).toContain("- [ ] Research rollout risks and write findings into docs/rollout-plan.md");
     expect(firstPrompt).toContain("research and write findings into X.md");
     expect(firstPrompt).toContain("split into separate TODOs when possible");
     expect(firstPrompt).toContain("Author new memory-capture TODOs with the canonical `memory:` prefix only");
@@ -2649,6 +2652,9 @@ describe("plan-task", () => {
     expect(deepPrompt).toContain("Prefer final verification and handoff checks when applicable.");
     expect(deepPrompt).toContain("there is no explicit target file write/edit/create in that child task");
     expect(deepPrompt).toContain("Do NOT use `memory:` when the child task asks to write/edit/create/update any file");
+    expect(deepPrompt).toContain("Explicit write-target child examples that must remain normal execution TODOs");
+    expect(deepPrompt).toContain("- [ ] Write findings to docs/research-notes.md");
+    expect(deepPrompt).toContain("- [ ] Research rollout risks and write findings into docs/rollout-plan.md");
     expect(deepPrompt).toContain("research and write findings into X.md");
     expect(deepPrompt).toContain("split into separate child TODOs when possible");
     expect(deepPrompt).toContain("Author new child memory-capture TODOs with the canonical `memory:` prefix only");

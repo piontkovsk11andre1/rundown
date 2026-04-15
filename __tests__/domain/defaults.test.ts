@@ -115,6 +115,9 @@ describe("default prompt templates", () => {
     expect(DEFAULT_PLAN_TEMPLATE).toContain("- `- [ ] profile=complex; memory: record migration constraints`");
     expect(DEFAULT_PLAN_TEMPLATE).toContain("there is no explicit target file write/edit/create in that task");
     expect(DEFAULT_PLAN_TEMPLATE).toContain("Do NOT use `memory:` when the task asks to write/edit/create/update any file");
+    expect(DEFAULT_PLAN_TEMPLATE).toContain("Explicit write-target examples that must remain normal execution TODOs");
+    expect(DEFAULT_PLAN_TEMPLATE).toContain("- [ ] Write findings to docs/research-notes.md");
+    expect(DEFAULT_PLAN_TEMPLATE).toContain("- [ ] Research rollout risks and write findings into docs/rollout-plan.md");
     expect(DEFAULT_PLAN_TEMPLATE).toContain("split into separate TODOs when possible");
     expect(DEFAULT_PLAN_TEMPLATE).toContain("\"research and write findings into X.md\"");
     expect(DEFAULT_PLAN_TEMPLATE).toContain("Author new memory-capture TODOs with the canonical `memory:` prefix only");
@@ -133,6 +136,9 @@ describe("default prompt templates", () => {
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("- `- [ ] profile=complex; memory: record migration constraints`");
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("there is no explicit target file write/edit/create in that child task");
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("Do NOT use `memory:` when the child task asks to write/edit/create/update any file");
+    expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("Explicit write-target child examples that must remain normal execution TODOs");
+    expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("- [ ] Write findings to docs/research-notes.md");
+    expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("- [ ] Research rollout risks and write findings into docs/rollout-plan.md");
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("split into separate child TODOs when possible");
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("\"research and write findings into X.md\"");
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("Author new child memory-capture TODOs with the canonical `memory:` prefix only");

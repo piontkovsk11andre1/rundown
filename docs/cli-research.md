@@ -5,8 +5,8 @@ Enrich a single Markdown document with context and structure before planning.
 `research` rewrites a document body with expanded feature detail, implementation context, design constraints, and planning scaffolding. It is intentionally upstream of `plan`:
 
 1. author drafts a thin feature doc,
-2. `rundown research <source>` enriches it,
-3. `rundown plan <source>` appends actionable TODOs,
+2. `rundown research <markdown-file>` enriches it,
+3. `rundown plan <markdown-file>` appends actionable TODOs,
 4. `rundown run <source>` executes tasks.
 
 ## Input rules

@@ -4,8 +4,8 @@ Run `research` and then `plan` on the same existing Markdown document.
 
 `explore` is a convenience alias for the common enrichment flow on docs that already exist:
 
-1. `rundown research <source>` enriches context and structure,
-2. `rundown plan <source>` synthesizes actionable TODO items.
+1. `rundown research <markdown-file>` enriches context and structure,
+2. `rundown plan <markdown-file>` synthesizes actionable TODO items.
 
 Synopsis:
 

@@ -119,6 +119,35 @@ describe("help-task", () => {
     expect(prompt).toContain("- discuss: interactive task discussion");
   });
 
+  it("prepends agent.md warmup content before help template", async () => {
+    const cwd = "/workspace";
+    const { dependencies, workerExecutor } = createDependencies({ cwd });
+    vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
+      workers: {
+        tui: ["opencode", "run", "--tui"],
+      },
+    });
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "agent.md"))) {
+        return "AGENT_WARMUP_MARKER";
+      }
+      if (templatePath.endsWith(path.join(".rundown", "help.md"))) {
+        return "HELP_MARKER";
+      }
+      return null;
+    });
+
+    const helpTask = createHelpTask(dependencies);
+    const code = await helpTask(createOptions({ workerCommand: [] }));
+
+    expect(code).toBe(EXIT_CODE_SUCCESS);
+    expect(vi.mocked(workerExecutor.runWorker)).toHaveBeenCalledTimes(1);
+    const prompt = vi.mocked(workerExecutor.runWorker).mock.calls[0]?.[0].prompt ?? "";
+    expect(prompt).toContain("AGENT_WARMUP_MARKER");
+    expect(prompt).toContain("HELP_MARKER");
+    expect(prompt.indexOf("AGENT_WARMUP_MARKER")).toBeLessThan(prompt.indexOf("HELP_MARKER"));
+  });
+
   it("expands cli fenced blocks in the help template before worker execution", async () => {
     const cwd = "/workspace";
     const { dependencies, workerExecutor, cliBlockExecutor } = createDependencies({ cwd });

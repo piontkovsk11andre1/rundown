@@ -109,7 +109,8 @@ export function createHelpTask(
         dependencies.templateLoader,
         dependencies.pathOperations,
       );
-      const renderedPrompt = renderHelpPrompt(templates.help, {
+      const helpTemplate = `${templates.agent}\n\n${templates.help}`;
+      const renderedPrompt = renderHelpPrompt(helpTemplate, {
         cliVersion: options.cliVersion,
         workingDirectory: cwd,
         commandIndex: buildCommandIndex(),

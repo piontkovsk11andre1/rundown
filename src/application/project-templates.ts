@@ -1,4 +1,5 @@
 import {
+  DEFAULT_AGENT_TEMPLATE,
   DEFAULT_DISCUSS_TEMPLATE,
   DEFAULT_DISCUSS_FINISHED_TEMPLATE,
   DEFAULT_HELP_TEMPLATE,
@@ -26,6 +27,7 @@ import type {
  * project-provided override or the corresponding built-in default template.
  */
 export interface ProjectTemplates {
+  agent: string;
   task: string;
   help: string;
   discuss: string;
@@ -55,6 +57,7 @@ export function loadProjectTemplatesFromPorts(
   // Use only built-in defaults when no project config directory is available.
   if (!configDir) {
     return {
+      agent: DEFAULT_AGENT_TEMPLATE,
       task: DEFAULT_TASK_TEMPLATE,
       help: DEFAULT_HELP_TEMPLATE,
       discuss: DEFAULT_DISCUSS_TEMPLATE,
@@ -75,6 +78,7 @@ export function loadProjectTemplatesFromPorts(
   const dir = configDir.configDir;
   return {
     // Prefer project overrides, then fall back to bundled default templates.
+    agent: templateLoader.load(pathOperations.join(dir, "agent.md")) ?? DEFAULT_AGENT_TEMPLATE,
     task: templateLoader.load(pathOperations.join(dir, "execute.md")) ?? DEFAULT_TASK_TEMPLATE,
     help: templateLoader.load(pathOperations.join(dir, "help.md")) ?? DEFAULT_HELP_TEMPLATE,
     discuss: templateLoader.load(pathOperations.join(dir, "discuss.md")) ?? DEFAULT_DISCUSS_TEMPLATE,

@@ -16,6 +16,8 @@ import {
   DEFAULT_REPAIR_TEMPLATE,
   DEFAULT_TASK_TEMPLATE,
   DEFAULT_TEST_VERIFY_TEMPLATE,
+  DEFAULT_TEST_FUTURE_TEMPLATE,
+  DEFAULT_TEST_MATERIALIZED_TEMPLATE,
   DEFAULT_TRACE_TEMPLATE,
   DEFAULT_UNDO_TEMPLATE,
   DEFAULT_VERIFY_TEMPLATE,
@@ -69,6 +71,8 @@ describe("loadProjectTemplates", () => {
     expect(templates.trace).toBe(DEFAULT_TRACE_TEMPLATE);
     expect(templates.undo).toBe(DEFAULT_UNDO_TEMPLATE);
     expect(templates.testVerify).toBe(DEFAULT_TEST_VERIFY_TEMPLATE);
+    expect(templates.testFuture).toBe(DEFAULT_TEST_FUTURE_TEMPLATE);
+    expect(templates.testMaterialized).toBe(DEFAULT_TEST_MATERIALIZED_TEMPLATE);
     expect(templates.migrate).toBe(DEFAULT_MIGRATE_TEMPLATE);
     expect(templates.migrateContext).toBe(DEFAULT_MIGRATE_CONTEXT_TEMPLATE);
     expect(templates.migrateSnapshot).toBe(DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE);
@@ -92,6 +96,8 @@ describe("loadProjectTemplates", () => {
     expect(templates.trace).toBe(DEFAULT_TRACE_TEMPLATE);
     expect(templates.undo).toBe(DEFAULT_UNDO_TEMPLATE);
     expect(templates.testVerify).toBe(DEFAULT_TEST_VERIFY_TEMPLATE);
+    expect(templates.testFuture).toBe(DEFAULT_TEST_FUTURE_TEMPLATE);
+    expect(templates.testMaterialized).toBe(DEFAULT_TEST_MATERIALIZED_TEMPLATE);
     expect(templates.migrate).toBe(DEFAULT_MIGRATE_TEMPLATE);
     expect(templates.migrateContext).toBe(DEFAULT_MIGRATE_CONTEXT_TEMPLATE);
     expect(templates.migrateSnapshot).toBe(DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE);
@@ -119,6 +125,8 @@ describe("loadProjectTemplates", () => {
     expect(templates.trace).toBe(DEFAULT_TRACE_TEMPLATE);
     expect(templates.undo).toBe(DEFAULT_UNDO_TEMPLATE);
     expect(templates.testVerify).toBe(DEFAULT_TEST_VERIFY_TEMPLATE);
+    expect(templates.testFuture).toBe(DEFAULT_TEST_FUTURE_TEMPLATE);
+    expect(templates.testMaterialized).toBe(DEFAULT_TEST_MATERIALIZED_TEMPLATE);
     expect(templates.migrate).toBe(DEFAULT_MIGRATE_TEMPLATE);
     expect(templates.migrateContext).toBe(DEFAULT_MIGRATE_CONTEXT_TEMPLATE);
     expect(templates.migrateSnapshot).toBe(DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE);
@@ -127,16 +135,20 @@ describe("loadProjectTemplates", () => {
     expect(templates.migrateUx).toBe(DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE);
   });
 
-  it("loads undo.md and test-verify.md when present", () => {
+  it("loads undo.md, test-verify.md, and test mode templates when present", () => {
     const cwd = makeTempDir();
     const configDir = path.join(cwd, CONFIG_DIR_NAME);
     writeTemplate(configDir, "undo.md", "UNDO");
     writeTemplate(configDir, "test-verify.md", "TEST VERIFY");
+    writeTemplate(configDir, "test-future.md", "TEST FUTURE");
+    writeTemplate(configDir, "test-materialized.md", "TEST MATERIALIZED");
 
     const templates = loadProjectTemplates(configDir);
 
     expect(templates.undo).toBe("UNDO");
     expect(templates.testVerify).toBe("TEST VERIFY");
+    expect(templates.testFuture).toBe("TEST FUTURE");
+    expect(templates.testMaterialized).toBe("TEST MATERIALIZED");
   });
 
   it("loads trace.md when present", () => {

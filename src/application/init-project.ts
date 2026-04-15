@@ -1,4 +1,5 @@
 import {
+  DEFAULT_AGENT_TEMPLATE,
   DEFAULT_CONFIG_CONTENT,
   DEFAULT_DISCUSS_FINISHED_TEMPLATE,
   DEFAULT_MIGRATE_BACKLOG_TEMPLATE,
@@ -13,6 +14,8 @@ import {
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_TASK_TEMPLATE,
   DEFAULT_TEST_VERIFY_TEMPLATE,
+  DEFAULT_TEST_FUTURE_TEMPLATE,
+  DEFAULT_TEST_MATERIALIZED_TEMPLATE,
   DEFAULT_UNDO_TEMPLATE,
   DEFAULT_VERIFY_TEMPLATE,
   DEFAULT_VARS_FILE_CONTENT,
@@ -123,6 +126,7 @@ export function createInitProject(
     };
 
     // Seed default workflow templates and project configuration files.
+    write("agent.md", DEFAULT_AGENT_TEMPLATE);
     write("execute.md", DEFAULT_TASK_TEMPLATE);
     write("discuss-finished.md", DEFAULT_DISCUSS_FINISHED_TEMPLATE);
     write("verify.md", DEFAULT_VERIFY_TEMPLATE);
@@ -132,6 +136,8 @@ export function createInitProject(
     write("trace.md", DEFAULT_TRACE_TEMPLATE);
     write("undo.md", DEFAULT_UNDO_TEMPLATE);
     write("test-verify.md", DEFAULT_TEST_VERIFY_TEMPLATE);
+    write("test-future.md", DEFAULT_TEST_FUTURE_TEMPLATE);
+    write("test-materialized.md", DEFAULT_TEST_MATERIALIZED_TEMPLATE);
     write("migrate.md", DEFAULT_MIGRATE_TEMPLATE);
     write("migrate-context.md", DEFAULT_MIGRATE_CONTEXT_TEMPLATE);
     write("migrate-snapshot.md", DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE);

@@ -43,9 +43,10 @@ The double-dash split distinguishes sequential migration steps from generated sa
 
 Predicted-state test semantics:
 
-- `rundown test` evaluates whether an assertion is true in the predicted plan state built from migration context.
-- It does not execute implementation tests against runtime code.
-- This keeps test signals aligned with planning/migration intent before implementation is fully applied.
+- `rundown test` defaults to materialized-mode assertions against the workspace state.
+- `rundown test --future` evaluates assertions in predicted state using design + migrations.
+- `rundown test --future <n>` targets prediction at migration `n` using previous snapshot + migrations up to `n`.
+- This keeps test signals aligned with either implementation verification (materialized mode) or planning intent validation (future mode).
 
 ## Output boundary
 

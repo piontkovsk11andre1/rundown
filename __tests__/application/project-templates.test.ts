@@ -1,6 +1,7 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
+  DEFAULT_AGENT_TEMPLATE,
   DEFAULT_DISCUSS_TEMPLATE,
   DEFAULT_DISCUSS_FINISHED_TEMPLATE,
   DEFAULT_HELP_TEMPLATE,
@@ -24,6 +25,7 @@ describe("project-templates", () => {
     const templates = loadProjectTemplatesFromPorts(undefined, templateLoader, path);
 
     expect(templates).toEqual({
+      agent: DEFAULT_AGENT_TEMPLATE,
       task: DEFAULT_TASK_TEMPLATE,
       help: DEFAULT_HELP_TEMPLATE,
       discuss: DEFAULT_DISCUSS_TEMPLATE,
@@ -65,6 +67,7 @@ describe("project-templates", () => {
     );
 
     expect(templates).toEqual({
+      agent: DEFAULT_AGENT_TEMPLATE,
       task: "TASK",
       help: DEFAULT_HELP_TEMPLATE,
       discuss: DEFAULT_DISCUSS_TEMPLATE,
@@ -80,6 +83,7 @@ describe("project-templates", () => {
       queryAggregate: DEFAULT_QUERY_AGGREGATION_TEMPLATE,
     });
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "execute.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "agent.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "help.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "research.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "resolve.md"));
@@ -160,5 +164,26 @@ describe("project-templates", () => {
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-execute.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-aggregate.md"));
+  });
+
+  it("loads agent warmup template override from agent.md", () => {
+    const configDir = "/workspace/.rundown";
+    const templateLoader: TemplateLoader = {
+      load: vi.fn((filePath: string) => {
+        if (filePath.endsWith("agent.md")) {
+          return "AGENT";
+        }
+        return null;
+      }),
+    };
+
+    const templates = loadProjectTemplatesFromPorts(
+      { configDir, isExplicit: false },
+      templateLoader,
+      path,
+    );
+
+    expect(templates.agent).toBe("AGENT");
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "agent.md"));
   });
 });

@@ -649,18 +649,6 @@ export function createResearchTask(
         }
 
         const updatedDocument = runResult.stdout;
-        try {
-          dependencies.fileSystem.writeText(source, updatedDocument);
-        } catch {
-          const message = "Research produced output, but failed to update Markdown document: " + source;
-          emit({
-            kind: "error",
-            message,
-          });
-          emitResearchGroupFailure(message);
-          return finishResearch(EXIT_CODE_FAILURE, "execution-failed");
-        }
-
         if (hasCheckboxStateMutation(sourceDocument, updatedDocument)) {
           const violationMessage = "Research changed checkbox state in "
             + source
@@ -677,6 +665,25 @@ export function createResearchTask(
             message: "Research update rejected due to constraint violation.",
           });
           emitResearchGroupFailure(violationMessage);
+          return finishResearch(EXIT_CODE_FAILURE, "execution-failed");
+        }
+
+        const outputContractViolation = detectResearchOutputContractViolation(sourceDocument, updatedDocument);
+        if (outputContractViolation) {
+          emit({ kind: "error", message: outputContractViolation });
+          emitResearchGroupFailure(outputContractViolation);
+          return finishResearch(EXIT_CODE_FAILURE, "execution-failed");
+        }
+
+        try {
+          dependencies.fileSystem.writeText(source, updatedDocument);
+        } catch {
+          const message = "Research produced output, but failed to update Markdown document: " + source;
+          emit({
+            kind: "error",
+            message,
+          });
+          emitResearchGroupFailure(message);
           return finishResearch(EXIT_CODE_FAILURE, "execution-failed");
         }
 
@@ -797,6 +804,52 @@ function hasCheckboxStateMutation(beforeSource: string, afterSource: string): bo
   }
 
   return false;
+}
+
+/**
+ * Detects output contract violations for research worker results.
+ */
+function detectResearchOutputContractViolation(
+  beforeSource: string,
+  afterSource: string,
+): string | null {
+  if (afterSource.trim().length === 0) {
+    return "Research output was empty. Research must return the full updated Markdown document based on the original input.";
+  }
+
+  if (!preservesOriginalDocumentContent(beforeSource, afterSource)) {
+    return "Research output did not preserve the original document content. Research must return the full updated Markdown document based on the original input.";
+  }
+
+  return null;
+}
+
+/**
+ * Ensures each meaningful source line is still present in the worker output.
+ */
+function preservesOriginalDocumentContent(beforeSource: string, afterSource: string): boolean {
+  const requiredLines = beforeSource
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => line.replace(/\s+/g, " "));
+
+  if (requiredLines.length === 0) {
+    return true;
+  }
+
+  const outputText = afterSource.replace(/\s+/g, " ");
+  let searchFrom = 0;
+
+  for (const requiredLine of requiredLines) {
+    const foundAt = outputText.indexOf(requiredLine, searchFrom);
+    if (foundAt === -1) {
+      return false;
+    }
+    searchFrom = foundAt + requiredLine.length;
+  }
+
+  return true;
 }
 
 export function stripIntroducedUncheckedTodos(

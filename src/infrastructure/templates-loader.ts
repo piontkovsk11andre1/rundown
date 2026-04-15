@@ -16,6 +16,8 @@ import {
   DEFAULT_MIGRATE_TEMPLATE,
   DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE,
   DEFAULT_TEST_VERIFY_TEMPLATE,
+  DEFAULT_TEST_FUTURE_TEMPLATE,
+  DEFAULT_TEST_MATERIALIZED_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
   DEFAULT_TRACE_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
@@ -46,6 +48,10 @@ export interface ProjectTemplates {
   undo: string;
   // Template used by the test verification command.
   testVerify: string;
+  // Template used by the test command in prediction/future mode.
+  testFuture: string;
+  // Template used by the test command in materialized mode.
+  testMaterialized: string;
   // Template used to propose the next migration.
   migrate: string;
   // Template used to generate incremental migration context.
@@ -79,6 +85,8 @@ export interface ProjectTemplates {
  * - `.rundown/trace.md`
  * - `.rundown/undo.md`
  * - `.rundown/test-verify.md`
+ * - `.rundown/test-future.md`
+ * - `.rundown/test-materialized.md`
  * - `.rundown/migrate.md`
  * - `.rundown/migrate-context.md`
  * - `.rundown/migrate-snapshot.md`
@@ -103,6 +111,8 @@ export function loadProjectTemplates(configDir?: string): ProjectTemplates {
       trace: DEFAULT_TRACE_TEMPLATE,
       undo: DEFAULT_UNDO_TEMPLATE,
       testVerify: DEFAULT_TEST_VERIFY_TEMPLATE,
+      testFuture: DEFAULT_TEST_FUTURE_TEMPLATE,
+      testMaterialized: DEFAULT_TEST_MATERIALIZED_TEMPLATE,
       migrate: DEFAULT_MIGRATE_TEMPLATE,
       migrateContext: DEFAULT_MIGRATE_CONTEXT_TEMPLATE,
       migrateSnapshot: DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
@@ -127,6 +137,10 @@ export function loadProjectTemplates(configDir?: string): ProjectTemplates {
     undo: loadFile(path.join(configDir, "undo.md")) ?? DEFAULT_UNDO_TEMPLATE,
     testVerify:
       loadFile(path.join(configDir, "test-verify.md")) ?? DEFAULT_TEST_VERIFY_TEMPLATE,
+    testFuture:
+      loadFile(path.join(configDir, "test-future.md")) ?? DEFAULT_TEST_FUTURE_TEMPLATE,
+    testMaterialized:
+      loadFile(path.join(configDir, "test-materialized.md")) ?? DEFAULT_TEST_MATERIALIZED_TEMPLATE,
     migrate: loadFile(path.join(configDir, "migrate.md")) ?? DEFAULT_MIGRATE_TEMPLATE,
     migrateContext:
       loadFile(path.join(configDir, "migrate-context.md")) ??

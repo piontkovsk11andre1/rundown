@@ -319,33 +319,44 @@ function classifyTodoLinesOutsideFences(lines: string[]): { proseLines: string[]
 }
 
 /**
- * Collects all TODO checkbox lines and groups them at the end of the document.
+ * Relocates planner-added TODO checkbox lines to the best tail location.
  *
- * In rundown, each task only sees document content above it. When TODO items
- * are scattered throughout the document between prose paragraphs, earlier
- * tasks lose visibility of the prose below them. This function extracts all
- * TODO checkbox lines from the document, removes them from their inline
- * positions, and appends the whole group at the end — preserving the
- * original relative order of all items.
+ * Existing TODO lines must keep their current positions. Only newly inserted
+ * TODO lines are moved:
+ * - If the document already ends with a TODO list block, append new items to it.
+ * - Otherwise, append new items at the very end of the document.
  */
-export function relocateInsertedTodosToEnd(_beforeSource: string, afterSource: string): string {
+export function relocateInsertedTodosToEnd(beforeSource: string, afterSource: string): string {
   const eol = afterSource.includes("\r\n") ? "\r\n" : "\n";
+  const beforeLines = beforeSource.split(/\r?\n/);
   const afterLines = afterSource.split(/\r?\n/);
 
-  const { proseLines, todoLines, todoIndices } = classifyTodoLinesOutsideFences(afterLines);
+  const { todoLines: beforeTodoLines } = classifyTodoLinesOutsideFences(beforeLines);
+  const { todoLines: afterTodoLines } = classifyTodoLinesOutsideFences(afterLines);
 
-  // Nothing to relocate if there are no TODOs or they were already all at the end.
-  if (todoLines.length === 0) {
+  const beforeCounts = toCountMap(beforeTodoLines.map((line) => normalizeTodoCheckboxLine(line)));
+  const addedTodoLines: string[] = [];
+
+  for (const line of afterTodoLines) {
+    const normalized = normalizeTodoCheckboxLine(line);
+    const beforeCount = beforeCounts.get(normalized) ?? 0;
+    if (beforeCount > 0) {
+      beforeCounts.set(normalized, beforeCount - 1);
+      continue;
+    }
+
+    addedTodoLines.push(line);
+  }
+
+  if (addedTodoLines.length === 0) {
     return afterSource;
   }
 
-  // Check whether TODOs are already grouped at the end (no prose after the first TODO).
-  const firstTodoIndex = todoIndices[0] ?? -1;
-  // If all lines from the first TODO onward are either TODOs or blank, nothing to move.
-  let alreadyGrouped = true;
+  const removableCounts = toCountMap(addedTodoLines.map((line) => normalizeTodoCheckboxLine(line)));
+  const linesWithoutAddedTodos: string[] = [];
   let openFence: { char: "`" | "~"; length: number } | null = null;
-  for (let i = firstTodoIndex; i < afterLines.length; i += 1) {
-    const line = afterLines[i]!;
+  for (let i = 0; i < afterLines.length; i += 1) {
+    const line = afterLines[i] ?? "";
 
     const fenceMatch = line.match(FENCE_PATTERN);
     if (fenceMatch) {
@@ -357,28 +368,42 @@ export function relocateInsertedTodosToEnd(_beforeSource: string, afterSource: s
       } else if (openFence.char === char && length >= openFence.length) {
         openFence = null;
       }
+      linesWithoutAddedTodos.push(line);
       continue;
     }
 
     if (openFence !== null) {
+      linesWithoutAddedTodos.push(line);
       continue;
     }
 
-    if (!CHECKBOX_PATTERN.test(line) && line.trim() !== "") {
-      alreadyGrouped = false;
-      break;
+    if (!CHECKBOX_PATTERN.test(line)) {
+      linesWithoutAddedTodos.push(line);
+      continue;
     }
-  }
-  if (alreadyGrouped) {
-    return afterSource;
+
+    const normalized = normalizeTodoCheckboxLine(line);
+    const removableCount = removableCounts.get(normalized) ?? 0;
+    if (removableCount > 0) {
+      removableCounts.set(normalized, removableCount - 1);
+      continue;
+    }
+
+    linesWithoutAddedTodos.push(line);
   }
 
-  // Trim trailing empty lines from prose before appending TODO group.
-  while (proseLines.length > 0 && proseLines[proseLines.length - 1]!.trim() === "") {
-    proseLines.pop();
+  while (linesWithoutAddedTodos.length > 0 && linesWithoutAddedTodos[linesWithoutAddedTodos.length - 1]!.trim() === "") {
+    linesWithoutAddedTodos.pop();
   }
 
-  const result = [...proseLines, "", ...todoLines];
+  const hasTrailingTodoGroup = endsWithTodoBlockOutsideFences(linesWithoutAddedTodos);
+
+  const result = [...linesWithoutAddedTodos];
+  if (!hasTrailingTodoGroup && result.length > 0) {
+    result.push("");
+  }
+
+  result.push(...addedTodoLines);
 
   // Restore a single final newline if the original ended with one.
   const endsWithNewline = afterSource.endsWith("\n") || afterSource.endsWith("\r\n");
@@ -387,4 +412,41 @@ export function relocateInsertedTodosToEnd(_beforeSource: string, afterSource: s
   }
 
   return result.join(eol);
+}
+
+function endsWithTodoBlockOutsideFences(lines: string[]): boolean {
+  let openFence: { char: "`" | "~"; length: number } | null = null;
+  let lastMeaningfulIsTodo = false;
+
+  for (const line of lines) {
+    const fenceMatch = line.match(FENCE_PATTERN);
+    if (fenceMatch) {
+      const marker = fenceMatch[1] ?? "";
+      const char = marker[0] as "`" | "~";
+      const length = marker.length;
+      if (openFence === null) {
+        openFence = { char, length };
+      } else if (openFence.char === char && length >= openFence.length) {
+        openFence = null;
+      }
+
+      if (line.trim() !== "") {
+        lastMeaningfulIsTodo = false;
+      }
+      continue;
+    }
+
+    if (line.trim() === "") {
+      continue;
+    }
+
+    if (openFence !== null) {
+      lastMeaningfulIsTodo = false;
+      continue;
+    }
+
+    lastMeaningfulIsTodo = CHECKBOX_PATTERN.test(line);
+  }
+
+  return lastMeaningfulIsTodo;
 }

@@ -31,6 +31,12 @@ interface TestRunResult {
 }
 
 interface TestContext {
+  mode: "materialized" | "future";
+  includedDirectories: string;
+  includedDirectoriesJson: string;
+  excludedDirectories: string;
+  excludedDirectoriesJson: string;
+  futureTarget: string;
   design: string;
   designContextSourceReferences: string;
   designContextSourceReferencesJson: string;
@@ -39,6 +45,17 @@ interface TestContext {
   latestSnapshot: string;
   migrationHistory: string;
   lowContextGuidance: string;
+}
+
+interface PredictionDirectoryContext {
+  designPath: string;
+  specsPath: string;
+  migrationsPath: string;
+}
+
+interface SatelliteAtMigration {
+  migrationNumber: number;
+  filePath: string;
 }
 
 export interface TestSpecsDependencies {
@@ -53,6 +70,7 @@ export interface TestSpecsOptions {
   prompt?: string;
   run?: boolean;
   dir?: string;
+  future?: true | number;
   workerPattern: ParsedWorkerPattern;
   showAgentOutput?: boolean;
 }
@@ -82,6 +100,13 @@ export function createTestSpecs(
       directories: workspaceDirectories,
       placement: workspacePlacement,
     });
+    const predictionDirectoryContext = resolvePredictionDirectoryContext(
+      dependencies.fileSystem,
+      workspaceRoot,
+      invocationDir,
+      workspaceDirectories,
+      workspacePlacement,
+    );
 
     if (options.action === "new") {
       const assertion = (options.prompt ?? "").trim();
@@ -107,6 +132,8 @@ export function createTestSpecs(
       return runSpecFiles([createdSpecPath], {
         cwd: workspaceRoot,
         invocationRoot: invocationDir,
+        future: options.future,
+        predictionDirectoryContext,
         workerPattern: options.workerPattern,
         showAgentOutput: options.showAgentOutput,
       });
@@ -134,6 +161,8 @@ export function createTestSpecs(
     return runSpecFiles(specFiles, {
       cwd: workspaceRoot,
       invocationRoot: invocationDir,
+      future: options.future,
+      predictionDirectoryContext,
       workerPattern: options.workerPattern,
       showAgentOutput: options.showAgentOutput,
     });
@@ -144,15 +173,22 @@ export function createTestSpecs(
     options: {
       cwd: string;
       invocationRoot: string;
+      future: true | number | undefined;
+      predictionDirectoryContext: PredictionDirectoryContext;
       workerPattern: ParsedWorkerPattern;
       showAgentOutput?: boolean;
     },
   ): Promise<number> {
-    const { cwd, invocationRoot, workerPattern, showAgentOutput } = options;
+    const { cwd, invocationRoot, future, predictionDirectoryContext, workerPattern, showAgentOutput } = options;
 
-    const templatePath = path.join(cwd, ".rundown", "test-verify.md");
-    const verifyTemplate = dependencies.templateLoader.load(templatePath) ?? DEFAULT_TEST_VERIFY_TEMPLATE;
-    const testContext = buildTestContext(dependencies.fileSystem, cwd, invocationRoot);
+    const verifyTemplate = loadTestVerifyTemplate(dependencies.templateLoader, cwd, future !== undefined);
+    const testContext = buildTestContext(
+      dependencies.fileSystem,
+      cwd,
+      invocationRoot,
+      predictionDirectoryContext,
+      future,
+    );
     if (testContext.lowContextGuidance.length > 0) {
       emit({ kind: "warn", message: testContext.lowContextGuidance });
     }
@@ -170,6 +206,12 @@ export function createTestSpecs(
         taskLine: 1,
         source: assertion,
         assertion,
+        testMode: testContext.mode,
+        futureTarget: testContext.futureTarget,
+        includedDirectories: testContext.includedDirectories,
+        includedDirectoriesJson: testContext.includedDirectoriesJson,
+        excludedDirectories: testContext.excludedDirectories,
+        excludedDirectoriesJson: testContext.excludedDirectoriesJson,
         design: testContext.design,
         designContextSourceReferences: testContext.designContextSourceReferences,
         designContextSourceReferencesJson: testContext.designContextSourceReferencesJson,
@@ -185,6 +227,12 @@ export function createTestSpecs(
         prompt,
         mode: "wait",
         cwd,
+        env: {
+          RUNDOWN_TEST_MODE: testContext.mode,
+          RUNDOWN_TEST_FUTURE_TARGET: testContext.futureTarget,
+          RUNDOWN_TEST_INCLUDED_DIRECTORIES: testContext.includedDirectoriesJson,
+          RUNDOWN_TEST_EXCLUDED_DIRECTORIES: testContext.excludedDirectoriesJson,
+        },
       });
 
       if (showAgentOutput) {
@@ -286,7 +334,34 @@ function stripBackticks(value: string): string {
     : value;
 }
 
-function buildTestContext(fileSystem: FileSystem, projectRoot: string, invocationRoot: string): TestContext {
+function buildTestContext(
+  fileSystem: FileSystem,
+  projectRoot: string,
+  invocationRoot: string,
+  predictionDirectoryContext: PredictionDirectoryContext,
+  future: true | number | undefined,
+): TestContext {
+  const includeExclude = buildIncludedAndExcludedDirectories(projectRoot, predictionDirectoryContext, future);
+
+  if (future === undefined) {
+    return {
+      mode: "materialized",
+      includedDirectories: includeExclude.included,
+      includedDirectoriesJson: JSON.stringify(includeExclude.includedList),
+      excludedDirectories: includeExclude.excluded,
+      excludedDirectoriesJson: JSON.stringify(includeExclude.excludedList),
+      futureTarget: "",
+      design: "",
+      designContextSourceReferences: "",
+      designContextSourceReferencesJson: "[]",
+      designContextHasManagedDocs: "false",
+      latestContext: "",
+      latestSnapshot: "",
+      migrationHistory: "",
+      lowContextGuidance: "",
+    };
+  }
+
   const workspaceDirectories = resolvePredictionWorkspaceDirectories({
     fileSystem,
     workspaceRoot: projectRoot,
@@ -305,7 +380,7 @@ function buildTestContext(fileSystem: FileSystem, projectRoot: string, invocatio
   });
 
   const state = readMigrationState(fileSystem, migrationsDir);
-  const latestSnapshot = getLatestSatellitePath(state, "snapshot");
+  const futureScope = selectFutureScope(state, future);
   const designContext = resolveDesignContext(fileSystem, projectRoot, { invocationRoot });
   const designContextSources = resolveDesignContextSourceReferences(fileSystem, projectRoot, { invocationRoot });
   const designContextSourceReferences = designContextSources.sourceReferences
@@ -313,14 +388,147 @@ function buildTestContext(fileSystem: FileSystem, projectRoot: string, invocatio
     .join("\n");
 
   return {
+    mode: "future",
+    includedDirectories: includeExclude.included,
+    includedDirectoriesJson: JSON.stringify(includeExclude.includedList),
+    excludedDirectories: includeExclude.excluded,
+    excludedDirectoriesJson: JSON.stringify(includeExclude.excludedList),
+    futureTarget: futureScope.targetLabel,
     design: designContext.design,
     designContextSourceReferences,
     designContextSourceReferencesJson: JSON.stringify(designContextSources.sourceReferences),
     designContextHasManagedDocs: designContextSources.hasManagedDocs ? "true" : "false",
-    latestContext: state.latestContext ? fileSystem.readText(state.latestContext.filePath) : "",
-    latestSnapshot: latestSnapshot ? fileSystem.readText(latestSnapshot) : "",
-    migrationHistory: state.migrations.map((migration) => "- " + path.basename(migration.filePath)).join("\n"),
+    latestContext: futureScope.latestContextPath ? fileSystem.readText(futureScope.latestContextPath) : "",
+    latestSnapshot: futureScope.snapshotPath ? fileSystem.readText(futureScope.snapshotPath) : "",
+    migrationHistory: futureScope.migrationPaths.map((migrationPath) => "- " + path.basename(migrationPath)).join("\n"),
     lowContextGuidance: designContext.isLowContext ? designContext.lowContextGuidance : "",
+  };
+}
+
+function loadTestVerifyTemplate(
+  templateLoader: TemplateLoader,
+  projectRoot: string,
+  useFutureTemplate: boolean,
+): string {
+  const configDir = path.join(projectRoot, ".rundown");
+  if (useFutureTemplate) {
+    return templateLoader.load(path.join(configDir, "test-future.md"))
+      ?? templateLoader.load(path.join(configDir, "test-verify.md"))
+      ?? DEFAULT_TEST_VERIFY_TEMPLATE;
+  }
+
+  return templateLoader.load(path.join(configDir, "test-materialized.md"))
+    ?? templateLoader.load(path.join(configDir, "test-verify.md"))
+    ?? DEFAULT_TEST_VERIFY_TEMPLATE;
+}
+
+function resolvePredictionDirectoryContext(
+  fileSystem: FileSystem,
+  workspaceRoot: string,
+  invocationRoot: string,
+  workspaceDirectories: ReturnType<typeof resolvePredictionWorkspaceDirectories>,
+  workspacePlacement: ReturnType<typeof resolvePredictionWorkspacePlacement>,
+): PredictionDirectoryContext {
+  return {
+    designPath: resolvePredictionWorkspacePath({
+      fileSystem,
+      workspaceRoot,
+      invocationRoot,
+      bucket: "design",
+      directories: workspaceDirectories,
+      placement: workspacePlacement,
+    }),
+    specsPath: resolvePredictionWorkspacePath({
+      fileSystem,
+      workspaceRoot,
+      invocationRoot,
+      bucket: "specs",
+      directories: workspaceDirectories,
+      placement: workspacePlacement,
+    }),
+    migrationsPath: resolvePredictionWorkspacePath({
+      fileSystem,
+      workspaceRoot,
+      invocationRoot,
+      bucket: "migrations",
+      directories: workspaceDirectories,
+      placement: workspacePlacement,
+    }),
+  };
+}
+
+function buildIncludedAndExcludedDirectories(
+  projectRoot: string,
+  predictionDirectoryContext: PredictionDirectoryContext,
+  future: true | number | undefined,
+): {
+  included: string;
+  includedList: string[];
+  excluded: string;
+  excludedList: string[];
+} {
+  if (future === undefined) {
+    const excludedList = [
+      predictionDirectoryContext.designPath,
+      predictionDirectoryContext.specsPath,
+      predictionDirectoryContext.migrationsPath,
+    ];
+    return {
+      included: projectRoot,
+      includedList: [projectRoot],
+      excluded: excludedList.join("\n"),
+      excludedList,
+    };
+  }
+
+  const includedList = [
+    predictionDirectoryContext.designPath,
+    predictionDirectoryContext.migrationsPath,
+  ];
+  return {
+    included: includedList.join("\n"),
+    includedList,
+    excluded: predictionDirectoryContext.specsPath,
+    excludedList: [predictionDirectoryContext.specsPath],
+  };
+}
+
+function selectFutureScope(
+  state: MigrationState,
+  future: true | number,
+): {
+  targetLabel: string;
+  snapshotPath: string | null;
+  latestContextPath: string | null;
+  migrationPaths: string[];
+} {
+  const maxMigrationNumber = state.migrations.length > 0
+    ? state.migrations[state.migrations.length - 1]!.number
+    : 0;
+  const requestedTarget = typeof future === "number" ? future : maxMigrationNumber;
+  const targetNumber = Math.max(0, Math.min(requestedTarget, maxMigrationNumber));
+
+  const targetLabel = typeof future === "number"
+    ? String(targetNumber)
+    : (targetNumber > 0 ? String(targetNumber) : "latest");
+
+  const snapshotLookupCeiling = typeof future === "number"
+    ? Math.max(0, targetNumber - 1)
+    : targetNumber;
+  const snapshotPath = getLatestSatellitePathAtOrBefore(state, "snapshot", snapshotLookupCeiling);
+  const snapshotMigrationNumber = getMigrationNumberBySatellitePath(state, snapshotPath);
+
+  const migrationPaths = state.migrations
+    .filter((migration) => migration.number > snapshotMigrationNumber && migration.number <= targetNumber)
+    .map((migration) => migration.filePath);
+
+  const latestContextPath = getLatestSatellitePathAtOrBefore(state, "context", targetNumber);
+
+  return {
+    targetLabel,
+    snapshotPath,
+    latestContextPath,
+    migrationPaths,
   };
 }
 
@@ -344,22 +552,53 @@ function isMigrationLikeMarkdown(fileName: string): boolean {
   return parseMigrationFilename(fileName) !== null;
 }
 
-function getLatestSatellitePath(
+function getLatestSatellitePathAtOrBefore(
   state: MigrationState,
   type: SatelliteType,
+  maxMigrationNumber: number,
 ): string | null {
+  const latest = getLatestSatelliteAtOrBefore(state, type, maxMigrationNumber);
+  return latest ? latest.filePath : null;
+}
+
+function getLatestSatelliteAtOrBefore(
+  state: MigrationState,
+  type: SatelliteType,
+  maxMigrationNumber: number,
+): SatelliteAtMigration | null {
   for (let index = state.migrations.length - 1; index >= 0; index -= 1) {
     const migration = state.migrations[index];
     if (!migration) {
       continue;
     }
 
+    if (migration.number > maxMigrationNumber) {
+      continue;
+    }
+
     for (const satellite of migration.satellites) {
       if (satellite.type === type) {
-        return satellite.filePath;
+        return {
+          migrationNumber: migration.number,
+          filePath: satellite.filePath,
+        };
       }
     }
   }
 
   return null;
+}
+
+function getMigrationNumberBySatellitePath(state: MigrationState, satellitePath: string | null): number {
+  if (!satellitePath) {
+    return 0;
+  }
+
+  for (const migration of state.migrations) {
+    if (migration.satellites.some((satellite) => satellite.filePath === satellitePath)) {
+      return migration.number;
+    }
+  }
+
+  return 0;
 }

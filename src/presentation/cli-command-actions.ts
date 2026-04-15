@@ -220,6 +220,7 @@ interface RunActionDependencies extends WorkerActionDependencies {
 }
 
 type CallActionDependencies = RunActionDependencies;
+type MaterializeActionDependencies = RunActionDependencies;
 
 interface LoopActionDependencies extends WorkerActionDependencies {
   runnerModes: readonly ProcessRunMode[];
@@ -296,6 +297,7 @@ interface TestCommandOptions {
   prompt?: string;
   run: boolean;
   dir?: string;
+  future?: true | number;
   workerPattern: ParsedWorkerPattern;
   showAgentOutput: boolean;
 }
@@ -471,6 +473,50 @@ export function createCallCommandAction({
     all: true,
     clean: true,
     cacheCliBlocks: true,
+  });
+}
+
+/**
+ * Creates the `materialize` command action handler.
+ *
+ * The returned action mirrors `run` options while forcing full-run and
+ * revertable semantics (`run --all --revertable`).
+ */
+export function createMaterializeCommandAction({
+  getApp,
+  getWorkerFromSeparator,
+  runnerModes,
+  getInvocationArgv,
+}: MaterializeActionDependencies): (source: string, opts: CliOpts) => CliActionResult {
+  const getMaterializeInvocationArgv = () => {
+    const invocationArgv = resolveInvocationArgv(getInvocationArgv);
+    if (hasCliOption(invocationArgv, "--revertable")) {
+      return invocationArgv;
+    }
+
+    const separatorIndex = invocationArgv.indexOf("--");
+    if (separatorIndex === -1) {
+      return [...invocationArgv, "--revertable"];
+    }
+
+    return [
+      ...invocationArgv.slice(0, separatorIndex),
+      "--revertable",
+      ...invocationArgv.slice(separatorIndex),
+    ];
+  };
+
+  const runAction = createRunCommandAction({
+    getApp,
+    getWorkerFromSeparator,
+    runnerModes,
+    getInvocationArgv: getMaterializeInvocationArgv,
+  });
+
+  return (source: string, opts: CliOpts) => runAction(source, {
+    ...opts,
+    all: true,
+    revertable: true,
   });
 }
 
@@ -1300,10 +1346,41 @@ export function createTestCommandAction({
       prompt: normalizeOptionalString(prompt),
       run: Boolean(opts.run as boolean | undefined),
       dir: normalizeOptionalString(opts.dir),
+      future: parseFutureOption(opts.future),
       workerPattern: resolveWorkerPattern(opts.worker, getWorkerFromSeparator),
       showAgentOutput: resolveShowAgentOutputOption(opts),
     });
   };
+}
+
+function parseFutureOption(value: string | string[] | boolean | undefined): true | number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === true) {
+    return true;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      return true;
+    }
+
+    if (!/^\d+$/.test(trimmed)) {
+      throw new Error(`Invalid --future value: ${trimmed}. Must be a non-negative integer.`);
+    }
+
+    const parsed = Number(trimmed);
+    if (!Number.isSafeInteger(parsed)) {
+      throw new Error(`Invalid --future value: ${trimmed}. Must be a safe non-negative integer.`);
+    }
+
+    return parsed;
+  }
+
+  throw new Error("Invalid --future value. Must be omitted or a non-negative integer.");
 }
 
 /**

@@ -17,6 +17,7 @@ import {
   createHelpCommandAction,
   createLoopCommandAction,
   createMigrateCommandAction,
+  createMaterializeCommandAction,
   createQueryCommandAction,
   createReverifyCommandAction,
   createRunCommandAction,
@@ -462,6 +463,31 @@ describe("verification exit code propagation", () => {
     });
 
     expect(exitCode).toBe(EXIT_CODE_VERIFICATION_FAILURE);
+  });
+});
+
+describe("createMaterializeCommandAction", () => {
+  it("enforces run --all --revertable semantics", async () => {
+    const runTask = vi.fn(async () => 0);
+    const app = { runTask } as unknown as CliApp;
+    const action = createMaterializeCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      runnerModes: ["wait", "tui", "detached"],
+    });
+
+    const exitCode = await action("tasks.md", {
+      worker: "opencode run",
+    });
+
+    expect(exitCode).toBe(0);
+    expect(runTask).toHaveBeenCalledTimes(1);
+    expect(runTask).toHaveBeenCalledWith(expect.objectContaining({
+      source: "tasks.md",
+      runAll: true,
+      keepArtifacts: true,
+      commitAfterComplete: true,
+    }));
   });
 });
 

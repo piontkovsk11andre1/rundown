@@ -34,6 +34,7 @@ import { getAgentsTemplate } from "../domain/agents-template.js";
 import {
   createArtifactsCommandAction,
   createCallCommandAction,
+  createMaterializeCommandAction,
   createLoopCommandAction,
   createDiscussCommandAction,
   createDoCommandAction,
@@ -186,6 +187,21 @@ const callCommand = program
 configureRunLikeCommandOptions(callCommand)
   .allowUnknownOption(false)
   .action(withCliAction(createCallCommandAction({
+    getApp,
+    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
+    runnerModes: RUNNER_MODES,
+    getInvocationArgv: () => runtimeState.invocationArgv ?? process.argv.slice(2),
+  })));
+
+const materializeCommand = program
+  .command("materialize")
+  .description("Run all tasks with revertable defaults (equivalent to `run --all --revertable`).")
+  .argument("<source>", "File, directory, or glob to scan for Markdown tasks")
+  .configureHelp({ showGlobalOptions: true });
+
+configureRunLikeCommandOptions(materializeCommand)
+  .allowUnknownOption(false)
+  .action(withCliAction(createMaterializeCommandAction({
     getApp,
     getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
     runnerModes: RUNNER_MODES,
@@ -496,6 +512,7 @@ program
   .argument("[action]", "Test action: new")
   .argument("[prompt]", "Assertion text for `test new`")
   .option("--dir <path>", "Specs directory (default: configured workspace, fallback: ./specs)")
+  .option("--future [n]", "Run prediction-mode tests using design + migrations only (optionally target migration number n)")
   .option("--run", "Immediately verify the created spec after `test new`", false)
   .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
   .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")

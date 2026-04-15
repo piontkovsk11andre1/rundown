@@ -697,7 +697,7 @@ describe("research-task", () => {
     }));
     expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenCalledWith(
       markdownFile,
-      "# Enriched\n\nDetails\n",
+      "# Roadmap\nBuild a new release process.\n\n## Enriched\n\nDetails\n",
     );
     expect(events).toContainEqual({
       kind: "info",
@@ -779,13 +779,9 @@ describe("research-task", () => {
       kind: "error",
       message: "Research update rejected due to constraint violation.",
     });
+    expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenNthCalledWith(
       1,
-      markdownFile,
-      "# Roadmap\n- [ ] Existing complete item\n",
-    );
-    expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenNthCalledWith(
-      2,
       markdownFile,
       sourceBefore,
     );
@@ -828,13 +824,9 @@ describe("research-task", () => {
       kind: "error",
       message: "Research update rejected due to constraint violation.",
     });
+    expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenNthCalledWith(
       1,
-      markdownFile,
-      "# Roadmap\nExisting complete item\n",
-    );
-    expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenNthCalledWith(
-      2,
       markdownFile,
       sourceBefore,
     );
@@ -889,6 +881,40 @@ describe("research-task", () => {
       expect.objectContaining({
         status: "completed",
         preserve: false,
+      }),
+    );
+  });
+
+  it("fails when research output does not preserve original input content", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const sourceBefore = "# Roadmap\nBuild a new release process.\n";
+    const { dependencies, events, artifactStore } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: sourceBefore,
+    });
+
+    vi.mocked(dependencies.workerExecutor.runWorker).mockResolvedValue({
+      exitCode: 0,
+      stdout: "Updated the research document body with expanded implementation context.",
+      stderr: "",
+    });
+
+    const researchTask = createResearchTask(dependencies);
+    const code = await researchTask(createOptions({ source: markdownFile }));
+
+    expect(code).toBe(1);
+    expect(events).toContainEqual({
+      kind: "error",
+      message: "Research output did not preserve the original document content. Research must return the full updated Markdown document based on the original input.",
+    });
+    expect(vi.mocked(dependencies.fileSystem.writeText)).not.toHaveBeenCalled();
+    expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: "run-research" }),
+      expect.objectContaining({
+        status: "execution-failed",
+        preserve: true,
       }),
     );
   });
@@ -1017,7 +1043,6 @@ describe("research-task", () => {
       stderr: "",
     });
     vi.mocked(dependencies.fileSystem.writeText)
-      .mockImplementationOnce(() => {})
       .mockImplementationOnce(() => {
         throw new Error("disk full");
       });
@@ -1222,7 +1247,11 @@ function createDependencies(options: {
 
   const dependencies: ResearchTaskDependencies = {
     workerExecutor: {
-      runWorker: vi.fn(async () => ({ exitCode: 0, stdout: "# Enriched\n\nDetails\n", stderr: "" })),
+      runWorker: vi.fn(async () => ({
+        exitCode: 0,
+        stdout: options.fileContent + "\n## Enriched\n\nDetails\n",
+        stderr: "",
+      })),
       executeInlineCli: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
       executeRundownTask: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
     },

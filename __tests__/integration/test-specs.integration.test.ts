@@ -130,6 +130,7 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
 
     const result = await runCli([
       "test",
+      "--future",
       "--dir",
       "specs",
       "--",
@@ -256,6 +257,7 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
 
     const result = await runCli([
       "test",
+      "--future",
       "--dir",
       "specs",
       "--",
@@ -295,6 +297,7 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
 
     const result = await runCli([
       "test",
+      "--future",
       "--dir",
       "specs",
       "--",
@@ -331,6 +334,7 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
 
     const result = await runCli([
       "test",
+      "--future",
       "--dir",
       "specs",
       "--",
@@ -365,6 +369,7 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
 
     const result = await runCli([
       "test",
+      "--future",
       "--dir",
       "specs",
       "--",
@@ -390,6 +395,52 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
       ...result.stderrWrites,
     ].join("\n"));
     expect(combinedOutput).toContain("PASS design-sources.md");
+  });
+
+  it("rundown test --future <n> uses previous snapshot plus migrations up to target", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictedState(workspace, {
+      template: "MODE={{testMode}}\nTARGET={{futureTarget}}\nSNAP={{latestSnapshot}}\nHISTORY={{migrationHistory}}",
+    });
+    fs.mkdirSync(path.join(workspace, "specs"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, "specs", "future-target.md"), "assert targeted future", "utf-8");
+
+    fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(2, "add-feature")), "# 0002 add feature\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "snapshot")), "SNAP-1\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(2, "snapshot")), "SNAP-2\n", "utf-8");
+
+    const result = await runCli([
+      "test",
+      "--future",
+      "2",
+      "--dir",
+      "specs",
+      "--",
+      "node",
+      "-e",
+      [
+        "const fs=require('node:fs');",
+        "const p=process.argv[process.argv.length-1];",
+        "const prompt=fs.readFileSync(p,'utf-8');",
+        "const hasMode=prompt.includes('MODE=future');",
+        "const hasTarget=prompt.includes('TARGET=2');",
+        "const hasSnapshotOne=prompt.includes('SNAP-1');",
+        "const hasSnapshotTwo=prompt.includes('SNAP-2');",
+        "const hasMigrationOne=prompt.includes('1. Initialize.md');",
+        "const hasMigrationTwo=prompt.includes('2. Add Feature.md');",
+        "if(hasMode&&hasTarget&&hasSnapshotOne&&!hasSnapshotTwo&&!hasMigrationOne&&hasMigrationTwo){console.log('OK');process.exit(0);}",
+        "console.log('NOT_OK: expected previous snapshot with migrations up to target');process.exit(0);",
+      ].join(""),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n"));
+    expect(combinedOutput).toContain("PASS future-target.md");
   });
 });
 

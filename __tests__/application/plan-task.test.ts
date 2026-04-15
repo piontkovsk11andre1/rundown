@@ -1268,9 +1268,9 @@ describe("plan-task", () => {
     expect(finalSource).toContain("- [ ] Add CI pipeline checks");
     expect(finalSource.indexOf("- [ ] Existing task")).toBe(finalSource.lastIndexOf("- [ ] Existing task"));
     expect(finalSource).toContain(
-      "## Next Steps\n\n## Notes\nKeep this untouched.\n\n- [ ] Existing task\n- [ ] Add CI pipeline checks\n",
+      "## Next Steps\n- [ ] Existing task\n\n## Notes\nKeep this untouched.\n\n- [ ] Add CI pipeline checks\n",
     );
-    expect(finalSource).not.toContain("## Next Steps\n- [ ] Existing task");
+    expect(finalSource).not.toContain("- [ ] Existing task\n- [ ] Add CI pipeline checks");
     expect(events.some((event) => event.kind === "info" && event.message.includes("converged at scan 2"))).toBe(true);
     expect(events.some((event) => event.kind === "success" && event.message.includes("Inserted 1 TODO item"))).toBe(true);
   });

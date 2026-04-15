@@ -10,6 +10,7 @@ Store templates in `.rundown/`:
 
 ```text
 .rundown/
+  agent.md
   help.md
   execute.md
   verify.md
@@ -25,6 +26,7 @@ Store templates in `.rundown/`:
 
 | File | Role |
 | --- | --- |
+| `.rundown/agent.md` | Warmup instructions prepended to root no-argument live help prompts |
 | `.rundown/help.md` | Instructions for no-argument live help sessions |
 | `.rundown/execute.md` | Instructions for doing the task |
 | `.rundown/verify.md` | Instructions for deciding whether the task is truly complete |

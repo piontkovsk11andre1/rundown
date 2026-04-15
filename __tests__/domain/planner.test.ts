@@ -361,33 +361,106 @@ describe("validatePlanEdit", () => {
 });
 
 describe("relocateInsertedTodosToEnd", () => {
-  it("moves checkbox TODO lines outside fenced blocks to document end", () => {
-    const source = [
+  it("appends new TODOs to an existing trailing TODO block", () => {
+    const beforeSource = [
       "# Spec",
       "",
       "Intro paragraph.",
-      "- [ ] Task A",
-      "More explanation.",
-      "- [ ] Task B",
+      "- [ ] Existing task",
+      "",
+    ].join("\n");
+    const afterSource = [
+      "# Spec",
+      "- [ ] New task",
+      "",
+      "Intro paragraph.",
+      "- [ ] Existing task",
       "",
     ].join("\n");
 
-    const result = relocateInsertedTodosToEnd(source, source);
+    const result = relocateInsertedTodosToEnd(beforeSource, afterSource);
 
     expect(result).toBe([
       "# Spec",
       "",
       "Intro paragraph.",
+      "- [ ] Existing task",
+      "- [ ] New task",
+      "",
+    ].join("\n"));
+  });
+
+  it("moves newly inserted TODOs to a trailing TODO block when prose follows insertion", () => {
+    const beforeSource = [
+      "# Spec",
+      "",
+      "Intro paragraph.",
+      "- [ ] Existing task",
+      "",
+    ].join("\n");
+    const afterSource = [
+      "# Spec",
+      "- [ ] New task",
+      "",
+      "Intro paragraph.",
+      "- [ ] Existing task",
+      "More explanation after TODOs.",
+      "",
+    ].join("\n");
+
+    const result = relocateInsertedTodosToEnd(beforeSource, afterSource);
+
+    expect(result).toBe([
+      "# Spec",
+      "",
+      "Intro paragraph.",
+      "- [ ] Existing task",
+      "More explanation after TODOs.",
+      "",
+      "- [ ] New task",
+      "",
+    ].join("\n"));
+  });
+
+  it("appends new TODOs to document end when no trailing TODO block exists", () => {
+    const beforeSource = [
+      "# Spec",
+      "",
+      "Intro paragraph.",
+      "- [ ] Existing task",
+      "",
       "More explanation.",
       "",
-      "- [ ] Task A",
-      "- [ ] Task B",
+    ].join("\n");
+    const afterSource = [
+      "# Spec",
+      "",
+      "Intro paragraph.",
+      "- [ ] Existing task",
+      "",
+      "More explanation.",
+      "",
+      "- [ ] New task",
+      "",
+    ].join("\n");
+
+    const result = relocateInsertedTodosToEnd(beforeSource, afterSource);
+
+    expect(result).toBe([
+      "# Spec",
+      "",
+      "Intro paragraph.",
+      "- [ ] Existing task",
+      "",
+      "More explanation.",
+      "",
+      "- [ ] New task",
       "",
     ].join("\n"));
   });
 
   it("does not treat checkbox-looking lines inside fenced blocks as TODOs", () => {
-    const source = [
+    const beforeSource = [
       "# Loop Example",
       "",
       "```markdown",
@@ -400,8 +473,24 @@ describe("relocateInsertedTodosToEnd", () => {
       "- [ ] Real task",
       "",
     ].join("\n");
+    const afterSource = [
+      "# Loop Example",
+      "",
+      "```markdown",
+      "- [ ] for: All controllers",
+      "  - [ ] Do this",
+      "  - [ ] Do that",
+      "```",
+      "",
+      "Implementation notes.",
+      "- [ ] Real task",
+      "",
+      "More notes.",
+      "- [ ] Added task",
+      "",
+    ].join("\n");
 
-    const result = relocateInsertedTodosToEnd(source, source);
+    const result = relocateInsertedTodosToEnd(beforeSource, afterSource);
 
     expect(result).toBe([
       "# Loop Example",
@@ -415,21 +504,98 @@ describe("relocateInsertedTodosToEnd", () => {
       "Implementation notes.",
       "- [ ] Real task",
       "",
+      "More notes.",
+      "",
+      "- [ ] Added task",
+      "",
     ].join("\n"));
   });
 
-  it("returns original content when all TODOs are in fenced blocks", () => {
-    const source = [
-      "# Examples",
+  it("handles duplicate TODO identities by count and moves only newly added occurrences", () => {
+    const beforeSource = [
+      "# Work",
       "",
-      "```",
-      "- [ ] example task",
-      "```",
+      "- [ ] Duplicate",
+      "- [ ] Duplicate",
       "",
-      "No real tasks.",
+      "Tail prose.",
+      "",
+    ].join("\n");
+    const afterSource = [
+      "# Work",
+      "",
+      "- [ ] Duplicate",
+      "- [ ] Duplicate",
+      "- [ ] Duplicate",
+      "",
+      "Tail prose.",
       "",
     ].join("\n");
 
-    expect(relocateInsertedTodosToEnd(source, source)).toBe(source);
+    const result = relocateInsertedTodosToEnd(beforeSource, afterSource);
+
+    expect(result).toBe([
+      "# Work",
+      "",
+      "- [ ] Duplicate",
+      "- [ ] Duplicate",
+      "",
+      "Tail prose.",
+      "",
+      "- [ ] Duplicate",
+      "",
+    ].join("\n"));
+  });
+
+  it("preserves CRLF and trailing newline behavior", () => {
+    const beforeSource = [
+      "# Spec",
+      "",
+      "- [ ] Existing",
+      "",
+      "Narrative.",
+      "",
+    ].join("\r\n");
+    const afterSource = [
+      "# Spec",
+      "",
+      "- [ ] Existing",
+      "",
+      "Narrative.",
+      "- [ ] Added",
+      "",
+    ].join("\r\n");
+
+    const result = relocateInsertedTodosToEnd(beforeSource, afterSource);
+
+    expect(result).toBe([
+      "# Spec",
+      "",
+      "- [ ] Existing",
+      "",
+      "Narrative.",
+      "",
+      "- [ ] Added",
+      "",
+    ].join("\r\n"));
+  });
+
+  it("returns edited content unchanged when no new TODOs were added", () => {
+    const beforeSource = [
+      "# Examples",
+      "",
+      "- [ ] Existing",
+      "",
+    ].join("\n");
+    const afterSource = [
+      "# Examples",
+      "",
+      "- [ ] Existing",
+      "",
+      "Updated narrative.",
+      "",
+    ].join("\n");
+
+    expect(relocateInsertedTodosToEnd(beforeSource, afterSource)).toBe(afterSource);
   });
 });

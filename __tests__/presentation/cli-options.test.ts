@@ -698,6 +698,22 @@ describe("CLI run option normalization", () => {
     expect(call.runAll).toBe(true);
   });
 
+  it("expands materialize alias to run --all --revertable", async () => {
+    const runTask = vi.fn(async () => 0);
+    const call = await invokeRunAndCaptureCall([
+      "materialize",
+      "tasks.md",
+      "--worker",
+      "opencode",
+      "run",
+    ], runTask);
+
+    expect(call.source).toBe("tasks.md");
+    expect(call.runAll).toBe(true);
+    expect(call.commitAfterComplete).toBe(true);
+    expect(call.keepArtifacts).toBe(true);
+  });
+
   it("parses all with --worker echo and enables runAll", async () => {
     const runTask = vi.fn(async () => 0);
     const call = await invokeRunAndCaptureCall([

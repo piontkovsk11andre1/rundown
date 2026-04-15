@@ -26,6 +26,10 @@ describe("init-project", () => {
       "{}\n",
     );
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/.rundown/agent.md",
+      expect.any(String),
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
       "/workspace/.rundown/vars.json",
       "{}\n",
     );
@@ -35,6 +39,14 @@ describe("init-project", () => {
     );
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
       "/workspace/.rundown/test-verify.md",
+      expect.any(String),
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/.rundown/test-future.md",
+      expect.any(String),
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/.rundown/test-materialized.md",
       expect.any(String),
     );
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
@@ -89,6 +101,10 @@ describe("init-project", () => {
       "{}\n",
     );
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/config/.rundown-custom/agent.md",
+      expect.any(String),
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
       "/workspace/config/.rundown-custom/vars.json",
       "{}\n",
     );
@@ -98,6 +114,14 @@ describe("init-project", () => {
     );
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
       "/workspace/config/.rundown-custom/test-verify.md",
+      expect.any(String),
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/config/.rundown-custom/test-future.md",
+      expect.any(String),
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/config/.rundown-custom/test-materialized.md",
       expect.any(String),
     );
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(

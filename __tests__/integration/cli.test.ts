@@ -70,6 +70,7 @@ function expectCanonicalRootWelcome(logs: string[]): void {
 function expectedInitSuccessLines(displayConfigDir: string): string[] {
   return [
     `✔ Created ${displayConfigDir}/tools/`,
+    `✔ Created ${displayConfigDir}/agent.md`,
     `✔ Created ${displayConfigDir}/execute.md`,
     `✔ Created ${displayConfigDir}/discuss-finished.md`,
     `✔ Created ${displayConfigDir}/verify.md`,
@@ -79,6 +80,8 @@ function expectedInitSuccessLines(displayConfigDir: string): string[] {
     `✔ Created ${displayConfigDir}/trace.md`,
     `✔ Created ${displayConfigDir}/undo.md`,
     `✔ Created ${displayConfigDir}/test-verify.md`,
+    `✔ Created ${displayConfigDir}/test-future.md`,
+    `✔ Created ${displayConfigDir}/test-materialized.md`,
     `✔ Created ${displayConfigDir}/migrate.md`,
     `✔ Created ${displayConfigDir}/migrate-context.md`,
     `✔ Created ${displayConfigDir}/migrate-snapshot.md`,
@@ -13903,6 +13906,7 @@ describe.sequential("CLI integration", () => {
 
     expect(result.code).toBe(0);
     expect(fs.existsSync(path.join(workspace, ".rundown", "execute.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, ".rundown", "agent.md"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, ".rundown", "discuss-finished.md"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, ".rundown", "verify.md"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, ".rundown", "repair.md"))).toBe(true);
@@ -13911,6 +13915,8 @@ describe.sequential("CLI integration", () => {
     expect(fs.existsSync(path.join(workspace, ".rundown", "trace.md"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, ".rundown", "undo.md"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, ".rundown", "test-verify.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, ".rundown", "test-future.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, ".rundown", "test-materialized.md"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, ".rundown", "migrate.md"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, ".rundown", "migrate-context.md"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, ".rundown", "migrate-snapshot.md"))).toBe(true);
@@ -13936,6 +13942,7 @@ describe.sequential("CLI integration", () => {
 
     expect(result.code).toBe(0);
     expect(fs.existsSync(path.join(customConfigDir, "execute.md"))).toBe(true);
+    expect(fs.existsSync(path.join(customConfigDir, "agent.md"))).toBe(true);
     expect(fs.existsSync(path.join(customConfigDir, "discuss-finished.md"))).toBe(true);
     expect(fs.existsSync(path.join(customConfigDir, "verify.md"))).toBe(true);
     expect(fs.existsSync(path.join(customConfigDir, "repair.md"))).toBe(true);
@@ -13944,6 +13951,8 @@ describe.sequential("CLI integration", () => {
     expect(fs.existsSync(path.join(customConfigDir, "trace.md"))).toBe(true);
     expect(fs.existsSync(path.join(customConfigDir, "undo.md"))).toBe(true);
     expect(fs.existsSync(path.join(customConfigDir, "test-verify.md"))).toBe(true);
+    expect(fs.existsSync(path.join(customConfigDir, "test-future.md"))).toBe(true);
+    expect(fs.existsSync(path.join(customConfigDir, "test-materialized.md"))).toBe(true);
     expect(fs.existsSync(path.join(customConfigDir, "migrate.md"))).toBe(true);
     expect(fs.existsSync(path.join(customConfigDir, "migrate-context.md"))).toBe(true);
     expect(fs.existsSync(path.join(customConfigDir, "migrate-snapshot.md"))).toBe(true);

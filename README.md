@@ -216,6 +216,13 @@ bun add -g @p10i/rundown
 
 - [Overview](docs/overview.md) — core model, workflow, and task lifecycle
 - [CLI](docs/cli.md) — commands, flags, and global options
+- [CLI: `query`](docs/cli.md#rundown-query-text) — investigate codebase questions with orchestrated workflows
+- [CLI: `memory-view`](docs/cli.md#rundown-memory-view-source) — inspect source-local memory artifacts and summaries
+- [CLI: `memory-validate`](docs/cli.md#rundown-memory-validate-source) — validate memory artifacts and optionally fix issues
+- [CLI: `memory-clean`](docs/cli.md#rundown-memory-clean-source) — remove orphaned/outdated memory artifacts
+- [CLI: `workspace`](docs/cli.md#rundown-workspace) — manage workspace link metadata and cleanup
+- [CLI: `artifacts`](docs/cli.md#rundown-artifacts) — inspect and clean saved run artifacts
+- [CLI: `log`](docs/cli.md#rundown-log) — tail and filter global execution logs
 - [Configuration](docs/configuration.md) — workers, profiles, and layered config
 - [Templates](docs/templates.md) — repository-local Markdown templates
 - [Examples](docs/examples.md) — end-to-end usage scenarios

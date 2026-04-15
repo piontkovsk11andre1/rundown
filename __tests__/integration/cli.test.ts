@@ -8977,6 +8977,45 @@ describe.sequential("CLI integration", () => {
     expect(content).toBe("- [x] cli: echo one\n- [x] cli: echo two\n- [x] cli: echo three\n");
   });
 
+  it("run --all updates rendered progress counters after mid-run task insertion", async () => {
+    const workspace = makeTempWorkspace();
+    const roadmapPath = path.join(workspace, "roadmap.md");
+    const workerScriptPath = path.join(workspace, "insert-task-worker.cjs");
+    const markerPath = path.join(workspace, "insert-task-once.marker");
+
+    fs.writeFileSync(roadmapPath, "- [ ] first task\n", "utf-8");
+    fs.writeFileSync(workerScriptPath, [
+      "const fs = require('node:fs');",
+      "const promptPath = process.argv[process.argv.length - 1];",
+      "const prompt = fs.readFileSync(promptPath, 'utf-8');",
+      `const roadmapPath = ${JSON.stringify(roadmapPath.replace(/\\/g, "/"))};`,
+      `const markerPath = ${JSON.stringify(markerPath.replace(/\\/g, "/"))};`,
+      "if (!fs.existsSync(markerPath) && prompt.includes('first task')) {",
+      "  fs.writeFileSync(markerPath, '1', 'utf-8');",
+      "  fs.writeFileSync(roadmapPath, '- [ ] first task\\n- [ ] second task\\n', 'utf-8');",
+      "}",
+      "process.exit(0);",
+      "",
+    ].join("\n"), "utf-8");
+
+    const result = await runCli([
+      "run",
+      "roadmap.md",
+      "--all",
+      "--no-verify",
+      "--worker",
+      "node",
+      workerScriptPath.replace(/\\/g, "/"),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(result.logs.some((line) => line.includes("[1/1]") && line.includes("first task"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("[2/2]") && line.includes("second task"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("[2/1]") && line.includes("second task"))).toBe(false);
+    expect(result.logs.filter((line) => line.includes("Task checked:")).length).toBe(2);
+    expect(fs.readFileSync(roadmapPath, "utf-8")).toBe("- [x] first task\n- [x] second task\n");
+  });
+
   it("run --all batches composed-prefix parallel children and auto-completes the parent", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");

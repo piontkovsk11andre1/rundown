@@ -20,9 +20,13 @@ Store templates in `.rundown/`:
   plan-prepend.md
   plan-append.md
   discuss.md
+  discuss-finished.md
+  trace.md
+  undo.md
   test-materialized.md
   test-future.md
   test-verify.md
+  migrate.md
   vars.json
 ```
 
@@ -40,9 +44,13 @@ Store templates in `.rundown/`:
 | `.rundown/plan-prepend.md` | Optional advisory guidance for what should appear near the beginning of generated plan tasks |
 | `.rundown/plan-append.md` | Optional advisory guidance for what should appear near the end of generated plan tasks |
 | `.rundown/discuss.md` | Instructions for interactive task refinement before execution |
+| `.rundown/discuss-finished.md` | Instructions shown when a discuss session exits with no in-file edits applied |
 | `.rundown/test-materialized.md` | Instructions for `rundown test` materialized mode (present-state validation) |
 | `.rundown/test-future.md` | Instructions for `rundown test --future` prediction mode (future-state validation) |
 | `.rundown/test-verify.md` | Shared verification instructions used by both `rundown test` modes |
+| `.rundown/trace.md` | Instructions for trace-context enrichment output used by preview, plan, and execution flows |
+| `.rundown/undo.md` | Instructions for preparing and applying rollback prompts in `rundown undo` |
+| `.rundown/migrate.md` | Instructions for migration generation in `rundown migrate` |
 
 ## Planner guidance files (optional)
 

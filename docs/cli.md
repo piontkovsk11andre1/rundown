@@ -2182,7 +2182,7 @@ Prefer `--worker` because it avoids argument splitting issues around `--`.
 Example:
 
 ```powershell
-rundown run docs/
+rundown run docs/ --worker "opencode run --file $file $bootstrap"
 ```
 
 ### Large prompts on Windows

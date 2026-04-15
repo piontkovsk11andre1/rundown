@@ -1,6 +1,7 @@
 import { EXIT_CODE_FAILURE, EXIT_CODE_NO_WORK, EXIT_CODE_SUCCESS } from "../domain/exit-codes.js";
 import { expandCliBlocks } from "../domain/cli-block.js";
 import { renderTemplate, type TemplateVars } from "../domain/template.js";
+import { DEFAULT_AGENT_TEMPLATE } from "../domain/defaults.js";
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import {
   createRunCompletedEvent,
@@ -109,7 +110,7 @@ export function createHelpTask(
         dependencies.templateLoader,
         dependencies.pathOperations,
       );
-      const helpTemplate = `${templates.agent}\n\n${templates.help}`;
+      const helpTemplate = buildRootHelpTemplate(templates.agent, templates.help);
       const renderedPrompt = renderHelpPrompt(helpTemplate, {
         cliVersion: options.cliVersion,
         workingDirectory: cwd,
@@ -236,6 +237,11 @@ export function createHelpTask(
       traceWriter.flush();
     }
   };
+}
+
+function buildRootHelpTemplate(agentTemplate: string, helpTemplate: string): string {
+  const warmup = agentTemplate.trim().length > 0 ? agentTemplate : DEFAULT_AGENT_TEMPLATE;
+  return `${warmup}\n\n${helpTemplate}`;
 }
 
 function renderHelpPrompt(

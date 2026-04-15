@@ -270,22 +270,24 @@ Markdown:
 # Release prep
 
 - [ ] cli: npm test
-- [ ] rundown: docs/release-notes.md --verify --retries 1
+- [ ] rundown: docs/release-notes.md --verify --repair-attempts 1
 - [ ] Publish release notes
 ```
 
 Command:
 
 ```bash
-rundown run TODO.md --worker 'opencode run --file $file $bootstrap' --verify --retries 2
+rundown run TODO.md --worker 'opencode run --file $file $bootstrap' --verify --repair-attempts 2
 ```
 
 What happens:
 
 1. `rundown` executes `npm test` directly for the `cli:` task.
-2. For the `rundown:` task, it delegates to `rundown run docs/release-notes.md --verify --retries 1`.
+2. For the `rundown:` task, it delegates to `rundown run docs/release-notes.md --verify --repair-attempts 1`.
 3. The inline `rundown:` flags override forwarded parent flags when they differ.
 4. After the delegated run succeeds, the parent run verifies/checks that task and continues.
+
+Note: legacy `--retries <n>` is still accepted as an alias for `--repair-attempts <n>`, but docs use `--repair-attempts` as the primary flag.
 
 ## 17. Layered worker profiles from config
 

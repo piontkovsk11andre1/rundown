@@ -3,38 +3,6 @@
 > A future-prediction, test-driven framework.
 > Use it to create art, run a business, do research, and write code.
 
----
-
-## Quick Start
-
-Get `rundown` running in a project in a few minutes:
-
-1. Install the CLI:
-
-```bash
-npm i -g @p10i/rundown
-```
-
-2. Initialize your harness in the project directory (once):
-
-```bash
-rundown with opencode
-```
-
-3. Add a task file and execute it:
-
-```bash
-rundown all roadmap.md
-```
-
-4. Continue running all discovered TODO items:
-
-```bash
-rundown all .
-```
-
-For command details and alternatives, see [docs/cli.md](docs/cli.md) and [docs/examples.md](docs/examples.md).
-
 ## Prediction
 
 The plan of any work is a prediction of the future. If the work is planned correctly, then for distant predictions it doesn't need to be executed — it's enough to ask the AI to imagine that the plan has already been carried out and to plan further from there.

@@ -33,7 +33,7 @@ function relocateTask(source: string, task: Task): Task {
   );
 }
 const TRACE_STATISTICS_GRANDCHILD_LABEL_PATTERN = /^(?:execution|verify|repair):\s+\S/i;
-const RUNTIME_STALE_CHILD_LABEL_PATTERN = /^(?:total time|execution|verify|repair|idle|tokens estimated|phases|verify attempts|repair attempts|fix|skipped):\s+\S/i;
+const RUNTIME_STALE_CHILD_LABEL_PATTERN = /^(?:total time|execution|verify|repair|idle|tokens estimated|phases|verify attempts|repair attempts|fix|skipped|answer|get-result|for-item|for-current):\s+\S/i;
 
 interface FileMutationQueue {
   locked: boolean;

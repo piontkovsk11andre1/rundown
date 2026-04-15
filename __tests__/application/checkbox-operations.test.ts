@@ -1054,6 +1054,64 @@ describe("checkbox-operations", () => {
     ].join("\n"));
   });
 
+  it("removes get-result metadata annotations during checkbox reset", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [x] get: Find current module names",
+        "  - get-result: CliResourceModule",
+        "  - get-result: CliArgsModule",
+        "- [x] Next task",
+      ].join("\n"),
+    });
+
+    resetFileCheckboxes("todo.md", fileSystem);
+
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [ ] get: Find current module names",
+      "- [ ] Next task",
+    ].join("\n"));
+  });
+
+  it("removes question answer metadata annotations during checkbox reset", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [x] question: Which module should we target first?",
+        "  - option: CliResourceModule",
+        "  - option: CliArgsModule",
+        "  - answer: CliResourceModule",
+        "- [x] Next task",
+      ].join("\n"),
+    });
+
+    resetFileCheckboxes("todo.md", fileSystem);
+
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [ ] question: Which module should we target first?",
+      "  - option: CliResourceModule",
+      "  - option: CliArgsModule",
+      "- [ ] Next task",
+    ].join("\n"));
+  });
+
+  it("removes for-loop metadata annotations during checkbox reset", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [x] for: Alpha, Beta",
+        "  - for-item: Alpha",
+        "  - for-item: Beta",
+        "  - for-current: Alpha",
+        "  - [x] Do once",
+      ].join("\n"),
+    });
+
+    resetFileCheckboxes("todo.md", fileSystem);
+
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [ ] for: Alpha, Beta",
+      "  - [ ] Do once",
+    ].join("\n"));
+  });
+
   it("removes mixed trace statistics, fix, and skipped annotations under one parent", () => {
     const fileSystem = createFileSystem({
       "todo.md": [

@@ -225,6 +225,69 @@ describe("advanceForLoopUsingFileSystem", () => {
       "- [ ] Next task",
     ].join("\n"));
   });
+
+  it("recovers from stale for-current metadata on resume by rewinding cursor and resetting children", () => {
+    const file = "task.md";
+    const source = [
+      "- [ ] for: All controllers",
+      "  - for-item: This",
+      "  - for-item: That",
+      "  - for-current: Missing",
+      "  - [x] Do this",
+      "  - [x] Do that",
+      "- [ ] Next task",
+    ].join("\n");
+    const fileSystem = new InMemoryFileSystem({ [file]: source });
+
+    const transition = advanceForLoopUsingFileSystem(resolveLoopTask(fileSystem, file), fileSystem);
+
+    expect(transition).toEqual({
+      advanced: true,
+      completed: false,
+      current: "This",
+      remainingItems: 1,
+    });
+    expect(fileSystem.readText(file)).toBe([
+      "- [ ] for: All controllers",
+      "  - for-item: This",
+      "  - for-item: That",
+      "  - for-current: This",
+      "  - [ ] Do this",
+      "  - [ ] Do that",
+      "- [ ] Next task",
+    ].join("\n"));
+  });
+
+  it("finalizes loop by removing for-current while keeping baked for-item metadata", () => {
+    const file = "task.md";
+    const source = [
+      "- [ ] for: All controllers",
+      "  - for-item: This",
+      "  - for-item: That",
+      "  - for-current: That",
+      "  - [x] Do this",
+      "  - [x] Do that",
+      "- [ ] Next task",
+    ].join("\n");
+    const fileSystem = new InMemoryFileSystem({ [file]: source });
+
+    const transition = advanceForLoopUsingFileSystem(resolveLoopTask(fileSystem, file), fileSystem);
+
+    expect(transition).toEqual({
+      advanced: false,
+      completed: true,
+      current: undefined,
+      remainingItems: 0,
+    });
+    expect(fileSystem.readText(file)).toBe([
+      "- [ ] for: All controllers",
+      "  - for-item: This",
+      "  - for-item: That",
+      "  - [x] Do this",
+      "  - [x] Do that",
+      "- [ ] Next task",
+    ].join("\n"));
+  });
 });
 
 describe("syncForLoopMetadataItemsUsingFileSystem", () => {

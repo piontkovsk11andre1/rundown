@@ -698,6 +698,19 @@ describe("CLI run option normalization", () => {
     expect(call.runAll).toBe(true);
   });
 
+  it("registers materialize in root help with run-equivalent description", async () => {
+    const runTask = vi.fn(async () => 0);
+    const result = await invokeRunAndCaptureHelpOutput([
+      "--help",
+    ], runTask);
+
+    expect(runTask).not.toHaveBeenCalled();
+
+    const compactHelpOutput = stripAnsi(result.output).replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("materialize [options] <source>");
+    expect(compactHelpOutput).toContain("Run all tasks with revertable defaults (equivalent to `run --all --revertable`).");
+  });
+
   it("expands materialize alias to run --all --revertable", async () => {
     const runTask = vi.fn(async () => 0);
     const call = await invokeRunAndCaptureCall([
@@ -709,6 +722,43 @@ describe("CLI run option normalization", () => {
     ], runTask);
 
     expect(call.source).toBe("tasks.md");
+    expect(call.runAll).toBe(true);
+    expect(call.commitAfterComplete).toBe(true);
+    expect(call.keepArtifacts).toBe(true);
+  });
+
+  it("parses run-like options for materialize while forwarding separator worker command", async () => {
+    const runTask = vi.fn(async () => 0);
+    const call = await invokeRunAndCaptureCall([
+      "materialize",
+      "tasks.md",
+      "--mode",
+      "wait",
+      "--sort",
+      "old-first",
+      "--no-verify",
+      "--repair-attempts",
+      "2",
+      "--resolve-repair-attempts",
+      "3",
+      "--trace",
+      "--show-agent-output",
+      "--",
+      "opencode",
+      "run",
+      "--model",
+      "gpt-5.3-codex",
+    ], runTask);
+
+    expect(call.source).toBe("tasks.md");
+    expect(call.mode).toBe("wait");
+    expect(call.sortMode).toBe("old-first");
+    expect(call.verify).toBe(false);
+    expect(call.repairAttempts).toBe(2);
+    expect(call.resolveRepairAttempts).toBe(3);
+    expect(call.trace).toBe(true);
+    expect(call.showAgentOutput).toBe(true);
+    expect(call.workerCommand).toEqual(["opencode", "run", "--model", "gpt-5.3-codex"]);
     expect(call.runAll).toBe(true);
     expect(call.commitAfterComplete).toBe(true);
     expect(call.keepArtifacts).toBe(true);

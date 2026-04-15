@@ -14,6 +14,7 @@ Synopsis:
 ```bash
 rundown materialize <source> [options] -- <command>
 rundown materialize <source> [options] --worker <pattern>
+rd materialize <source> [options]
 ```
 
 Arguments:

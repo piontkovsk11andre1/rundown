@@ -15,7 +15,7 @@ Markdown:
 Command:
 
 ```bash
-rundown run README.md -- opencode run
+rundown run docs/backlog.md -- opencode run
 ```
 
 What happens:

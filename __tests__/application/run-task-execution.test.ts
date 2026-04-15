@@ -2593,6 +2593,123 @@ describe("run-task-execution helpers", () => {
     expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(1);
   });
 
+  it("writes canonical escaped get-result metadata during refresh and avoids inline-code wrappers", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] get: All current names of this and that",
+        "  - get-mode: refresh",
+        "  - get-result: Legacy",
+        "",
+      ].join("\n"),
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "get: All current names of this and that"),
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    dependencies.toolResolver = {
+      resolve: (toolName) => resolveBuiltinTool(toolName),
+      listKnownToolNames: () => listBuiltinToolNames(),
+    };
+    dependencies.workerExecutor.runWorker = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: '{"results":["`edge` : [parser]*module*"]}',
+      stderr: "",
+    }));
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({ verify: false }));
+
+    expect(code).toBe(0);
+    expect(fileSystem.readText(taskFile)).toBe([
+      "- [x] get: All current names of this and that",
+      "  - get-mode: refresh",
+      "  - get-result: \\`edge\\` : \\[parser\\]\\*module\\*",
+      "",
+    ].join("\n"));
+    expect(fileSystem.readText(taskFile)).not.toContain("  - get-result: ```edge` : [parser]*module*```");
+  });
+
+  it("keeps mixed legacy/canonical metadata stable in reuse and canonicalizes on refresh rerun", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: [
+        "- [ ] get: All current names of this and that",
+        "  - get-result: `legacy [value]*`",
+        "  - get-result: canonical \\[value\\]",
+        "",
+      ].join("\n"),
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "get: All current names of this and that"),
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    dependencies.taskSelector.selectNextTask = vi.fn(() => {
+      const source = fileSystem.readText(taskFile);
+      const next = parseTasks(source, taskFile).find((task) => !task.checked);
+      if (!next) {
+        return null;
+      }
+      return [{
+        task: next,
+        source: "tasks.md",
+        contextBefore: "",
+      }];
+    });
+    dependencies.toolResolver = {
+      resolve: (toolName) => resolveBuiltinTool(toolName),
+      listKnownToolNames: () => listBuiltinToolNames(),
+    };
+
+    const runTask = createRunTaskExecution(dependencies);
+    const firstCode = await runTask(createOptions({ verify: false }));
+
+    expect(firstCode).toBe(0);
+    expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
+    expect(fileSystem.readText(taskFile)).toBe([
+      "- [x] get: All current names of this and that",
+      "  - get-result: `legacy [value]*`",
+      "  - get-result: canonical \\[value\\]",
+      "",
+    ].join("\n"));
+
+    fileSystem.writeText(taskFile, [
+      "- [ ] get: All current names of this and that",
+      "  - get-mode: refresh",
+      "  - get-result: `legacy [value]*`",
+      "  - get-result: canonical \\[value\\]",
+      "",
+    ].join("\n"));
+    dependencies.workerExecutor.runWorker = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: '{"results":["legacy [value]*","canonical [value]"]}',
+      stderr: "",
+    }));
+
+    const secondCode = await runTask(createOptions({ verify: false }));
+
+    expect(secondCode).toBe(0);
+    expect(fileSystem.readText(taskFile)).toBe([
+      "- [x] get: All current names of this and that",
+      "  - get-mode: refresh",
+      "  - get-result: legacy \\[value\\]\\*",
+      "  - get-result: canonical \\[value\\]",
+      "",
+    ].join("\n"));
+    const reparsed = parseTasks(fileSystem.readText(taskFile), taskFile)[0];
+    expect(reparsed?.subItems.map((subItem) => subItem.text)).toEqual([
+      "get-mode: refresh",
+      "get-result: legacy [value]*",
+      "get-result: canonical [value]",
+    ]);
+  });
+
   it("re-parses task context after tool updates so downstream tasks see new sub-items", async () => {
     const cwd = "/workspace";
     const taskFile = `${cwd}/tasks.md`;

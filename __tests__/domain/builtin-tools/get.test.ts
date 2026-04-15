@@ -408,6 +408,38 @@ describe("builtin-tools/get getHandler", () => {
     ].join("\n"));
   });
 
+  it("falls back to line parsing when worker output starts with invalid JSON", async () => {
+    const source = "- [ ] get: All current names of this and that\n";
+    const { context, writeText } = createContext({
+      source,
+      runWorker: vi.fn(async () => ({
+        exitCode: 0,
+        stdout: [
+          "{\"results\":[",
+          "- Alpha",
+          "2) Beta",
+          "Gamma",
+        ].join("\n"),
+        stderr: "",
+      })),
+    });
+
+    const result = await getHandler(context);
+
+    expect(result).toEqual({
+      skipExecution: true,
+      shouldVerify: false,
+    });
+    expect(writeText.mock.calls[0]?.[1] ?? "").toBe([
+      "- [ ] get: All current names of this and that",
+      "  - get-result: {\"results\":\\[",
+      "  - get-result: Alpha",
+      "  - get-result: Beta",
+      "  - get-result: Gamma",
+      "",
+    ].join("\n"));
+  });
+
   it("persists an explicit empty marker when extraction succeeds but returns no values", async () => {
     const { context, writeText, emit } = createContext({
       source: "- [ ] get: All current names of this and that\n",
@@ -552,6 +584,63 @@ describe("builtin-tools/get getHandler", () => {
       "  - get-result: That",
       "",
     ].join("\n"));
+  });
+
+  it("keeps legacy inline-coded get-result metadata byte-stable in reuse mode", async () => {
+    const source = "- [ ] get: All current names of this and that\n  - get-result: `core: [parser]*module*`\n";
+    const { context, writeText, runWorker } = createContext({
+      source,
+      subItems: [{ text: "get-result: `core: [parser]*module*`", line: 2, depth: 1 }],
+      runWorker: vi.fn(async () => ({
+        exitCode: 0,
+        stdout: '{"results":["ShouldNotRun"]}',
+        stderr: "",
+      })),
+    });
+
+    const result = await getHandler(context);
+
+    expect(result).toEqual({
+      skipExecution: true,
+      shouldVerify: false,
+    });
+    expect(runWorker).not.toHaveBeenCalled();
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it("rewrites legacy inline-coded get-result metadata to canonical escaping in refresh mode", async () => {
+    const source = [
+      "- [ ] get: All current names of this and that",
+      "  - get-mode: refresh",
+      "  - get-result: `core: [parser]*module*`",
+      "",
+    ].join("\n");
+    const { context, writeText } = createContext({
+      source,
+      subItems: [
+        { text: "get-mode: refresh", line: 2, depth: 1 },
+        { text: "get-result: `core: [parser]*module*`", line: 3, depth: 1 },
+      ],
+      runWorker: vi.fn(async () => ({
+        exitCode: 0,
+        stdout: '{"results":["core: [parser]*module*"]}',
+        stderr: "",
+      })),
+    });
+
+    const result = await getHandler(context);
+
+    expect(result).toEqual({
+      skipExecution: true,
+      shouldVerify: false,
+    });
+    const updated = writeText.mock.calls[0]?.[1] ?? "";
+    expect(updated).toContain("  - get-result: core: \\[parser\\]\\*module\\*");
+    expect(updated).not.toContain("  - get-result: `core: [parser]*module*`");
+
+    const reparsed = parseTasks(updated, "C:/workspace/todo.md")[0];
+    expect(reparsed?.subItems[0]?.text).toBe("get-mode: refresh");
+    expect(reparsed?.subItems[1]?.text).toBe("get-result: core: [parser]*module*");
   });
 
   it("ignores tilde-fenced get-result-like lines in worker output parsing", async () => {

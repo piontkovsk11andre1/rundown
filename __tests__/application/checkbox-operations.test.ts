@@ -1116,6 +1116,37 @@ describe("checkbox-operations", () => {
     ].join("\n"));
   });
 
+  it("preserves duplicate get-result and for-item metadata entries during reset", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [x] get: Resolve current names",
+        "  - get-result: Alpha",
+        "  - get-result: Alpha",
+        "  - get-result: Beta",
+        "- [x] for: Alpha, Beta",
+        "  - for-item: One",
+        "  - for-item: One",
+        "  - for-item: Two",
+        "  - for-current: One",
+        "  - [x] Do once",
+      ].join("\n"),
+    });
+
+    resetFileCheckboxes("todo.md", fileSystem);
+
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [ ] get: Resolve current names",
+      "  - get-result: Alpha",
+      "  - get-result: Alpha",
+      "  - get-result: Beta",
+      "- [ ] for: Alpha, Beta",
+      "  - for-item: One",
+      "  - for-item: One",
+      "  - for-item: Two",
+      "  - [ ] Do once",
+    ].join("\n"));
+  });
+
   it("keeps get-result/for-item metadata as non-executable sub-items during sibling skipping", () => {
     const fileSystem = createFileSystem({
       "todo.md": [

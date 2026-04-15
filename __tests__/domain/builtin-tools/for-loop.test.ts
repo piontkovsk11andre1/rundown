@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { forLoopHandler } from "../../../src/domain/builtin-tools/for-loop.js";
+import { resolveForLoopItems } from "../../../src/domain/for-loop.js";
+import { parseTasks } from "../../../src/domain/parser.js";
 import type { ToolHandlerContext } from "../../../src/domain/ports/tool-handler-port.js";
 
 function createContext(overrides: Partial<ToolHandlerContext> = {}): ToolHandlerContext {
@@ -309,6 +311,55 @@ describe("builtin-tools/for-loop", () => {
     expect(result.childTasks).toEqual([
       "for-item: key: value",
     ]);
+  });
+
+  it("keeps parse -> persist -> parse loop metadata idempotent with duplicates and escapes", async () => {
+    const context = createContext({
+      payload: "Ignored",
+      workerExecutor: {
+        ...createContext().workerExecutor,
+        runWorker: vi.fn(async () => ({
+          exitCode: 0,
+          stdout: [
+            "- keep `code`",
+            "2) keep `code`",
+            "3) key: value",
+            "4) [label]",
+          ].join("\n"),
+          stderr: "",
+        })),
+      },
+    });
+
+    const first = await forLoopHandler(context);
+
+    const childTasks = first.childTasks ?? [];
+
+    expect(childTasks).toEqual([
+      "for-item: keep \\`code\\`",
+      "for-item: keep \\`code\\`",
+      "for-item: key: value",
+      "for-item: \\[label\\]",
+    ]);
+
+    const persistedSource = [
+      "- [ ] for: controllers",
+      ...childTasks.map((line) => `  - ${line}`),
+      "  - [ ] Do this",
+      "",
+    ].join("\n");
+    const reparsed = parseTasks(persistedSource, "tasks.md")[0];
+    const secondResolved = resolveForLoopItems(reparsed?.subItems ?? [], "ignored");
+
+    expect(secondResolved).toEqual({
+      source: "metadata",
+      items: [
+        "keep `code`",
+        "keep `code`",
+        "key: value",
+        "[label]",
+      ],
+    });
   });
 
   it("returns an error when loop task has no checkbox children", async () => {

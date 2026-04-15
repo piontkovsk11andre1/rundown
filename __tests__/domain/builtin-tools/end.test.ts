@@ -98,10 +98,10 @@ describe("builtin-tools/end endHandler", () => {
       },
     });
     expect(runWorker).toHaveBeenCalledTimes(1);
-    expect(emit).toHaveBeenCalledWith({ kind: "info", message: "Evaluating end condition." });
+    expect(emit).toHaveBeenCalledWith({ kind: "info", message: "Evaluating optional skip condition." });
     expect(emit).toHaveBeenCalledWith({
       kind: "info",
-      message: "End condition met; skipping remaining sibling tasks.",
+      message: "Optional condition met; skipping remaining sibling tasks.",
     });
   });
 
@@ -116,7 +116,7 @@ describe("builtin-tools/end endHandler", () => {
     expect(runWorker).toHaveBeenCalledTimes(1);
     expect(emit).toHaveBeenCalledWith({
       kind: "info",
-      message: "End condition not met; continuing execution.",
+      message: "Optional condition not met; continuing execution.",
     });
   });
 
@@ -131,12 +131,12 @@ describe("builtin-tools/end endHandler", () => {
 
     expect(result).toEqual({
       exitCode: 1,
-      failureMessage: "Failed to evaluate end condition: worker unavailable",
-      failureReason: "End condition worker invocation failed.",
+      failureMessage: "Failed to evaluate condition: worker unavailable",
+      failureReason: "Condition worker invocation failed.",
     });
     expect(emit).toHaveBeenCalledWith({
       kind: "warn",
-      message: "Failed to evaluate end condition: worker unavailable",
+      message: "Failed to evaluate condition: worker unavailable",
     });
   });
 });

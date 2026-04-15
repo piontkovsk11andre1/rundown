@@ -426,6 +426,46 @@ rundown call roadmap.md
 rundown call docs/
 ```
 
+### `rundown materialize <source>`
+
+Run a full task pass with revertable defaults.
+
+`materialize` is a convenience wrapper over `run` that forces these options per invocation:
+
+- `--all`
+- `--revertable` (equivalent to `--commit --keep-artifacts`)
+
+Use `materialize` when you want to execute all tasks while keeping artifact state and commit metadata aligned for reversal flows.
+
+Synopsis:
+
+```bash
+rundown materialize <source> [options] -- <command>
+rundown materialize <source> [options] --worker <pattern>
+```
+
+Arguments:
+
+- `<source>`: file, directory, or glob to scan for Markdown tasks.
+
+Options:
+
+- `materialize` accepts the same run-like options as `run` (`--verify`, `--repair-attempts`, `--sort`, `--trace`, `--vars-file`, `--worker`, and related flags).
+- Explicit user-supplied values for `--all` and `--revertable` are ignored because `materialize` enforces them.
+
+Examples:
+
+```bash
+# Execute all tasks with revertable behavior
+rundown materialize roadmap.md
+
+# Materialize a directory source
+rundown materialize docs/
+
+# Materialize with explicit worker pattern
+rundown materialize roadmap.md --worker "opencode run $file"
+```
+
 ### `rundown loop <source>`
 
 Run repeated `call`-style full clean passes against a source, with a cooldown between iterations.
@@ -970,6 +1010,207 @@ rundown do "ship release checklist" "docs/release.md"
 
 # Same flow with explicit clean execution behavior
 rundown do "ship release checklist" "docs/release.md" --clean --rounds 2
+```
+
+### `rundown query <text>`
+
+Research the codebase, plan investigation steps, and execute a query workflow.
+
+`query` orchestrates three phases:
+
+1. research context enrichment,
+2. plan/task decomposition,
+3. execution and result aggregation.
+
+By default, output is Markdown. Use `--format` to emit JSON or strict pass/fail style output.
+
+Synopsis:
+
+```bash
+rundown query <text> [options] -- <command>
+rundown query <text> [options] --worker <pattern>
+```
+
+Arguments:
+
+- `<text>`: natural-language query to investigate.
+
+Options:
+
+| Option | Description | Default |
+|---|---|---|
+| `--dir <path>` | Target directory to analyze. | current working directory |
+| `--format <format>` | Output format: `markdown`, `json`, `yn`, `success-error`. | `markdown` |
+| `--output <file>` | Write final query output to a file instead of stdout. | unset |
+| `--skip-research` | Skip phase 1 and start from plan phase. | off |
+| `--mode <mode>` | Query mode. Currently only `wait` is supported. | `wait` |
+| `--scan-count <n>` | Max plan scan iterations (omit for convergence-driven unlimited mode). | unset |
+| `--max-items <n>` | Cap total TODO items added across all plan scans. | unset |
+| `--deep <n>` | Additional nested plan depth passes after top-level scans. | `0` |
+| `--dry-run` | Show planned query orchestration without running workers. | off |
+| `--print-prompt` | Print rendered query prompts and exit `0`. | off |
+| `--keep-artifacts` | Preserve runtime prompts, logs, and metadata under `<config-dir>/runs`. | off |
+| `--show-agent-output` | Show worker stdout/stderr during execution. | off |
+| `-v, --verbose` | Show detailed per-task run diagnostics. | off |
+| `-q, --quiet` | Suppress info-level output. | off |
+| `--trace` | Write structured trace events to run and global trace logs. | off |
+| `--force-unlock` | Break stale source lockfiles before phase locks. | off |
+| `--vars-file [path]` | Load template variables from JSON (default path: `<config-dir>/vars.json`). | unset |
+| `--var <key=value>` | Inject template variables (repeatable). | none |
+| `--ignore-cli-block` | Skip `cli` fenced-block command execution during prompt expansion. | off |
+| `--cli-block-timeout <ms>` | Timeout for `cli` fenced-block execution (`0` disables timeout). | `30000` |
+| `--worker <pattern>` | Worker pattern override (alternative to `-- <command>`). | unset |
+
+Examples:
+
+```bash
+# Default markdown output
+rundown query "Where do we classify worker failures?"
+
+# JSON output written to file
+rundown query "Which commands support --trace?" --format json --output reports/query.json
+
+# Skip research and run plan+execute only
+rundown query "Does memory-clean remove index entries?" --skip-research
+```
+
+### `rundown memory-view <source>`
+
+Display source-local memory entries for one or more Markdown sources.
+
+Synopsis:
+
+```bash
+rundown memory-view <source> [options]
+```
+
+Arguments:
+
+- `<source>`: file, directory, or glob to scan for Markdown memory.
+
+Options:
+
+| Option | Description | Default |
+|---|---|---|
+| `--json` | Print memory entries as JSON. | off |
+| `--summary` | Show index summary fields without full memory body content. | off |
+| `--all` | Show memory for all matched files (otherwise first resolved source). | off |
+
+Examples:
+
+```bash
+# Show memory for first matched source
+rundown memory-view docs/tasks.md
+
+# Show summaries for all matched markdown files
+rundown memory-view "docs/**/*.md" --all --summary
+
+# Emit machine-readable output
+rundown memory-view roadmap.md --json
+```
+
+### `rundown memory-validate <source>`
+
+Validate source-local memory consistency and report issues.
+
+Checks include orphaned index entries, missing index entries for body files, entry-count mismatch, summary drift, and stale source references.
+
+Synopsis:
+
+```bash
+rundown memory-validate <source> [options]
+```
+
+Arguments:
+
+- `<source>`: file, directory, or glob to scan for Markdown memory.
+
+Options:
+
+| Option | Description | Default |
+|---|---|---|
+| `--fix` | Auto-fix recoverable index issues while validating. | off |
+| `--json` | Print validation report as JSON. | off |
+
+Examples:
+
+```bash
+# Human-readable validation report
+rundown memory-validate docs/
+
+# Validate and attempt automatic repairs
+rundown memory-validate docs/ --fix
+
+# Emit JSON report for automation
+rundown memory-validate "docs/**/*.md" --json
+```
+
+### `rundown memory-clean <source>`
+
+Remove orphaned, outdated, or invalid source-local memory artifacts.
+
+By default, `memory-clean` targets orphaned, invalid, or outdated memory. Use filters to narrow scope.
+
+Synopsis:
+
+```bash
+rundown memory-clean <source> [options]
+```
+
+Arguments:
+
+- `<source>`: file, directory, or glob to scan for Markdown memory.
+
+Options:
+
+| Option | Description | Default |
+|---|---|---|
+| `--dry-run` | Preview what would be removed without deleting files. | off |
+| `--orphans` | Remove only memory whose source file no longer exists. | off |
+| `--outdated` | Remove only memory older than threshold. | off |
+| `--older-than <duration>` | Age threshold for `--outdated` (for example `30d`, `6m`). | `90d` |
+| `--all` | Remove all memory for matched sources. Requires `--force`. | off |
+| `--force` | Skip safety confirmation gates for destructive cleanup modes. | off |
+
+Examples:
+
+```bash
+# Preview default cleanup selection
+rundown memory-clean docs/ --dry-run
+
+# Remove only orphaned memories
+rundown memory-clean "docs/**/*.md" --orphans
+
+# Remove all memory for matched sources
+rundown memory-clean docs/ --all --force
+```
+
+### `rundown worker-health`
+
+Display persisted worker/profile health status and fallback eligibility snapshots.
+
+The output includes current health entries and fallback-order snapshots used during worker resolution.
+
+Synopsis:
+
+```bash
+rundown worker-health [options]
+```
+
+Options:
+
+| Option | Description | Default |
+|---|---|---|
+| `--json` | Print worker health status as JSON. | off |
+
+Examples:
+
+```bash
+# Human-readable status
+rundown worker-health
+
+# Machine-readable snapshot
+rundown worker-health --json
 ```
 
 ### `rundown unlock <source>`

@@ -25,6 +25,8 @@ rundown --config-dir /workspace/rundown-config run docs/todos.md
 
 Use `--agents` at the root to print deterministic, Markdown-safe AGENTS guidance to stdout and exit `0`.
 
+See the command-focused reference: [cli-agents.md](cli-agents.md).
+
 Behavior:
 
 - Root-only usage: `rundown --agents` and `rd --agents`.
@@ -68,6 +70,8 @@ Cross-shell notes:
 ### `rundown`
 
 Running `rundown` with no subcommand and no positional arguments starts an interactive live-help session when possible.
+
+See the command-focused reference: [cli-root.md](cli-root.md).
 
 Behavior:
 

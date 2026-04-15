@@ -159,6 +159,84 @@ describe("default prompt templates", () => {
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("`inventory:`");
   });
 
+  it("keeps memory-vs-write classification fixtures consistent in plan and deep-plan templates", () => {
+    const classificationFixtures = [
+      {
+        label: "research-only capture with no file target",
+        taskText: "research rollout constraints",
+        expectedDecision: "memory",
+        evidence: "`- [ ] memory: research rollout constraints`",
+      },
+      {
+        label: "explicit write target",
+        taskText: "Write findings to docs/research-notes.md",
+        expectedDecision: "execution",
+        evidence: "- [ ] Write findings to docs/research-notes.md",
+      },
+      {
+        label: "mixed research and write",
+        taskText: "Research rollout risks and write findings into docs/rollout-plan.md",
+        expectedDecision: "execution",
+        evidence: "- [ ] Research rollout risks and write findings into docs/rollout-plan.md",
+      },
+      {
+        label: "implicit write target",
+        taskText: "prepare notes section in this doc",
+        expectedDecision: "execution",
+        evidence: "prepare notes section in this doc",
+      },
+      {
+        label: "parent memory intent does not override child write task",
+        taskText: "directive parent memory intent with child write language",
+        expectedDecision: "execution",
+        evidence: "no inherited `memory:`",
+      },
+    ] as const;
+
+    const templateCases = [
+      {
+        label: "plan",
+        template: DEFAULT_PLAN_TEMPLATE,
+        memoryRule: "Use `memory:` when the objective is research/inventory/constraints/reference capture for later tasks and there is no explicit target file write/edit/create in that task.",
+        executionRule:
+          "Do NOT use `memory:` when the task asks to write/edit/create/update any file or persistent document artifact (including \"prepare notes section in this doc\" or \"research and write findings into X.md\"). These must remain normal execution TODOs.",
+        splitRule: "split into separate TODOs when possible",
+      },
+      {
+        label: "deep-plan",
+        template: DEFAULT_DEEP_PLAN_TEMPLATE,
+        memoryRule:
+          "Use `memory:` when the child task objective is research/inventory/constraints/reference capture for later tasks and there is no explicit target file write/edit/create in that child task.",
+        executionRule:
+          "Do NOT use `memory:` when the child task asks to write/edit/create/update any file or persistent document artifact (including \"prepare notes section in this doc\" or \"research and write findings into X.md\"). These must remain normal execution TODOs.",
+        splitRule: "split into separate child TODOs when possible",
+      },
+    ] as const;
+
+    for (const templateCase of templateCases) {
+      expect(templateCase.template, `${templateCase.label} memory rule`).toContain(templateCase.memoryRule);
+      expect(templateCase.template, `${templateCase.label} non-memory rule`).toContain(templateCase.executionRule);
+      expect(templateCase.template, `${templateCase.label} mixed-intent split guidance`).toContain(templateCase.splitRule);
+
+      for (const fixture of classificationFixtures) {
+        expect(templateCase.template, `${templateCase.label} fixture (${fixture.expectedDecision}): ${fixture.label} :: ${fixture.taskText}`).toContain(
+          fixture.evidence,
+        );
+
+        if (fixture.expectedDecision === "memory") {
+          expect(templateCase.template, `${templateCase.label} memory fixture should keep memory rule`).toContain(
+            templateCase.memoryRule,
+          );
+          continue;
+        }
+
+        expect(templateCase.template, `${templateCase.label} execution fixture should keep non-memory rule`).toContain(
+          templateCase.executionRule,
+        );
+      }
+    }
+  });
+
   it("maps sample prompts to rundown workflows and preserves migration + fallback guidance in help template", () => {
     expect(DEFAULT_HELP_TEMPLATE).toContain("\"plan this\" maps to `rundown plan`");
     expect(DEFAULT_HELP_TEMPLATE).toContain("\"explore this\" maps to `rundown explore`");

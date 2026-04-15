@@ -189,6 +189,9 @@ export function createTestSpecs(
       predictionDirectoryContext,
       future,
     );
+    const executionCwd = testContext.mode === "materialized"
+      ? invocationRoot
+      : cwd;
     if (testContext.lowContextGuidance.length > 0) {
       emit({ kind: "warn", message: testContext.lowContextGuidance });
     }
@@ -226,7 +229,7 @@ export function createTestSpecs(
         workerPattern,
         prompt,
         mode: "wait",
-        cwd,
+        cwd: executionCwd,
         env: {
           RUNDOWN_TEST_MODE: testContext.mode,
           RUNDOWN_TEST_FUTURE_TARGET: testContext.futureTarget,
@@ -341,7 +344,12 @@ function buildTestContext(
   predictionDirectoryContext: PredictionDirectoryContext,
   future: true | number | undefined,
 ): TestContext {
-  const includeExclude = buildIncludedAndExcludedDirectories(projectRoot, predictionDirectoryContext, future);
+  const includeExclude = buildIncludedAndExcludedDirectories(
+    projectRoot,
+    invocationRoot,
+    predictionDirectoryContext,
+    future,
+  );
 
   if (future === undefined) {
     return {
@@ -459,6 +467,7 @@ function resolvePredictionDirectoryContext(
 
 function buildIncludedAndExcludedDirectories(
   projectRoot: string,
+  invocationRoot: string,
   predictionDirectoryContext: PredictionDirectoryContext,
   future: true | number | undefined,
 ): {
@@ -474,8 +483,8 @@ function buildIncludedAndExcludedDirectories(
       predictionDirectoryContext.migrationsPath,
     ];
     return {
-      included: projectRoot,
-      includedList: [projectRoot],
+      included: invocationRoot,
+      includedList: [invocationRoot],
       excluded: excludedList.join("\n"),
       excludedList,
     };

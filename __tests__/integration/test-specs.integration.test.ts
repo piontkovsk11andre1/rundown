@@ -82,6 +82,54 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
     expect(combinedOutput).toContain("PASS linked.md");
   });
 
+  it("rundown test default mode executes from invocation source directory", async () => {
+    const sandbox = makeTempWorkspace();
+    const sourceWorkspace = path.join(sandbox, "source-workspace");
+    const linkedInvocationDir = path.join(sandbox, "linked-invocation");
+
+    fs.mkdirSync(sourceWorkspace, { recursive: true });
+    fs.mkdirSync(linkedInvocationDir, { recursive: true });
+
+    fs.mkdirSync(path.join(sourceWorkspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(sourceWorkspace, ".rundown", "test-materialized.md"), "{{assertion}}", "utf-8");
+    fs.writeFileSync(path.join(sourceWorkspace, ".rundown", "test-future.md"), "{{assertion}}", "utf-8");
+
+    fs.mkdirSync(path.join(sourceWorkspace, "specs"), { recursive: true });
+    fs.writeFileSync(path.join(sourceWorkspace, "specs", "cwd-check.md"), "assert cwd", "utf-8");
+
+    fs.mkdirSync(path.join(sourceWorkspace, "migrations"), { recursive: true });
+    fs.writeFileSync(path.join(sourceWorkspace, "migrations", formatMigrationFilename(1, "initialize")), "# 0001 initialize\n", "utf-8");
+
+    fs.mkdirSync(path.join(linkedInvocationDir, ".rundown"), { recursive: true });
+    fs.writeFileSync(
+      path.join(linkedInvocationDir, ".rundown", "workspace.link"),
+      path.relative(linkedInvocationDir, sourceWorkspace).replace(/\\/g, "/"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "test",
+      "--",
+      "node",
+      "-e",
+      [
+        "const path=require('node:path');",
+        `const invocationDir=${JSON.stringify(linkedInvocationDir)};`,
+        "if(path.resolve(process.cwd())===path.resolve(invocationDir)){console.log('OK');process.exit(0);}",
+        "console.log('NOT_OK: expected materialized mode to run from invocation source directory');process.exit(0);",
+      ].join(""),
+    ], linkedInvocationDir);
+
+    expect(result.code).toBe(0);
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n"));
+    expect(combinedOutput).toContain("PASS cwd-check.md");
+  });
+
   it("rundown test uses configured workspace specs directory when --dir is omitted", async () => {
     const workspace = makeTempWorkspace();
     fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });

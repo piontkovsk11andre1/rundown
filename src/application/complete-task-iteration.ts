@@ -423,6 +423,7 @@ export async function completeTaskIteration(params: {
   const latestTaskText = latestTask?.text;
   const isLoopTask = forLoopAdvanced !== undefined
     || forLoopCompleted === true
+    || forLoopItems !== undefined
     || isForLoopTaskText(task.text)
     || (latestTaskText !== undefined && isForLoopTaskText(latestTaskText));
   if (isLoopTask) {

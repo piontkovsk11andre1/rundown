@@ -1495,7 +1495,7 @@ describe("run-task-iteration", () => {
     expect(completeSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("reproduces premature parent-check on first minimal for-loop pass with missing transition signals", async () => {
+  it("keeps loop parent unchecked on first minimal for-loop pass and emits advance signals", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");
     const task = createTask(taskFile, "for: Alpha, Beta", {
@@ -1645,7 +1645,7 @@ describe("run-task-iteration", () => {
     });
     expect(completeSpy.mock.calls[0]?.[0]?.forLoopCompleted).toBeUndefined();
     expect(fileSystem.readText(taskFile)).toBe([
-      "- [x] for: Alpha, Beta",
+      "- [ ] for: Alpha, Beta",
       "  - for-item: Alpha",
       "  - for-item: Beta",
       "  - for-current: Alpha",
@@ -1655,9 +1655,9 @@ describe("run-task-iteration", () => {
     ].join("\n"));
 
     expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(1);
-    expect(events.some((event) => event.kind === "info" && event.message.includes("Loop advanced to item:"))).toBe(false);
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Loop advanced to item:"))).toBe(true);
     expect(events.some((event) => event.kind === "info" && event.message.includes("Loop completed"))).toBe(false);
-    expect(events).toContainEqual({ kind: "success", message: "Task checked: Alpha, Beta" });
+    expect(events.some((event) => event.kind === "success" && event.message.startsWith("Task checked:"))).toBe(false);
   });
 
   it.each(["fast:", "raw:"])("skips %s tasks that have no payload text without invoking worker execution", async (taskText) => {

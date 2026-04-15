@@ -278,6 +278,7 @@ interface TodoCheckboxLineEntry {
   index: number;
   line: string;
   normalized: string;
+  checked: boolean;
 }
 
 function collectTodoCheckboxLinesOutsideFences(lines: string[]): TodoCheckboxLineEntry[] {
@@ -308,10 +309,12 @@ function collectTodoCheckboxLinesOutsideFences(lines: string[]): TodoCheckboxLin
     }
 
     if (CHECKBOX_PATTERN.test(line)) {
+      const match = line.match(CHECKBOX_PATTERN);
       entries.push({
         index,
         line,
         normalized: normalizeTodoCheckboxLine(line),
+        checked: match !== null && /[xX]/.test(match[1] ?? ""),
       });
     }
   }
@@ -336,15 +339,15 @@ export function relocateInsertedTodosToEnd(beforeSource: string, afterSource: st
   const beforeTodoEntries = collectTodoCheckboxLinesOutsideFences(beforeLines);
   const afterTodoEntries = collectTodoCheckboxLinesOutsideFences(afterLines);
 
-  const beforeCounts = toCountMap(beforeTodoEntries.map((entry) => entry.normalized));
+  const beforeCounts = toCountMap(beforeTodoEntries.map((entry) => toTodoIdentity(entry)));
   const addedTodoLines: string[] = [];
   const addedTodoIndices = new Set<number>();
 
   for (const entry of afterTodoEntries) {
-    const normalized = entry.normalized;
-    const beforeCount = beforeCounts.get(normalized) ?? 0;
+    const identity = toTodoIdentity(entry);
+    const beforeCount = beforeCounts.get(identity) ?? 0;
     if (beforeCount > 0) {
-      beforeCounts.set(normalized, beforeCount - 1);
+      beforeCounts.set(identity, beforeCount - 1);
       continue;
     }
 
@@ -421,4 +424,8 @@ function endsWithTodoBlockOutsideFences(lines: string[]): boolean {
   }
 
   return lastMeaningfulIsTodo;
+}
+
+function toTodoIdentity(entry: Pick<TodoCheckboxLineEntry, "normalized" | "checked">): string {
+  return `${entry.checked ? "checked" : "unchecked"}:${entry.normalized}`;
 }

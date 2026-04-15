@@ -547,6 +547,42 @@ describe("relocateInsertedTodosToEnd", () => {
     ].join("\n"));
   });
 
+  it("preserves existing checked item placement and moves only newly added TODO lines", () => {
+    const beforeSource = [
+      "# Work",
+      "",
+      "- [x] Completed setup",
+      "- [ ] Existing follow-up",
+      "",
+      "Tail prose.",
+      "",
+    ].join("\n");
+    const afterSource = [
+      "# Work",
+      "- [ ] New prep",
+      "",
+      "- [x] Completed setup",
+      "- [ ] Existing follow-up",
+      "",
+      "Tail prose.",
+      "",
+    ].join("\n");
+
+    const result = relocateInsertedTodosToEnd(beforeSource, afterSource);
+
+    expect(result).toBe([
+      "# Work",
+      "",
+      "- [x] Completed setup",
+      "- [ ] Existing follow-up",
+      "",
+      "Tail prose.",
+      "",
+      "- [ ] New prep",
+      "",
+    ].join("\n"));
+  });
+
   it("preserves CRLF and trailing newline behavior", () => {
     const beforeSource = [
       "# Spec",

@@ -4,6 +4,14 @@ Print deterministic, Markdown-safe AGENTS guidance to stdout and exit `0`.
 
 Use root `--agents` mode when you need a clean guidance block for `AGENTS.md` generation or automation pipelines.
 
+## Global option: `--config-dir <path>`
+
+`--config-dir <path>` is available on every command.
+
+- If provided, rundown uses that directory as the `.rundown` config root and skips upward discovery.
+- If omitted, rundown discovers `.rundown/` by walking upward from the command start directory until it finds one.
+- If discovery finds nothing, command-specific fallback behavior applies.
+
 Synopsis:
 
 ```bash

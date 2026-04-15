@@ -6,6 +6,14 @@ Use `--all` to include checked tasks in the output.
 
 Nested checkbox tasks and non-checkable list items are rendered under their parent task with indentation, preserving source order.
 
+## Global option: `--config-dir <path>`
+
+`--config-dir <path>` is available on every command.
+
+- If provided, rundown uses that directory as the `.rundown` config root and skips upward discovery.
+- If omitted, rundown discovers `.rundown/` by walking upward from the command start directory until it finds one.
+- If discovery finds nothing, command-specific fallback behavior applies.
+
 Synopsis:
 
 ```bash

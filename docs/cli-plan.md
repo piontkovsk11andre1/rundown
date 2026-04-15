@@ -13,6 +13,14 @@ rundown plan docs/spec.md --scan-count 3
 
 When `--deep <n>` is set, `plan` then runs `n` additional nested passes after top-level scan convergence. Each deep pass targets current leaf TODO items (parents with no checkbox children) and asks the planner for child `- [ ]` items only.
 
+## Global option: `--config-dir <path>`
+
+`--config-dir <path>` is available on every command.
+
+- If provided, rundown uses that directory as the `.rundown` config root and skips upward discovery.
+- If omitted, rundown discovers `.rundown/` by walking upward from the command start directory until it finds one.
+- If discovery finds nothing, command-specific fallback behavior applies.
+
 Synopsis:
 
 ```bash

@@ -10,6 +10,14 @@ Use this when you want a deterministic confidence check against an exact histori
 
 `--worker` is optional when rundown can resolve a worker for `reverify` from `.rundown/config.json`.
 
+## Global option: `--config-dir <path>`
+
+`--config-dir <path>` is available on every command.
+
+- If provided, rundown uses that directory as the `.rundown` config root and skips upward discovery.
+- If omitted, rundown discovers `.rundown/` by walking upward from the command start directory until it finds one.
+- If discovery finds nothing, command-specific fallback behavior applies.
+
 Synopsis:
 
 ```bash

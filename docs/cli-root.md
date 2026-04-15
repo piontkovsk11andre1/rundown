@@ -4,6 +4,14 @@ Run root `rundown` with no subcommand and no positional arguments to start inter
 
 Use root no-arg mode for quick onboarding and context-aware guidance before running task commands.
 
+## Global option: `--config-dir <path>`
+
+`--config-dir <path>` is available on every command.
+
+- If provided, rundown uses that directory as the `.rundown` config root and skips upward discovery.
+- If omitted, rundown discovers `.rundown/` by walking upward from the command start directory until it finds one.
+- If discovery finds nothing, command-specific fallback behavior applies.
+
 Synopsis:
 
 ```bash

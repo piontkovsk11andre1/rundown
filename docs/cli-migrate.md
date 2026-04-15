@@ -6,6 +6,14 @@ Without an action, `migrate` generates the next migration proposal based on desi
 
 Design context resolution is revision-aware: it prefers `design/current/**`, includes revision/archive directories (`design/rev.*/**`) as context sources, and falls back to legacy `docs/current/**`, `docs/rev.*/**`, and root `Design.md` for older projects.
 
+## Global option: `--config-dir <path>`
+
+`--config-dir <path>` is available on every command.
+
+- If provided, rundown uses that directory as the `.rundown` config root and skips upward discovery.
+- If omitted, rundown discovers `.rundown/` by walking upward from the command start directory until it finds one.
+- If discovery finds nothing, command-specific fallback behavior applies.
+
 Synopsis:
 
 ```bash

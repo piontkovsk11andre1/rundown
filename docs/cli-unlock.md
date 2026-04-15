@@ -4,6 +4,14 @@ Manually remove a stale per-source lockfile (`<source-dir>/.rundown/<basename>.l
 
 `unlock` is a safety command for lock recovery. It only removes locks that are not owned by a currently running process.
 
+## Global option: `--config-dir <path>`
+
+`--config-dir <path>` is available on every command.
+
+- If provided, rundown uses that directory as the `.rundown` config root and skips upward discovery.
+- If omitted, rundown discovers `.rundown/` by walking upward from the command start directory until it finds one.
+- If discovery finds nothing, command-specific fallback behavior applies.
+
 Synopsis:
 
 ```bash

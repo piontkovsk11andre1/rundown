@@ -7,6 +7,14 @@ Run `research` and then `plan` on the same existing Markdown document.
 1. `rundown research <markdown-file>` enriches context and structure,
 2. `rundown plan <markdown-file>` synthesizes actionable TODO items.
 
+## Global option: `--config-dir <path>`
+
+`--config-dir <path>` is available on every command.
+
+- If provided, rundown uses that directory as the `.rundown` config root and skips upward discovery.
+- If omitted, rundown discovers `.rundown/` by walking upward from the command start directory until it finds one.
+- If discovery finds nothing, command-specific fallback behavior applies.
+
 Synopsis:
 
 ```bash

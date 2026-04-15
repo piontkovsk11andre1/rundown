@@ -4,6 +4,14 @@ Undo previously completed tasks by reverting the git commit recorded in saved ru
 
 By default, `revert` targets the latest completed+committed run in the current repository (`--run latest`) and uses `--method revert`.
 
+## Global option: `--config-dir <path>`
+
+`--config-dir <path>` is available on every command.
+
+- If provided, rundown uses that directory as the `.rundown` config root and skips upward discovery.
+- If omitted, rundown discovers `.rundown/` by walking upward from the command start directory until it finds one.
+- If discovery finds nothing, command-specific fallback behavior applies.
+
 Synopsis:
 
 ```bash

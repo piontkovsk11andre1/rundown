@@ -68,7 +68,7 @@ An empty checkbox is interpreted as an **instruction**.
 Each instruction is wrapped in a loop, with configurable retries, so imperfect execution predictions can be worked through:
 
 ```text
-execute -> validate -> repair -> validate -> repair -> ... -> resolve -> repair -> stop or reset
+execute -> verify -> repair -> verify -> repair -> ... -> resolve -> repair -> stop or reset
 ```
 
 ### Extensible tooling
@@ -229,9 +229,9 @@ bun add -g @p10i/rundown
 - [CLI: `materialize`](docs/cli-materialize.md) — materialize predicted state into workspace files
 - [CLI: `plan`](docs/cli-plan.md) — produce implementation plans from prompts and context
 - [CLI: `research`](docs/cli-research.md) — gather structured research artifacts for tasks
-- [CLI: `run`](docs/cli-run.md) — execute full rundown phases with validation and repair loops
+- [CLI: `run`](docs/cli-run.md) — execute full rundown phases with verification and repair loops
 - [CLI: `start`](docs/cli-start.md) — bootstrap and launch a guided rundown session
-- [CLI: `test`](docs/cli-test.md) — run validation/test workflows against predicted or real state
+- [CLI: `test`](docs/cli-test.md) — run verification/test workflows against predicted or real state
 - [CLI: `reverify`](docs/cli-reverify.md) — re-run verification on prior runs and artifacts
 - [CLI: `revert`](docs/cli-revert.md) — revert selected rundown-generated changes safely
 - [CLI: `undo`](docs/cli-undo.md) — undo recent rundown operations and restore prior state

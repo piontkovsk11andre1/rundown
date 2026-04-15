@@ -18,6 +18,7 @@ import * as taskExecutionDispatchModule from "../../src/application/task-executi
 import * as completeTaskIterationModule from "../../src/application/complete-task-iteration.js";
 import type { Task } from "../../src/domain/parser.js";
 import {
+  FOR_LOOP_PREFIX_ALIASES,
   MEMORY_PREFIX_ALIASES,
   PARALLEL_PREFIX_ALIASES,
   VERIFY_PREFIX_ALIASES,
@@ -1659,6 +1660,204 @@ describe("run-task-iteration", () => {
     expect(events.some((event) => event.kind === "info" && event.message.includes("Loop completed"))).toBe(false);
     expect(events.some((event) => event.kind === "success" && event.message.startsWith("Task checked:"))).toBe(false);
   });
+
+  it.each(FOR_LOOP_PREFIX_ALIASES)(
+    "checks %s parent only after the final loop item pass",
+    async (loopAlias) => {
+      const cwd = "/workspace";
+      const taskFile = path.join(cwd, "tasks.md");
+      const taskText = `${loopAlias}: Alpha, Beta`;
+      const fileSystem = createInMemoryFileSystem({
+        [taskFile]: [
+          `- [ ] ${taskText}`,
+          "  - [ ] Do this",
+          "  - [ ] Do that",
+          "- [ ] Next task",
+          "",
+        ].join("\n"),
+      });
+      const { dependencies } = createDependencies({
+        cwd,
+        task: createTask(taskFile, taskText),
+        fileSystem,
+        gitClient: createGitClientMock(),
+      });
+      dependencies.workerExecutor.runWorker = vi.fn(async () => ({
+        exitCode: 0,
+        stdout: [
+          "- for-item: Alpha",
+          "- for-item: Beta",
+        ].join("\n"),
+        stderr: "",
+      }));
+      dependencies.toolResolver = {
+        resolve: (toolName) => resolveBuiltinTool(toolName),
+        listKnownToolNames: () => listBuiltinToolNames(),
+      };
+
+      const state = {
+        traceWriter: dependencies.traceWriter,
+        deferredCommitContext: null,
+        tasksCompleted: 0,
+        runCompleted: false,
+        artifactContext: null,
+        traceEnrichmentContext: null,
+      };
+
+      const runPass = async () => {
+        const currentTask = parseTasks(fileSystem.readText(taskFile), taskFile)
+          .find((task) => task.text.toLowerCase().startsWith(`${loopAlias}:`));
+        if (!currentTask) {
+          throw new Error("Loop task not found for alias: " + loopAlias);
+        }
+
+        const events: Parameters<typeof runTaskIteration>[0]["emit"] extends (arg: infer T) => void ? T[] : never = [];
+        const emit = (event: Parameters<typeof runTaskIteration>[0]["emit"] extends (arg: infer T) => void ? T : never) => {
+          events.push(event);
+        };
+
+        const traceRunSession = createTraceRunSession({
+          getTraceWriter: () => dependencies.traceWriter,
+          source: "tasks.md",
+          mode: "wait",
+          transport: "file",
+          traceEnabled: false,
+        });
+
+        const result = await runTaskIteration({
+          dependencies,
+          emit,
+          state,
+          context: {
+            source: fileSystem.readText(taskFile),
+            fileSource: fileSystem.readText(taskFile),
+            taskIndex: 0,
+            totalTasks: 1,
+            files: [taskFile],
+            task: currentTask,
+          },
+          execution: {
+            mode: "wait",
+            verbose: false,
+            taskIndex: 0,
+            totalTasks: 1,
+            forceAttempts: 2,
+            keepArtifacts: true,
+            printPrompt: false,
+            dryRun: false,
+            dryRunSuppressesCliExpansion: false,
+            cliExpansionEnabled: true,
+            ignoreCliBlock: false,
+            verify: true,
+            noRepair: false,
+            repairAttempts: 0,
+            forceExecute: false,
+            showAgentOutput: false,
+            hideHookOutput: false,
+            trace: false,
+            traceOnly: false,
+          },
+          worker: {
+            workerPattern: inferWorkerPatternFromCommand(["opencode", "run"]),
+            loadedWorkerConfig: undefined,
+          },
+          verifyConfig: {
+            configuredOnlyVerify: false,
+            configuredShouldVerify: true,
+            maxRepairAttempts: 0,
+            allowRepair: false,
+          },
+          completion: {
+            effectiveRunAll: false,
+            commitAfterComplete: false,
+            deferCommitUntilPostRun: false,
+            commitMessageTemplate: undefined,
+            onCompleteCommand: undefined,
+            onFailCommand: undefined,
+            extraTemplateVars: {},
+          },
+          prompts: {
+            extraTemplateVars: {},
+            cliExecutionOptions: undefined,
+            cliBlockExecutor: {
+              execute: vi.fn(async () => ({
+                exitCode: 0,
+                stdout: "",
+                stderr: "",
+              })),
+            },
+            nowIso: () => "2026-01-01T00:00:00.000Z",
+          },
+          traceConfig: {
+            traceRunSession,
+            pendingPreRunResetTraceEvents: [],
+            roundContext: {
+              currentRound: 1,
+              totalRounds: 1,
+            },
+          },
+          lifecycle: {
+            failRun: vi.fn(async () => 1),
+            finishRun: vi.fn(async () => 0),
+            resetArtifacts: vi.fn(),
+          },
+        });
+
+        return { result, events };
+      };
+
+      const firstPass = await runPass();
+      expect(firstPass.result.continueLoop).toBe(true);
+      expect(fileSystem.readText(taskFile)).toBe([
+        `- [ ] ${taskText}`,
+        "  - for-item: Alpha",
+        "  - for-item: Beta",
+        "  - for-current: Alpha",
+        "  - [ ] Do this",
+        "  - [ ] Do that",
+        "- [ ] Next task",
+        "",
+      ].join("\n"));
+      expect(firstPass.events.some((event) => event.kind === "success" && event.message.startsWith("Task checked:"))).toBe(false);
+
+      fileSystem.writeText(taskFile, fileSystem.readText(taskFile)
+        .replace("  - [ ] Do this", "  - [x] Do this")
+        .replace("  - [ ] Do that", "  - [x] Do that"));
+
+      const secondPass = await runPass();
+      expect(secondPass.result.continueLoop).toBe(true);
+      expect(fileSystem.readText(taskFile)).toBe([
+        `- [ ] ${taskText}`,
+        "  - for-item: Alpha",
+        "  - for-item: Beta",
+        "  - for-current: Beta",
+        "  - [ ] Do this",
+        "  - [ ] Do that",
+        "- [ ] Next task",
+        "",
+      ].join("\n"));
+      expect(secondPass.events.some((event) => event.kind === "success" && event.message.startsWith("Task checked:"))).toBe(false);
+
+      fileSystem.writeText(taskFile, fileSystem.readText(taskFile)
+        .replace("  - [ ] Do this", "  - [x] Do this")
+        .replace("  - [ ] Do that", "  - [x] Do that"));
+
+      const finalPass = await runPass();
+      expect(finalPass.result.continueLoop).toBe(true);
+      expect(fileSystem.readText(taskFile)).toBe([
+        `- [x] ${taskText}`,
+        "  - for-item: Alpha",
+        "  - for-item: Beta",
+        "  - [x] Do this",
+        "  - [x] Do that",
+        "- [ ] Next task",
+        "",
+      ].join("\n"));
+      expect(finalPass.events.some((event) => event.kind === "success" && event.message.startsWith("Task checked:"))).toBe(true);
+
+      expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it.each(["fast:", "raw:"])("skips %s tasks that have no payload text without invoking worker execution", async (taskText) => {
     const cwd = "/workspace";

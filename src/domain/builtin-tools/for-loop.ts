@@ -12,10 +12,11 @@ function buildForLoopResearchPrompt(payload: string, source: string, contextBefo
   return [
     "You are a full-scale research agent preparing concrete loop items for a for-each task.",
     "Investigate the repository context and derive specific actionable items.",
-    "Return JSON only.",
-    "Use the format: {\"results\":[\"item 1\",\"item 2\"]}.",
+    "Return a Markdown bullet list only.",
+    "Each bullet must be one item and should start with `for-item:`.",
+    "Example: `- for-item: item 1`.",
     "Preserve discovery order and avoid duplicates.",
-    "If no items are found, return {\"results\":[]}",
+    "If no items are found, return an empty response.",
     "Do not include commentary.",
     "",
     "Loop task:",
@@ -60,10 +61,30 @@ function extractForLoopItemsFromOutput(output: string): string[] {
     // Fall through to line-based parsing.
   }
 
-  return output
-    .split(/\r?\n/)
-    .map((line) => line.trim().replace(/^[-*+]\s+/, ""))
-    .filter((line) => line.length > 0);
+  const parsed: string[] = [];
+  const lines = output.split(/\r?\n/);
+  let insideFence = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("```")) {
+      insideFence = !insideFence;
+      continue;
+    }
+
+    if (insideFence || trimmed.length === 0) {
+      continue;
+    }
+
+    const withoutBullet = trimmed.replace(/^([-*+]\s+|\d+[.)]\s+)/, "");
+    const withoutPrefix = withoutBullet.replace(/^for-item\s*:\s*/i, "");
+    const normalized = withoutPrefix.trim();
+    if (normalized.length > 0) {
+      parsed.push(normalized);
+    }
+  }
+
+  return parsed;
 }
 
 function dedupeItems(items: readonly string[]): string[] {

@@ -122,7 +122,8 @@ describe("builtin-tools/for-loop", () => {
       "for-item: Omg",
     ]);
     const runWorkerCall = (context.workerExecutor.runWorker as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
-    expect(runWorkerCall?.prompt ?? "").toContain("You are a full-scale research agent preparing concrete loop items for a for-each task.");
+    expect(runWorkerCall?.prompt ?? "").toContain("Return a Markdown bullet list only.");
+    expect(runWorkerCall?.prompt ?? "").toContain("Each bullet must be one item and should start with `for-item:`.");
     expect(context.emit).toHaveBeenCalledWith({
       kind: "info",
       message: "For loop baked 3 unique items from research: This, That, Omg",
@@ -166,6 +167,34 @@ describe("builtin-tools/for-loop", () => {
       "for-item: This",
       "for-item: That",
       "for-item: Omg",
+    ]);
+  });
+
+  it("parses markdown bullet output and normalizes missing for-item prefixes", async () => {
+    const context = createContext({
+      payload: "Ignored",
+      workerExecutor: {
+        ...createContext().workerExecutor,
+        runWorker: vi.fn(async () => ({
+          exitCode: 0,
+          stdout: [
+            "- for-item: Alpha",
+            "- Beta",
+            "3. for-item: Gamma",
+            "4) Delta",
+          ].join("\n"),
+          stderr: "",
+        })),
+      },
+    });
+
+    const result = await forLoopHandler(context);
+
+    expect(result.childTasks).toEqual([
+      "for-item: Alpha",
+      "for-item: Beta",
+      "for-item: Gamma",
+      "for-item: Delta",
     ]);
   });
 

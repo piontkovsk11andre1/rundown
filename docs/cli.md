@@ -1202,44 +1202,7 @@ rundown init
 
 ### `rundown with <harness>`
 
-Configure worker settings in `.rundown/config.json` from a known harness preset.
-
-Use this as the fastest onboarding path when you want runnable defaults without manually editing JSON.
-
-Supported harness presets:
-
-- `opencode`
-- `claude`
-- `gemini`
-- `codex`
-- `aider`
-- `cursor`
-- `pi`
-
-Behavior:
-
-- Validates `<harness>` against known presets (case-insensitive aliases are accepted).
-- Creates `.rundown/config.json` when missing.
-- Updates preset-targeted keys (`workers.default`, `workers.tui`, and `commands.discuss`) without clobbering unrelated config.
-- Preserves other config sections (`workspace`, `trace`, run defaults, tool directories, and other command settings).
-- Prints configured keys and resolved config path.
-- Unknown harness exits non-zero with an actionable error and the supported preset list.
-
-Examples:
-
-```bash
-# Canonical OpenCode onboarding
-rundown with opencode
-
-# Alias matching is case-insensitive
-rundown with Claude-Code
-```
-
-OpenCode conventions applied by `rundown with opencode`:
-
-- Deterministic commands (`run`, `plan`, `research`, `reverify`) use `opencode run` with file-first prompt transport (`$file` + `$bootstrap`).
-- Interactive discussion (`discuss`) uses base `opencode`.
-- The deterministic/interactive split is persisted via `workers.default`, `workers.tui`, and `commands.discuss`.
+See the command-focused reference: [docs/cli-with.md](cli-with.md).
 
 ### `rundown intro`
 

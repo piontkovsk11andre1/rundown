@@ -192,6 +192,12 @@ Nested checkbox contract:
 
 Those plain list bullets are informational only: they are visible in list output as sub-items, but they are not treated as runnable tasks.
 
+## Harness presets
+
+Use `rundown with <harness>` to quickly configure runnable worker defaults from a known harness preset.
+
+See the command-focused reference: [docs/cli-with.md](cli-with.md).
+
 ## Sorting
 
 Default sorting is `name-sort`, a human-friendly natural sort that works well for filenames such as:

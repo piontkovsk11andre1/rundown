@@ -26,6 +26,18 @@ function formatWorkerCommand(command: readonly string[]): string {
   return JSON.stringify(command);
 }
 
+function formatConfiguredKeyLine(keyPath: string, value: string): string {
+  return `- ${keyPath} = ${value}`;
+}
+
+function formatRemovedKeyLine(keyPath: string): string {
+  return `- ${keyPath} (removed)`;
+}
+
+function formatPreservedKeyLine(keyPath: string): string {
+  return `- ${keyPath} (preserved)`;
+}
+
 function hasPresetFallbackPolicy(presetPayload: { workers: { fallbacks?: string[][] } }): boolean {
   return Object.hasOwn(presetPayload.workers, "fallbacks");
 }
@@ -110,29 +122,42 @@ export function createWithTask(
         : `No change: harness preset ${harnessKey} is already configured.`,
     });
     emit({ kind: "info", message: `Path: ${configPath}` });
+    emit({ kind: "info", message: "Configured keys:" });
     emit({
       kind: "info",
-      message: `Configured workers.default = ${formatWorkerCommand(presetPayload.workers.default)}`,
+      message: formatConfiguredKeyLine(
+        "workers.default",
+        formatWorkerCommand(presetPayload.workers.default),
+      ),
     });
     emit({
       kind: "info",
       message: presetPayload.workers.tui
-        ? `Configured workers.tui = ${formatWorkerCommand(presetPayload.workers.tui)}`
-        : "Removed workers.tui",
+        ? formatConfiguredKeyLine(
+          "workers.tui",
+          formatWorkerCommand(presetPayload.workers.tui),
+        )
+        : formatRemovedKeyLine("workers.tui"),
     });
     emit({
       kind: "info",
       message: presetPayload.commands?.discuss
-        ? `Configured commands.discuss = ${formatWorkerCommand(presetPayload.commands.discuss)}`
-        : "Removed commands.discuss",
+        ? formatConfiguredKeyLine(
+          "commands.discuss",
+          formatWorkerCommand(presetPayload.commands.discuss),
+        )
+        : formatRemovedKeyLine("commands.discuss"),
     });
     emit({
       kind: "info",
       message: hasPresetFallbackPolicy(presetPayload)
         ? (presetPayload.workers.fallbacks && presetPayload.workers.fallbacks.length > 0
-          ? `Configured workers.fallbacks = ${JSON.stringify(presetPayload.workers.fallbacks)}`
-          : "Removed workers.fallbacks")
-        : "Preserved workers.fallbacks",
+          ? formatConfiguredKeyLine(
+            "workers.fallbacks",
+            JSON.stringify(presetPayload.workers.fallbacks),
+          )
+          : formatRemovedKeyLine("workers.fallbacks"))
+        : formatPreservedKeyLine("workers.fallbacks"),
     });
 
     return EXIT_CODE_SUCCESS;

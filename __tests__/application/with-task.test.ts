@@ -53,6 +53,23 @@ describe("with-task", () => {
     });
 
     expect(events).toContainEqual({ kind: "success", message: "Applied harness preset: opencode" });
+    expect(events).toContainEqual({ kind: "info", message: "Configured keys:" });
+    expect(events).toContainEqual({
+      kind: "info",
+      message: "- workers.default = [\"opencode\",\"run\",\"--file\",\"$file\",\"$bootstrap\"]",
+    });
+    expect(events).toContainEqual({
+      kind: "info",
+      message: "- workers.tui = [\"opencode\"]",
+    });
+    expect(events).toContainEqual({
+      kind: "info",
+      message: "- commands.discuss = [\"opencode\"]",
+    });
+    expect(events).toContainEqual({
+      kind: "info",
+      message: "- workers.fallbacks (preserved)",
+    });
   });
 
   it("merges preset updates without clobbering unrelated config keys", () => {

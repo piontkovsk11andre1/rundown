@@ -150,6 +150,34 @@ describe("init-project", () => {
     );
   });
 
+  it("is idempotent and preserves existing agent.md on repeated init", async () => {
+    const { dependencies, fileSystem, events } = createDependencies();
+    const initProject = createInitProject(dependencies);
+
+    const firstCode = await initProject();
+
+    expect(firstCode).toBe(0);
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/.rundown/agent.md",
+      expect.any(String),
+    );
+
+    vi.mocked(fileSystem.writeText).mockClear();
+    events.length = 0;
+
+    const secondCode = await initProject();
+
+    expect(secondCode).toBe(0);
+    expect(vi.mocked(fileSystem.writeText)).not.toHaveBeenCalled();
+    expect(
+      events.some(
+        (event) =>
+          event.kind === "warn" &&
+          event.message.endsWith("/agent.md already exists, skipping."),
+      ),
+    ).toBe(true);
+  });
+
   it("writes worker into config.json when --default-worker is provided", async () => {
     const { dependencies, fileSystem } = createDependencies();
     const initProject = createInitProject(dependencies);

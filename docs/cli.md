@@ -1386,7 +1386,8 @@ With a freshly initialized empty config (`{}`), no worker is resolved by default
 Worker resolution cascade (lowest to highest priority):
 
 - `workers.default` in `.rundown/config.json` (or `workers.tui` when mode is `tui`)
-- `commands.<command>` in `.rundown/config.json` (`run`, `plan`, `make`, `discuss`, `research`, `reverify`, `help`)
+- `commands.<command>` in `.rundown/config.json` (`run`, `plan`, `discuss`, `help`, `research`, `reverify`, `verify`, `memory`)
+- `commands.tools.<toolName>` in `.rundown/config.json` for tool-prefix-specific worker overrides (for example `tools.post-on-gitea`)
 - Markdown frontmatter `profile: <name>`
 - Parent directive item `- profile=<name>` for child checkbox tasks
 - Parent directive item `- cli-args: <args>` for child `cli:` checkbox tasks (appends `<args>` to each child inline CLI command)

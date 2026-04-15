@@ -214,6 +214,7 @@ bun add -g @p10i/rundown
 
 - [Overview](docs/overview.md) — core model, workflow, and task lifecycle
 - [CLI](docs/cli.md) — commands, flags, and global options
+- [CLI: `with`](docs/cli-with.md) — configure and run a harness-backed agent session
 - [CLI: `query`](docs/cli-query.md) — investigate codebase questions with orchestrated workflows
 - [CLI: `memory-view`](docs/cli-memory-view.md) — inspect source-local memory artifacts and summaries
 - [CLI: `memory-validate`](docs/cli-memory-validate.md) — validate memory artifacts and optionally fix issues

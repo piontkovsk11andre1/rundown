@@ -30,9 +30,9 @@ Options:
 | `--force-unlock` | Remove stale source lockfile before acquiring the research lock. Active locks held by live processes are not removed. | off |
 | `--dry-run` | Render the research prompt + execution intent and exit without running the worker. | off |
 | `--print-prompt` | Print the rendered research prompt and exit `0` without running the worker. | off |
-| `--keep-artifacts` | Preserve runtime artifacts under `.rundown/runs/` even on success. | off |
+| `--keep-artifacts` | Preserve runtime artifacts under `<config-dir>/runs/` even on success. | off |
 | `--show-agent-output` | Show worker stdout/stderr during execution (hidden by default). | off |
-| `--trace` | Write structured trace events to `.rundown/runs/<id>/trace.jsonl` and mirror them to `.rundown/logs/trace.jsonl`. | off |
+| `--trace` | Write structured trace events to `<config-dir>/runs/<id>/trace.jsonl` and mirror them to `<config-dir>/logs/trace.jsonl`. | off |
 | `--vars-file [path]` | Load template variables from JSON (default path: `<config-dir>/vars.json`). | unset |
 | `--var <key=value>` | Inject template variables (repeatable). | none |
 | `--worker <pattern>` | Worker pattern override (preferred on PowerShell). | unset |

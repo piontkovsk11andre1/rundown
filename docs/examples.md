@@ -137,7 +137,7 @@ This loads `.rundown/vars.json`, overrides `ticket`, and makes those values avai
 rundown run roadmap.md --keep-artifacts -- opencode run
 ```
 
-This preserves the per-run folder under `.rundown/runs/` so prompts, logs, and metadata can be inspected later.
+This preserves the per-run folder under `<config-dir>/runs/` so prompts, logs, and metadata can be inspected later.
 
 ## 10. Auto-commit completed tasks
 

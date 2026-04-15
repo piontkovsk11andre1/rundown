@@ -23,7 +23,7 @@ Options:
 | `--worker <pattern>` | Worker pattern to execute verify/repair phases (preferred on PowerShell). |
 | `--print-prompt` | Print the rendered verify prompt and exit `0` without running the worker. |
 | `--dry-run` | Resolve the target task, render the verify prompt, print planned execution, and exit `0`. |
-| `--keep-artifacts` | Keep the reverify run folder under `.rundown/runs/`. |
+| `--keep-artifacts` | Keep the reverify run folder under `<config-dir>/runs/`. |
 | `--ignore-cli-block` | Skip `cli` fenced-block command execution during prompt expansion. |
 | `--cli-block-timeout <ms>` | Per-command timeout for `cli` fenced-block execution (`0` disables timeout). Default: `30000`. |
 

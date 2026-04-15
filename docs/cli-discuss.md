@@ -23,8 +23,8 @@ Options:
 | `--sort <name-sort|none|old-first|new-first>` | Source ordering strategy before task selection. | `name-sort` |
 | `--dry-run` | Resolve task + render discuss prompt, print planned execution, and exit `0` without running worker. | off |
 | `--print-prompt` | Print rendered discuss prompt and exit `0` without running worker. | off |
-| `--keep-artifacts` | Keep discuss run artifacts under `.rundown/runs/` even on success. | off |
-| `--trace` | Write structured trace events to `.rundown/runs/<id>/trace.jsonl` and mirror to `.rundown/logs/trace.jsonl`. | off |
+| `--keep-artifacts` | Keep discuss run artifacts under `<config-dir>/runs/` even on success. | off |
+| `--trace` | Write structured trace events to `<config-dir>/runs/<id>/trace.jsonl` and mirror to `<config-dir>/logs/trace.jsonl`. | off |
 | `--vars-file [path]` | Load template variables from JSON (default path: `<config-dir>/vars.json`). | unset |
 | `--var <key=value>` | Inject template variables (repeatable). | none |
 | `--ignore-cli-block` | Skip `cli` fenced-block command execution during prompt expansion. | off |

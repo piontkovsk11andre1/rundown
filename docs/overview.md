@@ -314,7 +314,7 @@ Rendered prompts can be delivered in two ways.
 
 ### `file`
 
-Write the rendered prompt to a Markdown file under `.rundown/runs/` and pass that file to the worker.
+Write the rendered prompt to a Markdown file under `<config-dir>/runs/` and pass that file to the worker.
 
 This is the default because it is robust, especially on Windows where large prompts and shell quoting are fragile.
 
@@ -326,7 +326,7 @@ This can be useful for smaller prompts, but it is less reliable for large Markdo
 
 ## Runtime artifacts
 
-Each real `run` or `plan` execution can create a per-run folder under `.rundown/runs/`.
+Each real `run` or `plan` execution can create a per-run folder under `<config-dir>/runs/`.
 
 Typical contents include:
 

@@ -44,11 +44,11 @@ Options:
 | `--force-unlock` | Remove stale source lockfiles before each phase lock acquisition. Active locks held by live processes are not removed. | off |
 | `--dry-run` | Render phase prompts + execution intent and exit without running workers. | off |
 | `--print-prompt` | Print rendered phase prompts and exit `0` without running workers. | off |
-| `--keep-artifacts` | Preserve runtime artifacts under `.rundown/runs/` even on success. | off |
+| `--keep-artifacts` | Preserve runtime artifacts under `<config-dir>/runs/` even on success. | off |
 | `--show-agent-output` | Show worker stdout/stderr during phase execution (hidden by default). | off |
 | `-v, --verbose` | Show detailed per-task run diagnostics within grouped output for both phases. | off |
 | `-q, --quiet` | Suppress info-level output (info, success, progress, grouped status) across both phases. | off |
-| `--trace` | Write structured trace events to `.rundown/runs/<id>/trace.jsonl` and mirror to `.rundown/logs/trace.jsonl`. | off |
+| `--trace` | Write structured trace events to `<config-dir>/runs/<id>/trace.jsonl` and mirror to `<config-dir>/logs/trace.jsonl`. | off |
 | `--vars-file [path]` | Load template variables from JSON (default path: `<config-dir>/vars.json`). | unset |
 | `--var <key=value>` | Inject template variables (repeatable). | none |
 | `--ignore-cli-block` | Skip `cli` fenced-block command execution during prompt expansion. | off |

@@ -30,10 +30,10 @@ Options:
 | `--force-unlock` | Remove stale source lockfile before acquiring the planner lock. Active locks held by live processes are not removed. | off |
 | `--dry-run` | Render plan prompt + execution intent and exit without running the worker. | off |
 | `--print-prompt` | Print the rendered planner prompt and exit `0` without running the worker. | off |
-| `--keep-artifacts` | Preserve runtime artifacts under `.rundown/runs/` even on success. | off |
+| `--keep-artifacts` | Preserve runtime artifacts under `<config-dir>/runs/` even on success. | off |
 | `--show-agent-output` | Show planner worker stdout/stderr during execution (hidden by default). | off |
 | `--no-show-agent-output` | Explicitly hide planner worker stdout/stderr during execution. Useful to override prior toggles. | on (effective default) |
-| `--trace` | Write structured trace events to `.rundown/runs/<id>/trace.jsonl` and mirror them to `.rundown/logs/trace.jsonl`. | off |
+| `--trace` | Write structured trace events to `<config-dir>/runs/<id>/trace.jsonl` and mirror them to `<config-dir>/logs/trace.jsonl`. | off |
 | `--vars-file [path]` | Load template variables from JSON (default path: `<config-dir>/vars.json`). | unset |
 | `--var <key=value>` | Inject template variables (repeatable). | none |
 | `--ignore-cli-block` | Skip `cli` fenced-block command execution during prompt expansion. | off |

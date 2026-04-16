@@ -129,12 +129,6 @@ See the command-focused reference: [cli-migrate.md](cli-migrate.md).
 
 See the command-focused reference: [cli-design.md](cli-design.md).
 
-### `rundown docs` (deprecated alias)
-
-`rundown docs` remains available as a deprecated alias during migration. Use `rundown design ...` as the canonical command family for all new usage.
-
-See the command-focused reference: [cli-docs.md](cli-docs.md).
-
 ### `rundown run <source>`
 
 See the command-focused reference: [cli-run.md](cli-run.md).

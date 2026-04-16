@@ -106,15 +106,6 @@ rundown design diff preview
 rundown design diff --from rev.2 --to current
 ```
 
-## `rundown docs` (deprecated alias)
-
-`rundown docs` remains available as a transition alias for one migration window.
-
-- `rundown docs release` -> deprecated alias for `rundown design release`
-- `rundown docs diff` -> deprecated alias for `rundown design diff`
-- `rundown docs publish` -> deprecated alias for `rundown design release`
-- `rundown docs save` -> removed alias with actionable migration guidance
-
 Migration file naming:
 
 - step migration: `0007-implement-feature.md`

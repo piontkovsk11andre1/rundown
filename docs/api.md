@@ -55,11 +55,11 @@ Returns an `App` instance whose methods correspond to CLI commands:
 | `workspaceUnlinkTask` | `rundown workspace unlink` |
 | `workspaceRemoveTask` | `rundown workspace remove` |
 
-Utility methods:
+Optional utility methods:
 
-- `emitOutput` — forward an output event to the configured output port.
-- `releaseAllLocks` — release every file lock held by this instance.
-- `awaitShutdown` — wait for graceful shutdown to complete.
+- `emitOutput?` — forward an output event to the configured output port.
+- `releaseAllLocks?` — release every file lock held by this instance.
+- `awaitShutdown?` — wait for graceful shutdown to complete.
 
 ## `resetAllCheckboxes`
 

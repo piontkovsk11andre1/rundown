@@ -8,6 +8,9 @@ import {
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_QUERY_AGGREGATION_TEMPLATE,
   DEFAULT_QUERY_EXECUTION_TEMPLATE,
+  DEFAULT_RESEARCH_REPAIR_TEMPLATE,
+  DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
+  DEFAULT_RESEARCH_VERIFY_TEMPLATE,
   DEFAULT_QUERY_SEED_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
@@ -35,6 +38,9 @@ describe("project-templates", () => {
       resolve: DEFAULT_RESOLVE_TEMPLATE,
       plan: DEFAULT_PLAN_TEMPLATE,
       research: DEFAULT_RESEARCH_TEMPLATE,
+      researchVerify: DEFAULT_RESEARCH_VERIFY_TEMPLATE,
+      researchRepair: DEFAULT_RESEARCH_REPAIR_TEMPLATE,
+      researchResolve: DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
       trace: DEFAULT_TRACE_TEMPLATE,
       querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
       queryExecute: DEFAULT_QUERY_EXECUTION_TEMPLATE,
@@ -53,7 +59,7 @@ describe("project-templates", () => {
         if (filePath.endsWith("execute.md")) {
           return "TASK";
         }
-        if (filePath.endsWith("verify.md")) {
+        if (filePath.endsWith("/verify.md") || filePath.endsWith("\\verify.md")) {
           return "VERIFY";
         }
         return null;
@@ -77,6 +83,9 @@ describe("project-templates", () => {
       resolve: DEFAULT_RESOLVE_TEMPLATE,
       plan: DEFAULT_PLAN_TEMPLATE,
       research: DEFAULT_RESEARCH_TEMPLATE,
+      researchVerify: DEFAULT_RESEARCH_VERIFY_TEMPLATE,
+      researchRepair: DEFAULT_RESEARCH_REPAIR_TEMPLATE,
+      researchResolve: DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
       trace: DEFAULT_TRACE_TEMPLATE,
       querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
       queryExecute: DEFAULT_QUERY_EXECUTION_TEMPLATE,
@@ -86,6 +95,9 @@ describe("project-templates", () => {
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "agent.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "help.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "research.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "research-verify.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "research-repair.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "research-resolve.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "resolve.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "trace.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed.md"));

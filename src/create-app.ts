@@ -577,6 +577,10 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
     },
     researchTask: (ports) => createResearchTask({
       workerExecutor: ports.workerExecutor,
+      taskVerification: ports.taskVerification,
+      taskRepair: ports.taskRepair,
+      verificationStore: ports.verificationStore,
+      traceWriter: ports.traceWriter,
       cliBlockExecutor: ports.cliBlockExecutor,
       artifactStore: ports.artifactStore,
       fileSystem: ports.fileSystem,
@@ -594,6 +598,10 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       runTask: runTaskUseCase(ports),
       researchTask: createResearchTask({
         workerExecutor: ports.workerExecutor,
+        taskVerification: ports.taskVerification,
+        taskRepair: ports.taskRepair,
+        verificationStore: ports.verificationStore,
+        traceWriter: ports.traceWriter,
         cliBlockExecutor: ports.cliBlockExecutor,
         artifactStore: ports.artifactStore,
         fileSystem: ports.fileSystem,

@@ -1146,6 +1146,8 @@ Use built-in prefixes when they improve execution quality:
 
 - \`verify:\` skips execution and runs only the verification phase. Use it for tasks that assert existing state without doing any work (e.g. "verify: all tests pass", "verify: config file exists"). Do NOT use \`verify:\` for tasks that require creating, writing, or changing anything — those need execution.
 - \`fast:\` executes the task but skips the verification phase entirely. Use it for small, mechanical changes where per-task verification is wasteful (e.g. renaming a variable, adding an import). Group several such steps under a \`fast:\` directive parent when they make more sense verified together at the end.
+- \`get:\` performs targeted fact-finding and stores durable findings back in the source task context (for example via \`get-result:\` lines). Use it when later tasks depend on concrete discovered facts (e.g. "get: list impacted modules", "get: inventory existing feature flags").
+- \`loop:\` repeats a scoped workflow until a stop condition is met. Use it for iterative improvement tasks that may need multiple passes (e.g. "loop: fix failing tests until all pass", "loop: refine TODO coverage until no gaps remain"). Keep loop tasks bounded with explicit success criteria.
 - \`profile=<name>\` to choose a worker profile for specific tasks.
 - \`memory:\` for research/context-capture tasks that gather reusable context for later steps when the task does not specify a file to write/edit/create.
 - Author new memory-capture TODOs with the canonical \`memory:\` prefix only; \`remember:\`, \`memorize:\`, and \`inventory:\` remain execution-level compatibility aliases and should not be newly authored in plans.
@@ -1172,6 +1174,8 @@ Heuristics:
 
 - Use \`verify:\` only when the task checks existing state without doing work. If the task creates, writes, or modifies anything, it is NOT a verify task.
 - Use \`fast:\` when the task is a small mechanical edit that does not warrant its own verification pass.
+- Use \`get:\` when the task needs one-pass discovery whose results should be persisted for downstream tasks.
+- Use \`loop:\` when the task is inherently iterative and needs repeated passes until a clear stop condition.
 - Use \`profile=\` when task complexity or cost/speed trade-offs suggest a non-default worker.
 - Use \`memory:\` when the objective is research/inventory/constraints/reference capture for later tasks and there is no explicit target file write/edit/create in that task.
 - Do NOT use \`memory:\` when the task asks to write/edit/create/update any file or persistent document artifact (including "prepare notes section in this doc" or "research and write findings into X.md"). These must remain normal execution TODOs.
@@ -1240,6 +1244,8 @@ Use built-in prefixes when they improve execution quality for child tasks:
 
 - \`verify:\` skips execution and runs only the verification phase. Use it for child tasks that assert existing state without doing any work (e.g. "verify: all tests pass"). Do NOT use \`verify:\` for tasks that require creating, writing, or changing anything — those need execution.
 - \`fast:\` executes the task but skips the verification phase entirely. Use it for small, mechanical changes where per-task verification is wasteful.
+- \`get:\` performs targeted child-task fact-finding and stores durable findings back in the source task context (for example via \`get-result:\` lines). Use it when downstream child tasks depend on concrete discovered facts (e.g. "get: list impacted modules", "get: inventory existing feature flags").
+- \`loop:\` repeats a scoped child-task workflow until a stop condition is met. Use it for iterative child workflows that may need multiple passes (e.g. "loop: fix failing tests until all pass", "loop: refine child TODO coverage until no gaps remain"). Keep loop tasks bounded with explicit success criteria.
 - \`profile=<name>\` to choose a worker profile for specific child tasks.
 - \`memory:\` for child tasks that gather reusable context for later steps when the task does not specify a file to write/edit/create.
 - Author new child memory-capture TODOs with the canonical \`memory:\` prefix only; \`remember:\`, \`memorize:\`, and \`inventory:\` remain execution-level compatibility aliases and should not be newly authored in deep plans.
@@ -1267,6 +1273,8 @@ Heuristics:
 - Use \`verify:\` only when the child task checks existing state without doing work. If the task creates, writes, or modifies anything, it is NOT a verify task.
 - Use \`fast:\` when the child task is a small mechanical edit that does not warrant its own verification pass.
 - Prefer grouping child tasks as \`fast:\` steps followed by a \`verify:\` step that validates the group. A parent task can have multiple such groups when work naturally splits into stages.
+- Use \`get:\` when a child task needs one-pass discovery whose results should be persisted for downstream child tasks.
+- Use \`loop:\` when a child task is inherently iterative and needs repeated passes until a clear stop condition.
 - Use \`profile=\` when child task complexity or cost/speed trade-offs suggest a non-default worker.
 - Use \`memory:\` when the child task objective is research/inventory/constraints/reference capture for later tasks and there is no explicit target file write/edit/create in that child task.
 - Do NOT use \`memory:\` when the child task asks to write/edit/create/update any file or persistent document artifact (including "prepare notes section in this doc" or "research and write findings into X.md"). These must remain normal execution TODOs.
@@ -1345,6 +1353,118 @@ Guidelines:
 - Write in the same voice and style as the existing document.
 
 Return the full updated Markdown document and nothing else.
+{{traceInstructions}}
+`;
+
+/**
+ * Default research-verify template used to validate research enrichment quality.
+ */
+export const DEFAULT_RESEARCH_VERIFY_TEMPLATE = `\
+${DEFAULT_TEMPLATE_SHARED_PREFIX}
+${DEFAULT_TEMPLATE_MEMORY_SECTION}
+${DEFAULT_TEMPLATE_VARS_SECTION}
+
+## Full document before research
+
+{{source}}
+
+## Research output document
+
+{{executionStdout}}
+
+## Phase
+
+Verify whether the research output is acceptable.
+
+Check outcome-level constraints:
+
+- Existing checkbox states are unchanged.
+- No new unchecked TODO items were introduced.
+- Original author intent is preserved semantically (not line-by-line matching).
+- Output remains coherent Markdown suitable for planning.
+- Enrichment quality is present (context, constraints, boundaries, acceptance framing).
+
+Your ENTIRE stdout output must be exactly one line containing only the verdict.
+
+Return exactly one of:
+
+- \`OK\`
+- \`NOT_OK: <short explanation of what failed>\`
+
+Output ONLY the verdict line - nothing else.
+{{traceInstructions}}
+`;
+
+/**
+ * Default research-repair template used after failed research verification.
+ */
+export const DEFAULT_RESEARCH_REPAIR_TEMPLATE = `\
+${DEFAULT_TEMPLATE_SHARED_PREFIX}
+${DEFAULT_TEMPLATE_MEMORY_SECTION}
+${DEFAULT_TEMPLATE_VARS_SECTION}
+
+## Full document before research
+
+{{source}}
+
+## Previous research output
+
+{{executionStdout}}
+
+## Last validation error
+
+{{lastValidationError}}
+
+## Phase
+
+Repair the research output so it satisfies verification.
+
+Produce a complete corrected Markdown document that:
+
+- Preserves checkbox states for existing tasks.
+- Does not introduce new unchecked TODO items.
+- Preserves original intent semantically.
+- Keeps the document useful for planning.
+- Improves enrichment quality where missing.
+
+Return the full corrected Markdown document and nothing else.
+{{traceInstructions}}
+`;
+
+/**
+ * Default research-resolve template used when research repair attempts are exhausted.
+ */
+export const DEFAULT_RESEARCH_RESOLVE_TEMPLATE = `\
+${DEFAULT_TEMPLATE_SHARED_PREFIX}
+${DEFAULT_TEMPLATE_MEMORY_SECTION}
+${DEFAULT_TEMPLATE_VARS_SECTION}
+
+## Full document before research
+
+{{source}}
+
+## Original research output
+
+{{executionStdout}}
+
+## Verification failure
+
+{{verificationFailureMessage}}
+
+## Repair attempt history
+
+{{repairAttemptHistory}}
+
+## Phase
+
+Diagnose why research verification keeps failing.
+
+Return exactly one verdict line on stdout:
+
+- \`RESOLVED: <root cause diagnosis>\`
+- \`UNRESOLVED: <why diagnosis is not possible from available context>\`
+
+Output only the verdict line and nothing else.
 {{traceInstructions}}
 `;
 

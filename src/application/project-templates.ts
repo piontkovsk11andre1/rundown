@@ -6,6 +6,9 @@ import {
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_QUERY_AGGREGATION_TEMPLATE,
   DEFAULT_QUERY_EXECUTION_TEMPLATE,
+  DEFAULT_RESEARCH_REPAIR_TEMPLATE,
+  DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
+  DEFAULT_RESEARCH_VERIFY_TEMPLATE,
   DEFAULT_QUERY_SEED_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
@@ -37,6 +40,9 @@ export interface ProjectTemplates {
   resolve: string;
   plan: string;
   research: string;
+  researchVerify: string;
+  researchRepair: string;
+  researchResolve: string;
   trace: string;
   querySeed: string;
   queryExecute: string;
@@ -67,6 +73,9 @@ export function loadProjectTemplatesFromPorts(
       resolve: DEFAULT_RESOLVE_TEMPLATE,
       plan: DEFAULT_PLAN_TEMPLATE,
       research: DEFAULT_RESEARCH_TEMPLATE,
+      researchVerify: DEFAULT_RESEARCH_VERIFY_TEMPLATE,
+      researchRepair: DEFAULT_RESEARCH_REPAIR_TEMPLATE,
+      researchResolve: DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
       trace: DEFAULT_TRACE_TEMPLATE,
       querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
       queryExecute: DEFAULT_QUERY_EXECUTION_TEMPLATE,
@@ -96,6 +105,15 @@ export function loadProjectTemplatesFromPorts(
     resolve: templateLoader.load(pathOperations.join(dir, "resolve.md")) ?? DEFAULT_RESOLVE_TEMPLATE,
     plan: templateLoader.load(pathOperations.join(dir, "plan.md")) ?? DEFAULT_PLAN_TEMPLATE,
     research: templateLoader.load(pathOperations.join(dir, "research.md")) ?? DEFAULT_RESEARCH_TEMPLATE,
+    researchVerify:
+      templateLoader.load(pathOperations.join(dir, "research-verify.md")) ??
+      DEFAULT_RESEARCH_VERIFY_TEMPLATE,
+    researchRepair:
+      templateLoader.load(pathOperations.join(dir, "research-repair.md")) ??
+      DEFAULT_RESEARCH_REPAIR_TEMPLATE,
+    researchResolve:
+      templateLoader.load(pathOperations.join(dir, "research-resolve.md")) ??
+      DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
     trace: templateLoader.load(pathOperations.join(dir, "trace.md")) ?? DEFAULT_TRACE_TEMPLATE,
     querySeed:
       templateLoader.load(pathOperations.join(dir, "query-seed.md")) ??

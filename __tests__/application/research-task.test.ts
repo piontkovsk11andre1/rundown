@@ -13,6 +13,10 @@ import type {
   CommandExecutor,
   FileLock,
   FileSystem,
+  TaskRepairPort,
+  TaskVerificationPort,
+  TraceWriterPort,
+  VerificationStore,
 } from "../../src/domain/ports/index.js";
 import { FileLockError } from "../../src/domain/ports/file-lock.js";
 
@@ -749,7 +753,7 @@ describe("research-task", () => {
     }));
   });
 
-  it("rejects research output that changes checkbox state and restores original source", async () => {
+  it("rejects research output that changes checkbox state", async () => {
     const cwd = "/workspace";
     const markdownFile = path.join(cwd, "roadmap.md");
     const sourceBefore = "# Roadmap\n- [x] Existing complete item\n";
@@ -771,30 +775,21 @@ describe("research-task", () => {
     expect(code).toBe(1);
     expect(events).toContainEqual({
       kind: "error",
-      message: "Research changed checkbox state in "
+      message: "Last validation error: Research changed checkbox state in "
         + markdownFile
         + ". Research may enrich prose, but must not mark/unmark checkboxes.",
     });
-    expect(events).toContainEqual({
-      kind: "error",
-      message: "Research update rejected due to constraint violation.",
-    });
-    expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenNthCalledWith(
-      1,
-      markdownFile,
-      sourceBefore,
-    );
+    expect(vi.mocked(dependencies.fileSystem.writeText)).not.toHaveBeenCalled();
     expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
       expect.objectContaining({ runId: "run-research" }),
       expect.objectContaining({
-        status: "execution-failed",
+        status: "verification-failed",
         preserve: true,
       }),
     );
   });
 
-  it("rejects research output that removes existing checkbox lines and restores original source", async () => {
+  it("rejects research output that removes existing checkbox lines", async () => {
     const cwd = "/workspace";
     const markdownFile = path.join(cwd, "roadmap.md");
     const sourceBefore = "# Roadmap\n- [x] Existing complete item\n";
@@ -816,24 +811,15 @@ describe("research-task", () => {
     expect(code).toBe(1);
     expect(events).toContainEqual({
       kind: "error",
-      message: "Research changed checkbox state in "
+      message: "Last validation error: Research changed checkbox state in "
         + markdownFile
         + ". Research may enrich prose, but must not mark/unmark checkboxes.",
     });
-    expect(events).toContainEqual({
-      kind: "error",
-      message: "Research update rejected due to constraint violation.",
-    });
-    expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenNthCalledWith(
-      1,
-      markdownFile,
-      sourceBefore,
-    );
+    expect(vi.mocked(dependencies.fileSystem.writeText)).not.toHaveBeenCalled();
     expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
       expect.objectContaining({ runId: "run-research" }),
       expect.objectContaining({
-        status: "execution-failed",
+        status: "verification-failed",
         preserve: true,
       }),
     );
@@ -869,11 +855,6 @@ describe("research-task", () => {
     expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenNthCalledWith(
       1,
       markdownFile,
-      "# Roadmap\nBuild a new release process.\n\n- [ ] Add rollout checklist\n",
-    );
-    expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenNthCalledWith(
-      2,
-      markdownFile,
       "# Roadmap\nBuild a new release process.\n\n",
     );
     expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
@@ -883,6 +864,105 @@ describe("research-task", () => {
         preserve: false,
       }),
     );
+  });
+
+  it("keeps checkbox safety guard active during repair attempts", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const sourceBefore = "# Roadmap\n- [x] Existing complete item\n";
+    const { dependencies, events } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: sourceBefore,
+    });
+
+    vi.mocked(dependencies.workerExecutor.runWorker)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: sourceBefore,
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "# Roadmap\n- [ ] Existing complete item\n",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "# Roadmap\n- [ ] Existing complete item\n",
+        stderr: "",
+      });
+
+    vi.mocked(dependencies.taskVerification.verify).mockResolvedValue({
+      valid: false,
+      stdout: "NOT_OK: needs richer context",
+    });
+
+    const researchTask = createResearchTask(dependencies);
+    const code = await researchTask(createOptions({ source: markdownFile }));
+
+    expect(code).toBe(1);
+    expect(vi.mocked(dependencies.taskVerification.verify)).toHaveBeenCalledTimes(1);
+    expect(events).toContainEqual({
+      kind: "error",
+      message: "Last validation error: Research changed checkbox state in "
+        + markdownFile
+        + ". Research may enrich prose, but must not mark/unmark checkboxes.",
+    });
+    expect(vi.mocked(dependencies.fileSystem.writeText)).not.toHaveBeenCalled();
+  });
+
+  it("strips introduced unchecked TODO items from repair output before verification", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const sourceBefore = "# Roadmap\nBuild a new release process.\n";
+    const { dependencies, events } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: sourceBefore,
+    });
+
+    vi.mocked(dependencies.workerExecutor.runWorker)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: sourceBefore,
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "# Roadmap\nBuild a new release process.\n\n- [ ] Add rollout checklist\n",
+        stderr: "",
+      });
+
+    const verifyMock = vi.mocked(dependencies.taskVerification.verify);
+    verifyMock
+      .mockResolvedValueOnce({
+        valid: false,
+        stdout: "NOT_OK: missing constraints",
+      })
+      .mockImplementationOnce(async (options) => {
+        const candidate = String(options.templateVars?.executionStdout ?? "");
+        expect(candidate).toContain("# Roadmap\nBuild a new release process.\n");
+        expect(candidate).not.toContain("- [ ] Add rollout checklist");
+        return {
+          valid: true,
+          stdout: "OK",
+        };
+      });
+
+    const researchTask = createResearchTask(dependencies);
+    const code = await researchTask(createOptions({ source: markdownFile }));
+
+    expect(code).toBe(0);
+    const writtenOutput = vi.mocked(dependencies.fileSystem.writeText).mock.calls[0]?.[1] as string;
+    expect(writtenOutput).toContain("# Roadmap\nBuild a new release process.\n");
+    expect(writtenOutput).not.toContain("- [ ] Add rollout checklist");
+    expect(events).toContainEqual({
+      kind: "warn",
+      message: "Research introduced new unchecked TODO items in "
+        + markdownFile
+        + ". Removed 1 introduced item: - [ ] Add rollout checklist; continuing with cleaned output.",
+    });
   });
 
   it("fails when research output does not preserve original input content", async () => {
@@ -904,17 +984,17 @@ describe("research-task", () => {
     const researchTask = createResearchTask(dependencies);
     const code = await researchTask(createOptions({ source: markdownFile }));
 
-    expect(code).toBe(1);
+    expect(code).toBe(0);
     expect(events).toContainEqual({
-      kind: "error",
-      message: "Research output did not preserve the original document content. Research must return the full updated Markdown document based on the original input.",
+      kind: "success",
+      message: "Research worker completed.",
     });
-    expect(vi.mocked(dependencies.fileSystem.writeText)).not.toHaveBeenCalled();
+    expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
       expect.objectContaining({ runId: "run-research" }),
       expect.objectContaining({
-        status: "execution-failed",
-        preserve: true,
+        status: "completed",
+        preserve: false,
       }),
     );
   });
@@ -948,11 +1028,6 @@ describe("research-task", () => {
     expect(events).toContainEqual({ kind: "success", message: "Research worker completed." });
     expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenNthCalledWith(
       1,
-      markdownFile,
-      "# Roadmap\n\n- [ ] Add rollout checklist\n- [ ] Add rollout checklist\n",
-    );
-    expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenNthCalledWith(
-      2,
       markdownFile,
       sourceBefore,
     );
@@ -1027,7 +1102,7 @@ describe("research-task", () => {
     expect(events.some((event) => event.kind === "error" && event.message.includes("--force-unlock"))).toBe(true);
   });
 
-  it("emits restoration failure details when constraint rejection cannot restore source", async () => {
+  it("fails writing cleaned output when persistence fails", async () => {
     const cwd = "/workspace";
     const markdownFile = path.join(cwd, "roadmap.md");
     const sourceBefore = "# Roadmap\n- [x] Existing complete item\n";
@@ -1039,13 +1114,12 @@ describe("research-task", () => {
 
     vi.mocked(dependencies.workerExecutor.runWorker).mockResolvedValue({
       exitCode: 0,
-      stdout: "# Roadmap\n- [ ] Existing complete item\n",
+      stdout: "# Roadmap\n- [x] Existing complete item\n",
       stderr: "",
     });
-    vi.mocked(dependencies.fileSystem.writeText)
-      .mockImplementationOnce(() => {
-        throw new Error("disk full");
-      });
+    vi.mocked(dependencies.fileSystem.writeText).mockImplementationOnce(() => {
+      throw new Error("disk full");
+    });
 
     const researchTask = createResearchTask(dependencies);
     const code = await researchTask(createOptions({ source: markdownFile }));
@@ -1053,17 +1127,7 @@ describe("research-task", () => {
     expect(code).toBe(1);
     expect(events).toContainEqual({
       kind: "error",
-      message: "Research changed checkbox state in "
-        + markdownFile
-        + ". Research may enrich prose, but must not mark/unmark checkboxes.",
-    });
-    expect(events).toContainEqual({
-      kind: "error",
-      message: "Research constraint violation detected, but failed to restore original Markdown document: " + markdownFile,
-    });
-    expect(events).toContainEqual({
-      kind: "error",
-      message: "Research update rejected due to constraint violation.",
+      message: "Research produced output, but failed to update Markdown document: " + markdownFile,
     });
   });
 
@@ -1203,6 +1267,7 @@ function createDependencies(options: {
   fileSystem: FileSystem;
 } {
   const events: ApplicationOutputEvent[] = [];
+  const verificationSidecar = new Map<string, string>();
 
   const artifactStore: ArtifactStore = {
     createContext: vi.fn(() => ({
@@ -1255,6 +1320,25 @@ function createDependencies(options: {
       executeInlineCli: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
       executeRundownTask: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
     },
+    taskVerification: {
+      verify: vi.fn(async () => ({ valid: true, stdout: "OK" })),
+    } satisfies TaskVerificationPort,
+    taskRepair: {
+      repair: vi.fn(async () => ({ valid: false, attempts: 1, repairStdout: "", verificationStdout: "NOT_OK" })),
+    } satisfies TaskRepairPort,
+    verificationStore: {
+      write: vi.fn((task, content) => {
+        verificationSidecar.set(`${task.file}:${task.line}:${task.index}`, content);
+      }),
+      read: vi.fn((task) => verificationSidecar.get(`${task.file}:${task.line}:${task.index}`) ?? null),
+      remove: vi.fn((task) => {
+        verificationSidecar.delete(`${task.file}:${task.line}:${task.index}`);
+      }),
+    } satisfies VerificationStore,
+    traceWriter: {
+      write: vi.fn(),
+      flush: vi.fn(),
+    } satisfies TraceWriterPort,
     cliBlockExecutor: options.cliBlockExecutor ?? {
       execute: vi.fn(async () => ({
         exitCode: 0,

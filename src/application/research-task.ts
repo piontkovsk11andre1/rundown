@@ -7,6 +7,7 @@ import {
   type TemplateVars,
 } from "../domain/template.js";
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
+import { parseTasks } from "../domain/parser.js";
 import {
   buildRundownVarEnv,
   formatTemplateVarsForPrompt,
@@ -35,6 +36,8 @@ import {
 import { resolveDesignContext, resolveDesignContextSourceReferences } from "./design-context.js";
 import { FileLockError } from "../domain/ports/file-lock.js";
 import { formatSuccessFailureSummary, pluralize } from "./run-task-utils.js";
+import { runVerifyRepairLoop } from "./verify-repair-loop.js";
+import type { Task } from "../domain/parser.js";
 import type {
   ArtifactRunContext,
   ArtifactStore,
@@ -43,6 +46,15 @@ import type {
   ConfigDirResult,
   FileLock,
   FileSystem,
+  TaskRepairPort,
+  TaskRepairResult,
+  TaskResolveOptions,
+  TaskResolveResult,
+  TaskVerificationOptions,
+  TaskVerificationPort,
+  TaskVerificationResult,
+  TraceWriterPort,
+  VerificationStore,
   PathOperationsPort,
   ProcessRunMode,
   MemoryResolverPort,
@@ -64,11 +76,18 @@ export type RunnerMode = ProcessRunMode;
  */
 type ArtifactContext = ArtifactRunContext;
 
+const MAX_RESEARCH_REPAIR_ATTEMPTS = 2;
+const MAX_RESEARCH_RESOLVE_REPAIR_ATTEMPTS = 1;
+
 /**
  * Ports required to execute the `research` command.
  */
 export interface ResearchTaskDependencies {
   workerExecutor: WorkerExecutorPort;
+  taskVerification: TaskVerificationPort;
+  taskRepair: TaskRepairPort;
+  verificationStore: VerificationStore;
+  traceWriter: TraceWriterPort;
   cliBlockExecutor: CommandExecutor;
   artifactStore: ArtifactStore;
   fileSystem: FileSystem;
@@ -648,69 +667,252 @@ export function createResearchTask(
           return finishResearch(EXIT_CODE_FAILURE, "execution-failed");
         }
 
-        const updatedDocument = runResult.stdout;
-        if (hasCheckboxStateMutation(sourceDocument, updatedDocument)) {
-          const violationMessage = "Research changed checkbox state in "
-            + source
-            + ". Research may enrich prose, but must not mark/unmark checkboxes.";
-          emit({ kind: "error", message: violationMessage });
-          restoreOriginalDocumentAfterViolation(
-            dependencies.fileSystem,
-            source,
-            sourceDocument,
-            emit,
-          );
-          emit({
-            kind: "error",
-            message: "Research update rejected due to constraint violation.",
-          });
-          emitResearchGroupFailure(violationMessage);
-          return finishResearch(EXIT_CODE_FAILURE, "execution-failed");
-        }
+        let latestCandidate = runResult.stdout;
+        const removedTodosAcrossAttempts: string[] = [];
+        const verifyRepairTask = createResearchVerificationTask(source, sourceDocument);
+        const verifyCliExecutionOptions = withTemplateCliFailureAbort(
+          cliExecutionOptions,
+          "research verify template",
+        );
+        const repairCliExecutionOptions = withTemplateCliFailureAbort(
+          cliExecutionOptions,
+          "research repair template",
+        );
+        const resolveCliExecutionOptions = withTemplateCliFailureAbort(
+          cliExecutionOptions,
+          "research resolve template",
+        );
 
-        const outputContractViolation = detectResearchOutputContractViolation(sourceDocument, updatedDocument);
-        if (outputContractViolation) {
-          emit({ kind: "error", message: outputContractViolation });
-          emitResearchGroupFailure(outputContractViolation);
-          return finishResearch(EXIT_CODE_FAILURE, "execution-failed");
+        const verifyCandidate = async (params: {
+          task: Task;
+          source: string;
+          contextBefore: string;
+          template: string;
+          workerPattern: ParsedWorkerPattern;
+          mode?: ProcessRunMode;
+          onWorkerOutput?: (stdout: string, stderr: string) => void;
+          trace?: boolean;
+          configDir?: string;
+          templateVars?: Record<string, unknown>;
+          executionEnv?: Record<string, string>;
+          artifactContext?: unknown;
+          cliBlockExecutor?: CommandExecutor;
+          cliExecutionOptions?: { timeoutMs?: number; env?: Record<string, string> };
+          cliExpansionEnabled?: boolean;
+        }): Promise<{ valid: boolean; stdout?: string }> => {
+          const candidate = typeof params.templateVars?.executionStdout === "string"
+            ? params.templateVars.executionStdout
+            : "";
+          const sanitization = sanitizeResearchCandidate({
+            source,
+            beforeSource: sourceDocument,
+            afterSource: candidate,
+          });
+
+          if (!sanitization.ok) {
+            dependencies.verificationStore.write(params.task, sanitization.failureReason);
+            return {
+              valid: false,
+              stdout: "NOT_OK: " + sanitization.failureReason,
+            };
+          }
+
+          latestCandidate = sanitization.cleaned;
+          if (sanitization.removed.length > 0) {
+            removedTodosAcrossAttempts.push(...sanitization.removed);
+          }
+
+          const verificationResult = await dependencies.taskVerification.verify({
+            ...params,
+            mode: params.mode ?? "wait",
+            templateVars: {
+              ...(params.templateVars ?? {}),
+              executionStdout: latestCandidate,
+            },
+            cliExecutionOptions: params.cliExecutionOptions,
+          });
+
+          return {
+            valid: verificationResult.valid,
+            stdout: verificationResult.stdout,
+          };
+        };
+
+        const researchTaskVerification: TaskVerificationPort = {
+          verify: async (verificationOptions): Promise<TaskVerificationResult> => {
+            const verified = await verifyCandidate(verificationOptions);
+            return {
+              valid: verified.valid,
+              stdout: verified.stdout,
+            };
+          },
+        };
+
+        const researchTaskRepair: TaskRepairPort = {
+          repair: async (repairOptions): Promise<TaskRepairResult> => {
+            const verificationResult = dependencies.verificationStore.read(repairOptions.task)
+              ?? "Verification failed (no details).";
+            const repairVars: TemplateVars = {
+              ...(repairOptions.templateVars ?? {}),
+              task: repairOptions.task.text,
+              file: repairOptions.task.file,
+              context: repairOptions.contextBefore,
+              taskIndex: repairOptions.task.index,
+              taskLine: repairOptions.task.line,
+              source: repairOptions.source,
+              verificationResult,
+              executionStdout: latestCandidate,
+            };
+            const renderedRepairPrompt = renderTemplate(repairOptions.repairTemplate, repairVars);
+            const expandedRepairPrompt = repairOptions.cliExpansionEnabled === false
+              ? renderedRepairPrompt
+              : await expandCliBlocks(
+                renderedRepairPrompt,
+                repairOptions.cliBlockExecutor ?? dependencies.cliBlockExecutor,
+                cwd,
+                {
+                  ...(repairOptions.cliExecutionOptions ?? {}),
+                  env: {
+                    ...(repairOptions.cliExecutionOptions?.env ?? {}),
+                    ...(repairOptions.executionEnv ?? {}),
+                  },
+                },
+              );
+
+            const repairRunResult = await dependencies.workerExecutor.runWorker({
+              workerPattern: repairOptions.workerPattern,
+              prompt: expandedRepairPrompt,
+              mode: repairOptions.mode ?? "wait",
+              trace: repairOptions.trace,
+              captureOutput: true,
+              cwd,
+              env: repairOptions.executionEnv,
+              configDir: repairOptions.configDir,
+              artifactContext: repairOptions.artifactContext,
+              artifactPhase: "repair",
+            });
+            repairOptions.onWorkerOutput?.(repairRunResult.stdout, repairRunResult.stderr);
+
+            if (repairRunResult.exitCode !== 0) {
+              const failureMessage = repairRunResult.exitCode === null
+                ? "Research repair failed: worker exited without a code."
+                : "Research repair worker exited with code " + repairRunResult.exitCode + ".";
+              dependencies.verificationStore.write(repairOptions.task, failureMessage);
+              return {
+                valid: false,
+                attempts: 1,
+                repairStdout: repairRunResult.stdout,
+              };
+            }
+
+            latestCandidate = repairRunResult.stdout;
+            const verified = await verifyCandidate({
+              task: repairOptions.task,
+              source: repairOptions.source,
+              contextBefore: repairOptions.contextBefore,
+              template: repairOptions.verifyTemplate,
+              workerPattern: repairOptions.workerPattern,
+              mode: "wait",
+              onWorkerOutput: repairOptions.onWorkerOutput,
+              trace: repairOptions.trace,
+              configDir: repairOptions.configDir,
+              templateVars: {
+                ...(repairOptions.templateVars ?? {}),
+                executionStdout: latestCandidate,
+              },
+              executionEnv: repairOptions.executionEnv,
+              artifactContext: repairOptions.artifactContext,
+              cliBlockExecutor: repairOptions.cliBlockExecutor,
+              cliExecutionOptions: repairOptions.cliExecutionOptions,
+              cliExpansionEnabled: repairOptions.cliExpansionEnabled,
+            });
+
+            return {
+              valid: verified.valid,
+              attempts: 1,
+              repairStdout: repairRunResult.stdout,
+              verificationStdout: verified.stdout,
+            };
+          },
+          resolve: dependencies.taskRepair.resolve
+            ? async (resolveOptions: TaskResolveOptions): Promise<TaskResolveResult> =>
+              await dependencies.taskRepair.resolve!({
+                ...resolveOptions,
+                templateVars: {
+                  ...(resolveOptions.templateVars ?? {}),
+                  executionStdout: latestCandidate,
+                },
+                cliExecutionOptions: resolveCliExecutionOptions,
+              })
+            : undefined,
+        };
+
+        const verification = await runVerifyRepairLoop({
+          taskVerification: researchTaskVerification,
+          taskRepair: researchTaskRepair,
+          verificationStore: dependencies.verificationStore,
+          traceWriter: dependencies.traceWriter,
+          output: dependencies.output,
+        }, {
+          task: verifyRepairTask,
+          source: sourceDocument,
+          contextBefore: sourceDocument,
+          verifyTemplate: templates.researchVerify,
+          repairTemplate: templates.researchRepair,
+          resolveTemplate: templates.researchResolve,
+          executionStdout: latestCandidate,
+          workerPattern: resolvedWorkerPattern,
+          configDir: dependencies.configDir?.configDir,
+          maxRepairAttempts: MAX_RESEARCH_REPAIR_ATTEMPTS,
+          maxResolveRepairAttempts: MAX_RESEARCH_RESOLVE_REPAIR_ATTEMPTS,
+          allowRepair: true,
+          templateVars: {
+            ...vars,
+            executionStdout: latestCandidate,
+          },
+          executionEnv: rundownVarEnv,
+          artifactContext,
+          trace,
+          showAgentOutput,
+          verbose,
+          cliBlockExecutor: dependencies.cliBlockExecutor,
+          cliExecutionOptions: verifyCliExecutionOptions,
+          cliExpansionEnabled: !ignoreCliBlock,
+          runMode: mode,
+          executionOutputCaptured: mode !== "detached",
+          isInlineCliTask: false,
+          isToolExpansionTask: false,
+        });
+
+        if (!verification.valid) {
+          const failureReason = verification.failureReason
+            ?? "Research verification failed (no details).";
+          emitResearchGroupFailure(failureReason);
+          return finishResearch(EXIT_CODE_FAILURE, "verification-failed", {
+            verificationFailureReason: failureReason,
+          });
         }
 
         try {
-          dependencies.fileSystem.writeText(source, updatedDocument);
+          dependencies.fileSystem.writeText(source, latestCandidate);
         } catch {
           const message = "Research produced output, but failed to update Markdown document: " + source;
-          emit({
-            kind: "error",
-            message,
-          });
+          emit({ kind: "error", message });
           emitResearchGroupFailure(message);
           return finishResearch(EXIT_CODE_FAILURE, "execution-failed");
         }
 
-        const strippedTodos = stripIntroducedUncheckedTodos(sourceDocument, updatedDocument);
-        if (strippedTodos.removed.length > 0) {
-          try {
-            dependencies.fileSystem.writeText(source, strippedTodos.cleaned);
-          } catch {
-            const message = "Research produced output, but failed to update Markdown document: " + source;
-            emit({
-              kind: "error",
-              message,
-            });
-            emitResearchGroupFailure(message);
-            return finishResearch(EXIT_CODE_FAILURE, "execution-failed");
-          }
-
+        if (removedTodosAcrossAttempts.length > 0) {
           emit({
             kind: "warn",
             message: "Research introduced new unchecked TODO items in "
               + source
               + ". Removed "
-              + strippedTodos.removed.length
+              + removedTodosAcrossAttempts.length
               + " "
-              + pluralize(strippedTodos.removed.length, "introduced item", "introduced items")
+              + pluralize(removedTodosAcrossAttempts.length, "introduced item", "introduced items")
               + ": "
-              + strippedTodos.removed.join("; ")
+              + removedTodosAcrossAttempts.join("; ")
               + "; continuing with cleaned output.",
           });
         }
@@ -807,49 +1009,81 @@ function hasCheckboxStateMutation(beforeSource: string, afterSource: string): bo
 }
 
 /**
- * Detects output contract violations for research worker results.
+ * Builds a synthetic task descriptor for research verify/repair orchestration.
  */
-function detectResearchOutputContractViolation(
-  beforeSource: string,
-  afterSource: string,
-): string | null {
-  if (afterSource.trim().length === 0) {
-    return "Research output was empty. Research must return the full updated Markdown document based on the original input.";
-  }
+function createResearchVerificationTask(sourcePath: string, sourceDocument: string): Task {
+  const parsedTasks = parseTasks(sourceDocument, sourcePath);
+  const firstTask = parsedTasks[0];
 
-  if (!preservesOriginalDocumentContent(beforeSource, afterSource)) {
-    return "Research output did not preserve the original document content. Research must return the full updated Markdown document based on the original input.";
-  }
-
-  return null;
+  return {
+    text: "research: validate enriched document",
+    checked: false,
+    index: firstTask?.index ?? 0,
+    line: firstTask?.line ?? 1,
+    column: firstTask?.column ?? 1,
+    offsetStart: firstTask?.offsetStart ?? 0,
+    offsetEnd: firstTask?.offsetEnd ?? sourceDocument.length,
+    file: sourcePath,
+    isInlineCli: false,
+    depth: 0,
+    children: [],
+    subItems: [],
+  };
 }
 
 /**
- * Ensures each meaningful source line is still present in the worker output.
+ * Applies hard safety guards to research output before semantic verification.
  */
-function preservesOriginalDocumentContent(beforeSource: string, afterSource: string): boolean {
-  const requiredLines = beforeSource
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) => line.replace(/\s+/g, " "));
+function sanitizeResearchCandidate(params: {
+  source: string;
+  beforeSource: string;
+  afterSource: string;
+}): {
+  ok: boolean;
+  cleaned: string;
+  removed: string[];
+  failureReason: string;
+} {
+  const { source, beforeSource, afterSource } = params;
 
-  if (requiredLines.length === 0) {
-    return true;
+  if (afterSource.trim().length === 0) {
+    return {
+      ok: false,
+      cleaned: afterSource,
+      removed: [],
+      failureReason: "Research output was empty. Research must return the full updated Markdown document based on the original input.",
+    };
   }
 
-  const outputText = afterSource.replace(/\s+/g, " ");
-  let searchFrom = 0;
-
-  for (const requiredLine of requiredLines) {
-    const foundAt = outputText.indexOf(requiredLine, searchFrom);
-    if (foundAt === -1) {
-      return false;
-    }
-    searchFrom = foundAt + requiredLine.length;
+  if (hasCheckboxStateMutation(beforeSource, afterSource)) {
+    return {
+      ok: false,
+      cleaned: afterSource,
+      removed: [],
+      failureReason: "Research changed checkbox state in "
+        + source
+        + ". Research may enrich prose, but must not mark/unmark checkboxes.",
+    };
   }
 
-  return true;
+  const strippedTodos = stripIntroducedUncheckedTodos(beforeSource, afterSource);
+  try {
+    parseTasks(strippedTodos.cleaned, source);
+  } catch {
+    return {
+      ok: false,
+      cleaned: strippedTodos.cleaned,
+      removed: strippedTodos.removed,
+      failureReason: "Research output was not valid Markdown for rundown task parsing.",
+    };
+  }
+
+  return {
+    ok: true,
+    cleaned: strippedTodos.cleaned,
+    removed: strippedTodos.removed,
+    failureReason: "",
+  };
 }
 
 export function stripIntroducedUncheckedTodos(
@@ -909,25 +1143,6 @@ export function stripIntroducedUncheckedTodos(
     cleaned: cleanedLines.join(afterSource.includes("\r\n") ? "\r\n" : "\n"),
     removed,
   };
-}
-
-/**
- * Restores the original source content after a constraint violation.
- */
-function restoreOriginalDocumentAfterViolation(
-  fileSystem: FileSystem,
-  source: string,
-  sourceDocument: string,
-  emit: ApplicationOutputPort["emit"],
-): void {
-  try {
-    fileSystem.writeText(source, sourceDocument);
-  } catch {
-    emit({
-      kind: "error",
-      message: "Research constraint violation detected, but failed to restore original Markdown document: " + source,
-    });
-  }
 }
 
 /** Normalizes unchecked TODO list lines to canonical identity form. */

@@ -63,6 +63,8 @@ The CLI layer implements that contract and decides how to render messages and er
 | Port (domain) | Adapter (infrastructure) |
 | --- | --- |
 | `FileSystem` | `createNodeFileSystem` |
+| `FileLock` | `createFsFileLock` |
+| `ConfigDirPort` | `createConfigDirAdapter` |
 | `ProcessRunner` | `createCrossSpawnProcessRunner` |
 | `GitClient` | `createExecFileGitClient` |
 | `TemplateLoader` | `createFsTemplateLoader` |
@@ -76,6 +78,18 @@ The CLI layer implements that contract and decides how to render messages and er
 | `TaskRepairPort` | `createTaskRepairAdapter` |
 | `WorkingDirectoryPort` | `createWorkingDirectoryAdapter` |
 | `DirectoryOpenerPort` | `createDirectoryOpenerAdapter` |
+| `PathOperationsPort` | `createNodePathOperationsAdapter` |
+| `MemoryResolverPort` | `createMemoryResolverAdapter` |
+| `MemoryReaderPort` | `createMemoryReaderAdapter` |
+| `MemoryWriterPort` | `createMemoryWriterAdapter` |
+| `ToolResolverPort` | `createToolResolverAdapter` |
+| `InteractiveInputPort` | `createTerminalInteractiveInputAdapter` |
+| `WorkerConfigPort` | `createWorkerConfigAdapter` |
+| `WorkerHealthStore` | `createFsWorkerHealthStore` |
+| `TemplateVarsLoaderPort` | `createFsTemplateVarsLoaderAdapter` |
+| `TraceWriterPort` | `createNoopTraceWriter` |
+| `CommandExecutor` | `createCliBlockExecutor` |
+| `ApplicationOutputPort` | `createNoopOutputPort` |
 
 ## Port-first dependency rule
 

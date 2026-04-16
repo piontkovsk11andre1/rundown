@@ -696,8 +696,8 @@ describe("research-task", () => {
     expect(vi.mocked(dependencies.fileLock.acquire)).toHaveBeenCalledWith(markdownFile, { command: "research" });
     expect(vi.mocked(dependencies.workerExecutor.runWorker)).toHaveBeenCalledWith(expect.objectContaining({
       artifactContext: expect.objectContaining({ runId: "run-research" }),
-      artifactPhase: "worker",
-      artifactPhaseLabel: "research",
+      artifactPhase: "execute",
+      artifactExtra: expect.objectContaining({ workflow: "research" }),
     }));
     expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenCalledWith(
       markdownFile,
@@ -965,7 +965,7 @@ describe("research-task", () => {
     });
   });
 
-  it("fails when research output does not preserve original input content", async () => {
+  it("accepts semantically equivalent rewrites without strict original-text retention", async () => {
     const cwd = "/workspace";
     const markdownFile = path.join(cwd, "roadmap.md");
     const sourceBefore = "# Roadmap\nBuild a new release process.\n";
@@ -974,10 +974,20 @@ describe("research-task", () => {
       markdownFile,
       fileContent: sourceBefore,
     });
+    const semanticRewrite = [
+      "# Roadmap",
+      "",
+      "## Goal",
+      "Define and harden the release process.",
+      "",
+      "## Constraints",
+      "- Keep existing release gate ownership.",
+      "",
+    ].join("\n");
 
     vi.mocked(dependencies.workerExecutor.runWorker).mockResolvedValue({
       exitCode: 0,
-      stdout: "Updated the research document body with expanded implementation context.",
+      stdout: semanticRewrite,
       stderr: "",
     });
 
@@ -985,6 +995,8 @@ describe("research-task", () => {
     const code = await researchTask(createOptions({ source: markdownFile }));
 
     expect(code).toBe(0);
+    expect(vi.mocked(dependencies.taskVerification.verify)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(dependencies.taskVerification.verify).mock.calls[0]?.[0]?.templateVars?.executionStdout).toBe(semanticRewrite);
     expect(events).toContainEqual({
       kind: "success",
       message: "Research worker completed.",
@@ -997,6 +1009,117 @@ describe("research-task", () => {
         preserve: false,
       }),
     );
+  });
+
+  it("fails with actionable verification reason when intent/structure quality is not preserved", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const sourceBefore = "# Roadmap\nBuild a new release process.\n";
+    const { dependencies, events, artifactStore } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: sourceBefore,
+    });
+    const failureReason = "NOT_OK: rewritten output drops core release-planning intent and removes usable planning structure.";
+
+    vi.mocked(dependencies.workerExecutor.runWorker)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "# Roadmap\nBuild a new release process.\n\n## Thin rewrite\nStill insufficient.\n",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "# Roadmap\nBuild a new release process.\n\n## Repair draft 1\nStill misses planning quality.\n",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "# Roadmap\nBuild a new release process.\n\n## Repair draft 2\nStill misses planning quality.\n",
+        stderr: "",
+      });
+
+    vi.mocked(dependencies.taskVerification.verify).mockImplementation(async (options) => {
+      dependencies.verificationStore.write(options.task, failureReason);
+      return { valid: false, stdout: failureReason };
+    });
+
+    const researchTask = createResearchTask(dependencies);
+    const code = await researchTask(createOptions({ source: markdownFile }));
+
+    expect(code).toBe(1);
+    expect(events).toContainEqual({
+      kind: "error",
+      message: "Last validation error: " + failureReason,
+    });
+    expect(vi.mocked(dependencies.fileSystem.writeText)).not.toHaveBeenCalled();
+    expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: "run-research" }),
+      expect.objectContaining({
+        status: "verification-failed",
+        preserve: true,
+      }),
+    );
+  });
+
+  it("retries through repair after failed verification and writes repaired output on success", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const sourceBefore = "# Roadmap\nBuild a new release process.\n";
+    const { dependencies, events } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: sourceBefore,
+    });
+    const repairedOutput = [
+      "# Roadmap",
+      "Build a new release process.",
+      "",
+      "## Decision boundaries",
+      "- Do not change deployment ownership.",
+      "",
+    ].join("\n");
+
+    vi.mocked(dependencies.workerExecutor.runWorker)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: sourceBefore,
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: repairedOutput,
+        stderr: "",
+      });
+
+    vi.mocked(dependencies.taskVerification.verify)
+      .mockImplementationOnce(async (options) => {
+        const reason = "NOT_OK: missing acceptance framing and constraints.";
+        dependencies.verificationStore.write(options.task, reason);
+        return {
+          valid: false,
+          stdout: reason,
+        };
+      })
+      .mockImplementationOnce(async (options) => {
+        expect(String(options.templateVars?.executionStdout ?? "")).toBe(repairedOutput);
+        return {
+          valid: true,
+          stdout: "OK",
+        };
+      });
+
+    const researchTask = createResearchTask(dependencies);
+    const code = await researchTask(createOptions({ source: markdownFile }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.taskVerification.verify)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(dependencies.workerExecutor.runWorker)).toHaveBeenCalledTimes(2);
+    expect(events).toContainEqual({
+      kind: "success",
+      message: "  Repair succeeded after 1 attempt(s).",
+    });
+    expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenCalledWith(markdownFile, repairedOutput);
   });
 
   it("strips duplicated introduced unchecked TODO items while preserving existing ones", async () => {

@@ -68,6 +68,102 @@ export const DEFAULT_TEMPLATE_VARS_SECTION = `\
 {{userVariables}}
 `;
 
+const DEFAULT_PLANNING_FEATURE_REFERENCE_SHARED_FRAGMENT = `\
+Use built-in prefixes when they improve execution quality{{qualitySuffix}}:
+
+- \`verify:\` skips execution and runs only the verification phase. Use it for {{verifyTaskSubject}} that assert existing state without doing any work (e.g. {{verifyExamples}}). Do NOT use \`verify:\` for tasks that require creating, writing, or changing anything — those need execution.
+- \`fast:\` executes the task but skips the verification phase entirely. Use it for small, mechanical changes where per-task verification is wasteful{{fastExtra}}.
+- \`get:\` performs targeted{{getSubject}} fact-finding and stores durable findings back in the source task context (for example via \`get-result:\` lines). Use it when {{getDownstream}} depend on concrete discovered facts (e.g. "get: list impacted modules", "get: inventory existing feature flags").
+- \`loop:\` repeats a scoped{{loopSubject}} workflow until a stop condition is met. Use it for iterative {{loopWorkflowNoun}} that may need multiple passes (e.g. "loop: fix failing tests until all pass", "loop: refine {{loopCoverageExample}} until no gaps remain"). Keep loop tasks bounded with explicit success criteria.
+- \`profile=<name>\` to choose a worker profile for specific {{profileTaskSubject}}.
+- \`memory:\` for {{memoryTaskSubject}} that gather reusable context for later steps when the task does not specify a file to write/edit/create.
+- Author new {{memoryAuthorSubject}} TODOs with the canonical \`memory:\` prefix only; \`remember:\`, \`memorize:\`, and \`inventory:\` remain execution-level compatibility aliases and should not be newly authored in {{planModeName}}.
+- If {{taskTextSubject}} includes write/edit/create/update filesystem intent, keep it as a normal execution TODO (not \`memory:\`).
+- \`include: <path>\` to delegate {{includeSubject}} another Markdown file.
+
+Always use the canonical prefix name. Do not use aliases (\`check:\`, \`confirm:\`, \`raw:\`, \`quick:\`, \`memorize:\`, \`remember:\`, \`inventory:\`). If an existing item uses an alias, normalize it to the canonical form.
+
+You can apply prefixes in either form:
+
+- Inline on a checkbox {{inlineTaskSubject}}, for example \`- [ ] verify: all unit tests pass\`.
+- As a directive parent that applies to child checkbox items, for example:
+
+  \`- verify:\`
+  \`  - [ ] All tests pass\`
+  \`  - [ ] Linting is clean\`
+
+Prefix composition is supported with \`, \` or \`; \` separators when combining known prefixes, for example:
+
+- \`- [ ] profile=fast, verify: release checks pass\`
+- \`- [ ] profile=complex; memory: record migration constraints\`
+
+Heuristics:
+
+- Use \`verify:\` only when the {{inlineTaskSubject}} checks existing state without doing work. If the task creates, writes, or modifies anything, it is NOT a verify task.
+- Use \`fast:\` when the {{inlineTaskSubject}} is a small mechanical edit that does not warrant its own verification pass.
+{{optionalFastGroupingHeuristic}}
+- Use \`get:\` when {{getHeuristicTaskSubject}} needs one-pass discovery whose results should be persisted for downstream {{getDownstream}}.
+- Use \`loop:\` when {{loopHeuristicTaskSubject}} is inherently iterative and needs repeated passes until a clear stop condition.
+- Use \`profile=\` when {{profileHeuristicTaskSubject}} complexity or cost/speed trade-offs suggest a non-default worker.
+- Use \`memory:\` when the {{memoryHeuristicTaskSubject}} objective is research/inventory/constraints/reference capture for later tasks and there is no explicit target file write/edit/create in that {{memoryHeuristicTaskSubject}}.
+- Do NOT use \`memory:\` when the {{memoryHeuristicTaskSubject}} asks to write/edit/create/update any file or persistent document artifact (including "prepare notes section in this doc" or "research and write findings into X.md"). These must remain normal execution TODOs.
+- Explicit write-target{{explicitWriteHeuristicSuffix}} examples that must remain normal execution TODOs: \`- [ ] Write findings to docs/research-notes.md\`, \`- [ ] Research rollout risks and write findings into docs/rollout-plan.md\`.
+- If a {{directiveHeuristicParentSubject}} suggests memory capture intent, still classify each child task {{directiveHeuristicClassifier}}: child tasks with explicit file-write/edit/create/update language must remain normal execution TODOs (no inherited \`memory:\`).
+- For mixed intents, split into separate {{splitTaskSubject}} when possible: a \`memory:\` capture task first, then a normal write/edit task.
+- Mixed-intent{{splitExampleSuffix}} split example (correct): \`- [ ] memory: research rollout constraints\` and \`- [ ] Write rollout findings to docs/rollout-plan.md\` as separate {{splitTaskSubject}}.
+- Use directive parents when multiple adjacent {{adjacentTaskSubject}} share the same prefix.
+- Prefer plain \`- [ ]\` {{plainItemSubject}} when no special behavior is needed.
+`;
+
+function buildPlanningFeatureReferenceSection(deep: boolean): string {
+  const heading = deep
+    ? "## Rundown feature reference for deep planning"
+    : "## Rundown feature reference for planning";
+  const optionalFastGroupingHeuristic = deep
+    ? "- Prefer grouping child tasks as `fast:` steps followed by a `verify:` step that validates the group. A parent task can have multiple such groups when work naturally splits into stages."
+    : "";
+  const replacements: Array<[string, string]> = [
+    ["{{qualitySuffix}}", deep ? " for child tasks" : ""],
+    ["{{verifyTaskSubject}}", deep ? "child tasks" : "tasks"],
+    ["{{verifyExamples}}", deep ? "\"verify: all tests pass\"" : "\"verify: all tests pass\", \"verify: config file exists\""],
+    ["{{fastExtra}}", deep ? "" : " (e.g. renaming a variable, adding an import). Group several such steps under a `fast:` directive parent when they make more sense verified together at the end"],
+    ["{{getSubject}}", deep ? " child-task" : ""],
+    ["{{getDownstream}}", deep ? "downstream child tasks" : "later tasks"],
+    ["{{loopSubject}}", deep ? " child-task" : ""],
+    ["{{loopWorkflowNoun}}", deep ? "child workflows" : "improvement tasks"],
+    ["{{loopCoverageExample}}", deep ? "child TODO coverage" : "TODO coverage"],
+    ["{{profileTaskSubject}}", deep ? "child tasks" : "tasks"],
+    ["{{memoryTaskSubject}}", deep ? "child tasks" : "research/context-capture tasks"],
+    ["{{memoryAuthorSubject}}", deep ? "child memory-capture" : "memory-capture"],
+    ["{{planModeName}}", deep ? "deep plans" : "plans"],
+    ["{{taskTextSubject}}", deep ? "child task text" : "task text"],
+    ["{{includeSubject}}", deep ? "child subtasks to" : "subtasks to"],
+    ["{{inlineTaskSubject}}", deep ? "child task" : "task"],
+    ["{{optionalFastGroupingHeuristic}}", optionalFastGroupingHeuristic],
+    ["{{getHeuristicTaskSubject}}", deep ? "a child task" : "the task"],
+    ["{{loopHeuristicTaskSubject}}", deep ? "a child task" : "the task"],
+    ["{{profileHeuristicTaskSubject}}", deep ? "child task" : "task"],
+    ["{{memoryHeuristicTaskSubject}}", deep ? "child task" : "task"],
+    ["{{explicitWriteHeuristicSuffix}}", deep ? " child" : ""],
+    ["{{directiveHeuristicParentSubject}}", deep ? "parent directive" : "directive parent"],
+    ["{{directiveHeuristicClassifier}}", deep ? "by its own text" : "on its own text"],
+    ["{{splitTaskSubject}}", deep ? "child TODOs" : "TODOs"],
+    ["{{splitExampleSuffix}}", deep ? " child" : ""],
+    ["{{adjacentTaskSubject}}", deep ? "child tasks" : "tasks"],
+    ["{{plainItemSubject}}", deep ? "child items" : "items"],
+  ];
+
+  let fragment = DEFAULT_PLANNING_FEATURE_REFERENCE_SHARED_FRAGMENT;
+  for (const [token, value] of replacements) {
+    fragment = fragment.replaceAll(token, value);
+  }
+
+  return `${heading}\n\n${fragment}`;
+}
+
+const DEFAULT_PLAN_FEATURE_REFERENCE_SECTION = buildPlanningFeatureReferenceSection(false);
+const DEFAULT_DEEP_PLAN_FEATURE_REFERENCE_SECTION = buildPlanningFeatureReferenceSection(true);
+
 /**
  * Canonical root-command welcome line emitted at startup.
  */
@@ -1140,51 +1236,7 @@ Interpret guidance semantically for ordering and coverage decisions.
 - Ignore guidance that is not relevant to the source document's actual workload.
 - Guidance never overrides add-only, checkbox-state, or other planner safety rules.
 
-## Rundown feature reference for planning
-
-Use built-in prefixes when they improve execution quality:
-
-- \`verify:\` skips execution and runs only the verification phase. Use it for tasks that assert existing state without doing any work (e.g. "verify: all tests pass", "verify: config file exists"). Do NOT use \`verify:\` for tasks that require creating, writing, or changing anything — those need execution.
-- \`fast:\` executes the task but skips the verification phase entirely. Use it for small, mechanical changes where per-task verification is wasteful (e.g. renaming a variable, adding an import). Group several such steps under a \`fast:\` directive parent when they make more sense verified together at the end.
-- \`get:\` performs targeted fact-finding and stores durable findings back in the source task context (for example via \`get-result:\` lines). Use it when later tasks depend on concrete discovered facts (e.g. "get: list impacted modules", "get: inventory existing feature flags").
-- \`loop:\` repeats a scoped workflow until a stop condition is met. Use it for iterative improvement tasks that may need multiple passes (e.g. "loop: fix failing tests until all pass", "loop: refine TODO coverage until no gaps remain"). Keep loop tasks bounded with explicit success criteria.
-- \`profile=<name>\` to choose a worker profile for specific tasks.
-- \`memory:\` for research/context-capture tasks that gather reusable context for later steps when the task does not specify a file to write/edit/create.
-- Author new memory-capture TODOs with the canonical \`memory:\` prefix only; \`remember:\`, \`memorize:\`, and \`inventory:\` remain execution-level compatibility aliases and should not be newly authored in plans.
-- If task text includes write/edit/create/update filesystem intent, keep it as a normal execution TODO (not \`memory:\`).
-- \`include: <path>\` to delegate subtasks to another Markdown file.
-
-Always use the canonical prefix name. Do not use aliases (\`check:\`, \`confirm:\`, \`raw:\`, \`quick:\`, \`memorize:\`, \`remember:\`, \`inventory:\`). If an existing item uses an alias, normalize it to the canonical form.
-
-You can apply prefixes in either form:
-
-- Inline on a checkbox task, for example \`- [ ] verify: all tests pass\`.
-- As a directive parent that applies to child checkbox items, for example:
-
-  \`- verify:\`
-  \`  - [ ] All tests pass\`
-  \`  - [ ] Linting is clean\`
-
-Prefix composition is supported with \`, \` or \`; \` separators when combining known prefixes, for example:
-
-- \`- [ ] profile=fast, verify: release checks pass\`
-- \`- [ ] profile=complex; memory: record migration constraints\`
-
-Heuristics:
-
-- Use \`verify:\` only when the task checks existing state without doing work. If the task creates, writes, or modifies anything, it is NOT a verify task.
-- Use \`fast:\` when the task is a small mechanical edit that does not warrant its own verification pass.
-- Use \`get:\` when the task needs one-pass discovery whose results should be persisted for downstream tasks.
-- Use \`loop:\` when the task is inherently iterative and needs repeated passes until a clear stop condition.
-- Use \`profile=\` when task complexity or cost/speed trade-offs suggest a non-default worker.
-- Use \`memory:\` when the objective is research/inventory/constraints/reference capture for later tasks and there is no explicit target file write/edit/create in that task.
-- Do NOT use \`memory:\` when the task asks to write/edit/create/update any file or persistent document artifact (including "prepare notes section in this doc" or "research and write findings into X.md"). These must remain normal execution TODOs.
-- Explicit write-target examples that must remain normal execution TODOs: \`- [ ] Write findings to docs/research-notes.md\`, \`- [ ] Research rollout risks and write findings into docs/rollout-plan.md\`.
-- If a directive parent suggests memory capture intent, still classify each child task on its own text: child tasks with explicit file-write/edit/create/update language must remain normal execution TODOs (no inherited \`memory:\`).
-- For mixed intents, split into separate TODOs when possible: a \`memory:\` capture task first, then a normal write/edit task.
-- Mixed-intent split example (correct): \`- [ ] memory: research rollout constraints\` and \`- [ ] Write rollout findings to docs/rollout-plan.md\` as separate TODOs.
-- Use directive parents when multiple adjacent tasks share the same prefix.
-- Prefer plain \`- [ ]\` items when no special behavior is needed.
+${DEFAULT_PLAN_FEATURE_REFERENCE_SECTION}
 
 Rules:
 - Add only unchecked TODO items using \`- [ ]\` syntax.
@@ -1240,52 +1292,7 @@ Interpret guidance semantically for ordering and coverage decisions.
 - Ignore guidance that is not relevant to the source document's actual workload.
 - Guidance never overrides add-only, checkbox-state, or other planner safety rules.
 
-## Rundown feature reference for deep planning
-
-Use built-in prefixes when they improve execution quality for child tasks:
-
-- \`verify:\` skips execution and runs only the verification phase. Use it for child tasks that assert existing state without doing any work (e.g. "verify: all tests pass"). Do NOT use \`verify:\` for tasks that require creating, writing, or changing anything — those need execution.
-- \`fast:\` executes the task but skips the verification phase entirely. Use it for small, mechanical changes where per-task verification is wasteful.
-- \`get:\` performs targeted child-task fact-finding and stores durable findings back in the source task context (for example via \`get-result:\` lines). Use it when downstream child tasks depend on concrete discovered facts (e.g. "get: list impacted modules", "get: inventory existing feature flags").
-- \`loop:\` repeats a scoped child-task workflow until a stop condition is met. Use it for iterative child workflows that may need multiple passes (e.g. "loop: fix failing tests until all pass", "loop: refine child TODO coverage until no gaps remain"). Keep loop tasks bounded with explicit success criteria.
-- \`profile=<name>\` to choose a worker profile for specific child tasks.
-- \`memory:\` for child tasks that gather reusable context for later steps when the task does not specify a file to write/edit/create.
-- Author new child memory-capture TODOs with the canonical \`memory:\` prefix only; \`remember:\`, \`memorize:\`, and \`inventory:\` remain execution-level compatibility aliases and should not be newly authored in deep plans.
-- If child task text includes write/edit/create/update filesystem intent, keep it as a normal execution TODO (not \`memory:\`).
-- \`include: <path>\` to delegate child subtasks to another Markdown file.
-
-Always use the canonical prefix name. Do not use aliases (\`check:\`, \`confirm:\`, \`raw:\`, \`quick:\`, \`memorize:\`, \`remember:\`, \`inventory:\`). If an existing item uses an alias, normalize it to the canonical form.
-
-You can apply prefixes in either form:
-
-- Inline on a checkbox child task, for example \`- [ ] verify: all unit tests pass\`.
-- As a directive parent that applies to child checkbox items, for example:
-
-  \`- verify:\`
-  \`  - [ ] All tests pass\`
-  \`  - [ ] Linting is clean\`
-
-Prefix composition is supported with \`, \` or \`; \` separators when combining known prefixes, for example:
-
-- \`- [ ] profile=fast, verify: release checks pass\`
-- \`- [ ] profile=complex; memory: record migration constraints\`
-
-Heuristics:
-
-- Use \`verify:\` only when the child task checks existing state without doing work. If the task creates, writes, or modifies anything, it is NOT a verify task.
-- Use \`fast:\` when the child task is a small mechanical edit that does not warrant its own verification pass.
-- Prefer grouping child tasks as \`fast:\` steps followed by a \`verify:\` step that validates the group. A parent task can have multiple such groups when work naturally splits into stages.
-- Use \`get:\` when a child task needs one-pass discovery whose results should be persisted for downstream child tasks.
-- Use \`loop:\` when a child task is inherently iterative and needs repeated passes until a clear stop condition.
-- Use \`profile=\` when child task complexity or cost/speed trade-offs suggest a non-default worker.
-- Use \`memory:\` when the child task objective is research/inventory/constraints/reference capture for later tasks and there is no explicit target file write/edit/create in that child task.
-- Do NOT use \`memory:\` when the child task asks to write/edit/create/update any file or persistent document artifact (including "prepare notes section in this doc" or "research and write findings into X.md"). These must remain normal execution TODOs.
-- Explicit write-target child examples that must remain normal execution TODOs: \`- [ ] Write findings to docs/research-notes.md\`, \`- [ ] Research rollout risks and write findings into docs/rollout-plan.md\`.
-- If a parent directive suggests memory capture intent, still classify each child task by its own text: child tasks with explicit file-write/edit/create/update language must remain normal execution TODOs (no inherited \`memory:\`).
-- For mixed intents, split into separate child TODOs when possible: a \`memory:\` capture task first, then a normal write/edit task.
-- Mixed-intent child split example (correct): \`- [ ] memory: research rollout constraints\` and \`- [ ] Write rollout findings to docs/rollout-plan.md\` as separate child TODOs.
-- Use directive parents when multiple adjacent child tasks share the same prefix.
-- Prefer plain \`- [ ]\` child items when no special behavior is needed.
+${DEFAULT_DEEP_PLAN_FEATURE_REFERENCE_SECTION}
 
 Rules:
 - Scope changes strictly to child TODO items under the selected parent task.

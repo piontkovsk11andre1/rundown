@@ -718,6 +718,7 @@ program
   .description("Create a Markdown task doc from seed text, then run research and plan.")
   .argument("<seed-text>", "Initial text content to write into the Markdown file")
   .argument("<markdown-file>", "Markdown file path to create")
+  .option("--skip-research, --raw", "Skip research phase and start from planning", false)
   .option("--mode <mode>", "Make mode: wait", "wait")
   .option(
     "--scan-count <n>",

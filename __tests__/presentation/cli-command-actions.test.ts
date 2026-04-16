@@ -639,6 +639,81 @@ describe("createQueryCommandAction", () => {
 });
 
 describe("createMakeCommandAction", () => {
+  it("returns non-zero when seed file creation fails before bootstrap phases", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-seed-create-fail-"));
+    const missingParent = path.join(tempRoot, "missing");
+    const targetFile = path.join(missingParent, "seed.md");
+
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const app = { researchTask, planTask } as unknown as CliApp;
+    const action = createMakeCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      makeModes: ["wait"],
+    });
+
+    try {
+      await expect(action("seed", targetFile, { skipResearch: true }))
+        .rejects
+        .toThrow("Parent directory does not exist");
+      expect(researchTask).not.toHaveBeenCalled();
+      expect(planTask).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("returns non-zero when plan fails in default make flow", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-plan-fail-default-"));
+    const targetFile = path.join(tempRoot, "migrations", "seed.md");
+    fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 2);
+    const app = { researchTask, planTask } as unknown as CliApp;
+    const action = createMakeCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      makeModes: ["wait"],
+    });
+
+    try {
+      const exitCode = await action("seed", targetFile, {});
+
+      expect(exitCode).toBe(2);
+      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(planTask).toHaveBeenCalledTimes(1);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("returns non-zero when plan fails in skip-research make flow", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-plan-fail-skip-"));
+    const targetFile = path.join(tempRoot, "migrations", "seed.md");
+    fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 2);
+    const app = { researchTask, planTask } as unknown as CliApp;
+    const action = createMakeCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      makeModes: ["wait"],
+    });
+
+    try {
+      const exitCode = await action("seed", targetFile, { skipResearch: true });
+
+      expect(exitCode).toBe(2);
+      expect(researchTask).not.toHaveBeenCalled();
+      expect(planTask).toHaveBeenCalledTimes(1);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("emits skip-research phase messaging and starts from planning", async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-skip-message-"));
     const targetFile = path.join(tempRoot, "migrations", "seed.md");

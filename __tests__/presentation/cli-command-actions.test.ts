@@ -638,6 +638,66 @@ describe("createQueryCommandAction", () => {
   });
 });
 
+describe("createMakeCommandAction", () => {
+  it("emits skip-research phase messaging and starts from planning", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-skip-message-"));
+    const targetFile = path.join(tempRoot, "migrations", "seed.md");
+    fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const emitOutput = vi.fn<(event: ApplicationOutputEvent) => void>();
+    const app = { researchTask, planTask, emitOutput } as unknown as CliApp;
+    const action = createMakeCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      makeModes: ["wait"],
+    });
+
+    try {
+      const exitCode = await action("seed", targetFile, { skipResearch: true });
+
+      expect(exitCode).toBe(0);
+      expect(researchTask).not.toHaveBeenCalled();
+      expect(planTask).toHaveBeenCalledTimes(1);
+      expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Make phase 1/2 skipped: research" });
+      expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Make transition: start from planning (--skip-research/--raw)" });
+      expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Make phase 2/2: plan" });
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("treats --raw as skip-research alias with the same phase messaging", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-raw-message-"));
+    const targetFile = path.join(tempRoot, "migrations", "seed.md");
+    fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const emitOutput = vi.fn<(event: ApplicationOutputEvent) => void>();
+    const app = { researchTask, planTask, emitOutput } as unknown as CliApp;
+    const action = createMakeCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      makeModes: ["wait"],
+    });
+
+    try {
+      const exitCode = await action("seed", targetFile, { raw: true });
+
+      expect(exitCode).toBe(0);
+      expect(researchTask).not.toHaveBeenCalled();
+      expect(planTask).toHaveBeenCalledTimes(1);
+      expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Make phase 1/2 skipped: research" });
+      expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Make transition: start from planning (--skip-research/--raw)" });
+      expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Make phase 2/2: plan" });
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("bootstrap seed prefix resolution", () => {
   it("keeps plain non-prefixed seed text unchanged in make", async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-seed-plain-"));

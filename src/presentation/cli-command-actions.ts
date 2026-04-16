@@ -1710,7 +1710,8 @@ async function runMakeBootstrapPhases({
   createSeedMarkdownFile(targetMarkdownFile, resolvedSeedText);
 
   if (skipResearch) {
-    emitCliInfo(app, "Make skip: phase 1/2 research (--skip-research); starting from plan");
+    emitCliInfo(app, "Make phase 1/2 skipped: research");
+    emitCliInfo(app, "Make transition: start from planning (--skip-research/--raw)");
     emitCliInfo(app, "Make phase 2/2: plan");
 
     return normalizeMakePhaseExitCode(await app.planTask({

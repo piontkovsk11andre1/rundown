@@ -321,6 +321,35 @@ describe("createHelpCommandAction", () => {
     }
   });
 
+  it("keeps --agents authoritative when continuation flags are present", async () => {
+    const helpTask = vi.fn(async () => 0);
+    const app = { helpTask } as unknown as CliApp;
+    const outputHelp = vi.fn();
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+      return typeof chunk === "string" && chunk === DEFAULT_AGENTS_TEMPLATE;
+    }) as typeof process.stdout.write);
+
+    try {
+      const action = createHelpCommandAction({
+        getApp: () => app,
+        getWorkerFromSeparator: () => ["opencode", "run"],
+        outputHelp,
+        cliVersion: "1.2.3",
+        isInteractiveTerminal: () => true,
+        getInvocationArgv: () => ["--continue", "--agents", "--", "opencode", "run"],
+      });
+
+      const exitCode = await action();
+
+      expect(exitCode).toBe(EXIT_CODE_SUCCESS);
+      expect(stdoutSpy).toHaveBeenCalledWith(DEFAULT_AGENTS_TEMPLATE);
+      expect(helpTask).not.toHaveBeenCalled();
+      expect(outputHelp).not.toHaveBeenCalled();
+    } finally {
+      stdoutSpy.mockRestore();
+    }
+  });
+
   it("forwards --trace to helpTask on root interactive invocation", async () => {
     const helpTask = vi.fn(async () => 0);
     const app = { helpTask } as unknown as CliApp;
@@ -412,6 +441,27 @@ describe("createHelpCommandAction", () => {
       cliVersion: "1.2.3",
       isInteractiveTerminal: () => false,
       getInvocationArgv: () => [],
+    });
+
+    const exitCode = await action();
+
+    expect(exitCode).toBe(EXIT_CODE_SUCCESS);
+    expect(helpTask).not.toHaveBeenCalled();
+    expect(outputHelp).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps non-interactive static help fallback when continuation flags are present", async () => {
+    const helpTask = vi.fn(async () => 0);
+    const app = { helpTask } as unknown as CliApp;
+    const outputHelp = vi.fn();
+
+    const action = createHelpCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => ["opencode", "run"],
+      outputHelp,
+      cliVersion: "1.2.3",
+      isInteractiveTerminal: () => false,
+      getInvocationArgv: () => ["-c", "--", "opencode", "run"],
     });
 
     const exitCode = await action();

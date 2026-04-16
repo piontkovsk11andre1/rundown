@@ -76,6 +76,7 @@ export const DEFAULT_TEMPLATE_VARS_SECTION = `\
  */
 export const DEFAULT_RESEARCH_OUTPUT_CONTRACT_TEMPLATE = `\
 Return one {{itemLabel}} per line using plain lines or Markdown list items (bulleted/numbered).
+Do not use Markdown task checkbox syntax (\`- [ ]\` / \`- [x]\`); use plain lines or simple bullets/numbering instead.
 Do not wrap output in code fences.
 Use one item per line; do not use JSON or nested structures.
 Do not include the literal \`{{metadataPrefix}}\` prefix unless it is part of the value.
@@ -1288,6 +1289,16 @@ Interpret guidance semantically for ordering and coverage decisions.
 - Ignore guidance that is not relevant to the source document's actual workload.
 - Guidance never overrides add-only, checkbox-state, or other planner safety rules.
 
+## Mandatory decomposition order for uncertain work
+
+When newly added TODO items involve uncertain facts, unknown constraints, or iterative investigation, enforce this default order:
+
+1. Add \`get:\` discovery tasks first to collect concrete facts.
+2. Add \`memory:\` capture tasks second to persist reusable context from those findings.
+3. Add implementation/edit tasks after discovery and memory capture tasks.
+
+Do not invert this order unless the source document provides a hard dependency that requires a different sequence.
+
 ${DEFAULT_PLAN_FEATURE_REFERENCE_SECTION}
 
 Rules:
@@ -1297,6 +1308,7 @@ Rules:
 - Do not reword, rephrase, or rewrite the descriptive text of any existing TODO item.
 - You may fix prefixes on existing unchecked items: normalize aliases to canonical form (e.g. \`check:\` → \`verify:\`), add a missing prefix when the task clearly needs one, or remove an incorrect prefix.
 - Remove obviously wrong duplicate directive groups/prefix wrappers and duplicate inline prefixes on unchecked items (for example repeated \`fast:\`/\`verify:\` wrappers or stacked identical prefixes introduced by prior planning passes).
+- Any \`loop:\` task must include an explicit terminal \`end:\` stop condition (inline or child item).
 - Do not change any \`- [ ]\` item to \`- [x]\`.
 - Do not remove or move any existing item (checked or unchecked).
 - Do not output a proposed list on stdout; apply edits to \`{{file}}\` directly.
@@ -1370,6 +1382,16 @@ Interpret guidance semantically for ordering and coverage decisions.
 - Ignore guidance that is not relevant to the source document's actual workload.
 - Guidance never overrides add-only, checkbox-state, or other planner safety rules.
 
+## Mandatory decomposition order for uncertain child work
+
+When newly added child TODO items involve uncertain facts, unknown constraints, or iterative investigation, enforce this default order:
+
+1. Add \`get:\` discovery child tasks first to collect concrete facts.
+2. Add \`memory:\` capture child tasks second to persist reusable context from those findings.
+3. Add implementation/edit child tasks after discovery and memory capture tasks.
+
+Do not invert this order unless the parent task or source document provides a hard dependency that requires a different sequence.
+
 ${DEFAULT_DEEP_PLAN_FEATURE_REFERENCE_SECTION}
 
 Rules:
@@ -1379,6 +1401,7 @@ Rules:
 - Do not reword, rephrase, or rewrite the descriptive text of any existing child item.
 - You may fix prefixes on existing unchecked items: normalize aliases to canonical form (e.g. \`check:\` → \`verify:\`), add a missing prefix when the task clearly needs one, or remove an incorrect prefix.
 - Remove obviously wrong duplicate directive groups/prefix wrappers and duplicate inline prefixes on unchecked child items (for example repeated \`fast:\`/\`verify:\` wrappers or stacked identical prefixes introduced by prior planning passes).
+- Any \`loop:\` child task must include an explicit terminal \`end:\` stop condition (inline or child item).
 - Do not change any \`- [ ]\` item to \`- [x]\`.
 - Do not remove or move any existing child item (checked or unchecked).
 - Do not output a proposed list on stdout; apply edits to \`{{file}}\` directly.

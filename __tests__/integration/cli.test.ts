@@ -10816,6 +10816,18 @@ describe.sequential("CLI integration", () => {
     expect(result.stdoutWrites.join("\n").includes("Usage: rundown")).toBe(false);
   });
 
+  it("root --agents remains authoritative when --continue is provided", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await withTerminalTty(false, () => runCli(["--continue", "--agents"], workspace));
+
+    expect(result.code).toBe(0);
+    expect(result.logs).toEqual([]);
+    expect(result.errors).toEqual([]);
+    expect(result.stdoutWrites.join("")).toBe(DEFAULT_AGENTS_TEMPLATE);
+    expect(result.stdoutWrites.join("\n").includes("Usage: rundown")).toBe(false);
+  });
+
   it("keeps rd and rundown --agents output and exit code identical in TTY and non-TTY without live help", async () => {
     const workspace = makeTempWorkspace();
     fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });

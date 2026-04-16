@@ -133,6 +133,12 @@ See the command-focused reference: [cli-design.md](cli-design.md).
 
 See the command-focused reference: [cli-run.md](cli-run.md).
 
+### `rundown all <source>` (legacy alias)
+
+Compatibility alias that is rewritten to `rundown run <source> --all` before command parsing.
+
+See the command-focused reference: [cli-all.md](cli-all.md).
+
 ### `rundown call <source>`
 
 See the command-focused reference: [cli-call.md](cli-call.md).

@@ -10,6 +10,9 @@ import {
   DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
   DEFAULT_MIGRATE_TEMPLATE,
   DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE,
+  DEFAULT_QUERY_AGGREGATION_TEMPLATE,
+  DEFAULT_QUERY_EXECUTION_TEMPLATE,
+  DEFAULT_QUERY_SEED_TEMPLATE,
   DEFAULT_RESEARCH_REPAIR_TEMPLATE,
   DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
   DEFAULT_RESEARCH_VERIFY_TEMPLATE,
@@ -156,6 +159,9 @@ export function createInitProject(
     write("migrate-backlog.md", DEFAULT_MIGRATE_BACKLOG_TEMPLATE);
     write("migrate-review.md", DEFAULT_MIGRATE_REVIEW_TEMPLATE);
     write("migrate-ux.md", DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE);
+    write("query-seed.md", DEFAULT_QUERY_SEED_TEMPLATE);
+    write("query-execute.md", DEFAULT_QUERY_EXECUTION_TEMPLATE);
+    write("query-aggregate.md", DEFAULT_QUERY_AGGREGATION_TEMPLATE);
     writeConfigArtifact("vars.json", DEFAULT_VARS_FILE_CONTENT);
 
     // Generate config content: embed worker(s) when provided, otherwise use default.

@@ -3,6 +3,7 @@ import {
   DEFAULT_DEEP_PLAN_TEMPLATE,
   DEFAULT_HELP_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
+  DEFAULT_RESEARCH_VERIFY_TEMPLATE,
   DEFAULT_RESOLVE_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
@@ -256,5 +257,18 @@ describe("default prompt templates", () => {
 
     expect(DEFAULT_HELP_TEMPLATE).toContain("Fallback mode for non-rundown questions");
     expect(DEFAULT_HELP_TEMPLATE).toContain("answer directly as a normal assistant");
+  });
+
+  it("keeps research verification template deterministic and outcome-oriented", () => {
+    expect(DEFAULT_RESEARCH_VERIFY_TEMPLATE).toContain("Evaluate the output against outcome-level constraints:");
+    expect(DEFAULT_RESEARCH_VERIFY_TEMPLATE).toContain("- Existing checkbox states are unchanged.");
+    expect(DEFAULT_RESEARCH_VERIFY_TEMPLATE).toContain("- No new unchecked TODO items were introduced.");
+    expect(DEFAULT_RESEARCH_VERIFY_TEMPLATE).toContain("- Original author intent is preserved semantically");
+    expect(DEFAULT_RESEARCH_VERIFY_TEMPLATE).toContain("- Enrichment quality is present");
+    expect(DEFAULT_RESEARCH_VERIFY_TEMPLATE).toContain("Use a deterministic verdict contract so orchestration can parse your result.");
+    expect(DEFAULT_RESEARCH_VERIFY_TEMPLATE).toContain("- `OK`");
+    expect(DEFAULT_RESEARCH_VERIFY_TEMPLATE).toContain("- `NOT_OK: <specific failure reason>`");
+    expect(DEFAULT_RESEARCH_VERIFY_TEMPLATE).toContain("Name the missing or violated outcome-level constraint directly.");
+    expect(DEFAULT_RESEARCH_VERIFY_TEMPLATE).toContain("Keep the reason concrete and repairable in one short sentence.");
   });
 });

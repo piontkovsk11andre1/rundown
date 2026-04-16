@@ -1376,7 +1376,7 @@ ${DEFAULT_TEMPLATE_VARS_SECTION}
 
 Verify whether the research output is acceptable.
 
-Check outcome-level constraints:
+Evaluate the output against outcome-level constraints:
 
 - Existing checkbox states are unchanged.
 - No new unchecked TODO items were introduced.
@@ -1384,12 +1384,18 @@ Check outcome-level constraints:
 - Output remains coherent Markdown suitable for planning.
 - Enrichment quality is present (context, constraints, boundaries, acceptance framing).
 
-Your ENTIRE stdout output must be exactly one line containing only the verdict.
+Use a deterministic verdict contract so orchestration can parse your result.
 
 Return exactly one of:
 
 - \`OK\`
-- \`NOT_OK: <short explanation of what failed>\`
+- \`NOT_OK: <specific failure reason>\`
+
+When returning \`NOT_OK\`:
+
+- Name the missing or violated outcome-level constraint directly.
+- Keep the reason concrete and repairable in one short sentence.
+- Do not propose implementation code or TODO decomposition.
 
 Output ONLY the verdict line - nothing else.
 {{traceInstructions}}

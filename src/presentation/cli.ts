@@ -150,6 +150,7 @@ program
     "--config-dir <path>",
     "Explicit path to the .rundown configuration directory (bypasses upward discovery)",
   )
+  .option("-c, --continue", "Resume the previous interactive root help/agent session")
   .option("--agents", "Print canonical AGENTS.md guidance and exit")
   .action(withCliAction(createHelpCommandAction({
     getApp,

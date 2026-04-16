@@ -10857,6 +10857,20 @@ describe.sequential("CLI integration", () => {
     expect(result.errors.some((line) => line.includes("Unsupported option for `run`: --agents"))).toBe(true);
   });
 
+  it("accepts root --continue shorthand flags for bare invocation", async () => {
+    const workspace = makeTempWorkspace();
+
+    const shortResult = await withTerminalTty(false, () => runCli(["-c"], workspace));
+    expect(shortResult.code).toBe(0);
+    expect(shortResult.errors).toEqual([]);
+    expect(shortResult.stdoutWrites.join("\n")).toContain("Usage: rundown");
+
+    const longResult = await withTerminalTty(false, () => runCli(["--continue"], workspace));
+    expect(longResult.code).toBe(0);
+    expect(longResult.errors).toEqual([]);
+    expect(longResult.stdoutWrites.join("\n")).toContain("Usage: rundown");
+  });
+
   it("root invocation launches live help session in interactive terminals when a help worker is configured", async () => {
     const workspace = makeTempWorkspace();
     fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });

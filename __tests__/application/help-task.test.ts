@@ -10,7 +10,7 @@ import {
   type HelpTaskDependencies,
   type HelpTaskOptions,
 } from "../../src/application/help-task.js";
-import { inferWorkerPatternFromCommand } from "../../src/domain/worker-pattern.js";
+import { inferWorkerPatternFromCommand, parseWorkerPattern } from "../../src/domain/worker-pattern.js";
 import type {
   ApplicationOutputEvent,
   ArtifactStore,
@@ -104,6 +104,76 @@ describe("help-task", () => {
     expect(vi.mocked(workerExecutor.runWorker)).toHaveBeenCalledWith(expect.objectContaining({
       workerPattern: expect.objectContaining({
         command: ["opencode", "run", "-c", "--profile", "fast"],
+      }),
+    }));
+  });
+
+  it("prefers explicit worker pattern override over config defaults when continuing", async () => {
+    const cwd = "/workspace";
+    const { dependencies, workerExecutor } = createDependencies({ cwd });
+    vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
+      workers: {
+        tui: ["opencode", "run", "--profile", "safe"],
+        default: ["opencode", "run", "--profile", "default"],
+      },
+    });
+
+    const helpTask = createHelpTask(dependencies);
+    const code = await helpTask(createOptions({
+      workerPattern: parseWorkerPattern("opencode run --model gpt-5.3-codex"),
+      continueSession: true,
+    }));
+
+    expect(code).toBe(EXIT_CODE_SUCCESS);
+    expect(vi.mocked(workerExecutor.runWorker)).toHaveBeenCalledWith(expect.objectContaining({
+      workerPattern: expect.objectContaining({
+        command: ["opencode", "run", "--model", "gpt-5.3-codex", "--continue"],
+      }),
+    }));
+  });
+
+  it("prefers separator worker args over config defaults when continuing", async () => {
+    const cwd = "/workspace";
+    const { dependencies, workerExecutor } = createDependencies({ cwd });
+    vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
+      workers: {
+        tui: ["opencode", "run", "--profile", "safe"],
+      },
+    });
+
+    const helpTask = createHelpTask(dependencies);
+    const code = await helpTask(createOptions({
+      workerCommand: ["opencode", "run", "--profile", "fast"],
+      continueSession: true,
+    }));
+
+    expect(code).toBe(EXIT_CODE_SUCCESS);
+    expect(vi.mocked(workerExecutor.runWorker)).toHaveBeenCalledWith(expect.objectContaining({
+      workerPattern: expect.objectContaining({
+        command: ["opencode", "run", "--profile", "fast", "--continue"],
+      }),
+    }));
+  });
+
+  it("uses config default worker command when no explicit or separator worker is provided", async () => {
+    const cwd = "/workspace";
+    const { dependencies, workerExecutor } = createDependencies({ cwd });
+    vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
+      workers: {
+        default: ["opencode", "run", "--profile", "default"],
+      },
+    });
+
+    const helpTask = createHelpTask(dependencies);
+    const code = await helpTask(createOptions({
+      workerCommand: [],
+      continueSession: true,
+    }));
+
+    expect(code).toBe(EXIT_CODE_SUCCESS);
+    expect(vi.mocked(workerExecutor.runWorker)).toHaveBeenCalledWith(expect.objectContaining({
+      workerPattern: expect.objectContaining({
+        command: ["opencode", "run", "--profile", "default", "--continue"],
       }),
     }));
   });

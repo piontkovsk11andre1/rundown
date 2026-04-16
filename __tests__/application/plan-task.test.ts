@@ -2632,18 +2632,14 @@ describe("plan-task", () => {
       markdownFile,
       fileContent: content,
     });
-    const prependPath = dependencies.pathOperations.join(dependencies.configDir!.configDir, "plan-prepend.md");
-    const appendPath = dependencies.pathOperations.join(dependencies.configDir!.configDir, "plan-append.md");
-    const originalReadText = vi.mocked(dependencies.fileSystem.readText).getMockImplementation();
-
-    vi.mocked(dependencies.fileSystem.readText).mockImplementation((filePath: string) => {
-      if (filePath === prependPath) {
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((filePath: string) => {
+      if (filePath.endsWith("/plan-prepend.md") || filePath.endsWith("\\plan-prepend.md")) {
         return "Prefer prerequisite discovery before implementation tasks.";
       }
-      if (filePath === appendPath) {
+      if (filePath.endsWith("/plan-append.md") || filePath.endsWith("\\plan-append.md")) {
         return "Prefer final verification and handoff checks when applicable.";
       }
-      return originalReadText?.(filePath) ?? "";
+      return null;
     });
 
     vi.mocked(workerExecutor.runWorker)

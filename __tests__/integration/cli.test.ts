@@ -11159,7 +11159,7 @@ describe.sequential("CLI integration", () => {
     });
   });
 
-  it("invalid command keeps Commander root-argument error semantics", async () => {
+  it("invalid command keeps Commander root-argument error semantics with and without root continuation flags", async () => {
     const workspace = makeTempWorkspace();
     fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
     fs.writeFileSync(path.join(workspace, ".rundown", "config.json"), JSON.stringify({
@@ -11173,19 +11173,27 @@ describe.sequential("CLI integration", () => {
       default: spawnMock,
     }));
 
-    const result = await withTerminalTty(true, () => runCli(["not-a-real-command"], workspace));
+    for (const args of [
+      ["not-a-real-command"],
+      ["-c", "not-a-real-command"],
+      ["--continue", "not-a-real-command"],
+    ]) {
+      const result = await withTerminalTty(true, () => runCli(args, workspace));
+
+      expect(result.code).toBe(1);
+      const combinedOutput = [
+        ...result.errors,
+        ...result.logs,
+        ...result.stdoutWrites,
+        ...result.stderrWrites,
+      ].join("\n").toLowerCase();
+      expect(combinedOutput).toContain("error: too many arguments. expected 0 arguments but got 1.");
+      expect(combinedOutput.includes("unknown command")).toBe(false);
+    }
 
     vi.doUnmock("cross-spawn");
 
-    expect(result.code).toBe(1);
     expect(spawnMock).not.toHaveBeenCalled();
-    const combinedOutput = [
-      ...result.errors,
-      ...result.logs,
-      ...result.stdoutWrites,
-      ...result.stderrWrites,
-    ].join("\n").toLowerCase();
-    expect(combinedOutput).toContain("error: too many arguments. expected 0 arguments but got 1.");
   });
 
   it("all --help works and includes --all option", async () => {

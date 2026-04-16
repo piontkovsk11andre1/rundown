@@ -699,6 +699,33 @@ describe("bootstrap seed prefix resolution", () => {
     }
   });
 
+  it("keeps malformed prefix expressions as raw seed text in make", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-seed-malformed-"));
+    const targetFile = path.join(tempRoot, "migrations", "seed.md");
+    fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const app = { researchTask, planTask } as unknown as CliApp;
+    const action = createMakeCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      makeModes: ["wait"],
+    });
+
+    try {
+      const seedText = "profile: fast, verify: run full suite";
+      const exitCode = await action(seedText, targetFile, {});
+
+      expect(exitCode).toBe(0);
+      expect(fs.readFileSync(targetFile, "utf8")).toBe(seedText);
+      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(planTask).toHaveBeenCalledTimes(1);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("falls back to raw seed for non-applicable builtin handler prefixes", async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-seed-non-applicable-"));
     const targetFile = path.join(tempRoot, "migrations", "seed.md");
@@ -752,6 +779,40 @@ describe("bootstrap seed prefix resolution", () => {
 
       expect(exitCode).toBe(0);
       expect(fs.readFileSync(targetFile, "utf8")).toBe("fast|Build release checklist");
+      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(planTask).toHaveBeenCalledTimes(1);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps unsupported modifier chains as raw seed text in make", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-seed-unsupported-modifier-"));
+    const configDir = path.join(tempRoot, ".rundown");
+    const toolsDir = path.join(configDir, "tools");
+    const targetFile = path.join(tempRoot, "migrations", "seed.md");
+
+    fs.mkdirSync(toolsDir, { recursive: true });
+    fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+    fs.writeFileSync(path.join(toolsDir, "brief.md"), "{{payload}}", "utf8");
+
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 0);
+    const app = { researchTask, planTask } as unknown as CliApp;
+    const action = createMakeCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      makeModes: ["wait"],
+    });
+
+    try {
+      const seedText = "force: 2, brief: Build release checklist";
+      const exitCode = await action(seedText, targetFile, {
+        configDir,
+      });
+
+      expect(exitCode).toBe(0);
+      expect(fs.readFileSync(targetFile, "utf8")).toBe(seedText);
       expect(researchTask).toHaveBeenCalledTimes(1);
       expect(planTask).toHaveBeenCalledTimes(1);
     } finally {

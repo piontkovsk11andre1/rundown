@@ -225,6 +225,26 @@ See the command-focused reference: [cli-artifacts.md](cli-artifacts.md).
 
 See the command-focused reference: [cli-log.md](cli-log.md).
 
+### `rundown init`
+
+See the command-focused reference: [cli-init.md](cli-init.md).
+
+### `rundown with <harness>`
+
+See the command-focused reference: [cli-with.md](cli-with.md).
+
+### `rundown intro`
+
+See the command-focused reference: [cli-intro.md](cli-intro.md).
+
+### `rundown config`
+
+See the command-focused reference: [cli-config.md](cli-config.md).
+
+### `rundown research <markdown-file>`
+
+See the command-focused reference: [cli-research.md](cli-research.md).
+
 ## Source file locking
 
 `rundown` uses per-source lockfiles to prevent concurrent writes to the same Markdown file.
@@ -291,24 +311,4 @@ Each line is one JSON object with these stable fields:
 | `pid` | `number` | Process identifier for the CLI invocation. |
 | `version` | `string` | Rundown CLI version string. |
 | `session_id` | `string` | Invocation-scoped unique identifier used to correlate entries from one CLI session. |
-
-### `rundown init`
-
-See the command-focused reference: [cli-init.md](cli-init.md).
-
-### `rundown with <harness>`
-
-See the command-focused reference: [cli-with.md](cli-with.md).
-
-### `rundown intro`
-
-See the command-focused reference: [cli-intro.md](cli-intro.md).
-
-### `rundown config`
-
-See the command-focused reference: [cli-config.md](cli-config.md).
-
-### `rundown research <markdown-file>`
-
-See the command-focused reference: [cli-research.md](cli-research.md).
 

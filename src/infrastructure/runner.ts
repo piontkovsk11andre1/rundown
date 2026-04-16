@@ -349,6 +349,20 @@ function executeCommand(
         detached: true,
         env: env ? { ...process.env, ...env } : process.env,
       });
+
+      const timeoutHandle = startWorkerTimeout(child, normalizedTimeoutMs, () => {
+        // Detached runs complete immediately for callers, so timeout termination
+        // is enforced asynchronously in the background.
+      });
+      timeoutHandle?.unref();
+
+      child.on("close", () => {
+        clearWorkerTimeout(timeoutHandle);
+      });
+      child.on("error", () => {
+        clearWorkerTimeout(timeoutHandle);
+      });
+
       child.unref();
       resolve({ exitCode: null, stdout: "", stderr: "", timedOut: false });
       return;

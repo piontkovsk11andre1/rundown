@@ -797,6 +797,85 @@ describe("runWorker", () => {
     expect(fs.readFileSync(promptFile, "utf-8")).toBe("detached prompt");
   });
 
+  it("sends SIGTERM when detached execution exceeds timeout", async () => {
+    vi.useFakeTimers();
+
+    try {
+      spawnMock.mockImplementation((_cmd: string, _args: string[]) => {
+        const child = new EventEmitter() as EventEmitter & {
+          unref: () => void;
+          kill: (signal?: NodeJS.Signals) => boolean;
+        };
+
+        child.unref = vi.fn();
+        child.kill = vi.fn(() => {
+          child.emit("close", null);
+          return true;
+        });
+
+        return child;
+      });
+
+      const { runWorker } = await import("../../src/infrastructure/runner.js");
+
+      const result = await runWorker({
+        command: ["opencode", "run"],
+        prompt: "detached timeout prompt",
+        mode: "detached",
+        cwd: workspace,
+        timeoutMs: 30,
+      });
+
+      expect(result).toEqual({ exitCode: null, stdout: "", stderr: "", timedOut: false });
+
+      await vi.advanceTimersByTimeAsync(30);
+
+      const child = spawnMock.mock.results[0]?.value as { kill: (signal?: NodeJS.Signals) => boolean };
+      expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears detached timeout when process exits early", async () => {
+    vi.useFakeTimers();
+
+    try {
+      spawnMock.mockImplementation((_cmd: string, _args: string[]) => {
+        const child = new EventEmitter() as EventEmitter & {
+          unref: () => void;
+          kill: (signal?: NodeJS.Signals) => boolean;
+        };
+
+        child.unref = vi.fn();
+        child.kill = vi.fn(() => true);
+
+        queueMicrotask(() => {
+          child.emit("close", 0);
+        });
+
+        return child;
+      });
+
+      const { runWorker } = await import("../../src/infrastructure/runner.js");
+
+      await runWorker({
+        command: ["opencode", "run"],
+        prompt: "detached timeout prompt",
+        mode: "detached",
+        cwd: workspace,
+        timeoutMs: 30,
+      });
+
+      await vi.advanceTimersByTimeAsync(30);
+
+      const child = spawnMock.mock.results[0]?.value as { kill: (signal?: NodeJS.Signals) => boolean };
+      expect(child.kill).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("fails fast when no worker command is provided", async () => {
     const { runWorker } = await import("../../src/infrastructure/runner.js");
 

@@ -1,6 +1,7 @@
 import {
   DEFAULT_QUERY_EXECUTION_TEMPLATE,
   DEFAULT_QUERY_SEED_TEMPLATE,
+  DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
   DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
   DEFAULT_QUERY_AGGREGATION_TEMPLATE,
   DEFAULT_QUERY_YN_SEED_TEMPLATE,
@@ -309,15 +310,11 @@ function selectQueryExecutionTemplate(
   projectExecutionTemplate?: string,
   projectStreamExecutionTemplate?: string,
 ): string {
-  if (isCustomQueryTemplate(projectExecutionTemplate, DEFAULT_QUERY_EXECUTION_TEMPLATE)) {
-    return projectExecutionTemplate;
-  }
-
   if (fileMode) {
-    return DEFAULT_QUERY_EXECUTION_TEMPLATE;
+    return projectExecutionTemplate ?? DEFAULT_QUERY_EXECUTION_TEMPLATE;
   }
 
-  return projectStreamExecutionTemplate ?? projectExecutionTemplate ?? DEFAULT_QUERY_EXECUTION_TEMPLATE;
+  return projectStreamExecutionTemplate ?? DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE;
 }
 
 function applyAggregationTemplateOverride(options: {

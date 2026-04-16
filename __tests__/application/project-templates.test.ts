@@ -9,6 +9,7 @@ import {
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_QUERY_AGGREGATION_TEMPLATE,
   DEFAULT_QUERY_EXECUTION_TEMPLATE,
+  DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
   DEFAULT_RESEARCH_REPAIR_TEMPLATE,
   DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
   DEFAULT_RESEARCH_VERIFY_TEMPLATE,
@@ -46,6 +47,7 @@ describe("project-templates", () => {
       trace: DEFAULT_TRACE_TEMPLATE,
       querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
       queryExecute: DEFAULT_QUERY_EXECUTION_TEMPLATE,
+      queryStreamExecute: DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
       queryAggregate: DEFAULT_QUERY_AGGREGATION_TEMPLATE,
     });
     expect(templateLoader.load).not.toHaveBeenCalled();
@@ -92,6 +94,7 @@ describe("project-templates", () => {
       trace: DEFAULT_TRACE_TEMPLATE,
       querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
       queryExecute: DEFAULT_QUERY_EXECUTION_TEMPLATE,
+      queryStreamExecute: DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
       queryAggregate: DEFAULT_QUERY_AGGREGATION_TEMPLATE,
     });
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "execute.md"));
@@ -106,6 +109,7 @@ describe("project-templates", () => {
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "trace.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-execute.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-stream-execute.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-aggregate.md"));
   });
 
@@ -161,6 +165,9 @@ describe("project-templates", () => {
         if (filePath.endsWith("query-execute.md")) {
           return "QUERY_EXECUTE";
         }
+        if (filePath.endsWith("query-stream-execute.md")) {
+          return "QUERY_STREAM_EXECUTE";
+        }
         if (filePath.endsWith("query-aggregate.md")) {
           return "QUERY_AGGREGATE";
         }
@@ -176,9 +183,11 @@ describe("project-templates", () => {
 
     expect(templates.querySeed).toBe("QUERY_SEED");
     expect(templates.queryExecute).toBe("QUERY_EXECUTE");
+    expect(templates.queryStreamExecute).toBe("QUERY_STREAM_EXECUTE");
     expect(templates.queryAggregate).toBe("QUERY_AGGREGATE");
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-execute.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-stream-execute.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-aggregate.md"));
   });
 

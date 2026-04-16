@@ -36,6 +36,8 @@ export interface WorkerExecutionOptions {
   env?: Record<string, string>;
   // Optional configuration directory forwarded to worker runtime.
   configDir?: string;
+  // Optional worker timeout in milliseconds; 0 disables timeout.
+  timeoutMs?: number;
   // Optional context object recorded alongside artifacts.
   artifactContext?: unknown;
   // Optional artifact phase identifier for run segmentation.

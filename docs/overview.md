@@ -410,12 +410,6 @@ If no unique match is found, `reverify` exits with code `3` and leaves Markdown 
 - Ambiguous text-only matches intentionally fail instead of guessing.
 - Runs missing `run.json` or task metadata are rejected with actionable guidance.
 
-### Follow-up work
-
-- Store stronger stable task identity in artifacts (for example, structural hash or parent-heading fingerprint) to improve recovery after major edits.
-- Add optional "strict" vs "relaxed" resolution modes so CI can enforce exact matching while local flows can opt into broader recovery.
-- Explore a "task moved" helper that prints likely candidate matches when deterministic resolution fails.
-
 ## Revert completed tasks
 
 `rundown revert` undoes previously completed tasks by applying git history changes from commit metadata stored in saved run artifacts.

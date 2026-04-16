@@ -252,4 +252,5 @@ bun add -g @p10i/rundown
 - [CLI: `log`](docs/cli-log.md) — tail and filter global execution logs
 - [Configuration](docs/configuration.md) — workers, profiles, and layered config
 - [Templates](docs/templates.md) — repository-local Markdown templates
+- [API](docs/api.md) — programmatic API reference
 - [Examples](docs/examples.md) — end-to-end usage scenarios

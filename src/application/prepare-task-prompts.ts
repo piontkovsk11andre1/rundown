@@ -243,13 +243,13 @@ export async function prepareTaskPrompts(params: {
   };
   const vars: TemplateVars = {
     ...templateVarsWithTrace,
-    task: task.text,
-    file: task.file,
+    task: selectedExpandedTask.text,
+    file: selectedExpandedTask.file,
     context: expandedContextBefore,
-    taskIndex: task.index,
-    taskLine: task.line,
+    taskIndex: selectedExpandedTask.index,
+    taskLine: selectedExpandedTask.line,
     source: expandedSource,
-    ...buildTaskHierarchyTemplateVars(task),
+    ...buildTaskHierarchyTemplateVars(selectedExpandedTask),
   };
 
   const renderedPrompt = renderTemplate(taskTemplate, vars);

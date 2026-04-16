@@ -322,6 +322,72 @@ describe("prepare-task-prompts", () => {
     expect(result.prompt).toContain("Variables:\n" + renderedVars);
     expect(result.verificationPrompt).toContain("Variables:\n" + renderedVars);
   });
+
+  it("uses expanded task line and index when rendering template vars", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Ship release", {
+      line: 1,
+      index: 0,
+    });
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Ship release\n",
+    });
+    const { dependencies } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+
+    dependencies.templateLoader.load = vi.fn((templatePath: string) => {
+      if (templatePath.endsWith("execute.md")) {
+        return "task={{task}} line={{taskLine}} index={{taskIndex}}";
+      }
+      return null;
+    });
+
+    const result = await prepareTaskPrompts({
+      dependencies,
+      task,
+      fileSource: [
+        "```cli",
+        "echo seed",
+        "```",
+        "- [ ] Ship release",
+      ].join("\n"),
+      sourceDir: cwd,
+      shouldVerify: false,
+      trace: false,
+      extraTemplateVars: {},
+      cliExpansionEnabled: true,
+      ignoreCliBlock: false,
+      cliExecutionOptions: undefined,
+      artifactContext: null,
+      traceWriter: {
+        write: vi.fn(),
+        flush: vi.fn(),
+      },
+      cliBlockExecutor: {
+        execute: vi.fn(async () => ({
+          exitCode: 0,
+          stdout: "- [ ] Prep task",
+          stderr: "",
+        })),
+      },
+      nowIso: () => "2026-01-01T00:00:00.000Z",
+      emit: vi.fn(),
+      onTemplateCliFailure: vi.fn(async () => null),
+    });
+
+    expect("earlyExitCode" in result).toBe(false);
+    if ("earlyExitCode" in result) {
+      return;
+    }
+
+    expect(result.prompt).toContain("task=Ship release line=5 index=1");
+    expect(result.prompt).not.toContain("line=1 index=0");
+  });
 });
 
 describe("dry-run-dispatch", () => {

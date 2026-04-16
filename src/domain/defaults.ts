@@ -113,6 +113,18 @@ Heuristics:
 - Mixed-intent{{splitExampleSuffix}} split example (correct): \`- [ ] memory: research rollout constraints\` and \`- [ ] Write rollout findings to docs/rollout-plan.md\` as separate {{splitTaskSubject}}.
 - Use directive parents when multiple adjacent {{adjacentTaskSubject}} share the same prefix.
 - Prefer plain \`- [ ]\` {{plainItemSubject}} when no special behavior is needed.
+
+Output contract requirements for agentic tasks:
+
+- For \`get:\` {{inlineTaskSubject}}, make the requested stdout format explicit in task text: one discovered value per line, with no bullets/numbering/JSON, and without a literal \`get-result:\` prefix. The runtime writes canonical \`get-result:\` sub-items.
+- For \`loop:\` {{inlineTaskSubject}} that mixes iterative discovery with durable context capture, use this bounded child pattern so outputs stay reusable across passes:
+
+  \`- [ ] loop: audit rollout blockers until no new blockers appear\`
+  \`  - [ ] get: list one blocker per line (plain text, no bullets)\`
+  \`  - [ ] memory: capture blocker trends that should influence the next pass\`
+  \`  - [ ] end: stop when two consecutive passes produce no new blockers\`
+
+- For \`loop:\` {{inlineTaskSubject}}, require an explicit terminal stop condition via an \`end:\` step (inline or child) so the loop has a deterministic completion signal.
 `;
 
 function buildPlanningFeatureReferenceSection(deep: boolean): string {
@@ -224,11 +236,13 @@ ${DEFAULT_TEMPLATE_VARS_SECTION}
 
 Execute the selected task.
 
-Complete the task described above. Make the necessary changes to the project, but **never edit the source Markdown task file** (\`{{file}}\`).
+Complete the task described above. Make the necessary changes to the project.
 
-- Do not modify \`{{file}}\` in any way: do not change checkboxes, rewrite task items, insert content, add documentation, or restructure the file.
+- By default, do not modify the source Markdown task file (\`{{file}}\`).
+- Exception: if the selected task explicitly requires edits to \`{{file}}\`, make only the requested content changes.
+- Even when edits to \`{{file}}\` are explicitly required, do not change checkbox state unless the task explicitly asks for it.
 - Inserting research notes, headings, or any other text into the task file shifts line numbers and breaks rundown's internal tracking.
-- Do not treat editing the TODO file itself as evidence that the task is done unless the task explicitly requires documentation changes in that file.
+- Do not treat editing the TODO file itself as evidence that the task is done unless the selected task explicitly required those edits.
 - If the task asks you to document findings, write them to a separate file — not the task file.
 - rundown is responsible for marking the task complete after validation succeeds.
 {{traceInstructions}}
@@ -524,6 +538,8 @@ If \`.rundown/config.json\` has a default worker configured, \`--worker\` and \`
 - **\`verify: <assertion>\`** — Verify-only task (confirm:, check: are aliases).
 - **\`memory: <prompt>\`** — Capture information to source-local memory (memorize:, remember:, inventory:).
 - **\`fast: <task>\`** — Skip verification for this task (raw:, quick: are aliases).
+- **\`get: <prompt>\`** — Run focused fact-finding and persist results as canonical \`get-result:\` sub-items under the task.
+- **\`loop: <task>\`** — Repeat the scoped task flow until an explicit stop signal (for example an \`end:\` condition) is emitted.
 - **\`optional: <condition>\`** — Conditional sibling short-circuit only. When true, skip remaining siblings/descendants in the same parent scope; otherwise continue. This behavior is unchanged.
 - **\`skip: <condition>\`** — Preferred concise alias for \`optional:\` with identical sibling-skip behavior.
 - **\`quit:\` / \`exit:\` / \`end:\` / \`break:\` / \`return:\`** — Terminal stop control. Empty payload is allowed and means unconditional stop. Non-empty payload is evaluated as yes/no; true emits terminal stop, false continues.

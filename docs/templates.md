@@ -393,7 +393,9 @@ Project context:
 Requirements:
 - Implement exactly what the selected task asks for.
 - Keep changes focused and production-ready.
-- Do not edit the source Markdown checkbox or mark completion manually.
+- By default, do not edit the source Markdown task file (`{{file}}`).
+- Exception: if the selected task explicitly requires edits to `{{file}}`, make only those requested content changes.
+- Do not edit the source Markdown checkbox or mark completion manually unless the selected task explicitly asks for checkbox edits.
 - Keep output concise and include file paths changed.
 ```
 

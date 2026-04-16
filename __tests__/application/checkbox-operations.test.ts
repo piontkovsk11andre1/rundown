@@ -1054,7 +1054,7 @@ describe("checkbox-operations", () => {
     ].join("\n"));
   });
 
-  it("preserves get-result metadata annotations during checkbox reset", () => {
+  it("removes get-result metadata annotations during checkbox reset", () => {
     const fileSystem = createFileSystem({
       "todo.md": [
         "- [x] get: Find current module names",
@@ -1068,8 +1068,6 @@ describe("checkbox-operations", () => {
 
     expect(fileSystem.readText("todo.md")).toBe([
       "- [ ] get: Find current module names",
-      "  - get-result: CliResourceModule",
-      "  - get-result: CliArgsModule",
       "- [ ] Next task",
     ].join("\n"));
   });
@@ -1095,7 +1093,7 @@ describe("checkbox-operations", () => {
     ].join("\n"));
   });
 
-  it("preserves for-item metadata annotations and removes only for-current during checkbox reset", () => {
+  it("removes for-item and for-current metadata annotations during checkbox reset", () => {
     const fileSystem = createFileSystem({
       "todo.md": [
         "- [x] for: Alpha, Beta",
@@ -1110,13 +1108,11 @@ describe("checkbox-operations", () => {
 
     expect(fileSystem.readText("todo.md")).toBe([
       "- [ ] for: Alpha, Beta",
-      "  - for-item: Alpha",
-      "  - for-item: Beta",
       "  - [ ] Do once",
     ].join("\n"));
   });
 
-  it("preserves duplicate get-result and for-item metadata entries during reset", () => {
+  it("removes duplicate get-result and for-item metadata entries during reset", () => {
     const fileSystem = createFileSystem({
       "todo.md": [
         "- [x] get: Resolve current names",
@@ -1136,13 +1132,28 @@ describe("checkbox-operations", () => {
 
     expect(fileSystem.readText("todo.md")).toBe([
       "- [ ] get: Resolve current names",
-      "  - get-result: Alpha",
-      "  - get-result: Alpha",
-      "  - get-result: Beta",
       "- [ ] for: Alpha, Beta",
-      "  - for-item: One",
-      "  - for-item: One",
-      "  - for-item: Two",
+      "  - [ ] Do once",
+    ].join("\n"));
+  });
+
+  it("removes empty get-result and for-item metadata values during checkbox reset", () => {
+    const fileSystem = createFileSystem({
+      "todo.md": [
+        "- [x] get: Resolve current names",
+        "  - get-result:",
+        "- [x] for: Alpha, Beta",
+        "  - for-item:",
+        "  - for-current:",
+        "  - [x] Do once",
+      ].join("\n"),
+    });
+
+    resetFileCheckboxes("todo.md", fileSystem);
+
+    expect(fileSystem.readText("todo.md")).toBe([
+      "- [ ] get: Resolve current names",
+      "- [ ] for: Alpha, Beta",
       "  - [ ] Do once",
     ].join("\n"));
   });

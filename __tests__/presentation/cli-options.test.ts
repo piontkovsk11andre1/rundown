@@ -3701,6 +3701,47 @@ describe("CLI plan and utility command normalization", () => {
     expect(call.cliBlockTimeoutMs).toBe(30_000);
   });
 
+  it("forwards --loop flag to plan task", async () => {
+    const planTask = vi.fn(async () => 0);
+    const call = await invokePlanAndCaptureCall([
+      "plan",
+      "tasks.md",
+      "--loop",
+      "--worker",
+      "opencode",
+      "run",
+    ], planTask);
+
+    expect(call.source).toBe("tasks.md");
+    expect(call.loop).toBe(true);
+  });
+
+  it("preserves existing plan options when --loop is enabled", async () => {
+    const planTask = vi.fn(async () => 0);
+    const call = await invokePlanAndCaptureCall([
+      "plan",
+      "tasks.md",
+      "--loop",
+      "--scan-count",
+      "3",
+      "--deep",
+      "2",
+      "--dry-run",
+      "--print-prompt",
+      "--worker",
+      "opencode",
+      "run",
+    ], planTask);
+
+    expect(call.source).toBe("tasks.md");
+    expect(call.loop).toBe(true);
+    expect(call.scanCount).toBe(3);
+    expect(call.deep).toBe(2);
+    expect(call.dryRun).toBe(true);
+    expect(call.printPrompt).toBe(true);
+    expect(call.mode).toBe("wait");
+  });
+
   it("passes explicit --cli-block-timeout to plan task", async () => {
     const planTask = vi.fn(async () => 0);
     const call = await invokePlanAndCaptureCall([
@@ -3916,6 +3957,19 @@ describe("CLI plan and utility command normalization", () => {
     ], planTask);
 
     expect(call.deep).toBe(0);
+  });
+
+  it("defaults plan loop mode to false when omitted", async () => {
+    const planTask = vi.fn(async () => 0);
+    const call = await invokePlanAndCaptureCall([
+      "plan",
+      "tasks.md",
+      "--worker",
+      "opencode",
+      "run",
+    ], planTask);
+
+    expect(call.loop).toBe(false);
   });
 
   it("logs a CLI error and exits with code 1 on non-integer deep value", async () => {

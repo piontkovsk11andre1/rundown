@@ -42,6 +42,8 @@ Behavior:
 - Creates `<config-dir>/config.json` when missing.
 - Updates preset-targeted keys (`workers.default`, `workers.tui`, `commands.discuss`) without clobbering unrelated config.
 - Preserves other config sections (`workspace`, `trace`, run defaults, tool directories, and other command settings).
+- Writes to local config scope only (`<config-dir>/config.json`); global config is not modified.
+- If resolved preset values are already present, reports no-op semantics and avoids rewrite noise.
 - Prints configured keys and resolved config path.
 - Unknown harness exits non-zero with an actionable error and the supported preset list.
 
@@ -60,3 +62,19 @@ OpenCode conventions applied by `rundown with opencode`:
 - Deterministic commands (`run`, `plan`, `research`, `reverify`) use `opencode run` with file-first prompt transport (`$file` + `$bootstrap`).
 - Interactive discussion (`discuss`) uses base `opencode`.
 - The deterministic/interactive split is persisted via `workers.default`, `workers.tui`, and `commands.discuss`.
+
+Persisted local config shape (merged into existing JSON without removing unrelated keys):
+
+```json
+{
+  "workers": {
+    "default": ["opencode", "run", "--file", "$file", "$bootstrap"],
+    "tui": ["opencode"]
+  },
+  "commands": {
+    "discuss": ["opencode"]
+  }
+}
+```
+
+Alias inputs (for example `OpenCode` and `open-code`) resolve to canonical `opencode` and persist the same command arrays shown above.

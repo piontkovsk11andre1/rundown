@@ -29,6 +29,26 @@ When created by `rundown init`, this file starts as an empty JSON object (`{}`).
 
 That means no default worker is configured until you add one. Worker-required commands (`run`, `plan`, `discuss`, `research`, `reverify`) must receive a worker explicitly via `--worker <command...>` or `-- <command>` when config is empty.
 
+Fast onboarding option:
+
+- `rundown with opencode` writes local preset keys only (`workers.default`, `workers.tui`, `commands.discuss`) into `<config-dir>/config.json`.
+- Canonical `opencode` persistence is:
+
+```json
+{
+  "workers": {
+    "default": ["opencode", "run", "--file", "$file", "$bootstrap"],
+    "tui": ["opencode"]
+  },
+  "commands": {
+    "discuss": ["opencode"]
+  }
+}
+```
+
+- Alias inputs like `OpenCode` and `open-code` normalize to the same persisted arrays.
+- Re-running `rundown with opencode` is idempotent and reports no-op when no targeted key changes are needed.
+
 Example:
 
 ```json

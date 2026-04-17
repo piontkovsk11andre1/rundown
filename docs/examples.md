@@ -39,6 +39,22 @@ What this configures:
 2. `workers.tui` and `commands.discuss` for interactive discussion sessions (`opencode`),
 3. while preserving unrelated `.rundown/config.json` keys.
 
+Persisted local config fragment:
+
+```json
+{
+  "workers": {
+    "default": ["opencode", "run", "--file", "$file", "$bootstrap"],
+    "tui": ["opencode"]
+  },
+  "commands": {
+    "discuss": ["opencode"]
+  }
+}
+```
+
+Alias inputs such as `rundown with OpenCode` and `rundown with open-code` normalize to the same canonical `opencode` persistence.
+
 OpenCode behavior after this setup:
 
 1. Deterministic commands (`run`, `plan`, `research`, `reverify`) resolve to `opencode run` via `workers.default`.

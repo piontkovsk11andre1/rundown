@@ -300,6 +300,15 @@ describe("default prompt templates", () => {
     }
   });
 
+  it("keeps loop planning guidance bounded, iterable, and deterministic", () => {
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("## Loop composition requirements");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`get:` discovers an iterable set of items/values");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`for:` iterates discovered values and runs per-item implementation/review child tasks");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`end:` defines a deterministic stop rule");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("For loop-oriented tasks, require explicit `get:` + `for:` + `end:` composition");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("Any `loop:` task must include an explicit terminal `end:` stop condition");
+  });
+
   it("maps sample prompts to rundown workflows and preserves migration + fallback guidance in help template", () => {
     expect(DEFAULT_HELP_TEMPLATE).toContain("\"plan this\" maps to `rundown plan`");
     expect(DEFAULT_HELP_TEMPLATE).toContain("\"explore this\" maps to `rundown explore`");

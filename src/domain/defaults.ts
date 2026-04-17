@@ -1338,13 +1338,14 @@ When adding or fixing loop-oriented TODO items, strongly prefer this composition
 1. \`get:\` discovers an iterable set of items/values.
 2. \`end:\` defines a deterministic stop rule (for example no discovered values, no new items, or a bounded pass counter).
 3. \`for:\` iterates discovered values and runs per-item implementation/review child tasks.
+4. \`for:\` child task wording must state per-item execution intent (implementation and/or verification actions) derived from the source task context.
 
 Preferred loop authoring shape:
 
 - \`- [ ] loop: <bounded iterative objective>\`
 - \`  - [ ] get: <discover iterable items in stable order>\`
 - \`  - [ ] end: stop when get returns no items (or another explicit deterministic rule)\`
-- \`  - [ ] for: <run per-item implementation/review tasks for each discovered item>\`
+- \`  - [ ] for: <run per-item implementation/verification tasks from source task context for each discovered item>\`
 
 Use clear, deterministic stop conditions. Avoid open-ended loops without an explicit terminal rule.
 

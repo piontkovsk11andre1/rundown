@@ -155,6 +155,8 @@ describe("default prompt templates", () => {
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`get:` discovers an iterable set of items/values");
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`end:` defines a deterministic stop rule");
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`for:` iterates discovered values and runs per-item implementation/review child tasks");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`for:` child task wording must state per-item execution intent (implementation and/or verification actions) derived from the source task context");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`  - [ ] for: <run per-item implementation/verification tasks from source task context for each discovered item>`");
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("For loop-oriented tasks, require explicit `get:` + `for:` + `end:` composition");
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("Any `loop:` task must include an explicit terminal `end:` stop condition");
 

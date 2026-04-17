@@ -8,6 +8,7 @@ import {
   DEFAULT_RESEARCH_VERIFY_TEMPLATE,
   DEFAULT_RESOLVE_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
+  DEFAULT_PLAN_LOOP_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
   DEFAULT_TASK_TEMPLATE,
   DEFAULT_VERIFY_TEMPLATE,
@@ -149,6 +150,13 @@ describe("default prompt templates", () => {
     expect(DEFAULT_PLAN_TEMPLATE).toContain("`  - [ ] memory: capture blocker trends that should influence the next pass`");
     expect(DEFAULT_PLAN_TEMPLATE).toContain("`  - [ ] end: stop when two consecutive passes produce no new blockers`");
     expect(DEFAULT_PLAN_TEMPLATE).toContain("explicit terminal stop condition via an `end:` step");
+
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("## Loop composition requirements");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`get:` discovers an iterable set of items/values");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`end:` defines a deterministic stop rule");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`for:` iterates discovered values and runs per-item implementation/review child tasks");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("For loop-oriented tasks, require explicit `get:` + `for:` + `end:` composition");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("Any `loop:` task must include an explicit terminal `end:` stop condition");
 
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("## Rundown feature reference for deep planning");
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("`verify:`");
@@ -311,6 +319,7 @@ describe("default prompt templates", () => {
 
     expect(DEFAULT_HELP_TEMPLATE).toContain("Customizable templates:");
     expect(DEFAULT_HELP_TEMPLATE).toContain("`agent.md`");
+    expect(DEFAULT_HELP_TEMPLATE).toContain("`plan-loop.md`");
     expect(DEFAULT_HELP_TEMPLATE).toContain("`deep-plan.md`");
     expect(DEFAULT_HELP_TEMPLATE).toContain("`discuss-finished.md`");
     expect(DEFAULT_HELP_TEMPLATE).toContain("`research-verify.md`");

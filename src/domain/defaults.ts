@@ -591,7 +591,7 @@ Layered worker resolution (lowest to highest priority):
 
 ### Templates (\`.rundown/*.md\`)
 
-Customizable templates: \`agent.md\`, \`execute.md\`, \`verify.md\`, \`repair.md\`, \`resolve.md\`, \`plan.md\`, \`deep-plan.md\`, \`discuss.md\`, \`discuss-finished.md\`, \`research.md\`, \`research-verify.md\`, \`research-repair.md\`, \`research-resolve.md\`, \`research-output-contract.md\`, \`trace.md\`, \`undo.md\`, \`test-verify.md\`, \`test-future.md\`, \`test-materialized.md\`, \`help.md\`, \`migrate*.md\`, \`query-*.md\`. Built-in defaults are used when files are absent.
+Customizable templates: \`agent.md\`, \`execute.md\`, \`verify.md\`, \`repair.md\`, \`resolve.md\`, \`plan.md\`, \`plan-loop.md\`, \`deep-plan.md\`, \`discuss.md\`, \`discuss-finished.md\`, \`research.md\`, \`research-verify.md\`, \`research-repair.md\`, \`research-resolve.md\`, \`research-output-contract.md\`, \`trace.md\`, \`undo.md\`, \`test-verify.md\`, \`test-future.md\`, \`test-materialized.md\`, \`help.md\`, \`migrate*.md\`, \`query-*.md\`. Built-in defaults are used when files are absent.
 
 ### Fallback mode for non-rundown questions
 
@@ -1309,6 +1309,67 @@ Rules:
 - Do not reword, rephrase, or rewrite the descriptive text of any existing TODO item.
 - You may fix prefixes on existing unchecked items: normalize aliases to canonical form (e.g. \`check:\` → \`verify:\`), add a missing prefix when the task clearly needs one, or remove an incorrect prefix.
 - Remove obviously wrong duplicate directive groups/prefix wrappers and duplicate inline prefixes on unchecked items (for example repeated \`fast:\`/\`verify:\` wrappers or stacked identical prefixes introduced by prior planning passes).
+- Any \`loop:\` task must include an explicit terminal \`end:\` stop condition (inline or child item).
+- Do not change any \`- [ ]\` item to \`- [x]\`.
+- Do not remove or move any existing item (checked or unchecked).
+- Do not output a proposed list on stdout; apply edits to \`{{file}}\` directly.
+- If plan coverage is already sufficient, leave the file unchanged.
+{{traceInstructions}}
+`;
+
+/**
+ * Default loop-plan prompt template used to propose loop-oriented TODO workflows.
+ */
+export const DEFAULT_PLAN_LOOP_TEMPLATE = `\
+${DEFAULT_TEMPLATE_SHARED_PREFIX}
+${DEFAULT_TEMPLATE_MEMORY_SECTION}
+${DEFAULT_TEMPLATE_VARS_SECTION}
+
+## Phase
+
+Edit the source Markdown file directly to add loop-oriented TODO coverage.
+
+Plan for bounded iterative workflows. Favor patterns that discover values, iterate deterministically, and stop explicitly.
+
+## Loop composition requirements
+
+When adding or fixing loop-oriented TODO items, strongly prefer this composition:
+
+1. \`get:\` discovers an iterable set of items/values.
+2. \`end:\` defines a deterministic stop rule (for example no discovered values, no new items, or a bounded pass counter).
+3. \`for:\` iterates discovered values and runs per-item implementation/review child tasks.
+
+Use clear, deterministic stop conditions. Avoid open-ended loops without an explicit terminal rule.
+
+When a loop could run indefinitely, add an explicit deterministic cap (for example pass count limit) in addition to content-based stopping.
+
+## Optional planning guidance (advisory)
+
+Optional prepend guidance (advisory):
+
+{{planPrependGuidance}}
+
+Optional append guidance (advisory):
+
+{{planAppendGuidance}}
+
+Interpret guidance semantically for ordering and coverage decisions.
+
+- Treat guidance as intent hints, not mandatory text.
+- Do not copy TODO text literally from guidance examples.
+- Ignore guidance that is not relevant to the source document's actual workload.
+- Guidance never overrides add-only, checkbox-state, or other planner safety rules.
+
+${DEFAULT_PLAN_FEATURE_REFERENCE_SECTION}
+
+Rules:
+- Add only unchecked TODO items using \`- [ ]\` syntax.
+- Prefer appending new items at the end of the document. Each task only sees the document content above it, so items placed at the end have the most context available during execution.
+- Do not insert new items between existing items or between prose paragraphs. Append after the last existing TODO item or at the document end.
+- Do not reword, rephrase, or rewrite the descriptive text of any existing TODO item.
+- You may fix prefixes on existing unchecked items: normalize aliases to canonical form (e.g. \`check:\` → \`verify:\`), add a missing prefix when the task clearly needs one, or remove an incorrect prefix.
+- Remove obviously wrong duplicate directive groups/prefix wrappers and duplicate inline prefixes on unchecked items (for example repeated \`fast:\`/\`verify:\` wrappers or stacked identical prefixes introduced by prior planning passes).
+- For loop-oriented tasks, require explicit \`get:\` + \`for:\` + \`end:\` composition unless the source document provides a stronger deterministic pattern.
 - Any \`loop:\` task must include an explicit terminal \`end:\` stop condition (inline or child item).
 - Do not change any \`- [ ]\` item to \`- [x]\`.
 - Do not remove or move any existing item (checked or unchecked).

@@ -200,6 +200,7 @@ export function createPlanTask(
       scanCount,
       maxItems,
       deep = 0,
+      loop = false,
       mode,
       workerPattern,
       showAgentOutput,
@@ -380,7 +381,7 @@ export function createPlanTask(
         dependencies.templateLoader,
         dependencies.pathOperations,
       );
-      const planTemplate = templates.plan;
+      const planTemplate = loop ? templates.planLoop : templates.plan;
       const deepPlanTemplate = templates.deepPlan ?? DEFAULT_DEEP_PLAN_TEMPLATE;
       const planPrependGuidance = loadOptionalPlannerGuidance({
         configDir: dependencies.configDir,

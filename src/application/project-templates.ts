@@ -1,6 +1,7 @@
 import {
   DEFAULT_AGENT_TEMPLATE,
   DEFAULT_PLAN_APPEND_TEMPLATE,
+  DEFAULT_PLAN_LOOP_TEMPLATE,
   DEFAULT_PLAN_PREPEND_TEMPLATE,
   DEFAULT_DEEP_PLAN_TEMPLATE,
   DEFAULT_DISCUSS_TEMPLATE,
@@ -53,6 +54,7 @@ export interface ProjectTemplates {
   repair: string;
   resolve: string;
   plan: string;
+  planLoop: string;
   planPrepend: string;
   planAppend: string;
   deepPlan?: string;
@@ -100,6 +102,7 @@ export function loadProjectTemplatesFromPorts(
       repair: DEFAULT_REPAIR_TEMPLATE,
       resolve: DEFAULT_RESOLVE_TEMPLATE,
       plan: DEFAULT_PLAN_TEMPLATE,
+      planLoop: DEFAULT_PLAN_LOOP_TEMPLATE,
       planPrepend: DEFAULT_PLAN_PREPEND_TEMPLATE,
       planAppend: DEFAULT_PLAN_APPEND_TEMPLATE,
       deepPlan: DEFAULT_DEEP_PLAN_TEMPLATE,
@@ -146,6 +149,7 @@ export function loadProjectTemplatesFromPorts(
     repair: templateLoader.load(pathOperations.join(dir, "repair.md")) ?? DEFAULT_REPAIR_TEMPLATE,
     resolve: templateLoader.load(pathOperations.join(dir, "resolve.md")) ?? DEFAULT_RESOLVE_TEMPLATE,
     plan: templateLoader.load(pathOperations.join(dir, "plan.md")) ?? DEFAULT_PLAN_TEMPLATE,
+    planLoop: templateLoader.load(pathOperations.join(dir, "plan-loop.md")) ?? DEFAULT_PLAN_LOOP_TEMPLATE,
     planPrepend:
       templateLoader.load(pathOperations.join(dir, "plan-prepend.md")) ??
       DEFAULT_PLAN_PREPEND_TEMPLATE,

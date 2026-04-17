@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_AGENT_TEMPLATE,
   DEFAULT_PLAN_APPEND_TEMPLATE,
+  DEFAULT_PLAN_LOOP_TEMPLATE,
   DEFAULT_PLAN_PREPEND_TEMPLATE,
   DEFAULT_DEEP_PLAN_TEMPLATE,
   DEFAULT_DISCUSS_TEMPLATE,
@@ -51,6 +52,7 @@ describe("project-templates", () => {
       repair: DEFAULT_REPAIR_TEMPLATE,
       resolve: DEFAULT_RESOLVE_TEMPLATE,
       plan: DEFAULT_PLAN_TEMPLATE,
+      planLoop: DEFAULT_PLAN_LOOP_TEMPLATE,
       planPrepend: DEFAULT_PLAN_PREPEND_TEMPLATE,
       planAppend: DEFAULT_PLAN_APPEND_TEMPLATE,
       deepPlan: DEFAULT_DEEP_PLAN_TEMPLATE,
@@ -113,6 +115,7 @@ describe("project-templates", () => {
       repair: DEFAULT_REPAIR_TEMPLATE,
       resolve: DEFAULT_RESOLVE_TEMPLATE,
       plan: DEFAULT_PLAN_TEMPLATE,
+      planLoop: DEFAULT_PLAN_LOOP_TEMPLATE,
       planPrepend: DEFAULT_PLAN_PREPEND_TEMPLATE,
       planAppend: DEFAULT_PLAN_APPEND_TEMPLATE,
       deepPlan: DEFAULT_DEEP_PLAN_TEMPLATE,
@@ -146,6 +149,7 @@ describe("project-templates", () => {
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "resolve.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "plan-prepend.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "plan-append.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "plan-loop.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "deep-plan.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "trace.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "undo.md"));

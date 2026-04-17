@@ -279,6 +279,72 @@ describe("plan-task", () => {
     expect(deepPrompt).toContain("Depth=0");
   });
 
+  it("uses loop planning template in --loop mode", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, events } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\nBuild a new release process.\n",
+    });
+
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((filePath: string) => {
+      if (filePath.endsWith("/plan-loop.md") || filePath.endsWith("\\plan-loop.md")) {
+        return "# Loop Plan Prompt\nloop-task={{task}}";
+      }
+      if (filePath.endsWith("/plan.md") || filePath.endsWith("\\plan.md")) {
+        return "# Standard Plan Prompt\nstandard-task={{task}}";
+      }
+      return null;
+    });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({
+      source: markdownFile,
+      printPrompt: true,
+      loop: true,
+    }));
+
+    expect(code).toBe(0);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain("# Loop Plan Prompt");
+    expect(prompt).toContain("loop-task=Roadmap");
+    expect(prompt).not.toContain("# Standard Plan Prompt");
+  });
+
+  it("falls back to built-in loop template in --loop mode when plan-loop.md is missing", async () => {
+    const cwd = "/workspace";
+    const markdownFile = path.join(cwd, "roadmap.md");
+    const { dependencies, events } = createDependencies({
+      cwd,
+      markdownFile,
+      fileContent: "# Roadmap\nBuild a new release process.\n",
+    });
+
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((filePath: string) => {
+      if (filePath.endsWith("/plan-loop.md") || filePath.endsWith("\\plan-loop.md")) {
+        return null;
+      }
+      if (filePath.endsWith("/plan.md") || filePath.endsWith("\\plan.md")) {
+        return "# Standard Plan Prompt\nstandard-task={{task}}";
+      }
+      return null;
+    });
+
+    const planTask = createPlanTask(dependencies);
+    const code = await planTask(createOptions({
+      source: markdownFile,
+      printPrompt: true,
+      loop: true,
+    }));
+
+    expect(code).toBe(0);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain("## Loop composition requirements");
+    expect(prompt).toContain("`get:` discovers an iterable set of items/values.");
+    expect(prompt).toContain("For loop-oriented tasks, require explicit `get:` + `for:` + `end:` composition");
+  });
+
   it("renders a fallback scanCount template value in unlimited mode", async () => {
     const cwd = "/workspace";
     const markdownFile = path.join(cwd, "roadmap.md");

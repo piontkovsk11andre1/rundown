@@ -888,6 +888,22 @@ describe("CLI run option normalization", () => {
     expect(compactHelpOutput).toContain("--mode <mode> Make mode: wait");
   });
 
+  it("shows add plan-only options in help text", async () => {
+    const runTask = vi.fn(async () => 0);
+    const result = await invokeRunAndCaptureHelpOutput([
+      "add",
+      "--help",
+    ], runTask);
+
+    expect(runTask).not.toHaveBeenCalled();
+
+    const compactHelpOutput = stripAnsi(result.output).replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("--mode <mode> Add mode: wait");
+    expect(compactHelpOutput).toContain("--scan-count <n> Max clean-session TODO coverage scans for the plan phase");
+    expect(compactHelpOutput).toContain("--deep <n> Additional nested planning depth passes after top-level scans for the plan phase");
+    expect(compactHelpOutput).toContain("--worker <pattern> Optional worker pattern override (alternative to -- <command>)");
+  });
+
   it("parses all with --worker echo and enables runAll", async () => {
     const runTask = vi.fn(async () => 0);
     const call = await invokeRunAndCaptureCall([

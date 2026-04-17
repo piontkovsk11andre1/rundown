@@ -33,6 +33,7 @@ import { ROOT_COMMAND_WELCOME_MESSAGE } from "../domain/defaults.js";
 import { getAgentsTemplate } from "../domain/agents-template.js";
 import {
   createArtifactsCommandAction,
+  createAddCommandAction,
   createCallCommandAction,
   createMaterializeCommandAction,
   createLoopCommandAction,
@@ -84,6 +85,7 @@ const RESEARCH_MODES: readonly ProcessRunMode[] = ["wait", "tui"];
 const EXPLORE_MODES: readonly ProcessRunMode[] = ["wait"];
 const QUERY_MODES: readonly ProcessRunMode[] = ["wait"];
 const MAKE_MODES: readonly ProcessRunMode[] = ["wait"];
+const ADD_MODES: readonly ProcessRunMode[] = ["wait"];
 const DO_MODES: readonly ProcessRunMode[] = ["wait"];
 const LOOP_MODES: readonly ProcessRunMode[] = ["wait"];
 const COMMIT_MODES = ["per-task", "file-done"] as const;
@@ -750,6 +752,46 @@ program
   })));
 
 program
+  .command("add")
+  .description("Append seed text to an existing Markdown task doc, then run plan.")
+  .argument("<seed-text>", "Text content to append into the existing Markdown file")
+  .argument("<markdown-file>", "Existing Markdown file path to append and plan")
+  .option("--mode <mode>", "Add mode: wait", "wait")
+  .option(
+    "--scan-count <n>",
+    "Max clean-session TODO coverage scans for the plan phase (omit for convergence-driven unlimited mode)",
+  )
+  .option("--max-items <n>", "Cap the total number of TODO items added across all scans (default: no limit)")
+  .option(
+    "--deep <n>",
+    "Additional nested planning depth passes after top-level scans for the plan phase (default: 0)",
+    String(DEFAULT_PLAN_DEEP),
+  )
+  .option("--dry-run", "Show what would run for append and plan without executing workers", false)
+  .option("--print-prompt", "Print rendered plan prompts and exit", false)
+  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
+  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
+  .option("-v, --verbose", "Show detailed per-task run diagnostics (within grouped output)", false)
+  .option("-q, --quiet", "Suppress info-level output (info, success, progress, grouped status)", false)
+  .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
+  .option("--force-unlock", "Break stale source lockfiles before acquiring plan lock", false)
+  .option("--vars-file [path]", DEFAULT_VARS_FILE_HELP)
+  .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
+  .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
+  .option("--ignore-cli-block", "Disable execution of `cli` fenced blocks during prompt expansion")
+  .option(
+    "--cli-block-timeout <ms>",
+    "Timeout in milliseconds for executing `cli` fenced blocks (0 disables timeout)",
+    String(DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS),
+  )
+  .allowUnknownOption(false)
+  .action(withCliAction(createAddCommandAction({
+    getApp,
+    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
+    addModes: ADD_MODES,
+  })));
+
+program
   .command("query")
   .description("Research the codebase, plan investigation steps, and execute a query workflow.")
   .argument("<text>", "Natural-language query text")
@@ -1092,6 +1134,7 @@ export async function parseCliArgs(argv: string[]): Promise<void> {
     validateRootAgentsOptionUsage(rundownArgs);
     // Keep research as a strict single-pass workflow for this iteration.
     validateUnsupportedResearchScanCount(rundownArgs);
+    validateUnsupportedAddMode(rundownArgs);
     validateUnsupportedMakeMode(rundownArgs);
     validateUnsupportedDoMode(rundownArgs);
     validateUnsupportedLoopMode(rundownArgs);
@@ -1205,6 +1248,22 @@ function validateUnsupportedResearchScanCount(argv: string[]): void {
   }
 
   throw new Error("Unsupported option for `research`: --scan-count. Research currently runs as a single-pass flow and does not support scan/convergence loops.");
+}
+
+/**
+ * Rejects interactive or detached execution modes for `add`.
+ */
+function validateUnsupportedAddMode(argv: string[]): void {
+  if (resolveInvocationCommand(argv) !== "add") {
+    return;
+  }
+
+  const mode = resolveModeOptionValue(argv);
+  if (mode === undefined || mode === "wait") {
+    return;
+  }
+
+  throw new Error(`Invalid --mode value: ${mode}. Allowed: wait.`);
 }
 
 /**

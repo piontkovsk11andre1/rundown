@@ -28,6 +28,7 @@ import {
   resolveVerboseOption,
   resolveIgnoreCliBlockFlag,
   resolveNoRepairFlag,
+  resolveAddMarkdownFile,
   resolvePlanMarkdownFile,
   resolveResearchMarkdownFile,
   resolveMakeMarkdownFile,
@@ -294,6 +295,10 @@ interface ResearchActionDependencies extends WorkerActionDependencies {
 
 interface MakeActionDependencies extends WorkerActionDependencies {
   makeModes: readonly ProcessRunMode[];
+}
+
+interface AddActionDependencies extends WorkerActionDependencies {
+  addModes: readonly ProcessRunMode[];
 }
 
 interface ExploreActionDependencies extends WorkerActionDependencies {
@@ -1646,6 +1651,58 @@ export function createMakeCommandAction({
   };
 }
 
+/**
+ * Creates the `add` command action handler.
+ *
+ * The returned action appends seed text to an existing Markdown file, then runs
+ * `plan` in strict sequence against that same file.
+ */
+export function createAddCommandAction({
+  getApp,
+  getWorkerFromSeparator,
+  addModes,
+}: AddActionDependencies): (seedText: string, markdownFile: string, opts: CliOpts) => CliActionResult {
+  return async (seedText: string, markdownFile: string, opts: CliOpts) => {
+    const app = getApp();
+    const targetMarkdownFile = resolveAddMarkdownFile(markdownFile);
+    const workspaceRuntimeOptions = resolveWorkerWorkspaceRuntimeOptions();
+    const mode = parseRunnerMode(opts.mode as string | undefined, addModes);
+    const sharedRuntimeOptions = resolveSharedWorkerRuntimeOptions(opts, getWorkerFromSeparator);
+    const dryRun = Boolean(opts.dryRun as boolean | undefined);
+    const printPrompt = Boolean(opts.printPrompt as boolean | undefined);
+    const scanCount = parseScanCount(opts.scanCount as string | undefined);
+    const maxItems = parseMaxItems(opts.maxItems as string | undefined);
+    const deep = parsePlanDeep(opts.deep as string | undefined);
+    const verbose = resolveVerboseOption(opts);
+    const resolvedSeedText = resolveBootstrapSeedText(seedText, sharedRuntimeOptions.configDirOption);
+
+    appendSeedMarkdownFile(targetMarkdownFile, resolvedSeedText);
+
+    emitCliInfo(app, "Add phase 1/1: plan");
+
+    return normalizeMakePhaseExitCode(await app.planTask({
+      source: targetMarkdownFile,
+      ...workspaceRuntimeOptions,
+      scanCount,
+      maxItems,
+      deep,
+      mode,
+      workerPattern: sharedRuntimeOptions.workerPattern,
+      showAgentOutput: sharedRuntimeOptions.showAgentOutput,
+      dryRun,
+      printPrompt,
+      keepArtifacts: sharedRuntimeOptions.keepArtifacts,
+      trace: sharedRuntimeOptions.trace,
+      forceUnlock: sharedRuntimeOptions.forceUnlock,
+      ignoreCliBlock: sharedRuntimeOptions.ignoreCliBlock,
+      cliBlockTimeoutMs: sharedRuntimeOptions.cliBlockTimeoutMs,
+      varsFileOption: sharedRuntimeOptions.varsFileOption,
+      cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,
+      verbose,
+    }));
+  };
+}
+
 interface RunMakeBootstrapPhasesOptions {
   app: CliApp;
   seedText: string;
@@ -1953,6 +2010,28 @@ function createSeedMarkdownFile(markdownFile: string, seedText: string): void {
     }
     if (code === "ENOTDIR") {
       throw new Error(`Cannot create make document: ${markdownFile}. Parent path is not a directory: ${parentDirectory}.`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Appends seed text to an existing Markdown file with an extra newline boundary.
+ */
+function appendSeedMarkdownFile(markdownFile: string, seedText: string): void {
+  const appendPayload = `\n\n${seedText}`;
+  try {
+    fs.appendFileSync(markdownFile, appendPayload, { encoding: "utf8" });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      throw new Error(`Cannot append add document: ${markdownFile}. File does not exist.`);
+    }
+    if (code === "ENOTDIR") {
+      throw new Error(`Cannot append add document: ${markdownFile}. A path segment is not a directory.`);
+    }
+    if (code === "EISDIR") {
+      throw new Error(`Cannot append add document: ${markdownFile}. Path is a directory.`);
     }
     throw error;
   }

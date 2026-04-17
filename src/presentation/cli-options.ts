@@ -408,6 +408,55 @@ export function resolveMakeMarkdownFile(markdownFile: string): string {
   return resolvedMarkdownFile;
 }
 
+/**
+ * Validates and resolves the existing target Markdown file expected by the `add` command.
+ */
+export function resolveAddMarkdownFile(markdownFile: string): string {
+  const resolvedMarkdownFile = resolveSingleMarkdownFile({
+    commandName: "add",
+    usage: "rundown add <seed-text> <markdown-file> [options]",
+    invalidPathLabel: "add",
+    markdownFiles: [markdownFile],
+  });
+
+  if (containsGlobPattern(resolvedMarkdownFile)) {
+    throw new Error(
+      "Invalid add document path: "
+        + resolvedMarkdownFile
+        + ". The `add` command requires exactly one existing Markdown file and does not accept directory or glob inputs.",
+    );
+  }
+
+  if (!fs.existsSync(resolvedMarkdownFile)) {
+    throw new Error(
+      "Invalid add document path: "
+        + resolvedMarkdownFile
+        + ". The `add` command requires exactly one existing Markdown file; the provided path does not exist.",
+    );
+  }
+
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(resolvedMarkdownFile);
+  } catch {
+    throw new Error(
+      "Invalid add document path: "
+        + resolvedMarkdownFile
+        + ". The `add` command requires exactly one existing Markdown file and cannot read this path.",
+    );
+  }
+
+  if (!stats.isFile()) {
+    throw new Error(
+      "Invalid add document path: "
+        + resolvedMarkdownFile
+        + ". The `add` command requires exactly one existing Markdown file and does not accept directory or glob inputs.",
+    );
+  }
+
+  return resolvedMarkdownFile;
+}
+
 interface ResolveSingleMarkdownFileOptions {
   commandName: string;
   usage: string;

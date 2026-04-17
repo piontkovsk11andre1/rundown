@@ -11508,6 +11508,26 @@ describe.sequential("CLI integration", () => {
     expect(result.errors.some((line) => line.includes("Invalid --mode value: tui. Allowed: wait."))).toBe(true);
   });
 
+  it("add rejects non-wait mode", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "roadmap.md"), "- [ ] Break down migration\n", "utf-8");
+
+    const result = await runCli([
+      "add",
+      "new seed",
+      "roadmap.md",
+      "--mode",
+      "tui",
+      "--dry-run",
+      "--worker",
+      "opencode",
+      "run",
+    ], workspace);
+
+    expect(result.code).toBe(1);
+    expect(result.errors.some((line) => line.includes("Invalid --mode value: tui. Allowed: wait."))).toBe(true);
+  });
+
   it("plan rejects missing markdown file path with actionable guidance", async () => {
     const workspace = makeTempWorkspace();
 

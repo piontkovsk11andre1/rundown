@@ -78,7 +78,7 @@ describe("with-task", () => {
     });
   });
 
-  it("merges preset updates without clobbering unrelated config keys", async () => {
+  it("merges opencode preset updates without clobbering unrelated config keys", async () => {
     const workspaceDir = makeTempWorkspace();
     const configDir = path.join(workspaceDir, ".rundown");
     fs.mkdirSync(configDir, { recursive: true });
@@ -114,10 +114,10 @@ describe("with-task", () => {
       interactiveInput: createInteractiveInputStub(),
     });
 
-    const result = await withTask({ harness: "gemini" });
+    const result = await withTask({ harness: "opencode" });
 
     expect(result.exitCode).toBe(0);
-    expect(result.harnessKey).toBe("gemini");
+    expect(result.harnessKey).toBe("opencode");
     expect(result.source).toBe("preset");
     expect(result.changed).toBe(true);
 
@@ -135,10 +135,10 @@ describe("with-task", () => {
       workspace?: unknown;
     };
 
-    expect(parsed.workers?.default).toEqual(["gemini", "run", "--file", "$file", "$bootstrap"]);
-    expect(parsed.workers?.tui).toEqual(["gemini"]);
+    expect(parsed.workers?.default).toEqual(["opencode", "run", "--file", "$file", "$bootstrap"]);
+    expect(parsed.workers?.tui).toEqual(["opencode"]);
     expect(parsed.workers?.fallbacks).toEqual([["fallback", "run"]]);
-    expect(parsed.commands?.discuss).toEqual(["gemini"]);
+    expect(parsed.commands?.discuss).toEqual(["opencode"]);
     expect(parsed.commands?.run).toEqual(["custom", "run"]);
     expect(parsed.run?.commit).toBe(true);
     expect(parsed.workspace).toEqual({
@@ -150,7 +150,7 @@ describe("with-task", () => {
     });
   });
 
-  it("re-applying the same preset is idempotent", async () => {
+  it("re-applying the opencode preset is idempotent", async () => {
     const workspaceDir = makeTempWorkspace();
     const configDir = path.join(workspaceDir, ".rundown");
 
@@ -163,12 +163,12 @@ describe("with-task", () => {
       interactiveInput: createInteractiveInputStub(),
     });
 
-    const first = await withTask({ harness: "pi" });
+    const first = await withTask({ harness: "opencode" });
     expect(first.exitCode).toBe(0);
     const configPath = path.join(configDir, "config.json");
     const before = fs.readFileSync(configPath, "utf8");
 
-    const second = await withTask({ harness: "pi" });
+    const second = await withTask({ harness: "opencode" });
     expect(second.exitCode).toBe(0);
     const after = fs.readFileSync(configPath, "utf8");
 
@@ -298,6 +298,28 @@ describe("with-task", () => {
     expect(result.harnessKey).toBe("opencode");
     expect(result.changed).toBe(false);
     expect(result.configPath).toBe(configPath);
+    expect(result.configuredKeys).toEqual([
+      {
+        keyPath: "workers.default",
+        status: "set",
+        value: ["opencode", "run", "--file", "$file", "$bootstrap"],
+      },
+      {
+        keyPath: "workers.tui",
+        status: "set",
+        value: ["opencode"],
+      },
+      {
+        keyPath: "commands.discuss",
+        status: "set",
+        value: ["opencode"],
+      },
+      {
+        keyPath: "workers.fallbacks",
+        status: "preserved",
+      },
+    ]);
+    expect(fs.existsSync(configPath)).toBe(false);
     expect(workerConfigPort.setValue).not.toHaveBeenCalled();
     expect(workerConfigPort.unsetValue).not.toHaveBeenCalled();
   });

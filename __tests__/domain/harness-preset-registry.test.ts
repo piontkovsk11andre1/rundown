@@ -15,11 +15,26 @@ describe("harness-preset-registry", () => {
   it("resolves canonical keys and aliases case-insensitively", () => {
     expect(resolveHarnessPresetKey("opencode")).toBe("opencode");
     expect(resolveHarnessPresetKey("OpenCode")).toBe("opencode");
+    expect(resolveHarnessPresetKey("open-code")).toBe("opencode");
     expect(resolveHarnessPresetKey("CLAUDE-CODE")).toBe("claude");
     expect(resolveHarnessPresetKey("gemini-cli")).toBe("gemini");
     expect(resolveHarnessPresetKey("OpenAI-Codex")).toBe("codex");
     expect(resolveHarnessPresetKey("cursor-agent")).toBe("cursor");
     expect(resolveHarnessPresetKey("Pi-CLI")).toBe("pi");
+  });
+
+  it("defines the canonical opencode deterministic and interactive split", () => {
+    const payload = getHarnessPresetPayload("opencode");
+
+    expect(payload).toEqual({
+      workers: {
+        default: ["opencode", "run", "--file", "$file", "$bootstrap"],
+        tui: ["opencode"],
+      },
+      commands: {
+        discuss: ["opencode"],
+      },
+    });
   });
 
   it("returns undefined for unknown or blank aliases", () => {

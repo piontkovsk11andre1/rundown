@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWithTask } from "../../src/application/with-task.js";
 import { createWorkerConfigAdapter } from "../../src/infrastructure/adapters/worker-config-adapter.js";
 import type { InteractiveInputPort } from "../../src/domain/ports/interactive-input-port.js";
+import type { WorkerConfigPort } from "../../src/domain/ports/worker-config-port.js";
 
 const tempDirs: string[] = [];
 
@@ -239,6 +240,66 @@ describe("with-task", () => {
     const after = fs.readFileSync(configPath, "utf8");
     expect(after).toBe(before);
     expect(second.changed).toBe(false);
+  });
+
+  it("reports no-op without writing when effective values already match preset", async () => {
+    const workspaceDir = makeTempWorkspace();
+    const configDir = path.join(workspaceDir, ".rundown");
+    const configPath = path.join(configDir, "config.json");
+
+    const workerConfigPort: WorkerConfigPort = {
+      load: vi.fn(() => undefined),
+      getConfigPaths: vi.fn(() => ({
+        localConfigPath: configPath,
+        globalConfigPath: "/global/config.json",
+        globalCanonicalPath: "/global/config.json",
+      })),
+      readValue: vi.fn((_, scope, keyPath) => {
+        if (scope === "local") {
+          return undefined;
+        }
+
+        if (scope === "effective") {
+          switch (keyPath) {
+            case "workers.default":
+              return ["opencode", "run", "--file", "$file", "$bootstrap"];
+            case "workers.tui":
+              return ["opencode"];
+            case "commands.discuss":
+              return ["opencode"];
+            default:
+              return undefined;
+          }
+        }
+
+        return undefined;
+      }),
+      setValue: vi.fn(() => {
+        throw new Error("setValue should not be called for no-op application");
+      }),
+      unsetValue: vi.fn(() => {
+        throw new Error("unsetValue should not be called for no-op application");
+      }),
+    };
+
+    const withTask = createWithTask({
+      workerConfigPort,
+      configDir: {
+        configDir,
+        isExplicit: true,
+      },
+      interactiveInput: createInteractiveInputStub(),
+    });
+
+    const result = await withTask({ harness: "OpenCode" });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.source).toBe("preset");
+    expect(result.harnessKey).toBe("opencode");
+    expect(result.changed).toBe(false);
+    expect(result.configPath).toBe(configPath);
+    expect(workerConfigPort.setValue).not.toHaveBeenCalled();
+    expect(workerConfigPort.unsetValue).not.toHaveBeenCalled();
   });
 
   it("prompts and saves custom worker mappings for unknown harness names", async () => {

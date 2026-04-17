@@ -1,3 +1,4 @@
+import path from "node:path";
 import { EXIT_CODE_SUCCESS } from "../domain/exit-codes.js";
 import {
   getHarnessPresetPayload,
@@ -35,12 +36,138 @@ export interface WithTaskResult {
   configuredKeys: readonly WithTaskConfiguredKeyResult[];
 }
 
+type WithTaskMutableKeyPath = Exclude<WithTaskConfiguredKeyResult["keyPath"], "workers.fallbacks"> | "workers.fallbacks";
+
+interface WithTaskMutationPlanItem {
+  keyPath: WithTaskMutableKeyPath;
+  action: "set" | "unset";
+  value?: readonly string[] | readonly string[][];
+}
+
 function resolveConfigDirPath(configDir: ConfigDirResult | undefined): string {
   return configDir?.configDir ?? process.cwd();
 }
 
 function hasPresetFallbackPolicy(presetPayload: { workers: { fallbacks?: string[][] } }): boolean {
   return Object.hasOwn(presetPayload.workers, "fallbacks");
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function areConfigValuesEqual(left: unknown, right: unknown): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (Array.isArray(left) && Array.isArray(right)) {
+    if (left.length !== right.length) {
+      return false;
+    }
+
+    for (let index = 0; index < left.length; index += 1) {
+      if (!areConfigValuesEqual(left[index], right[index])) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  if (isPlainObject(left) && isPlainObject(right)) {
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    if (leftKeys.length !== rightKeys.length) {
+      return false;
+    }
+
+    for (const key of leftKeys) {
+      if (!Object.hasOwn(right, key)) {
+        return false;
+      }
+
+      if (!areConfigValuesEqual(left[key], right[key])) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+function buildPresetMutationPlan(presetPayload: HarnessPresetPayload): WithTaskMutationPlanItem[] {
+  const mutationPlan: WithTaskMutationPlanItem[] = [
+    {
+      keyPath: "workers.default",
+      action: "set",
+      value: presetPayload.workers.default,
+    },
+    presetPayload.workers.tui
+      ? {
+        keyPath: "workers.tui",
+        action: "set",
+        value: presetPayload.workers.tui,
+      }
+      : {
+        keyPath: "workers.tui",
+        action: "unset",
+      },
+    presetPayload.commands?.discuss
+      ? {
+        keyPath: "commands.discuss",
+        action: "set",
+        value: presetPayload.commands.discuss,
+      }
+      : {
+        keyPath: "commands.discuss",
+        action: "unset",
+      },
+  ];
+
+  if (hasPresetFallbackPolicy(presetPayload)) {
+    mutationPlan.push(
+      presetPayload.workers.fallbacks && presetPayload.workers.fallbacks.length > 0
+        ? {
+          keyPath: "workers.fallbacks",
+          action: "set",
+          value: presetPayload.workers.fallbacks,
+        }
+        : {
+          keyPath: "workers.fallbacks",
+          action: "unset",
+        },
+    );
+  }
+
+  return mutationPlan;
+}
+
+function shouldApplyLocalMutation(
+  mutation: WithTaskMutationPlanItem,
+  localValue: unknown,
+  effectiveValue: unknown,
+): boolean {
+  if (mutation.action === "unset") {
+    return localValue !== undefined;
+  }
+
+  if (areConfigValuesEqual(localValue, mutation.value)) {
+    return false;
+  }
+
+  if (localValue === undefined && areConfigValuesEqual(effectiveValue, mutation.value)) {
+    return false;
+  }
+
+  return true;
+}
+
+function resolveLocalConfigPath(dependencies: WithTaskDependencies, configDirPath: string): string {
+  const paths = dependencies.workerConfigPort.getConfigPaths?.(configDirPath);
+  return paths?.localConfigPath ?? path.join(configDirPath, "config.json");
 }
 
 /**
@@ -68,52 +195,44 @@ export function createWithTask(
       ? getHarnessPresetPayload(harnessKey)
       : await promptUnknownHarnessPreset(options.harness, dependencies.interactiveInput);
 
-    const defaultResult = dependencies.workerConfigPort.setValue(configDirPath, {
-      scope: "local",
-      keyPath: "workers.default",
-      value: presetPayload.workers.default,
+    const mutationPlan = buildPresetMutationPlan(presetPayload);
+    const plannedMutations = mutationPlan.filter((mutation) => {
+      const localValue = dependencies.workerConfigPort.readValue?.(
+        configDirPath,
+        "local",
+        mutation.keyPath,
+      );
+      const effectiveValue = dependencies.workerConfigPort.readValue?.(
+        configDirPath,
+        "effective",
+        mutation.keyPath,
+      );
+
+      if (localValue === undefined && effectiveValue === undefined) {
+        return true;
+      }
+
+      return shouldApplyLocalMutation(mutation, localValue, effectiveValue);
     });
 
-    const tuiResult = presetPayload.workers.tui
-      ? dependencies.workerConfigPort.setValue(configDirPath, {
-        scope: "local",
-        keyPath: "workers.tui",
-        value: presetPayload.workers.tui,
-      })
-      : dependencies.workerConfigPort.unsetValue(configDirPath, {
-        scope: "local",
-        keyPath: "workers.tui",
-      });
+    let changed = false;
+    let configPath = resolveLocalConfigPath(dependencies, configDirPath);
 
-    const discussResult = presetPayload.commands?.discuss
-      ? dependencies.workerConfigPort.setValue(configDirPath, {
-        scope: "local",
-        keyPath: "commands.discuss",
-        value: presetPayload.commands.discuss,
-      })
-      : dependencies.workerConfigPort.unsetValue(configDirPath, {
-        scope: "local",
-        keyPath: "commands.discuss",
-      });
-
-    const fallbackResult = hasPresetFallbackPolicy(presetPayload)
-      ? (presetPayload.workers.fallbacks && presetPayload.workers.fallbacks.length > 0
+    for (const mutation of plannedMutations) {
+      const mutationResult = mutation.action === "set"
         ? dependencies.workerConfigPort.setValue(configDirPath, {
           scope: "local",
-          keyPath: "workers.fallbacks",
-          value: presetPayload.workers.fallbacks,
+          keyPath: mutation.keyPath,
+          value: mutation.value,
         })
         : dependencies.workerConfigPort.unsetValue(configDirPath, {
           scope: "local",
-          keyPath: "workers.fallbacks",
-        }))
-      : undefined;
+          keyPath: mutation.keyPath,
+        });
 
-    const configPath = defaultResult.configPath;
-    const changed = defaultResult.changed
-      || tuiResult.changed
-      || discussResult.changed
-      || fallbackResult?.changed === true;
+      configPath = mutationResult.configPath;
+      changed = changed || mutationResult.changed;
+    }
 
     return {
       exitCode: EXIT_CODE_SUCCESS,

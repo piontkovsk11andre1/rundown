@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWithTask } from "../../src/application/with-task.js";
 import { createWorkerConfigAdapter } from "../../src/infrastructure/adapters/worker-config-adapter.js";
+import { resolveConfigDirForInvocation } from "../../src/presentation/cli-app-init.js";
 import type { InteractiveInputPort } from "../../src/domain/ports/interactive-input-port.js";
 import type { WorkerConfigPort } from "../../src/domain/ports/worker-config-port.js";
 
@@ -460,6 +461,189 @@ describe("with-task", () => {
     expect(parsed.workers?.default).toEqual(["pi", "run", "--file", "$file", "$bootstrap"]);
     expect(parsed.workers?.tui).toBeUndefined();
     expect(parsed.commands?.discuss).toBeUndefined();
+  });
+
+  it("uses explicit --config-dir over discovered .rundown paths in with flow", async () => {
+    const workspaceDir = makeTempWorkspace();
+    const discoveredConfigDir = path.join(workspaceDir, ".rundown");
+    const explicitConfigDir = path.join(workspaceDir, ".rundown-explicit");
+    const invocationDir = path.join(workspaceDir, "nested", "project");
+    fs.mkdirSync(discoveredConfigDir, { recursive: true });
+    fs.writeFileSync(path.join(discoveredConfigDir, "config.json"), JSON.stringify({
+      run: {
+        commit: true,
+      },
+    }, null, 2) + "\n");
+    fs.mkdirSync(explicitConfigDir, { recursive: true });
+    fs.mkdirSync(invocationDir, { recursive: true });
+
+    const resolvedConfigDir = resolveConfigDirForInvocation(
+      ["with", "opencode", "--config-dir", explicitConfigDir],
+      invocationDir,
+    );
+    expect(resolvedConfigDir).toEqual({
+      configDir: explicitConfigDir,
+      isExplicit: true,
+    });
+
+    const withTask = createWithTask({
+      workerConfigPort: createWorkerConfigAdapter(),
+      configDir: resolvedConfigDir,
+      interactiveInput: createInteractiveInputStub(),
+    });
+
+    const result = await withTask({ harness: "opencode" });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.changed).toBe(true);
+    expect(result.configPath).toBe(path.join(explicitConfigDir, "config.json"));
+
+    const explicitConfigPath = path.join(explicitConfigDir, "config.json");
+    expect(fs.existsSync(explicitConfigPath)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(explicitConfigPath, "utf8"))).toEqual({
+      workers: {
+        default: ["opencode", "run", "--file", "$file", "$bootstrap"],
+        tui: ["opencode"],
+      },
+      commands: {
+        discuss: ["opencode"],
+      },
+    });
+
+    expect(JSON.parse(fs.readFileSync(path.join(discoveredConfigDir, "config.json"), "utf8"))).toEqual({
+      run: {
+        commit: true,
+      },
+    });
+  });
+
+  it("discovers .rundown upward when --config-dir is not provided", async () => {
+    const workspaceDir = makeTempWorkspace();
+    const discoveredConfigDir = path.join(workspaceDir, ".rundown");
+    const invocationDir = path.join(workspaceDir, "apps", "feature", "src");
+    fs.mkdirSync(discoveredConfigDir, { recursive: true });
+    fs.mkdirSync(invocationDir, { recursive: true });
+    fs.writeFileSync(path.join(discoveredConfigDir, "config.json"), JSON.stringify({
+      run: {
+        commit: true,
+      },
+      workers: {
+        fallbacks: [["fallback", "run"]],
+      },
+    }, null, 2) + "\n");
+
+    const resolvedConfigDir = resolveConfigDirForInvocation(["with", "opencode"], invocationDir);
+    expect(resolvedConfigDir).toEqual({
+      configDir: discoveredConfigDir,
+      isExplicit: false,
+    });
+
+    const withTask = createWithTask({
+      workerConfigPort: createWorkerConfigAdapter(),
+      configDir: resolvedConfigDir,
+      interactiveInput: createInteractiveInputStub(),
+    });
+
+    const result = await withTask({ harness: "opencode" });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.changed).toBe(true);
+    expect(result.configPath).toBe(path.join(discoveredConfigDir, "config.json"));
+
+    const parsed = JSON.parse(fs.readFileSync(path.join(discoveredConfigDir, "config.json"), "utf8")) as {
+      run?: { commit?: boolean };
+      workers?: {
+        default?: string[];
+        tui?: string[];
+        fallbacks?: string[][];
+      };
+      commands?: {
+        discuss?: string[];
+      };
+    };
+
+    expect(parsed.workers?.default).toEqual(["opencode", "run", "--file", "$file", "$bootstrap"]);
+    expect(parsed.workers?.tui).toEqual(["opencode"]);
+    expect(parsed.workers?.fallbacks).toEqual([["fallback", "run"]]);
+    expect(parsed.commands?.discuss).toEqual(["opencode"]);
+    expect(parsed.run?.commit).toBe(true);
+  });
+
+  it("keeps global config untouched while applying opencode using effective built-in/global/local resolution", async () => {
+    const workspaceDir = makeTempWorkspace();
+    const configDir = path.join(workspaceDir, ".rundown");
+    const globalRoot = makeTempWorkspace();
+    const globalConfigPath = path.join(globalRoot, "global-config.json");
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(globalConfigPath, JSON.stringify({
+      workers: {
+        default: ["codex", "run", "--file", "$file", "$bootstrap"],
+        tui: ["codex"],
+      },
+      commands: {
+        discuss: ["codex"],
+      },
+    }, null, 2) + "\n");
+    const globalBefore = fs.readFileSync(globalConfigPath, "utf8");
+
+    const workerConfigPort = createWorkerConfigAdapter({
+      resolveGlobalConfigPath: () => ({
+        discoveredPath: globalConfigPath,
+        canonicalPath: globalConfigPath,
+      }),
+    });
+    const readValue = workerConfigPort.readValue;
+    expect(readValue).toBeTypeOf("function");
+    if (!readValue) {
+      throw new Error("Expected workerConfigPort.readValue to be available");
+    }
+
+    expect(readValue(configDir, "effective", "workers.default")).toEqual([
+      "codex",
+      "run",
+      "--file",
+      "$file",
+      "$bootstrap",
+    ]);
+    expect(readValue(configDir, "effective", "traceStatistics.enabled")).toBe(false);
+
+    const withTask = createWithTask({
+      workerConfigPort,
+      configDir: {
+        configDir,
+        isExplicit: true,
+      },
+      interactiveInput: createInteractiveInputStub(),
+    });
+
+    const result = await withTask({ harness: "opencode" });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.changed).toBe(true);
+    expect(readValue(configDir, "global", "workers.default")).toEqual([
+      "codex",
+      "run",
+      "--file",
+      "$file",
+      "$bootstrap",
+    ]);
+    expect(readValue(configDir, "local", "workers.default")).toEqual([
+      "opencode",
+      "run",
+      "--file",
+      "$file",
+      "$bootstrap",
+    ]);
+    expect(readValue(configDir, "effective", "workers.default")).toEqual([
+      "opencode",
+      "run",
+      "--file",
+      "$file",
+      "$bootstrap",
+    ]);
+
+    const globalAfter = fs.readFileSync(globalConfigPath, "utf8");
+    expect(globalAfter).toBe(globalBefore);
   });
 });
 

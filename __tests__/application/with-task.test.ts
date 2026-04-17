@@ -325,6 +325,79 @@ describe("with-task", () => {
     expect(workerConfigPort.unsetValue).not.toHaveBeenCalled();
   });
 
+  it("keeps opencode-like unknown harness names on interactive custom mapping flow", async () => {
+    const workspaceDir = makeTempWorkspace();
+    const configDir = path.join(workspaceDir, ".rundown");
+
+    const interactiveInput = createInteractiveInputStub([
+      {
+        value: "opencode-pro run --file $file $bootstrap",
+        usedDefault: false,
+        interactive: true,
+      },
+      {
+        value: "true",
+        usedDefault: false,
+        interactive: true,
+      },
+      {
+        value: "opencode-pro",
+        usedDefault: false,
+        interactive: true,
+      },
+    ]);
+
+    const withTask = createWithTask({
+      workerConfigPort: createWorkerConfigAdapter(),
+      configDir: {
+        configDir,
+        isExplicit: true,
+      },
+      interactiveInput,
+    });
+
+    const result = await withTask({ harness: "OpenCode-Pro" });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.source).toBe("custom");
+    expect(result.harnessKey).toBe("opencode-pro");
+    expect(vi.mocked(interactiveInput.prepareForPrompt)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(1, {
+      kind: "text",
+      message: "Unknown harness \"OpenCode-Pro\". Enter deterministic CLI invocation (workers.default)",
+      defaultValue: "opencode-pro run --file $file $bootstrap",
+      required: true,
+    });
+    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(2, {
+      kind: "confirm",
+      message: "Configure a separate interactive invocation for workers.tui and commands.discuss?",
+      defaultValue: true,
+    });
+    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(3, {
+      kind: "text",
+      message: "Enter interactive invocation (workers.tui / commands.discuss)",
+      defaultValue: "opencode-pro",
+      required: true,
+    });
+
+    const configPath = path.join(configDir, "config.json");
+    const parsed = JSON.parse(fs.readFileSync(configPath, "utf8")) as {
+      workers?: {
+        default?: string[];
+        tui?: string[];
+      };
+      commands?: {
+        discuss?: string[];
+      };
+    };
+
+    expect(parsed.workers?.default).toEqual(["opencode-pro", "run", "--file", "$file", "$bootstrap"]);
+    expect(parsed.workers?.tui).toEqual(["opencode-pro"]);
+    expect(parsed.commands?.discuss).toEqual(["opencode-pro"]);
+    expect(parsed.workers?.default).not.toEqual(["opencode", "run", "--file", "$file", "$bootstrap"]);
+  });
+
   it("prompts and saves custom worker mappings for unknown harness names", async () => {
     const workspaceDir = makeTempWorkspace();
     const configDir = path.join(workspaceDir, ".rundown");

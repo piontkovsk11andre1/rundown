@@ -714,6 +714,42 @@ describe("createMakeCommandAction", () => {
     }
   });
 
+  it("normalizes skip flags and bypasses research for make bootstrap", async () => {
+    const scenarios: Array<{ label: string; opts: CliOpts }> = [
+      { label: "--skip-research", opts: { skipResearch: true } },
+      { label: "--raw alias", opts: { raw: true } },
+      { label: "both skip flags", opts: { skipResearch: true, raw: true } },
+    ];
+
+    for (const scenario of scenarios) {
+      const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), `rundown-make-skip-normalized-${scenario.label.replace(/\s+/g, "-")}-`));
+      const targetFile = path.join(tempRoot, "migrations", "seed.md");
+      fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+
+      const researchTask = vi.fn(async () => 0);
+      const planTask = vi.fn(async () => 0);
+      const app = { researchTask, planTask } as unknown as CliApp;
+      const action = createMakeCommandAction({
+        getApp: () => app,
+        getWorkerFromSeparator: () => undefined,
+        makeModes: ["wait"],
+      });
+
+      try {
+        const exitCode = await action("seed", targetFile, scenario.opts);
+
+        expect(exitCode).toBe(0);
+        expect(researchTask).not.toHaveBeenCalled();
+        expect(planTask).toHaveBeenCalledTimes(1);
+        expect(planTask).toHaveBeenCalledWith(expect.objectContaining({
+          source: targetFile,
+        }));
+      } finally {
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+      }
+    }
+  });
+
   it("emits skip-research phase messaging and starts from planning", async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-skip-message-"));
     const targetFile = path.join(tempRoot, "migrations", "seed.md");

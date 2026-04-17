@@ -1339,9 +1339,21 @@ When adding or fixing loop-oriented TODO items, strongly prefer this composition
 2. \`end:\` defines a deterministic stop rule (for example no discovered values, no new items, or a bounded pass counter).
 3. \`for:\` iterates discovered values and runs per-item implementation/review child tasks.
 
+Preferred loop authoring shape:
+
+- \`- [ ] loop: <bounded iterative objective>\`
+- \`  - [ ] get: <discover iterable items in stable order>\`
+- \`  - [ ] end: stop when get returns no items (or another explicit deterministic rule)\`
+- \`  - [ ] for: <run per-item implementation/review tasks for each discovered item>\`
+
 Use clear, deterministic stop conditions. Avoid open-ended loops without an explicit terminal rule.
 
 When a loop could run indefinitely, add an explicit deterministic cap (for example pass count limit) in addition to content-based stopping.
+
+## Additive-only planning safety
+
+Loop planning is additive-only. Author new unchecked TODO items and limited unchecked-prefix normalization only.
+Do not rewrite existing task wording, remove items, reorder items, or change checkbox state.
 
 ## Optional planning guidance (advisory)
 

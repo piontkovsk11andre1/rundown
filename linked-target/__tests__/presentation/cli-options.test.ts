@@ -187,3 +187,61 @@ describe("loop CLI commit option forwarding", () => {
     }));
   });
 });
+
+describe("loop CLI time-limit option parsing", () => {
+  it("accepts positive integer --time-limit values", async () => {
+    const runTask = vi.fn(async () => 0);
+    const action = createLoopAction(
+      runTask,
+      () => ["loop", "tasks.md", "--iterations", "1", "--cooldown", "0", "--time-limit", "1"],
+    );
+
+    const exitCode = await action("tasks.md", {
+      iterations: "1",
+      cooldown: "0",
+      timeLimit: "1",
+    });
+
+    expect(exitCode).toBe(0);
+    expect(runTask).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects zero --time-limit", async () => {
+    const runTask = vi.fn(async () => 0);
+    const action = createLoopAction(
+      runTask,
+      () => ["loop", "tasks.md", "--time-limit", "0"],
+    );
+
+    await expect(action("tasks.md", {
+      timeLimit: "0",
+    })).rejects.toThrow("Invalid --time-limit value: 0");
+    expect(runTask).not.toHaveBeenCalled();
+  });
+
+  it("rejects negative --time-limit", async () => {
+    const runTask = vi.fn(async () => 0);
+    const action = createLoopAction(
+      runTask,
+      () => ["loop", "tasks.md", "--time-limit", "-1"],
+    );
+
+    await expect(action("tasks.md", {
+      timeLimit: "-1",
+    })).rejects.toThrow("Invalid --time-limit value: -1");
+    expect(runTask).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-integer --time-limit", async () => {
+    const runTask = vi.fn(async () => 0);
+    const action = createLoopAction(
+      runTask,
+      () => ["loop", "tasks.md", "--time-limit", "abc"],
+    );
+
+    await expect(action("tasks.md", {
+      timeLimit: "abc",
+    })).rejects.toThrow("Invalid --time-limit value: abc");
+    expect(runTask).not.toHaveBeenCalled();
+  });
+});

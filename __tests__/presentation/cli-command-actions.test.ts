@@ -1374,8 +1374,9 @@ describe("createWorkerHealthCommandAction", () => {
 });
 
 describe("createWithCommandAction", () => {
-  it("forwards harness argument to withTask and renders output", async () => {
+  it("forwards harness argument to withTask, renders output, then starts discuss tui", async () => {
     const emitOutput = vi.fn<(event: ApplicationOutputEvent) => void>();
+    const discussTask = vi.fn(async () => 0);
     const withTask = vi.fn(async () => ({
       exitCode: 0,
       harnessKey: "opencode",
@@ -1404,10 +1405,12 @@ describe("createWithCommandAction", () => {
         },
       ] as const,
     }));
-    const app = { withTask } as unknown as CliApp;
+    const app = { withTask, discussTask } as unknown as CliApp;
     (app as unknown as { emitOutput: typeof emitOutput }).emitOutput = emitOutput;
     const action = createWithCommandAction({
       getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      isInteractiveTerminal: () => true,
     });
 
     const exitCode = await action("opencode");
@@ -1415,9 +1418,27 @@ describe("createWithCommandAction", () => {
     expect(exitCode).toBe(0);
     expect(withTask).toHaveBeenCalledTimes(1);
     expect(withTask).toHaveBeenCalledWith({ harness: "opencode" });
+    expect(discussTask).toHaveBeenCalledTimes(1);
+    expect(discussTask).toHaveBeenCalledWith(expect.objectContaining({
+      source: "",
+      mode: "tui",
+      sortMode: "name-sort",
+      dryRun: false,
+      printPrompt: false,
+      keepArtifacts: false,
+      showAgentOutput: false,
+      trace: false,
+      forceUnlock: false,
+      ignoreCliBlock: false,
+      verbose: false,
+      workerPattern: expect.objectContaining({
+        command: [],
+      }),
+    }));
     expect(emitOutput).toHaveBeenCalledWith({ kind: "success", message: "Applied harness preset: opencode" });
     expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Path: /workspace/.rundown/config.json" });
     expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Configured keys:" });
+    expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Starting interactive discuss session..." });
     expect(emitOutput).toHaveBeenCalledWith({
       kind: "info",
       message: "- workers.default = [\"opencode\",\"run\",\"--file\",\"$file\",\"$bootstrap\"]",
@@ -1453,10 +1474,13 @@ describe("createWithCommandAction", () => {
       ],
     }));
 
-    const app = { withTask } as unknown as CliApp;
+    const discussTask = vi.fn(async () => 0);
+    const app = { withTask, discussTask } as unknown as CliApp;
     (app as unknown as { emitOutput: typeof emitOutput }).emitOutput = emitOutput;
     const action = createWithCommandAction({
       getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      isInteractiveTerminal: () => true,
     });
 
     const exitCode = await action("mytool");
@@ -1470,6 +1494,105 @@ describe("createWithCommandAction", () => {
     expect(emitOutput).toHaveBeenCalledWith({
       kind: "success",
       message: "Applied custom harness mapping: mytool",
+    });
+    expect(discussTask).not.toHaveBeenCalled();
+  });
+
+  it("returns with-task exit code and skips tui launch when no interactive worker is configured", async () => {
+    const emitOutput = vi.fn<(event: ApplicationOutputEvent) => void>();
+    const discussTask = vi.fn(async () => 0);
+    const withTask = vi.fn(async () => ({
+      exitCode: 7,
+      harnessKey: "custom-only",
+      source: "custom" as const,
+      changed: false,
+      configPath: "/workspace/.rundown/config.json",
+      configuredKeys: [
+        {
+          keyPath: "workers.default" as const,
+          status: "set" as const,
+          value: ["custom-only", "run", "--file", "$file", "$bootstrap"],
+        },
+        {
+          keyPath: "workers.tui" as const,
+          status: "removed" as const,
+        },
+        {
+          keyPath: "commands.discuss" as const,
+          status: "removed" as const,
+        },
+        {
+          keyPath: "workers.fallbacks" as const,
+          status: "preserved" as const,
+        },
+      ],
+    }));
+
+    const app = { withTask, discussTask } as unknown as CliApp;
+    (app as unknown as { emitOutput: typeof emitOutput }).emitOutput = emitOutput;
+    const action = createWithCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      isInteractiveTerminal: () => true,
+    });
+
+    const exitCode = await action("custom-only");
+
+    expect(exitCode).toBe(7);
+    expect(discussTask).not.toHaveBeenCalled();
+    expect(emitOutput).not.toHaveBeenCalledWith({
+      kind: "info",
+      message: "Starting interactive discuss session...",
+    });
+  });
+
+  it("keeps existing non-interactive behavior by skipping tui launch", async () => {
+    const emitOutput = vi.fn<(event: ApplicationOutputEvent) => void>();
+    const discussTask = vi.fn(async () => 0);
+    const withTask = vi.fn(async () => ({
+      exitCode: 0,
+      harnessKey: "opencode",
+      source: "preset" as const,
+      changed: true,
+      configPath: "/workspace/.rundown/config.json",
+      configuredKeys: [
+        {
+          keyPath: "workers.default" as const,
+          status: "set" as const,
+          value: ["opencode", "run", "--file", "$file", "$bootstrap"],
+        },
+        {
+          keyPath: "workers.tui" as const,
+          status: "set" as const,
+          value: ["opencode"],
+        },
+        {
+          keyPath: "commands.discuss" as const,
+          status: "set" as const,
+          value: ["opencode"],
+        },
+        {
+          keyPath: "workers.fallbacks" as const,
+          status: "preserved" as const,
+        },
+      ],
+    }));
+
+    const app = { withTask, discussTask } as unknown as CliApp;
+    (app as unknown as { emitOutput: typeof emitOutput }).emitOutput = emitOutput;
+    const action = createWithCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      isInteractiveTerminal: () => false,
+    });
+
+    const exitCode = await action("opencode");
+
+    expect(exitCode).toBe(0);
+    expect(discussTask).not.toHaveBeenCalled();
+    expect(emitOutput).not.toHaveBeenCalledWith({
+      kind: "info",
+      message: "Starting interactive discuss session...",
     });
   });
 });

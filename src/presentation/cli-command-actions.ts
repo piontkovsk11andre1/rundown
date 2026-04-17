@@ -59,6 +59,7 @@ import type {
   WithTaskConfiguredKeyResult,
   WithTaskResult,
 } from "../application/with-task.js";
+import { hasWithTaskInteractiveWorker } from "../application/with-task.js";
 
 type CliActionResult = number | Promise<number>;
 type CliOpts = Record<string, string | string[] | boolean>;
@@ -2210,7 +2211,11 @@ export function createInitCommandAction({
  */
 export function createWithCommandAction({
   getApp,
-}: Pick<WorkerActionDependencies, "getApp">): (harness: string) => CliActionResult {
+  getWorkerFromSeparator,
+  isInteractiveTerminal: isInteractiveTerminalOverride,
+}: Pick<WorkerActionDependencies, "getApp" | "getWorkerFromSeparator"> & {
+  isInteractiveTerminal?: () => boolean;
+}): (harness: string) => CliActionResult {
   return async (harness: string) => {
     const app = getApp();
     const result = await resolveWithCommandHandler(app)({ harness });
@@ -2238,6 +2243,30 @@ export function createWithCommandAction({
 
     for (const configuredKey of result.configuredKeys) {
       emit?.({ kind: "info", message: formatWithConfiguredKeyLine(configuredKey) });
+    }
+
+    if (
+      result.exitCode === EXIT_CODE_SUCCESS
+      && hasWithTaskInteractiveWorker(result)
+      && (isInteractiveTerminalOverride ?? isInteractiveTerminal)()
+    ) {
+      emit?.({ kind: "info", message: "Starting interactive discuss session..." });
+      return app.discussTask({
+        source: "",
+        mode: "tui",
+        workerPattern: resolveWorkerPattern(undefined, getWorkerFromSeparator),
+        sortMode: "name-sort",
+        dryRun: false,
+        printPrompt: false,
+        keepArtifacts: false,
+        varsFileOption: undefined,
+        cliTemplateVarArgs: [],
+        showAgentOutput: false,
+        trace: false,
+        forceUnlock: false,
+        ignoreCliBlock: false,
+        verbose: false,
+      });
     }
 
     return result.exitCode;

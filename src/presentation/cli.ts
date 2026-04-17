@@ -971,7 +971,10 @@ program
   .description("Configure .rundown worker settings for a known external harness preset.")
   .argument("<harness>", "Harness preset name (for example: opencode)")
   .allowUnknownOption(false)
-  .action(withCliAction(createWithCommandAction({ getApp })));
+  .action(withCliAction(createWithCommandAction({
+    getApp,
+    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
+  })));
 
 program
   .command("intro")

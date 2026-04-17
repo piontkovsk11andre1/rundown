@@ -36,6 +36,10 @@ export interface WithTaskResult {
   configuredKeys: readonly WithTaskConfiguredKeyResult[];
 }
 
+export function hasWithTaskInteractiveWorker(result: WithTaskResult): boolean {
+  return result.configuredKeys.some((entry) => entry.keyPath === "workers.tui" && entry.status === "set");
+}
+
 type WithTaskMutableKeyPath = Exclude<WithTaskConfiguredKeyResult["keyPath"], "workers.fallbacks"> | "workers.fallbacks";
 
 interface WithTaskMutationPlanItem {

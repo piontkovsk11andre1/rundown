@@ -2024,22 +2024,55 @@ function createSeedMarkdownFile(markdownFile: string, seedText: string): void {
  * Appends seed text to an existing Markdown file with an extra newline boundary.
  */
 function appendSeedMarkdownFile(markdownFile: string, seedText: string): void {
-  const appendPayload = `\n\n${seedText}`;
+  const existingContent = readAddDocumentForAppend(markdownFile);
+  const appendPayload = buildAddAppendPayload(existingContent, seedText);
   try {
     fs.appendFileSync(markdownFile, appendPayload, { encoding: "utf8" });
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") {
-      throw new Error(`Cannot append add document: ${markdownFile}. File does not exist.`);
-    }
-    if (code === "ENOTDIR") {
-      throw new Error(`Cannot append add document: ${markdownFile}. A path segment is not a directory.`);
-    }
-    if (code === "EISDIR") {
-      throw new Error(`Cannot append add document: ${markdownFile}. Path is a directory.`);
-    }
-    throw error;
+    throw mapAddDocumentAppendError(markdownFile, error);
   }
+}
+
+function readAddDocumentForAppend(markdownFile: string): string {
+  try {
+    return fs.readFileSync(markdownFile, "utf8");
+  } catch (error) {
+    throw mapAddDocumentAppendError(markdownFile, error);
+  }
+}
+
+function buildAddAppendPayload(existingContent: string, seedText: string): string {
+  if (existingContent.length === 0) {
+    return seedText;
+  }
+
+  if (/(?:\r?\n){2}$/.test(existingContent)) {
+    return seedText;
+  }
+
+  const lineBreak = /\r\n$/.test(existingContent) ? "\r\n" : "\n";
+  const separator = /\r?\n$/.test(existingContent)
+    ? lineBreak
+    : `${lineBreak}${lineBreak}`;
+
+  return `${separator}${seedText}`;
+}
+
+function mapAddDocumentAppendError(markdownFile: string, error: unknown): Error {
+  const code = (error as NodeJS.ErrnoException).code;
+  if (code === "ENOENT") {
+    return new Error(`Cannot append add document: ${markdownFile}. File does not exist.`);
+  }
+  if (code === "ENOTDIR") {
+    return new Error(`Cannot append add document: ${markdownFile}. A path segment is not a directory.`);
+  }
+  if (code === "EISDIR") {
+    return new Error(`Cannot append add document: ${markdownFile}. Path is a directory.`);
+  }
+
+  return error instanceof Error
+    ? error
+    : new Error(`Cannot append add document: ${markdownFile}. Unknown append error.`);
 }
 
 /**

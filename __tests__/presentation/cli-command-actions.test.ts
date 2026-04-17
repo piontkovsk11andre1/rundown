@@ -9,6 +9,7 @@ import {
 } from "../../src/domain/exit-codes.js";
 import type { ApplicationOutputEvent } from "../../src/domain/ports/output-port.js";
 import {
+  createAddCommandAction,
   createWithCommandAction,
   createDesignDiffCommandAction,
   createDesignReleaseCommandAction,
@@ -871,6 +872,89 @@ describe("createMakeCommandAction", () => {
       expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Make transition: start from planning (--skip-research/--raw)" });
       expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Make phase 2/2: plan" });
     } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("createAddCommandAction", () => {
+  it("appends seed text with a blank-line boundary before running plan", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-add-append-boundary-"));
+    const targetFile = path.join(tempRoot, "migrations", "seed.md");
+    fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+    fs.writeFileSync(targetFile, "# Existing\n- item", "utf8");
+
+    const planTask = vi.fn(async () => 0);
+    const app = { planTask } as unknown as CliApp;
+    const action = createAddCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      addModes: ["wait"],
+    });
+
+    try {
+      const exitCode = await action("New seed", targetFile, {});
+
+      expect(exitCode).toBe(0);
+      expect(fs.readFileSync(targetFile, "utf8")).toBe("# Existing\n- item\n\nNew seed");
+      expect(planTask).toHaveBeenCalledTimes(1);
+      expect(planTask).toHaveBeenCalledWith(expect.objectContaining({
+        source: targetFile,
+      }));
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("reuses an existing trailing blank line boundary without adding extra newlines", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-add-existing-boundary-"));
+    const targetFile = path.join(tempRoot, "migrations", "seed.md");
+    fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+    fs.writeFileSync(targetFile, "# Existing\n\n", "utf8");
+
+    const planTask = vi.fn(async () => 0);
+    const app = { planTask } as unknown as CliApp;
+    const action = createAddCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      addModes: ["wait"],
+    });
+
+    try {
+      const exitCode = await action("New seed", targetFile, {});
+
+      expect(exitCode).toBe(0);
+      expect(fs.readFileSync(targetFile, "utf8")).toBe("# Existing\n\nNew seed");
+      expect(planTask).toHaveBeenCalledTimes(1);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("does not run plan when append fails", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-add-missing-after-validate-"));
+    const targetFile = path.join(tempRoot, "migrations", "seed.md");
+    fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+    fs.writeFileSync(targetFile, "# Existing", "utf8");
+
+    const planTask = vi.fn(async () => 0);
+    const app = { planTask } as unknown as CliApp;
+    const action = createAddCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      addModes: ["wait"],
+    });
+
+    const appendSpy = vi.spyOn(fs, "appendFileSync").mockImplementation(() => {
+      const error = Object.assign(new Error("simulated ENOENT"), { code: "ENOENT" });
+      throw error;
+    });
+
+    try {
+      await expect(action("New seed", targetFile, {})).rejects.toThrow("Cannot append add document");
+      expect(planTask).not.toHaveBeenCalled();
+    } finally {
+      appendSpy.mockRestore();
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
   });

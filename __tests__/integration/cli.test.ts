@@ -11390,17 +11390,16 @@ describe.sequential("CLI integration", () => {
     expect(compactHelpOutput).toContain("rundown design diff --workspace ../source-workspace");
   });
 
-  it("docs --help marks docs as deprecated design alias", async () => {
+  it("docs --help is rejected because docs command is removed", async () => {
     const workspace = makeTempWorkspace();
 
     const result = await runCli(["docs", "--help"], workspace);
 
-    expect(result.code).toBe(0);
-    const helpOutput = result.stdoutWrites.join("\n");
-    const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
-    expect(compactHelpOutput).toContain("Deprecated alias for `design` revision commands.");
-    expect(compactHelpOutput).toContain("release");
-    expect(compactHelpOutput).toContain("diff");
+    expect(result.code).toBe(1);
+    const combinedOutput = [...result.errors, ...result.logs, ...result.stderrWrites, ...result.stdoutWrites]
+      .join("\n")
+      .toLowerCase();
+    expect(combinedOutput).toContain("unknown command");
   });
 
   it("explore --help shows variadic argument and plan-phase options", async () => {

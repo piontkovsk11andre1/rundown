@@ -1289,60 +1289,13 @@ describeIfDocsDiffAvailable("design revision command integration", () => {
     expect(combinedOutput).toContain("Re-run the command with --workspace <dir>");
   });
 
-  it("accepts docs publish as deprecated compatibility alias", async () => {
+  it("rejects docs subcommands because docs command is removed", async () => {
     const workspace = makeTempWorkspace();
     scaffoldPredictionProject(workspace);
-    fs.mkdirSync(path.join(workspace, "design", "current"), { recursive: true });
-    fs.writeFileSync(path.join(workspace, "design", "current", "Target.md"), "# Design\n\nalias publish\n", "utf-8");
-
-    const result = await runCli([
-      "docs",
-      "publish",
-      "--dir",
-      "migrations",
-    ], workspace);
-
-    expect(result.code).toBe(0);
-    expect(fs.existsSync(path.join(workspace, "design", "rev.1", "Target.md"))).toBe(true);
-    const combinedOutput = stripAnsi([
-      ...result.logs,
-      ...result.errors,
-      ...result.stdoutWrites,
-      ...result.stderrWrites,
-    ].join("\n"));
-    expect(combinedOutput).toContain("`rundown docs publish` is deprecated; use `rundown design release`.");
-  });
-
-  it("accepts docs release as deprecated compatibility alias", async () => {
-    const workspace = makeTempWorkspace();
-    scaffoldPredictionProject(workspace);
-    fs.mkdirSync(path.join(workspace, "design", "current"), { recursive: true });
-    fs.writeFileSync(path.join(workspace, "design", "current", "Target.md"), "# Design\n\nalias release\n", "utf-8");
 
     const result = await runCli([
       "docs",
       "release",
-      "--dir",
-      "migrations",
-    ], workspace);
-
-    expect(result.code).toBe(0);
-    const combinedOutput = stripAnsi([
-      ...result.logs,
-      ...result.errors,
-      ...result.stdoutWrites,
-      ...result.stderrWrites,
-    ].join("\n"));
-    expect(combinedOutput).toContain("`rundown docs release` is deprecated; use `rundown design release`.");
-  });
-
-  it("rejects removed docs save alias with actionable guidance", async () => {
-    const workspace = makeTempWorkspace();
-    scaffoldPredictionProject(workspace);
-
-    const result = await runCli([
-      "docs",
-      "save",
       "--dir",
       "migrations",
     ], workspace);
@@ -1354,7 +1307,7 @@ describeIfDocsDiffAvailable("design revision command integration", () => {
       ...result.stdoutWrites,
       ...result.stderrWrites,
     ].join("\n"));
-    expect(combinedOutput).toContain("`rundown docs save` was removed. Use `rundown design release` (preferred) or `rundown docs publish` (deprecated alias).");
+    expect(combinedOutput.toLowerCase()).toContain("unknown command");
   });
 
   it("resolves design diff against linked workspace roots", async () => {
@@ -1513,32 +1466,6 @@ describeIfDocsDiffAvailable("design revision command integration", () => {
     expect(combinedOutput).toContain("docs/current");
   });
 
-  it("accepts docs diff as deprecated compatibility alias", async () => {
-    const workspace = makeTempWorkspace();
-    scaffoldPredictionProject(workspace);
-    fs.mkdirSync(path.join(workspace, "docs", "rev.1"), { recursive: true });
-    fs.mkdirSync(path.join(workspace, "docs", "current"), { recursive: true });
-    fs.writeFileSync(path.join(workspace, "docs", "rev.1", "Design.md"), "old\n", "utf-8");
-    fs.writeFileSync(path.join(workspace, "docs", "current", "Design.md"), "new\n", "utf-8");
-
-    const result = await runCli([
-      "docs",
-      "diff",
-      "preview",
-      "--dir",
-      "migrations",
-    ], workspace);
-
-    expect(result.code).toBe(0);
-    const combinedOutput = stripAnsi([
-      ...result.logs,
-      ...result.errors,
-      ...result.stdoutWrites,
-      ...result.stderrWrites,
-    ].join("\n"));
-    expect(combinedOutput).toContain("`rundown docs diff` is deprecated; use `rundown design diff`.");
-    expect(combinedOutput).toContain("Design revision diff preview:");
-  });
 });
 
 const ANSI_ESCAPE_PATTERN = /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-ntqry=><~]))/g;

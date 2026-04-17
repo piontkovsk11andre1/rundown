@@ -684,7 +684,7 @@ describe("CLI run option normalization", () => {
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid --rounds value: abc"));
   });
 
-  it("expands all alias to run --all", async () => {
+  it("supports all as a first-class run-all command", async () => {
     const runTask = vi.fn(async () => 0);
     const call = await invokeRunAndCaptureCall([
       "all",
@@ -2459,11 +2459,11 @@ describe("CLI invocation logging context", () => {
     expect(context.command).toBe("rundown");
   });
 
-  it("records run command in invocation context for all alias", async () => {
+  it("records all command in invocation context", async () => {
     const context = await invokeCliAndCaptureLoggedContext(["all", "tasks.md", "--worker", "opencode run"]);
 
-    expect(context.command).toBe("run");
-    expect(context.argv).toEqual(["run", "--all", "tasks.md", "--worker", "opencode run"]);
+    expect(context.command).toBe("all");
+    expect(context.argv).toEqual(["all", "tasks.md", "--worker", "opencode run"]);
   });
 });
 

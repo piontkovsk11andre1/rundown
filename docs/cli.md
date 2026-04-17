@@ -129,19 +129,13 @@ See the command-focused reference: [cli-migrate.md](cli-migrate.md).
 
 See the command-focused reference: [cli-design.md](cli-design.md).
 
-### `rundown docs` (alias for `design`)
-
-`rundown docs` is available as an alias for the `rundown design` command family. Both command names are fully supported; `rundown design` is the canonical form used throughout the documentation.
-
-See the command-focused reference: [cli-docs.md](cli-docs.md).
-
 ### `rundown run <source>`
 
 See the command-focused reference: [cli-run.md](cli-run.md).
 
-### `rundown all <source>` (legacy alias)
+### `rundown all <source>`
 
-Compatibility alias that is rewritten to `rundown run <source> --all` before command parsing.
+Runs the full-task variant directly (equivalent to `rundown run <source> --all`).
 
 See the command-focused reference: [cli-all.md](cli-all.md).
 
@@ -244,10 +238,6 @@ See the command-focused reference: [cli-init.md](cli-init.md).
 ### `rundown with <harness>`
 
 See the command-focused reference: [cli-with.md](cli-with.md).
-
-### `rundown intro`
-
-See the command-focused reference: [cli-intro.md](cli-intro.md).
 
 ### `rundown config`
 

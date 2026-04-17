@@ -41,14 +41,9 @@ import {
   createDoCommandAction,
   createDesignDiffCommandAction,
   createDesignReleaseCommandAction,
-  createDocsDiffCommandAction,
-  createDocsPublishCommandAction,
-  createDocsReleaseCommandAction,
-  createDocsSaveCommandAction,
   createExploreCommandAction,
   createHelpCommandAction,
   createInitCommandAction,
-  createIntroCommandAction,
   createListCommandAction,
   createLogCommandAction,
   createMakeCommandAction,
@@ -180,6 +175,25 @@ configureRunLikeCommandOptions(runCommand)
     runnerModes: RUNNER_MODES,
     getInvocationArgv: () => runtimeState.invocationArgv ?? process.argv.slice(2),
   })));
+
+const allCommand = program
+  .command("all")
+  .description("Run all tasks sequentially (equivalent to `run --all`).")
+  .argument("<source>", "File, directory, or glob to scan for Markdown tasks")
+  .configureHelp({ showGlobalOptions: true });
+
+configureRunLikeCommandOptions(allCommand)
+  .allowUnknownOption(false)
+  .action(withCliAction(async (source: string, opts: Record<string, unknown>) => {
+    const runAction = createRunCommandAction({
+      getApp,
+      getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
+      runnerModes: RUNNER_MODES,
+      getInvocationArgv: () => runtimeState.invocationArgv ?? process.argv.slice(2),
+    });
+
+    return runAction(source, { ...opts, all: true });
+  }));
 
 const callCommand = program
   .command("call")
@@ -459,55 +473,6 @@ designCommand
       "  - rundown design diff --workspace ../source-workspace",
     ].join("\n"),
   );
-
-const docsCommand = program
-  .command("docs")
-  .description("Deprecated alias for `design` revision commands.")
-  .configureHelp({ showGlobalOptions: true });
-
-docsCommand
-  .command("release")
-  .description("Deprecated alias for `design release`; use `rundown design release`.")
-  .option("--dir <path>", "Migrations directory (default: configured workspace, fallback: ./migrations)")
-  .option("--workspace <dir>", "Workspace directory to use for linked/multi-workspace resolution")
-  .option("--label <text>", "Optional label to store in revision metadata")
-  .allowUnknownOption(false)
-  .action(withCliAction(createDocsReleaseCommandAction({
-    getApp,
-  })));
-
-docsCommand
-  .command("publish")
-  .description("Deprecated alias for `design release`; use `rundown design release`.")
-  .option("--dir <path>", "Migrations directory (default: configured workspace, fallback: ./migrations)")
-  .option("--workspace <dir>", "Workspace directory to use for linked/multi-workspace resolution")
-  .option("--label <text>", "Optional label to store in revision metadata")
-  .allowUnknownOption(false)
-  .action(withCliAction(createDocsPublishCommandAction({
-    getApp,
-  })));
-
-docsCommand
-  .command("save")
-  .description("Removed alias. Use `rundown design release`.")
-  .option("--dir <path>", "Migrations directory (default: configured workspace, fallback: ./migrations)")
-  .option("--workspace <dir>", "Workspace directory to use for linked/multi-workspace resolution")
-  .option("--label <text>", "Ignored for removed command; kept for compatibility with old scripts")
-  .allowUnknownOption(false)
-  .action(withCliAction(createDocsSaveCommandAction()));
-
-docsCommand
-  .command("diff")
-  .description("Deprecated alias for `design diff`; use `rundown design diff`.")
-  .argument("[target]", "Diff target shorthand: current (default) | preview")
-  .option("--dir <path>", "Migrations directory (default: configured workspace, fallback: ./migrations)")
-  .option("--workspace <dir>", "Workspace directory to use for linked/multi-workspace resolution")
-  .option("--from <rev|current>", "Explicit source revision selector (use with --to)")
-  .option("--to <rev|current>", "Explicit destination revision selector (use with --from)")
-  .allowUnknownOption(false)
-  .action(withCliAction(createDocsDiffCommandAction({
-    getApp,
-  })));
 
 program
   .command("test")
@@ -1019,11 +984,6 @@ program
     getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
   })));
 
-program
-  .command("intro")
-  .description("Display an introduction to rundown — concepts, workflow, and commands.")
-  .action(withCliAction(createIntroCommandAction({ version: cliVersion, getApp })));
-
 /**
  * Wraps a command action with shared CLI initialization and fatal error handling.
  *
@@ -1090,7 +1050,7 @@ function consumeLoopSignalExitCode(signal: NodeJS.Signals): number | undefined {
  */
 export async function parseCliArgs(argv: string[]): Promise<void> {
   resetCliOutputPortState();
-  // Normalize legacy aliases before any option parsing occurs.
+  // Normalize supported compatibility aliases before any option parsing occurs.
   const rewrittenArgv = rewriteAllAlias(argv);
   // Split rundown-owned arguments from downstream worker arguments after `--`.
   const { rundownArgs, workerFromSeparator: workerCommandArgs } = splitWorkerFromSeparator(rewrittenArgv);
@@ -1323,7 +1283,7 @@ function configureRunLikeCommandOptions(command: Command): Command {
     .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
     .option("-v, --verbose", "Show detailed per-phase run diagnostics (within grouped output)", false)
     .option("-q, --quiet", "Suppress info-level output (info, success, progress, grouped status)", false)
-    .option("--all", "Run all tasks sequentially instead of stopping after one (alias: all)", false)
+    .option("--all", "Run all tasks sequentially instead of stopping after one (equivalent command: all)", false)
     .option("--redo", "Reset all checkboxes in the source file before running", false)
     .option("--reset-after", "Reset all checkboxes in the source file after the run completes", false)
     .option("--clean", "Shorthand for --redo --reset-after", false)

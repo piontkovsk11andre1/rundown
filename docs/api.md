@@ -28,7 +28,6 @@ Returns an `App` instance whose methods correspond to CLI commands:
 | `discussTask` | `rundown discuss` |
 | `queryTask` | `rundown query` |
 | `designTask` | `rundown design` |
-| `docsTask` | `rundown docs` (alias for `design`) |
 | `testSpecs` | `rundown test` |
 | `migrateTask` | `rundown migrate` |
 | `reverifyTask` | `rundown reverify` |

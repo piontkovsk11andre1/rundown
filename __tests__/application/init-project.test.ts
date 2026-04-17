@@ -3,6 +3,7 @@ import {
   createInitProject,
   type InitProjectDependencies,
 } from "../../src/application/init-project.js";
+import { DEFAULT_PLAN_LOOP_TEMPLATE } from "../../src/domain/defaults.js";
 import type { ApplicationOutputEvent } from "../../src/domain/ports/index.js";
 
 describe("init-project", () => {
@@ -267,6 +268,19 @@ describe("init-project", () => {
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
       "/workspace/config/.rundown-custom/query-aggregate.md",
       expect.any(String),
+    );
+  });
+
+  it("scaffolds plan-loop.md with the built-in loop template", async () => {
+    const { dependencies, fileSystem } = createDependencies();
+    const initProject = createInitProject(dependencies);
+
+    const code = await initProject();
+
+    expect(code).toBe(0);
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/.rundown/plan-loop.md",
+      DEFAULT_PLAN_LOOP_TEMPLATE,
     );
   });
 

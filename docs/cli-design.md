@@ -28,13 +28,6 @@ Arguments:
 
 - None.
 
-Compatibility note:
-
-- `rundown design release` is the canonical snapshot command.
-- `rundown docs release` remains available as a deprecated alias and prints guidance to move to `design release`.
-- `rundown docs publish` remains available as a deprecated alias and prints guidance to move to `design release`.
-- `rundown docs save` is removed and fails with an actionable message that points to `design release`.
-
 Options:
 
 | Option | Description | Default |
@@ -105,15 +98,6 @@ rundown design diff preview
 # Explicit selector form
 rundown design diff --from rev.2 --to current
 ```
-
-## `rundown docs` (deprecated alias)
-
-`rundown docs` remains available as a transition alias for one migration window.
-
-- `rundown docs release` -> deprecated alias for `rundown design release`
-- `rundown docs diff` -> deprecated alias for `rundown design diff`
-- `rundown docs publish` -> deprecated alias for `rundown design release`
-- `rundown docs save` -> removed alias with actionable migration guidance
 
 Migration file naming:
 

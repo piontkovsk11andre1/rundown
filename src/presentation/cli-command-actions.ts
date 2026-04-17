@@ -13,6 +13,7 @@ import {
   parseLimitCount,
   parseLoopCooldownSeconds,
   parseLoopIterations,
+  parseLoopTimeLimitSeconds,
   parseMaxItems,
   parseRepairAttempts,
   parseResolveRepairAttempts,
@@ -635,6 +636,7 @@ export function createLoopCommandAction({
     const rounds = parseRounds(opts.rounds as string | undefined);
     const verbose = resolveVerboseOption(opts);
     const iterations = parseLoopIterations(opts.iterations as string | undefined);
+    parseLoopTimeLimitSeconds(opts.timeLimit as string | undefined);
     const cooldownSeconds = parseLoopCooldownSeconds(opts.cooldown as string | undefined);
     const cooldownMs = cooldownSeconds * 1000;
     const continueOnError = Boolean(opts.continueOnError as boolean | undefined);

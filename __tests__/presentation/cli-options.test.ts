@@ -1218,6 +1218,74 @@ describe("CLI run option normalization", () => {
     }
   });
 
+  it("logs a CLI error and exits with code 1 on zero --time-limit", async () => {
+    const runTask = vi.fn(async () => 0);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await invokeRunAndExpectExit([
+      "loop",
+      "tasks.md",
+      "--time-limit",
+      "0",
+      "--iterations",
+      "1",
+      "--cooldown",
+      "0",
+      "--worker",
+      "opencode",
+      "run",
+    ], runTask);
+
+    expect(runTask).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid --time-limit value: 0"));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Must be a positive integer"));
+  });
+
+  it("logs a CLI error and exits with code 1 on negative --time-limit", async () => {
+    const runTask = vi.fn(async () => 0);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await invokeRunAndExpectExit([
+      "loop",
+      "tasks.md",
+      "--time-limit",
+      "-1",
+      "--iterations",
+      "1",
+      "--cooldown",
+      "0",
+      "--worker",
+      "opencode",
+      "run",
+    ], runTask);
+
+    expect(runTask).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid --time-limit value: -1"));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Must be a positive integer"));
+  });
+
+  it("logs a CLI error and exits with code 1 on non-integer --time-limit", async () => {
+    const runTask = vi.fn(async () => 0);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await invokeRunAndExpectExit([
+      "loop",
+      "tasks.md",
+      "--time-limit",
+      "abc",
+      "--iterations",
+      "1",
+      "--cooldown",
+      "0",
+      "--worker",
+      "opencode",
+      "run",
+    ], runTask);
+
+    expect(runTask).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid --time-limit value: abc"));
+  });
+
   it("loop stops on failed iteration by default", async () => {
     const runTask = vi
       .fn<() => Promise<number>>()

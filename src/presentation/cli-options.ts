@@ -303,6 +303,19 @@ export function parseLoopIterations(value: string | undefined): number | undefin
 }
 
 /**
+ * Parses optional total loop runtime limit in seconds.
+ */
+export function parseLoopTimeLimitSeconds(value: string | undefined): number | undefined {
+  return parseIntOption(value, {
+    optionName: "time-limit",
+    allowUndefined: true,
+    min: 1,
+    integerLabel: "positive integer",
+    safeIntegerLabel: "safe positive integer",
+  });
+}
+
+/**
  * Validates and resolves the single Markdown file expected by the `plan` command.
  */
 export function resolvePlanMarkdownFile(markdownFiles: string[]): string {

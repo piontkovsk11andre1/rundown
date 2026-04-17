@@ -141,7 +141,7 @@ describe("createLoopCommandAction", () => {
     expect(runTask).toHaveBeenCalledTimes(1);
     expect(outputEvents).toContainEqual({
       kind: "info",
-      message: "Loop time limit reached before iteration 2; elapsed=2s, limit=1s.",
+      message: "Loop completed: time limit reached (elapsed=2s, limit=1s).",
     });
     expect(outputEvents).toContainEqual({
       kind: "info",
@@ -166,7 +166,7 @@ describe("createLoopCommandAction", () => {
     expect(runTask).not.toHaveBeenCalled();
     expect(outputEvents).toContainEqual({
       kind: "info",
-      message: "Loop time limit reached before iteration 1; elapsed=2s, limit=1s.",
+      message: "Loop completed: time limit reached (elapsed=2s, limit=1s).",
     });
     expect(outputEvents).toContainEqual({
       kind: "info",
@@ -279,7 +279,7 @@ describe("createLoopCommandAction", () => {
     expect(runTask).toHaveBeenCalledTimes(1);
     expect(outputEvents).toContainEqual({
       kind: "info",
-      message: "Loop time limit reached during cooldown before iteration 2; elapsed=1s, limit=1s.",
+      message: "Loop completed: time limit reached (elapsed=1s, limit=1s).",
     });
     expect(outputEvents).toContainEqual({
       kind: "info",

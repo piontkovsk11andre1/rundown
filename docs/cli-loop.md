@@ -30,6 +30,7 @@ Options:
 |---|---|---|
 | `--cooldown <seconds>` | Delay between iterations. Must be a positive integer (`1` or higher). | `5` |
 | `--iterations <n>` | Stop after `n` iterations. If omitted, loop runs until interrupted. | unlimited |
+| `--time-limit <seconds>` | Global wall-clock runtime cap for the full loop session. Must be a positive integer when set. | disabled |
 | `--continue-on-error` | Continue looping after a failed iteration instead of exiting immediately. | off |
 
 `loop` also accepts all run-like options (`--verify`, `--repair-attempts`, `--commit`, `--worker`, `--trace`, etc.), which are forwarded to each inner `call` iteration.
@@ -44,6 +45,7 @@ Behavior notes:
 
 - Infinite mode (default): if `--iterations` is omitted, `loop` runs until interrupted.
 - Bounded mode: `--iterations <n>` runs exactly `n` iterations, then exits.
+- Time-bound mode: `--time-limit <seconds>` caps total loop runtime; timeout is checked before each iteration and during cooldown.
 - Failure handling default: stop on first non-zero iteration exit code.
 - Failure handling override: with `--continue-on-error`, failed iterations are logged and the loop continues after cooldown.
 - Interrupt handling: `Ctrl+C` during cooldown exits cleanly without waiting for the full cooldown.
@@ -51,6 +53,12 @@ Behavior notes:
 - Conditional sibling short-circuit remains separate: `optional:` / `skip:` only skip siblings in the current parent scope and do not exit the outer loop.
 - Terminal prefixes (`quit:`/`exit:`/`end:`/`break:`/`return:`) stop the outer loop immediately after the current iteration finalizes.
 - Terminal stop intent has higher precedence than `--continue-on-error`; cooldown wait is skipped because no next iteration is scheduled.
+
+Lifecycle output:
+
+- Start line includes bounds and timing config, for example: `Loop starting: iterations=unlimited, cooldown=5s, time-limit=60s.`
+- Timeout completion line is deterministic, for example: `Loop completed: time limit reached (elapsed=60s, limit=60s).`
+- Final summary always includes total/succeeded/failed iteration counts.
 
 Exit codes:
 

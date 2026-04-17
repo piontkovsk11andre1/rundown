@@ -1183,7 +1183,8 @@ describe("CLI run option normalization", () => {
       .map((event) => event.message);
 
     expect(runTask).toHaveBeenCalledTimes(1);
-    expect(infoMessages).toContain("Loop time limit reached during cooldown before iteration 2; elapsed=1s, limit=1s.");
+    expect(infoMessages).toContain("Loop starting: iterations=2, cooldown=5s, time-limit=1s.");
+    expect(infoMessages).toContain("Loop completed: time limit reached (elapsed=1s, limit=1s).");
     expect(infoMessages).toContain("Loop summary: total iterations=1, succeeded=1, failed=0.");
   });
 

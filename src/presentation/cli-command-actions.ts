@@ -643,11 +643,14 @@ export function createLoopCommandAction({
     const cooldownMs = cooldownSeconds * 1000;
     const continueOnError = Boolean(opts.continueOnError as boolean | undefined);
     const hasBoundedIterations = typeof iterations === "number";
+    const configuredTimeLimitLabel = typeof timeLimitSeconds === "number" ? `${timeLimitSeconds}s` : "none";
     let iteration = 0;
     let succeededIterations = 0;
     let failedIterations = 0;
     let loopExitCode = 0;
     let terminalStopRequested = false;
+    let timedOut = false;
+    let timeoutElapsedSeconds = 0;
     let cancelActiveCooldown: (() => void) | undefined;
 
     const cancelLoopCooldownOnShutdown = () => {
@@ -658,14 +661,15 @@ export function createLoopCommandAction({
     process.prependListener("SIGTERM", cancelLoopCooldownOnShutdown);
 
     try {
+      emitCliInfo(
+        app,
+        `Loop starting: iterations=${hasBoundedIterations ? iterations : "unlimited"}, cooldown=${cooldownSeconds}s, time-limit=${configuredTimeLimitLabel}.`,
+      );
 
       while (!hasBoundedIterations || iteration < iterations) {
         if (typeof timeLimitMs === "number" && Date.now() - loopStartMs >= timeLimitMs) {
-          const elapsedSeconds = Math.floor((Date.now() - loopStartMs) / 1000);
-          emitCliInfo(
-            app,
-            `Loop time limit reached before iteration ${iteration + 1}; elapsed=${elapsedSeconds}s, limit=${timeLimitSeconds}s.`,
-          );
+          timedOut = true;
+          timeoutElapsedSeconds = Math.floor((Date.now() - loopStartMs) / 1000);
           break;
         }
 
@@ -769,11 +773,8 @@ export function createLoopCommandAction({
               break;
             }
             if (cooldownInterruptedBy === "TIME_LIMIT") {
-              const elapsedSeconds = Math.floor((Date.now() - loopStartMs) / 1000);
-              emitCliInfo(
-                app,
-                `Loop time limit reached during cooldown before iteration ${iteration + 1}; elapsed=${elapsedSeconds}s, limit=${timeLimitSeconds}s.`,
-              );
+              timedOut = true;
+              timeoutElapsedSeconds = Math.floor((Date.now() - loopStartMs) / 1000);
               break;
             }
           } else {
@@ -813,16 +814,20 @@ export function createLoopCommandAction({
             break;
           }
           if (cooldownInterruptedBy === "TIME_LIMIT") {
-            const elapsedSeconds = Math.floor((Date.now() - loopStartMs) / 1000);
-            emitCliInfo(
-              app,
-              `Loop time limit reached during cooldown before iteration ${iteration + 1}; elapsed=${elapsedSeconds}s, limit=${timeLimitSeconds}s.`,
-            );
+            timedOut = true;
+            timeoutElapsedSeconds = Math.floor((Date.now() - loopStartMs) / 1000);
             break;
           }
         } else {
           emitCliInfo(app, `Loop iteration ${iteration} completed - starting next iteration immediately.`);
         }
+      }
+
+      if (timedOut && typeof timeLimitSeconds === "number") {
+        emitCliInfo(
+          app,
+          `Loop completed: time limit reached (elapsed=${timeoutElapsedSeconds}s, limit=${timeLimitSeconds}s).`,
+        );
       }
 
       emitCliInfo(

@@ -1944,6 +1944,64 @@ describe("run-task-execution helpers", () => {
     }));
   });
 
+  it("defaults transport_unavailable reevaluation mode to cooldown when mode is omitted", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const workerHealthStore = {
+      read: vi.fn(() => ({
+        schemaVersion: 1,
+        updatedAt: "2026-04-12T09:00:00.000Z",
+        entries: [],
+      })),
+      write: vi.fn(),
+      filePath: vi.fn(() => `${cwd}/.rundown/worker-health.json`),
+    };
+    const { dependencies } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "exercise transport_unavailable defaults"),
+      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] exercise transport_unavailable defaults\n" }),
+      gitClient: createGitClientMock(),
+      workerConfig: {
+        workers: {
+          default: ["primary", "worker"],
+        },
+        healthPolicy: {
+          unavailableReevaluation: {},
+        },
+      },
+    });
+    dependencies.workerHealthStore = workerHealthStore;
+    dependencies.workerExecutor.runWorker = vi
+      .fn()
+      .mockResolvedValue({ exitCode: null, stdout: "", stderr: "connection reset by peer" });
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({ verify: false, workerCommand: [] }));
+
+    expect(code).toBe(1);
+
+    const persistedSnapshot = workerHealthStore.write.mock.calls.at(-1)?.[0];
+    expect(persistedSnapshot).toBeDefined();
+    if (!persistedSnapshot) {
+      throw new Error("Expected persisted worker health snapshot.");
+    }
+
+    const primaryEntry = persistedSnapshot.entries.find(
+      (entry: { key: string; source: string }) => entry.source === "worker"
+        && entry.key === buildWorkerHealthWorkerKey(["primary", "worker"]),
+    );
+    expect(primaryEntry).toEqual(expect.objectContaining({
+      status: WORKER_HEALTH_STATUS_COOLING_DOWN,
+      lastFailureClass: WORKER_FAILURE_CLASS_TRANSPORT_UNAVAILABLE,
+    }));
+    expect(primaryEntry?.status).not.toBe(WORKER_HEALTH_STATUS_UNAVAILABLE);
+    expect(primaryEntry?.cooldownUntil).toBeTruthy();
+    expect(primaryEntry?.lastFailureAt).toBeTruthy();
+    expect(
+      Date.parse(primaryEntry?.cooldownUntil ?? "") - Date.parse(primaryEntry?.lastFailureAt ?? ""),
+    ).toBe(300_000);
+  });
+
   it("persists profile-level failure health across runs and blocks later profile resolution", async () => {
     const cwd = "/workspace";
     const taskFile = `${cwd}/tasks.md`;

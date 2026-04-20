@@ -129,6 +129,20 @@ All command arrays and arg arrays must be JSON arrays of strings.
       "reset": { "worker": ["string", "..."], "useFallbacks": false }
     }
   },
+  "healthPolicy": {
+    "cooldownSecondsByFailureClass": {
+      "usage_limit": 120,
+      "transport_unavailable": 0,
+      "execution_failure_other": 0
+    },
+    "maxFailoverAttemptsPerTask": 0,
+    "maxFailoverAttemptsPerRun": 0,
+    "fallbackStrategy": "strict_order",
+    "unavailableReevaluation": {
+      "mode": "cooldown",
+      "probeCooldownSeconds": 300
+    }
+  },
   "traceStatistics": {
     "enabled": true,
     "fields": ["total_time", "tokens_estimated"]
@@ -146,7 +160,18 @@ Section behavior:
 - `commands.tools.<toolName>`: command-specific override for one tool-expansion prefix task (for example `tools.post-on-gitea`).
 - `profiles.<name>`: named reusable worker command overrides selected from frontmatter, directives, or prefix modifiers.
 - `run.workerRouting.*`: phase-scoped worker routing for `run` and `reverify` verify/repair lifecycle stages.
+- `healthPolicy`: worker-health cooldown, failover, and unavailable reevaluation behavior.
 - `traceStatistics`: controls optional inline trace summary lines written below completed checkbox tasks.
+
+## Worker health policy
+
+`healthPolicy` controls how rundown tracks worker failures and when blocked workers can be retried.
+
+`unavailableReevaluation.mode` defaults to `"cooldown"`.
+
+- `mode: "cooldown"` marks `transport_unavailable` failures as `cooling_down` and retries after a probe delay.
+- `probeCooldownSeconds` defaults to `300` seconds when `mode` is `cooldown`.
+- `mode: "manual"` keeps the previous sticky behavior, marking workers `unavailable` until you reset health state.
 
 ## Worker timeout
 

@@ -1928,9 +1928,10 @@ describe("run-task-execution helpers", () => {
         && entry.key === buildWorkerHealthWorkerKey(["primary", "worker"]),
     );
     expect(primaryEntry).toEqual(expect.objectContaining({
-      status: WORKER_HEALTH_STATUS_UNAVAILABLE,
+      status: WORKER_HEALTH_STATUS_COOLING_DOWN,
       lastFailureClass: WORKER_FAILURE_CLASS_TRANSPORT_UNAVAILABLE,
     }));
+    expect(primaryEntry?.cooldownUntil).toBeTruthy();
 
     const fallbackEntry = persistedSnapshot.entries.find(
       (entry: { key: string; source: string }) => entry.source === "worker"
@@ -1973,6 +1974,9 @@ describe("run-task-execution helpers", () => {
         },
         healthPolicy: {
           maxFailoverAttemptsPerTask: 0,
+          unavailableReevaluation: {
+            mode: "manual",
+          },
         },
       },
     });

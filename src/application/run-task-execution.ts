@@ -283,7 +283,7 @@ function updateWorkerHealthForAttemptOutcome(params: {
         failureCountWindow: currentFailureCount + 1,
       };
     } else if (failureClass === WORKER_FAILURE_CLASS_TRANSPORT_UNAVAILABLE) {
-      const unavailableMode = healthPolicy?.unavailableReevaluation?.mode ?? "manual";
+      const unavailableMode = healthPolicy?.unavailableReevaluation?.mode ?? "cooldown";
       const probeCooldownSeconds = healthPolicy?.unavailableReevaluation?.probeCooldownSeconds
         ?? healthPolicy?.cooldownSecondsByFailureClass?.transport_unavailable
         ?? 300;

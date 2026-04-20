@@ -11,6 +11,10 @@ import { includeHandler } from "../../src/domain/builtin-tools/include.js";
 import { listBuiltinToolNames, resolveBuiltinTool } from "../../src/domain/builtin-tools/index.js";
 import { parseTasks } from "../../src/domain/parser.js";
 import { inferWorkerPatternFromCommand } from "../../src/domain/worker-pattern.js";
+import {
+  WORKER_HEALTH_STATUS_COOLING_DOWN,
+  buildWorkerHealthWorkerKey,
+} from "../../src/domain/worker-health.js";
 import * as verifyRepairLoopModule from "../../src/application/verify-repair-loop.js";
 import * as runLifecycleModule from "../../src/application/run-lifecycle.js";
 import * as checkboxOperationsModule from "../../src/application/checkbox-operations.js";
@@ -2045,6 +2049,285 @@ describe("run-task-iteration", () => {
     expect(dependencies.workerExecutor.runWorker).not.toHaveBeenCalled();
     expect(dependencies.workerExecutor.executeInlineCli).not.toHaveBeenCalled();
     expect(dependencies.workerExecutor.executeRundownTask).not.toHaveBeenCalled();
+  });
+
+  it("waits for nearest cooling-down worker and retries resolution once", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Ship release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Ship release\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    const emit = (event: Parameters<typeof runTaskIteration>[0]["emit"] extends (arg: infer T) => void ? T : never) => {
+      events.push(event);
+    };
+
+    const dispatchSpy = vi.spyOn(taskExecutionDispatchModule, "dispatchTaskExecution").mockResolvedValue({
+      kind: "ready-for-completion",
+      shouldVerify: false,
+      cliExecutionOptionsForVerification: undefined,
+      verificationFailureMessage: "Verification failed after all repair attempts. Task not checked.",
+      verificationFailureRunReason: "Verification failed after all repair attempts.",
+    });
+    vi.spyOn(completeTaskIterationModule, "completeTaskIteration").mockResolvedValue({
+      continueLoop: false,
+      exitCode: 0,
+    });
+
+    const traceRunSession = createTraceRunSession({
+      getTraceWriter: () => dependencies.traceWriter,
+      source: "tasks.md",
+      mode: "wait",
+      transport: "file",
+      traceEnabled: false,
+    });
+
+    const nowMs = Date.now();
+    const cooldownUntil = new Date(nowMs + 25).toISOString();
+    const result = await runTaskIteration({
+      dependencies,
+      emit,
+      state: {
+        traceWriter: dependencies.traceWriter,
+        deferredCommitContext: null,
+        tasksCompleted: 0,
+        runCompleted: false,
+        artifactContext: null,
+        traceEnrichmentContext: null,
+      },
+      context: {
+        source: "- [ ] Ship release",
+        fileSource: "- [ ] Ship release",
+        taskIndex: 0,
+        totalTasks: 1,
+        files: [taskFile],
+        task,
+      },
+      execution: {
+        mode: "wait",
+        verbose: false,
+        taskIndex: 0,
+        totalTasks: 1,
+        keepArtifacts: true,
+        printPrompt: false,
+        dryRun: false,
+        dryRunSuppressesCliExpansion: false,
+        cliExpansionEnabled: true,
+        ignoreCliBlock: false,
+        verify: true,
+        noRepair: false,
+        repairAttempts: 0,
+        forceExecute: false,
+        showAgentOutput: false,
+        hideHookOutput: false,
+        trace: false,
+      },
+      worker: {
+        workerPattern: inferWorkerPatternFromCommand(["primary", "worker"]),
+        loadedWorkerConfig: {
+          workers: {
+            default: ["primary", "worker"],
+          },
+        },
+        workerHealthEntries: [
+          {
+            key: buildWorkerHealthWorkerKey(["primary", "worker"]),
+            source: "worker",
+            status: WORKER_HEALTH_STATUS_COOLING_DOWN,
+            cooldownUntil,
+          },
+        ],
+        evaluateWorkerHealthAtMs: nowMs,
+      },
+      verifyConfig: {
+        configuredOnlyVerify: false,
+        configuredShouldVerify: true,
+        maxRepairAttempts: 0,
+        allowRepair: false,
+      },
+      completion: {
+        effectiveRunAll: false,
+        commitAfterComplete: false,
+        deferCommitUntilPostRun: false,
+        commitMessageTemplate: undefined,
+        onCompleteCommand: undefined,
+        onFailCommand: undefined,
+        extraTemplateVars: {},
+      },
+      prompts: {
+        extraTemplateVars: {},
+        cliExecutionOptions: undefined,
+        cliBlockExecutor: {
+          execute: vi.fn(async () => ({
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          })),
+        },
+        cwd,
+        nowIso: () => "2026-01-01T00:00:00.000Z",
+      },
+      traceConfig: {
+        traceRunSession,
+        pendingPreRunResetTraceEvents: [],
+        roundContext: {
+          currentRound: 1,
+          totalRounds: 1,
+        },
+      },
+      lifecycle: {
+        failRun: vi.fn(async () => 1),
+        finishRun: vi.fn(async () => 0),
+        resetArtifacts: vi.fn(),
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+    expect(events.some((event) => event.kind === "info" && event.message.includes("All workers cooling down. Waiting"))).toBe(true);
+  });
+
+  it("fails after one cooldown wait when worker remains ineligible", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Ship release");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Ship release\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      fileSystem,
+      gitClient: createGitClientMock(),
+    });
+    const emit = (event: Parameters<typeof runTaskIteration>[0]["emit"] extends (arg: infer T) => void ? T : never) => {
+      events.push(event);
+    };
+
+    const dispatchSpy = vi.spyOn(taskExecutionDispatchModule, "dispatchTaskExecution");
+
+    const traceRunSession = createTraceRunSession({
+      getTraceWriter: () => dependencies.traceWriter,
+      source: "tasks.md",
+      mode: "wait",
+      transport: "file",
+      traceEnabled: false,
+    });
+
+    const nowMs = Date.now();
+    const cooldownUntil = new Date(nowMs + 1_000).toISOString();
+    const result = await runTaskIteration({
+      dependencies,
+      emit,
+      state: {
+        traceWriter: dependencies.traceWriter,
+        deferredCommitContext: null,
+        tasksCompleted: 0,
+        runCompleted: false,
+        artifactContext: null,
+        traceEnrichmentContext: null,
+      },
+      context: {
+        source: "- [ ] Ship release",
+        fileSource: "- [ ] Ship release",
+        taskIndex: 0,
+        totalTasks: 1,
+        files: [taskFile],
+        task,
+      },
+      execution: {
+        mode: "wait",
+        verbose: false,
+        taskIndex: 0,
+        totalTasks: 1,
+        keepArtifacts: true,
+        printPrompt: false,
+        dryRun: false,
+        dryRunSuppressesCliExpansion: false,
+        cliExpansionEnabled: true,
+        ignoreCliBlock: false,
+        verify: true,
+        noRepair: false,
+        repairAttempts: 0,
+        forceExecute: false,
+        showAgentOutput: false,
+        hideHookOutput: false,
+        trace: false,
+      },
+      worker: {
+        workerPattern: inferWorkerPatternFromCommand(["primary", "worker"]),
+        loadedWorkerConfig: {
+          workers: {
+            default: ["primary", "worker"],
+          },
+          workerTimeoutMs: 5,
+        },
+        workerHealthEntries: [
+          {
+            key: buildWorkerHealthWorkerKey(["primary", "worker"]),
+            source: "worker",
+            status: WORKER_HEALTH_STATUS_COOLING_DOWN,
+            cooldownUntil,
+          },
+        ],
+        evaluateWorkerHealthAtMs: nowMs,
+      },
+      verifyConfig: {
+        configuredOnlyVerify: false,
+        configuredShouldVerify: true,
+        maxRepairAttempts: 0,
+        allowRepair: false,
+      },
+      completion: {
+        effectiveRunAll: false,
+        commitAfterComplete: false,
+        deferCommitUntilPostRun: false,
+        commitMessageTemplate: undefined,
+        onCompleteCommand: undefined,
+        onFailCommand: undefined,
+        extraTemplateVars: {},
+      },
+      prompts: {
+        extraTemplateVars: {},
+        cliExecutionOptions: undefined,
+        cliBlockExecutor: {
+          execute: vi.fn(async () => ({
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          })),
+        },
+        cwd,
+        nowIso: () => "2026-01-01T00:00:00.000Z",
+      },
+      traceConfig: {
+        traceRunSession,
+        pendingPreRunResetTraceEvents: [],
+        roundContext: {
+          currentRound: 1,
+          totalRounds: 1,
+        },
+      },
+      lifecycle: {
+        failRun: vi.fn(async () => 1),
+        finishRun: vi.fn(async () => 0),
+        resetArtifacts: vi.fn(),
+      },
+    });
+
+    expect(result).toEqual({ continueLoop: false, exitCode: 1, forceRetryableFailure: false });
+    expect(dispatchSpy).not.toHaveBeenCalled();
+    expect(events.some((event) => event.kind === "info" && event.message.includes("All workers cooling down. Waiting"))).toBe(true);
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "error",
+      message: "No worker command available: .rundown/config.json has no configured worker, and no CLI worker was provided. Use --worker <pattern> or -- <command>.",
+    }));
   });
 });
 

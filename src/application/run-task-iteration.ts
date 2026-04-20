@@ -1,7 +1,10 @@
 import { type Task } from "../domain/parser.js";
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import { requiresWorkerCommand } from "../domain/run-options.js";
-import { resolveWorkerPatternForInvocation } from "./resolve-worker.js";
+import {
+  resolveWorkerPatternForInvocation,
+  resolveWorkerSelectionSnapshotForInvocation,
+} from "./resolve-worker.js";
 import { handleTemplateCliFailure } from "./cli-block-handlers.js";
 import { handleDryRunOrPrintPrompt } from "./dry-run-dispatch.js";
 import { formatTaskLabel } from "./run-task-utils.js";
@@ -41,6 +44,124 @@ import type { TerminalStopSignal } from "../domain/terminal-control.js";
 type EmitFn = (event: Parameters<ApplicationOutputPort["emit"]>[0]) => void;
 type ArtifactContext = ArtifactRunContext;
 const INLINE_CLI_PREFIX = /^cli:\s*/i;
+const WORKER_COOLDOWN_WAIT_CAP_MS = 300_000;
+const INTERRUPTED_EXIT_CODE = 130;
+
+interface CoolingDownCandidate {
+  workerLabel: string;
+  nextEligibleAtMs: number;
+}
+
+function parseTimestampMs(value: string | undefined): number | undefined {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return undefined;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function describeWorkerCommand(command: readonly string[]): string {
+  return command.join(" ").trim() || "(unknown worker)";
+}
+
+function resolveNearestCoolingDownCandidate(params: {
+  candidates: ReturnType<typeof resolveWorkerSelectionSnapshotForInvocation>["candidates"];
+  nowMs: number;
+}): CoolingDownCandidate | undefined {
+  const { candidates, nowMs } = params;
+  let nearestCandidate: CoolingDownCandidate | undefined;
+
+  for (const candidate of candidates) {
+    if (candidate.eligibility.eligible) {
+      continue;
+    }
+
+    const isCoolingDown = candidate.eligibility.worker.reason === "cooling_down"
+      || candidate.eligibility.profile.reason === "cooling_down";
+    if (!isCoolingDown) {
+      continue;
+    }
+
+    const nextEligibleAtMs = parseTimestampMs(candidate.eligibility.nextEligibleAt);
+    if (nextEligibleAtMs === undefined || nextEligibleAtMs <= nowMs) {
+      continue;
+    }
+
+    if (!nearestCandidate || nextEligibleAtMs < nearestCandidate.nextEligibleAtMs) {
+      nearestCandidate = {
+        workerLabel: describeWorkerCommand(candidate.workerCommand),
+        nextEligibleAtMs,
+      };
+    }
+  }
+
+  return nearestCandidate;
+}
+
+function resolveWorkerCooldownWaitMs(params: {
+  nowMs: number;
+  nextEligibleAtMs: number;
+  workerTimeoutMs: number | undefined;
+}): number {
+  const { nowMs, nextEligibleAtMs, workerTimeoutMs } = params;
+  const remainingMs = Math.max(0, nextEligibleAtMs - nowMs);
+
+  const workerTimeoutCapMs = typeof workerTimeoutMs === "number" && workerTimeoutMs > 0
+    ? Math.floor(workerTimeoutMs)
+    : Number.POSITIVE_INFINITY;
+  const waitMs = Math.min(remainingMs, WORKER_COOLDOWN_WAIT_CAP_MS, workerTimeoutCapMs);
+  if (!Number.isFinite(waitMs)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.floor(waitMs));
+}
+
+async function waitForWorkerCooldown(waitMs: number): Promise<{ interruptedBy?: NodeJS.Signals }> {
+  if (waitMs <= 0) {
+    return {};
+  }
+
+  let interruptedBy: NodeJS.Signals | undefined;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  let resolveSleep = () => {};
+
+  function cleanup(): void {
+    if (timeoutHandle !== undefined) {
+      clearTimeout(timeoutHandle);
+      timeoutHandle = undefined;
+    }
+    process.off("SIGINT", onSigint);
+    process.off("SIGTERM", onSigterm);
+  }
+
+  function onSigint(): void {
+    interruptedBy = "SIGINT";
+    cleanup();
+    resolveSleep();
+  }
+
+  function onSigterm(): void {
+    interruptedBy = "SIGTERM";
+    cleanup();
+    resolveSleep();
+  }
+
+  const sleepPromise = new Promise<void>((resolve) => {
+    resolveSleep = resolve;
+    timeoutHandle = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, waitMs);
+  });
+
+  process.prependOnceListener("SIGINT", onSigint);
+  process.prependOnceListener("SIGTERM", onSigterm);
+  await sleepPromise;
+
+  return interruptedBy ? { interruptedBy } : {};
+}
 
 /**
  * Tracks mutable execution state that must survive within a single run loop iteration.
@@ -342,30 +463,8 @@ export async function runTaskIteration(params: {
     : task;
 
   const modifierProfile = extractPrefixModifierProfile(executionPrefixChain);
-  // Resolve the effective worker command using CLI, config, and task metadata.
-  const resolvedWorker = resolveWorkerPatternForInvocation({
-    commandName: "run",
-    workerConfig: worker.loadedWorkerConfig,
-    source: fileSource,
-    task: taskForExecution,
-    modifierProfile,
-    cliWorkerPattern: worker.workerPattern,
-    taskIntent: taskIntentDecision.intent,
-    toolName: taskIntentDecision.toolName,
-    emit,
-    mode: execution.mode,
-    workerHealthEntries: worker.workerHealthEntries,
-    evaluateWorkerHealthAtMs: worker.evaluateWorkerHealthAtMs,
-    runWorkerPhase: worker.runWorkerPhaseOverride,
-  });
-  const resolvedWorkerCommand = resolvedWorker.workerCommand;
-  const resolvedWorkerPattern = resolvedWorker.workerPattern;
-  // Build the automation command variant used for verification-only execution.
-  // Verification always runs in "wait" mode, so when the execution mode is "tui"
-  // the worker must be re-resolved with mode "wait" to pick workers.default
-  // instead of workers.tui.
-  const verificationWorker = execution.mode === "tui"
-    ? resolveWorkerPatternForInvocation({
+  const resolveWorkerPair = (evaluateWorkerHealthAtMs: number | undefined) => {
+    const resolvedWorker = resolveWorkerPatternForInvocation({
       commandName: "run",
       workerConfig: worker.loadedWorkerConfig,
       source: fileSource,
@@ -375,23 +474,65 @@ export async function runTaskIteration(params: {
       taskIntent: taskIntentDecision.intent,
       toolName: taskIntentDecision.toolName,
       emit,
-      mode: "wait",
+      mode: execution.mode,
       workerHealthEntries: worker.workerHealthEntries,
-      evaluateWorkerHealthAtMs: worker.evaluateWorkerHealthAtMs,
-    })
-    : resolvedWorker;
-  const verificationWorkerCommand = verificationWorker.workerCommand;
-  const verificationWorkerProfileName = verificationWorker.selectedProfileName;
-  const automationCommand = getAutomationWorkerCommand(verificationWorkerCommand, "wait");
-  const automationWorkerPattern = verificationWorkerCommand.length === automationCommand.length
-    && verificationWorkerCommand.every((token, index) => token === automationCommand[index])
-    ? verificationWorker.workerPattern
-    : {
-      command: [...automationCommand],
-      usesBootstrap: automationCommand.some((token) => token.includes("$bootstrap")),
-      usesFile: automationCommand.some((token) => token.includes("$file")),
-      appendFile: !automationCommand.some((token) => token.includes("$bootstrap") || token.includes("$file")),
+      evaluateWorkerHealthAtMs,
+      runWorkerPhase: worker.runWorkerPhaseOverride,
+    });
+
+    const workerSelectionSnapshot = resolveWorkerSelectionSnapshotForInvocation({
+      commandName: "run",
+      workerConfig: worker.loadedWorkerConfig,
+      source: fileSource,
+      task: taskForExecution,
+      modifierProfile,
+      cliWorkerCommand: worker.workerPattern.command,
+      taskIntent: taskIntentDecision.intent,
+      toolName: taskIntentDecision.toolName,
+      emit,
+      mode: execution.mode,
+      workerHealthEntries: worker.workerHealthEntries,
+      evaluateWorkerHealthAtMs,
+      runWorkerPhase: worker.runWorkerPhaseOverride,
+    });
+
+    // Build the automation command variant used for verification-only execution.
+    // Verification always runs in "wait" mode, so when the execution mode is "tui"
+    // the worker must be re-resolved with mode "wait" to pick workers.default
+    // instead of workers.tui.
+    const verificationWorker = execution.mode === "tui"
+      ? resolveWorkerPatternForInvocation({
+        commandName: "run",
+        workerConfig: worker.loadedWorkerConfig,
+        source: fileSource,
+        task: taskForExecution,
+        modifierProfile,
+        cliWorkerPattern: worker.workerPattern,
+        taskIntent: taskIntentDecision.intent,
+        toolName: taskIntentDecision.toolName,
+        emit,
+        mode: "wait",
+        workerHealthEntries: worker.workerHealthEntries,
+        evaluateWorkerHealthAtMs,
+      })
+      : resolvedWorker;
+
+    return {
+      resolvedWorker,
+      workerSelectionSnapshot,
+      verificationWorker,
     };
+  };
+
+  let workerEvaluationTimeMs = worker.evaluateWorkerHealthAtMs;
+  let {
+    resolvedWorker,
+    workerSelectionSnapshot,
+    verificationWorker,
+  } = resolveWorkerPair(workerEvaluationTimeMs);
+
+  let resolvedWorkerCommand = resolvedWorker.workerCommand;
+  let resolvedWorkerPattern = resolvedWorker.workerPattern;
   const resolveVerifyRepairWorkerPattern = (resolveInput: {
     phase: "verify" | "repair" | "resolve" | "resolveRepair";
     attempt?: number;
@@ -408,7 +549,7 @@ export async function runTaskIteration(params: {
       emit,
       mode: "wait",
       workerHealthEntries: worker.workerHealthEntries,
-      evaluateWorkerHealthAtMs: worker.evaluateWorkerHealthAtMs,
+      evaluateWorkerHealthAtMs: workerEvaluationTimeMs,
       runWorkerPhase: resolveInput.phase,
       runWorkerAttempt: resolveInput.attempt,
     });
@@ -416,14 +557,72 @@ export async function runTaskIteration(params: {
     return resolvedPhaseWorker.workerPattern;
   };
 
-  // Abort early when a task requires a worker command but none is available.
-  if (requiresWorkerCommand({
+  let missingWorkerCommand = requiresWorkerCommand({
     workerCommand: resolvedWorkerCommand,
     hasConfigWorker: resolvedWorkerCommand.length > 0,
     isInlineCli: taskForExecution.isInlineCli,
     shouldVerify,
     onlyVerify,
-  })) {
+  });
+
+  if (missingWorkerCommand) {
+    const nowMs = workerEvaluationTimeMs ?? Date.now();
+    const allCandidatesIneligible = workerSelectionSnapshot.candidates.length > 0
+      && workerSelectionSnapshot.candidates.every((candidate) => !candidate.eligibility.eligible);
+    const nearestCoolingDownCandidate = allCandidatesIneligible
+      ? resolveNearestCoolingDownCandidate({
+        candidates: workerSelectionSnapshot.candidates,
+        nowMs,
+      })
+      : undefined;
+
+    if (nearestCoolingDownCandidate) {
+      const waitMs = resolveWorkerCooldownWaitMs({
+        nowMs,
+        nextEligibleAtMs: nearestCoolingDownCandidate.nextEligibleAtMs,
+        workerTimeoutMs: worker.loadedWorkerConfig?.workerTimeoutMs,
+      });
+      const waitSeconds = Math.ceil(waitMs / 1000);
+      emit({
+        kind: "info",
+        message: "All workers cooling down. Waiting "
+          + waitSeconds
+          + "s for \""
+          + nearestCoolingDownCandidate.workerLabel
+          + "\" to become eligible...",
+      });
+
+      const waitResult = await waitForWorkerCooldown(waitMs);
+      if (waitResult.interruptedBy) {
+        const interruptedMessage = "Worker cooldown wait interrupted by " + waitResult.interruptedBy + ".";
+        emit({
+          kind: "warn",
+          message: interruptedMessage,
+        });
+        emitGroupFailure(interruptedMessage);
+        return { continueLoop: false, exitCode: INTERRUPTED_EXIT_CODE, forceRetryableFailure: false };
+      }
+
+      workerEvaluationTimeMs = Date.now();
+      ({
+        resolvedWorker,
+        workerSelectionSnapshot,
+        verificationWorker,
+      } = resolveWorkerPair(workerEvaluationTimeMs));
+      resolvedWorkerCommand = resolvedWorker.workerCommand;
+      resolvedWorkerPattern = resolvedWorker.workerPattern;
+
+      missingWorkerCommand = requiresWorkerCommand({
+        workerCommand: resolvedWorkerCommand,
+        hasConfigWorker: resolvedWorkerCommand.length > 0,
+        isInlineCli: taskForExecution.isInlineCli,
+        shouldVerify,
+        onlyVerify,
+      });
+    }
+  }
+
+  if (missingWorkerCommand) {
     const message = "No worker command available: .rundown/config.json has no configured worker, and no CLI worker was provided. Use --worker <pattern> or -- <command>.";
     emit({
       kind: "error",
@@ -432,6 +631,19 @@ export async function runTaskIteration(params: {
     emitGroupFailure(message);
     return { continueLoop: false, exitCode: 1, forceRetryableFailure: false };
   }
+
+  const verificationWorkerCommand = verificationWorker.workerCommand;
+  const verificationWorkerProfileName = verificationWorker.selectedProfileName;
+  const automationCommand = getAutomationWorkerCommand(verificationWorkerCommand, "wait");
+  const automationWorkerPattern = verificationWorkerCommand.length === automationCommand.length
+    && verificationWorkerCommand.every((token, index) => token === automationCommand[index])
+    ? verificationWorker.workerPattern
+    : {
+      command: [...automationCommand],
+      usesBootstrap: automationCommand.some((token) => token.includes("$bootstrap")),
+      usesFile: automationCommand.some((token) => token.includes("$file")),
+      appendFile: !automationCommand.some((token) => token.includes("$bootstrap") || token.includes("$file")),
+    };
 
   // Initialize artifact and trace context only for real execution modes.
   if (!execution.printPrompt && !execution.dryRun) {

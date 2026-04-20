@@ -225,6 +225,55 @@ describe("query-task", () => {
     expect(outputJson).toContain("## Step 1: Evidence");
   });
 
+  it("honors format-specific query seed overrides for yn and success-error", async () => {
+    const ynOverride = "# YN seed for {{query}} in {{dir}}";
+    const successErrorOverride = "# SuccessError seed for {{query}} in {{dir}}";
+    const { dependencies, fileSystem } = createDependencies({
+      cwd: "/workspace",
+      templateOverrides: {
+        "query-seed-yn.md": ynOverride,
+        "query-seed-success-error.md": successErrorOverride,
+      },
+    });
+    const queryTask = createQueryTask(dependencies);
+
+    vi.mocked(fileSystem.readdir).mockReturnValue([
+      { name: "step-1.md", isFile: true, isDirectory: false },
+    ]);
+    vi.mocked(fileSystem.readText).mockImplementation((filePath: string) => {
+      if (/step-1\.md$/.test(filePath)) {
+        return "# Verdict\n\nsuccess";
+      }
+      return "";
+    });
+
+    await queryTask(createOptions({
+      queryText: "Is auth enforced?",
+      format: "yn",
+      output: "/tmp/query/yn.txt",
+    }));
+
+    const resolvedDir = path.resolve("/workspace");
+
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      expect.stringMatching(/[\\/]runs[\\/]run-query[\\/]query\.md$/),
+      expect.stringContaining(`# YN seed for Is auth enforced? in ${resolvedDir}`),
+    );
+
+    vi.mocked(fileSystem.writeText).mockClear();
+
+    await queryTask(createOptions({
+      queryText: "Does smoke test pass?",
+      format: "success-error",
+      output: "/tmp/query/success-error.txt",
+    }));
+
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      expect.stringMatching(/[\\/]runs[\\/]run-query[\\/]query\.md$/),
+      expect.stringContaining(`# SuccessError seed for Does smoke test pass? in ${resolvedDir}`),
+    );
+  });
+
   it("uses query-stream-execute override for stream mode only", async () => {
     const queryStreamExecuteOverride = "Custom stream execute for {{task}} in {{dir}}";
     const { dependencies, runTask } = createDependencies({
@@ -293,6 +342,34 @@ describe("query-task", () => {
       expect(queryWrite).toBeDefined();
       expect(queryWrite?.[1]).toContain(testCase.expectedSeedTemplate.replace("{{query}}", "Is auth enforced?").split("\n")[4]);
     }
+  });
+
+  it("prefers project query-seed.md override for markdown format", async () => {
+    const markdownOverride = "# Markdown seed for {{query}}";
+    const { dependencies, fileSystem } = createDependencies({
+      cwd: "/workspace",
+      templateOverrides: {
+        "query-seed.md": markdownOverride,
+      },
+    });
+    const queryTask = createQueryTask(dependencies);
+
+    vi.mocked(fileSystem.readdir).mockReturnValue([
+      { name: "step-1.md", isFile: true, isDirectory: false },
+    ]);
+    vi.mocked(fileSystem.readText).mockImplementation((filePath: string) => {
+      if (/step-1\.md$/.test(filePath)) {
+        return "# Verdict\n\nsuccess";
+      }
+      return "";
+    });
+
+    await queryTask(createOptions({ format: "markdown", output: undefined }));
+
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      expect.stringMatching(/[\\/]runs[\\/]run-query[\\/]query\.md$/),
+      expect.stringContaining("# Markdown seed for Is auth enforced?"),
+    );
   });
 
   it("selects stream vs file execution mode based on format/output", async () => {

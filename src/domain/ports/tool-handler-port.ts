@@ -89,6 +89,9 @@ export interface ToolHandlerContext {
   keepArtifacts: boolean;
   templateVars: TemplateVars;
   showAgentOutput: boolean;
+  templates?: {
+    researchOutputContract: string;
+  };
 }
 
 /**

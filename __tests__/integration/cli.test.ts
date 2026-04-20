@@ -114,6 +114,8 @@ function expectedInitSuccessLines(displayConfigDir: string): string[] {
     `✔ Created ${displayConfigDir}/migrate-review.md`,
     `✔ Created ${displayConfigDir}/migrate-ux.md`,
     `✔ Created ${displayConfigDir}/query-seed.md`,
+    `✔ Created ${displayConfigDir}/query-seed-yn.md`,
+    `✔ Created ${displayConfigDir}/query-seed-success-error.md`,
     `✔ Created ${displayConfigDir}/query-execute.md`,
     `✔ Created ${displayConfigDir}/query-stream-execute.md`,
     `✔ Created ${displayConfigDir}/query-aggregate.md`,
@@ -6210,7 +6212,7 @@ describe.sequential("CLI integration", () => {
     const helpOutput = result.stdoutWrites.join("\n");
     const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
     expect(compactHelpOutput).toContain("--clean Shorthand for --redo --reset-after");
-    expect(compactHelpOutput).toContain("--all Run all tasks sequentially instead of stopping after one (alias: all)");
+    expect(compactHelpOutput).toContain("--all Run all tasks sequentially instead of stopping after one (equivalent command: all)");
     expect(compactHelpOutput).toContain("--cache-cli-blocks Cache `cli` fenced block command output for the duration of this run");
   });
 
@@ -11393,16 +11395,16 @@ describe.sequential("CLI integration", () => {
     expect(compactHelpOutput).toContain("rundown design diff --workspace ../source-workspace");
   });
 
-  it("docs --help is rejected because docs command is removed", async () => {
+  it("docs --help falls back to root help because docs command is removed", async () => {
     const workspace = makeTempWorkspace();
 
     const result = await runCli(["docs", "--help"], workspace);
 
-    expect(result.code).toBe(1);
-    const combinedOutput = [...result.errors, ...result.logs, ...result.stderrWrites, ...result.stdoutWrites]
-      .join("\n")
-      .toLowerCase();
-    expect(combinedOutput).toContain("unknown command");
+    expect(result.code).toBe(0);
+    const helpOutput = result.stdoutWrites.join("\n");
+    const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("Usage: rundown [options] [command]");
+    expect(compactHelpOutput).not.toContain(" docs ");
   });
 
   it("explore --help shows variadic argument and plan-phase options", async () => {

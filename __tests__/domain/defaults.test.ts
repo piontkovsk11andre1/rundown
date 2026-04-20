@@ -142,21 +142,31 @@ describe("default prompt templates", () => {
     expect(DEFAULT_PLAN_TEMPLATE).toContain("Remove obviously wrong duplicate directive groups/prefix wrappers and duplicate inline prefixes on unchecked items");
     expect(DEFAULT_PLAN_TEMPLATE).toContain("Output contract requirements for agentic tasks");
     expect(DEFAULT_PLAN_TEMPLATE).toContain("For every newly authored `get:` task, include this canonical inline output contract sentence in task text");
-    expect(DEFAULT_PLAN_TEMPLATE).toContain("`Output one item per line using plain lines or Markdown list items (bulleted or numbered only, no JSON). If none are found, output exactly nothing.`");
+    expect(DEFAULT_PLAN_TEMPLATE).toContain("`Output one item per line using plain lines or Markdown list items (bulleted or numbered only, no JSON). Do not use Markdown task checkbox syntax (- [ ] / - [x]) and do not include commentary. Preserve discovery order. If none are found, return an exactly empty response (no lines, no blank lines, no whitespace-only output).`");
     expect(DEFAULT_PLAN_TEMPLATE).toContain("avoid a literal `get-result:` prefix in output instructions");
     expect(DEFAULT_PLAN_TEMPLATE).toContain("that mixes iterative discovery with durable context capture");
     expect(DEFAULT_PLAN_TEMPLATE).toContain("`- [ ] loop: audit rollout blockers until no new blockers appear`");
-    expect(DEFAULT_PLAN_TEMPLATE).toContain("`  - [ ] get: list one blocker per line. Output one item per line using plain lines or Markdown list items (bulleted or numbered only, no JSON). If none are found, output exactly nothing.`");
+    expect(DEFAULT_PLAN_TEMPLATE).toContain("`  - [ ] get: list one blocker per line. Output one item per line using plain lines or Markdown list items (bulleted or numbered only, no JSON). Do not use Markdown task checkbox syntax (- [ ] / - [x]) and do not include commentary. Preserve discovery order. If none are found, return an exactly empty response (no lines, no blank lines, no whitespace-only output).`");
+    expect(DEFAULT_PLAN_TEMPLATE).toContain("`  - [ ] for: run per-blocker implementation/verification child tasks from source task context`");
+    expect(DEFAULT_PLAN_TEMPLATE).toContain("`    - [ ] fast: apply one small mechanical blocker fix when confidence is high` (optional)");
     expect(DEFAULT_PLAN_TEMPLATE).toContain("`  - [ ] memory: capture blocker trends that should influence the next pass`");
     expect(DEFAULT_PLAN_TEMPLATE).toContain("`  - [ ] end: stop when two consecutive passes produce no new blockers`");
     expect(DEFAULT_PLAN_TEMPLATE).toContain("explicit terminal stop condition via an `end:` step");
+    expect(DEFAULT_PLAN_TEMPLATE).toContain("explicitly classify low-risk mechanical subtasks as `fast:`");
+    expect(DEFAULT_PLAN_TEMPLATE).toContain("For iterative/unknown work that needs repeated passes, you MUST author a `loop:` task");
+    expect(DEFAULT_PLAN_TEMPLATE).toContain("decompose it with child `get:`, child `for:`, child `memory:`, optional child `fast:`");
 
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("## Loop composition requirements");
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`get:` discovers an iterable set of items/values");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`memory:` captures durable findings/trends from each pass so the next pass can reuse context");
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`end:` defines a deterministic stop rule");
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`for:` iterates discovered values and runs per-item implementation/review child tasks");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("For each per-item child task under `for:`, explicitly encode execution intent with a canonical directive: use `fast:` for low-risk mechanical actions, and use `verify:` for risky or state-sensitive checks. Do not leave per-item child tasks unprefixed");
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`for:` child task wording must state per-item execution intent (implementation and/or verification actions) derived from the source task context");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`  - [ ] memory: <capture reusable findings from this pass for next-pass reuse>`");
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`  - [ ] for: <run per-item implementation/verification tasks from source task context for each discovered item>`");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`    - [ ] fast: <small/mechanical per-item action when confidence is high>`");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`    - [ ] verify: <risky/state-sensitive per-item check when additional assurance is needed>`");
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("For loop-oriented tasks, require explicit `get:` + `for:` + `end:` composition");
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("Any `loop:` task must include an explicit terminal `end:` stop condition");
 
@@ -196,14 +206,19 @@ describe("default prompt templates", () => {
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("If child plan coverage is already sufficient, leave the file unchanged.");
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("Output contract requirements for agentic tasks");
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("For every newly authored `get:` child task, include this canonical inline output contract sentence in task text");
-    expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("`Output one item per line using plain lines or Markdown list items (bulleted or numbered only, no JSON). If none are found, output exactly nothing.`");
+    expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("`Output one item per line using plain lines or Markdown list items (bulleted or numbered only, no JSON). Do not use Markdown task checkbox syntax (- [ ] / - [x]) and do not include commentary. Preserve discovery order. If none are found, return an exactly empty response (no lines, no blank lines, no whitespace-only output).`");
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("avoid a literal `get-result:` prefix in output instructions");
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("that mixes iterative discovery with durable context capture");
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("`- [ ] loop: audit rollout blockers until no new blockers appear`");
-    expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("`  - [ ] get: list one blocker per line. Output one item per line using plain lines or Markdown list items (bulleted or numbered only, no JSON). If none are found, output exactly nothing.`");
+    expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("`  - [ ] get: list one blocker per line. Output one item per line using plain lines or Markdown list items (bulleted or numbered only, no JSON). Do not use Markdown task checkbox syntax (- [ ] / - [x]) and do not include commentary. Preserve discovery order. If none are found, return an exactly empty response (no lines, no blank lines, no whitespace-only output).`");
+    expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("`  - [ ] for: run per-blocker implementation/verification child tasks from source task context`");
+    expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("`    - [ ] fast: apply one small mechanical blocker fix when confidence is high` (optional)");
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("`  - [ ] memory: capture blocker trends that should influence the next pass`");
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("`  - [ ] end: stop when two consecutive passes produce no new blockers`");
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("explicit terminal stop condition via an `end:` step");
+    expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("explicitly classify low-risk mechanical subtasks as `fast:`");
+    expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("For iterative/unknown child work that needs repeated passes, you MUST author a `loop:` child task");
+    expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("decompose it with child `get:`, child `for:`, child `memory:`, optional child `fast:`");
   });
 
   it("enforces deterministic query execution output contracts", () => {
@@ -219,7 +234,7 @@ describe("default prompt templates", () => {
     expect(DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE).toContain("Emit exactly one extracted item per line.");
     expect(DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE).toContain("Preserve discovery order.");
     expect(DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE).toContain("Do not add commentary, headings, labels, code fences, or JSON.");
-    expect(DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE).toContain("If no items are found, print nothing.");
+    expect(DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE).toContain("If no items are found, return an exactly empty stdout response (no lines, no blank lines, no whitespace-only output).");
   });
 
   it("keeps memory-vs-write classification fixtures consistent in plan and deep-plan templates", () => {
@@ -303,8 +318,13 @@ describe("default prompt templates", () => {
   it("keeps loop planning guidance bounded, iterable, and deterministic", () => {
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("## Loop composition requirements");
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`get:` discovers an iterable set of items/values");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`memory:` captures durable findings/trends from each pass so the next pass can reuse context");
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`for:` iterates discovered values and runs per-item implementation/review child tasks");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("For each per-item child task under `for:`, explicitly encode execution intent with a canonical directive: use `fast:` for low-risk mechanical actions, and use `verify:` for risky or state-sensitive checks. Do not leave per-item child tasks unprefixed");
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`end:` defines a deterministic stop rule");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`  - [ ] memory: <capture reusable findings from this pass for next-pass reuse>`");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`    - [ ] fast: <small/mechanical per-item action when confidence is high>`");
+    expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("`    - [ ] verify: <risky/state-sensitive per-item check when additional assurance is needed>`");
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("For loop-oriented tasks, require explicit `get:` + `for:` + `end:` composition");
     expect(DEFAULT_PLAN_LOOP_TEMPLATE).toContain("Any `loop:` task must include an explicit terminal `end:` stop condition");
   });

@@ -18,9 +18,12 @@ import {
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_QUERY_AGGREGATION_TEMPLATE,
   DEFAULT_QUERY_EXECUTION_TEMPLATE,
+  DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
   DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
+  DEFAULT_QUERY_YN_SEED_TEMPLATE,
   DEFAULT_RESEARCH_REPAIR_TEMPLATE,
   DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
+  DEFAULT_RESEARCH_OUTPUT_CONTRACT_TEMPLATE,
   DEFAULT_RESEARCH_VERIFY_TEMPLATE,
   DEFAULT_QUERY_SEED_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
@@ -60,6 +63,7 @@ describe("project-templates", () => {
       researchVerify: DEFAULT_RESEARCH_VERIFY_TEMPLATE,
       researchRepair: DEFAULT_RESEARCH_REPAIR_TEMPLATE,
       researchResolve: DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
+      researchOutputContract: DEFAULT_RESEARCH_OUTPUT_CONTRACT_TEMPLATE,
       trace: DEFAULT_TRACE_TEMPLATE,
       undo: DEFAULT_UNDO_TEMPLATE,
       testVerify: DEFAULT_TEST_VERIFY_TEMPLATE,
@@ -72,6 +76,8 @@ describe("project-templates", () => {
       migrateReview: DEFAULT_MIGRATE_REVIEW_TEMPLATE,
       migrateUx: DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE,
       querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
+      querySeedYn: DEFAULT_QUERY_YN_SEED_TEMPLATE,
+      querySeedSuccessError: DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
       queryExecute: DEFAULT_QUERY_EXECUTION_TEMPLATE,
       queryStreamExecute: DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
       queryAggregate: DEFAULT_QUERY_AGGREGATION_TEMPLATE,
@@ -123,6 +129,7 @@ describe("project-templates", () => {
       researchVerify: DEFAULT_RESEARCH_VERIFY_TEMPLATE,
       researchRepair: DEFAULT_RESEARCH_REPAIR_TEMPLATE,
       researchResolve: DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
+      researchOutputContract: DEFAULT_RESEARCH_OUTPUT_CONTRACT_TEMPLATE,
       trace: DEFAULT_TRACE_TEMPLATE,
       undo: DEFAULT_UNDO_TEMPLATE,
       testVerify: DEFAULT_TEST_VERIFY_TEMPLATE,
@@ -135,6 +142,8 @@ describe("project-templates", () => {
       migrateReview: DEFAULT_MIGRATE_REVIEW_TEMPLATE,
       migrateUx: DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE,
       querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
+      querySeedYn: DEFAULT_QUERY_YN_SEED_TEMPLATE,
+      querySeedSuccessError: DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
       queryExecute: DEFAULT_QUERY_EXECUTION_TEMPLATE,
       queryStreamExecute: DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
       queryAggregate: DEFAULT_QUERY_AGGREGATION_TEMPLATE,
@@ -146,6 +155,7 @@ describe("project-templates", () => {
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "research-verify.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "research-repair.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "research-resolve.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "research-output-contract.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "resolve.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "plan-prepend.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "plan-append.md"));
@@ -163,6 +173,8 @@ describe("project-templates", () => {
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "migrate-review.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "migrate-ux.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed-yn.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed-success-error.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-execute.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-stream-execute.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-aggregate.md"));
@@ -299,6 +311,12 @@ describe("project-templates", () => {
         if (filePath.endsWith("query-seed.md")) {
           return "QUERY_SEED";
         }
+        if (filePath.endsWith("query-seed-yn.md")) {
+          return "QUERY_SEED_YN";
+        }
+        if (filePath.endsWith("query-seed-success-error.md")) {
+          return "QUERY_SEED_SUCCESS_ERROR";
+        }
         if (filePath.endsWith("query-execute.md")) {
           return "QUERY_EXECUTE";
         }
@@ -319,10 +337,14 @@ describe("project-templates", () => {
     );
 
     expect(templates.querySeed).toBe("QUERY_SEED");
+    expect(templates.querySeedYn).toBe("QUERY_SEED_YN");
+    expect(templates.querySeedSuccessError).toBe("QUERY_SEED_SUCCESS_ERROR");
     expect(templates.queryExecute).toBe("QUERY_EXECUTE");
     expect(templates.queryStreamExecute).toBe("QUERY_STREAM_EXECUTE");
     expect(templates.queryAggregate).toBe("QUERY_AGGREGATE");
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed-yn.md"));
+    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed-success-error.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-execute.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-stream-execute.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-aggregate.md"));
@@ -381,5 +403,33 @@ describe("project-templates", () => {
       path,
     );
     expect(whitespaceTemplates.agent).toBe(DEFAULT_AGENT_TEMPLATE);
+  });
+
+  it("treats whitespace-only overrides as missing for all templates", () => {
+    const configDir = "/workspace/.rundown";
+    const templateLoader: TemplateLoader = {
+      load: vi.fn((filePath: string) => {
+        if (filePath.endsWith("execute.md")) {
+          return "   \n\t  ";
+        }
+        if (filePath.endsWith("help.md")) {
+          return "\n\n";
+        }
+        if (filePath.endsWith("query-execute.md")) {
+          return "\t";
+        }
+        return null;
+      }),
+    };
+
+    const templates = loadProjectTemplatesFromPorts(
+      { configDir, isExplicit: false },
+      templateLoader,
+      path,
+    );
+
+    expect(templates.task).toBe(DEFAULT_TASK_TEMPLATE);
+    expect(templates.help).toBe(DEFAULT_HELP_TEMPLATE);
+    expect(templates.queryExecute).toBe(DEFAULT_QUERY_EXECUTION_TEMPLATE);
   });
 });

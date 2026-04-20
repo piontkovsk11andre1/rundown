@@ -598,6 +598,7 @@ export async function runTaskIteration(params: {
     toolPayload: taskIntentDecision.toolPayload,
     prefixChain: executionPrefixChain,
     task: taskForExecution,
+    templates: preparedPrompts.templates,
     prompt: preparedPrompts.prompt,
     expandedContextBefore: preparedPrompts.expandedContextBefore,
     artifactContext: state.artifactContext,

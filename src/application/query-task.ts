@@ -125,7 +125,12 @@ export function createQueryTask(
         dependencies.fileSystem.mkdir(workdirPath, { recursive: true });
       }
 
-      const seedTemplate = selectQuerySeedTemplate(options.format, projectTemplates?.querySeed);
+      const seedTemplate = selectQuerySeedTemplate(
+        options.format,
+        projectTemplates?.querySeed,
+        projectTemplates?.querySeedYn,
+        projectTemplates?.querySeedSuccessError,
+      );
       const seedVars: TemplateVars = {
         task: options.queryText,
         file: queryDocumentPath,
@@ -289,17 +294,22 @@ export function createQueryTask(
   };
 }
 
-function selectQuerySeedTemplate(format: QueryOutputFormat, projectSeedTemplate?: string): string {
-  if (isCustomQueryTemplate(projectSeedTemplate, DEFAULT_QUERY_SEED_TEMPLATE)) {
-    return projectSeedTemplate;
-  }
-
+function selectQuerySeedTemplate(
+  format: QueryOutputFormat,
+  projectSeedTemplate?: string,
+  projectYnSeedTemplate?: string,
+  projectSuccessErrorSeedTemplate?: string,
+): string {
   if (format === "yn") {
-    return DEFAULT_QUERY_YN_SEED_TEMPLATE;
+    return projectYnSeedTemplate ?? DEFAULT_QUERY_YN_SEED_TEMPLATE;
   }
 
   if (format === "success-error") {
-    return DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE;
+    return projectSuccessErrorSeedTemplate ?? DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE;
+  }
+
+  if (isCustomQueryTemplate(projectSeedTemplate, DEFAULT_QUERY_SEED_TEMPLATE)) {
+    return projectSeedTemplate;
   }
 
   return DEFAULT_QUERY_SEED_TEMPLATE;

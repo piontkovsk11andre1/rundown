@@ -1,4 +1,5 @@
 import { type Task } from "../domain/parser.js";
+import { DEFAULT_RESEARCH_OUTPUT_CONTRACT_TEMPLATE } from "../domain/defaults.js";
 import type { TaskIntent } from "../domain/task-intent.js";
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import { insertSubitems } from "../domain/planner.js";
@@ -107,6 +108,9 @@ export async function dispatchTaskExecution(params: {
   toolPayload?: string;
   prefixChain?: PrefixChain;
   task: Task;
+  templates?: {
+    researchOutputContract: string;
+  };
   prompt: string;
   expandedContextBefore: string;
   artifactContext: ArtifactRunContext;
@@ -150,6 +154,7 @@ export async function dispatchTaskExecution(params: {
     toolPayload,
     prefixChain,
     task,
+    templates,
     prompt,
     expandedContextBefore,
     artifactContext,
@@ -284,6 +289,10 @@ export async function dispatchTaskExecution(params: {
         ...buildTaskHierarchyTemplateVars(task),
       } satisfies TemplateVars,
       showAgentOutput,
+      templates: {
+        researchOutputContract:
+          templates?.researchOutputContract ?? DEFAULT_RESEARCH_OUTPUT_CONTRACT_TEMPLATE,
+      },
     };
 
     const executePhaseTrace = traceRunSession.beginPhase("execute", selectedWorkerCommand);

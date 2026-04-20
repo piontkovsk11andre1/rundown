@@ -123,6 +123,14 @@ describe("init-project", () => {
       expect.any(String),
     );
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/.rundown/query-seed-yn.md",
+      expect.any(String),
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/.rundown/query-seed-success-error.md",
+      expect.any(String),
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
       "/workspace/.rundown/query-execute.md",
       expect.any(String),
     );
@@ -255,6 +263,14 @@ describe("init-project", () => {
     );
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
       "/workspace/config/.rundown-custom/query-seed.md",
+      expect.any(String),
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/config/.rundown-custom/query-seed-yn.md",
+      expect.any(String),
+    );
+    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
+      "/workspace/config/.rundown-custom/query-seed-success-error.md",
       expect.any(String),
     );
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(

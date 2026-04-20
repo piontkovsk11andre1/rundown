@@ -16,9 +16,12 @@ import {
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_QUERY_AGGREGATION_TEMPLATE,
   DEFAULT_QUERY_EXECUTION_TEMPLATE,
+  DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
   DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
+  DEFAULT_QUERY_YN_SEED_TEMPLATE,
   DEFAULT_RESEARCH_REPAIR_TEMPLATE,
   DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
+  DEFAULT_RESEARCH_OUTPUT_CONTRACT_TEMPLATE,
   DEFAULT_RESEARCH_VERIFY_TEMPLATE,
   DEFAULT_QUERY_SEED_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
@@ -62,6 +65,7 @@ export interface ProjectTemplates {
   researchVerify: string;
   researchRepair: string;
   researchResolve: string;
+  researchOutputContract: string;
   trace: string;
   undo: string;
   testVerify: string;
@@ -74,6 +78,8 @@ export interface ProjectTemplates {
   migrateReview: string;
   migrateUx: string;
   querySeed: string;
+  querySeedYn: string;
+  querySeedSuccessError: string;
   queryExecute: string;
   queryStreamExecute: string;
   queryAggregate: string;
@@ -110,6 +116,7 @@ export function loadProjectTemplatesFromPorts(
       researchVerify: DEFAULT_RESEARCH_VERIFY_TEMPLATE,
       researchRepair: DEFAULT_RESEARCH_REPAIR_TEMPLATE,
       researchResolve: DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
+      researchOutputContract: DEFAULT_RESEARCH_OUTPUT_CONTRACT_TEMPLATE,
       trace: DEFAULT_TRACE_TEMPLATE,
       undo: DEFAULT_UNDO_TEMPLATE,
       testVerify: DEFAULT_TEST_VERIFY_TEMPLATE,
@@ -122,6 +129,8 @@ export function loadProjectTemplatesFromPorts(
       migrateReview: DEFAULT_MIGRATE_REVIEW_TEMPLATE,
       migrateUx: DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE,
       querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
+      querySeedYn: DEFAULT_QUERY_YN_SEED_TEMPLATE,
+      querySeedSuccessError: DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
       queryExecute: DEFAULT_QUERY_EXECUTION_TEMPLATE,
       queryStreamExecute: DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
       queryAggregate: DEFAULT_QUERY_AGGREGATION_TEMPLATE,
@@ -130,83 +139,58 @@ export function loadProjectTemplatesFromPorts(
 
   // Resolve template paths relative to the discovered project config directory.
   const dir = configDir.configDir;
-  const loadedAgentTemplate = templateLoader.load(pathOperations.join(dir, "agent.md"));
-  const agentTemplate =
-    loadedAgentTemplate && loadedAgentTemplate.trim().length > 0
-      ? loadedAgentTemplate
-      : DEFAULT_AGENT_TEMPLATE;
+  const loadTemplateWithFallback = (fileName: string, fallback: string): string => {
+    const loadedTemplate = templateLoader.load(pathOperations.join(dir, fileName));
+    return loadedTemplate !== null && loadedTemplate.trim().length > 0
+      ? loadedTemplate
+      : fallback;
+  };
 
   return {
     // Prefer project overrides, then fall back to bundled default templates.
-    agent: agentTemplate,
-    task: templateLoader.load(pathOperations.join(dir, "execute.md")) ?? DEFAULT_TASK_TEMPLATE,
-    help: templateLoader.load(pathOperations.join(dir, "help.md")) ?? DEFAULT_HELP_TEMPLATE,
-    discuss: templateLoader.load(pathOperations.join(dir, "discuss.md")) ?? DEFAULT_DISCUSS_TEMPLATE,
-    discussFinished:
-      templateLoader.load(pathOperations.join(dir, "discuss-finished.md")) ??
-      DEFAULT_DISCUSS_FINISHED_TEMPLATE,
-    verify: templateLoader.load(pathOperations.join(dir, "verify.md")) ?? DEFAULT_VERIFY_TEMPLATE,
-    repair: templateLoader.load(pathOperations.join(dir, "repair.md")) ?? DEFAULT_REPAIR_TEMPLATE,
-    resolve: templateLoader.load(pathOperations.join(dir, "resolve.md")) ?? DEFAULT_RESOLVE_TEMPLATE,
-    plan: templateLoader.load(pathOperations.join(dir, "plan.md")) ?? DEFAULT_PLAN_TEMPLATE,
-    planLoop: templateLoader.load(pathOperations.join(dir, "plan-loop.md")) ?? DEFAULT_PLAN_LOOP_TEMPLATE,
-    planPrepend:
-      templateLoader.load(pathOperations.join(dir, "plan-prepend.md")) ??
-      DEFAULT_PLAN_PREPEND_TEMPLATE,
-    planAppend:
-      templateLoader.load(pathOperations.join(dir, "plan-append.md")) ??
-      DEFAULT_PLAN_APPEND_TEMPLATE,
-    deepPlan: templateLoader.load(pathOperations.join(dir, "deep-plan.md")) ?? DEFAULT_DEEP_PLAN_TEMPLATE,
-    research: templateLoader.load(pathOperations.join(dir, "research.md")) ?? DEFAULT_RESEARCH_TEMPLATE,
-    researchVerify:
-      templateLoader.load(pathOperations.join(dir, "research-verify.md")) ??
-      DEFAULT_RESEARCH_VERIFY_TEMPLATE,
-    researchRepair:
-      templateLoader.load(pathOperations.join(dir, "research-repair.md")) ??
-      DEFAULT_RESEARCH_REPAIR_TEMPLATE,
-    researchResolve:
-      templateLoader.load(pathOperations.join(dir, "research-resolve.md")) ??
-      DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
-    trace: templateLoader.load(pathOperations.join(dir, "trace.md")) ?? DEFAULT_TRACE_TEMPLATE,
-    undo: templateLoader.load(pathOperations.join(dir, "undo.md")) ?? DEFAULT_UNDO_TEMPLATE,
-    testVerify:
-      templateLoader.load(pathOperations.join(dir, "test-verify.md")) ??
-      DEFAULT_TEST_VERIFY_TEMPLATE,
-    testFuture:
-      templateLoader.load(pathOperations.join(dir, "test-future.md")) ??
-      DEFAULT_TEST_FUTURE_TEMPLATE,
-    testMaterialized:
-      templateLoader.load(pathOperations.join(dir, "test-materialized.md")) ??
-      DEFAULT_TEST_MATERIALIZED_TEMPLATE,
-    migrate:
-      templateLoader.load(pathOperations.join(dir, "migrate.md")) ??
-      DEFAULT_MIGRATE_TEMPLATE,
-    migrateContext:
-      templateLoader.load(pathOperations.join(dir, "migrate-context.md")) ??
-      DEFAULT_MIGRATE_CONTEXT_TEMPLATE,
-    migrateSnapshot:
-      templateLoader.load(pathOperations.join(dir, "migrate-snapshot.md")) ??
-      DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
-    migrateBacklog:
-      templateLoader.load(pathOperations.join(dir, "migrate-backlog.md")) ??
-      DEFAULT_MIGRATE_BACKLOG_TEMPLATE,
-    migrateReview:
-      templateLoader.load(pathOperations.join(dir, "migrate-review.md")) ??
-      DEFAULT_MIGRATE_REVIEW_TEMPLATE,
-    migrateUx:
-      templateLoader.load(pathOperations.join(dir, "migrate-ux.md")) ??
-      DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE,
-    querySeed:
-      templateLoader.load(pathOperations.join(dir, "query-seed.md")) ??
-      DEFAULT_QUERY_SEED_TEMPLATE,
-    queryExecute:
-      templateLoader.load(pathOperations.join(dir, "query-execute.md")) ??
-      DEFAULT_QUERY_EXECUTION_TEMPLATE,
-    queryStreamExecute:
-      templateLoader.load(pathOperations.join(dir, "query-stream-execute.md")) ??
+    agent: loadTemplateWithFallback("agent.md", DEFAULT_AGENT_TEMPLATE),
+    task: loadTemplateWithFallback("execute.md", DEFAULT_TASK_TEMPLATE),
+    help: loadTemplateWithFallback("help.md", DEFAULT_HELP_TEMPLATE),
+    discuss: loadTemplateWithFallback("discuss.md", DEFAULT_DISCUSS_TEMPLATE),
+    discussFinished: loadTemplateWithFallback("discuss-finished.md", DEFAULT_DISCUSS_FINISHED_TEMPLATE),
+    verify: loadTemplateWithFallback("verify.md", DEFAULT_VERIFY_TEMPLATE),
+    repair: loadTemplateWithFallback("repair.md", DEFAULT_REPAIR_TEMPLATE),
+    resolve: loadTemplateWithFallback("resolve.md", DEFAULT_RESOLVE_TEMPLATE),
+    plan: loadTemplateWithFallback("plan.md", DEFAULT_PLAN_TEMPLATE),
+    planLoop: loadTemplateWithFallback("plan-loop.md", DEFAULT_PLAN_LOOP_TEMPLATE),
+    planPrepend: loadTemplateWithFallback("plan-prepend.md", DEFAULT_PLAN_PREPEND_TEMPLATE),
+    planAppend: loadTemplateWithFallback("plan-append.md", DEFAULT_PLAN_APPEND_TEMPLATE),
+    deepPlan: loadTemplateWithFallback("deep-plan.md", DEFAULT_DEEP_PLAN_TEMPLATE),
+    research: loadTemplateWithFallback("research.md", DEFAULT_RESEARCH_TEMPLATE),
+    researchVerify: loadTemplateWithFallback("research-verify.md", DEFAULT_RESEARCH_VERIFY_TEMPLATE),
+    researchRepair: loadTemplateWithFallback("research-repair.md", DEFAULT_RESEARCH_REPAIR_TEMPLATE),
+    researchResolve: loadTemplateWithFallback("research-resolve.md", DEFAULT_RESEARCH_RESOLVE_TEMPLATE),
+    researchOutputContract: loadTemplateWithFallback(
+      "research-output-contract.md",
+      DEFAULT_RESEARCH_OUTPUT_CONTRACT_TEMPLATE,
+    ),
+    trace: loadTemplateWithFallback("trace.md", DEFAULT_TRACE_TEMPLATE),
+    undo: loadTemplateWithFallback("undo.md", DEFAULT_UNDO_TEMPLATE),
+    testVerify: loadTemplateWithFallback("test-verify.md", DEFAULT_TEST_VERIFY_TEMPLATE),
+    testFuture: loadTemplateWithFallback("test-future.md", DEFAULT_TEST_FUTURE_TEMPLATE),
+    testMaterialized: loadTemplateWithFallback("test-materialized.md", DEFAULT_TEST_MATERIALIZED_TEMPLATE),
+    migrate: loadTemplateWithFallback("migrate.md", DEFAULT_MIGRATE_TEMPLATE),
+    migrateContext: loadTemplateWithFallback("migrate-context.md", DEFAULT_MIGRATE_CONTEXT_TEMPLATE),
+    migrateSnapshot: loadTemplateWithFallback("migrate-snapshot.md", DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE),
+    migrateBacklog: loadTemplateWithFallback("migrate-backlog.md", DEFAULT_MIGRATE_BACKLOG_TEMPLATE),
+    migrateReview: loadTemplateWithFallback("migrate-review.md", DEFAULT_MIGRATE_REVIEW_TEMPLATE),
+    migrateUx: loadTemplateWithFallback("migrate-ux.md", DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE),
+    querySeed: loadTemplateWithFallback("query-seed.md", DEFAULT_QUERY_SEED_TEMPLATE),
+    querySeedYn: loadTemplateWithFallback("query-seed-yn.md", DEFAULT_QUERY_YN_SEED_TEMPLATE),
+    querySeedSuccessError: loadTemplateWithFallback(
+      "query-seed-success-error.md",
+      DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
+    ),
+    queryExecute: loadTemplateWithFallback("query-execute.md", DEFAULT_QUERY_EXECUTION_TEMPLATE),
+    queryStreamExecute: loadTemplateWithFallback(
+      "query-stream-execute.md",
       DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
-    queryAggregate:
-      templateLoader.load(pathOperations.join(dir, "query-aggregate.md")) ??
-      DEFAULT_QUERY_AGGREGATION_TEMPLATE,
+    ),
+    queryAggregate: loadTemplateWithFallback("query-aggregate.md", DEFAULT_QUERY_AGGREGATION_TEMPLATE),
   };
 }

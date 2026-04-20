@@ -140,20 +140,12 @@ describe("builtin-tools/for-loop", () => {
 
   it("loads research output contract from .rundown template when configured", async () => {
     const context = createContext({
-      configDir: "/workspace/.rundown",
-      fileSystem: {
-        ...createContext().fileSystem,
-        exists: vi.fn((targetPath: string) => targetPath === "/workspace/.rundown/research-output-contract.md"),
-        readText: vi.fn((targetPath: string) => {
-          if (targetPath === "/workspace/.rundown/research-output-contract.md") {
-            return [
-              "- Custom line for {{itemLabel}}",
-              "- Prefix token {{metadataPrefix}}",
-              "- Empty rule {{emptyConditionLabel}}",
-            ].join("\n");
-          }
-          return "";
-        }),
+      templates: {
+        researchOutputContract: [
+          "- Custom line for {{itemLabel}}",
+          "- Prefix token {{metadataPrefix}}",
+          "- Empty rule {{emptyConditionLabel}}",
+        ].join("\n"),
       },
     });
 

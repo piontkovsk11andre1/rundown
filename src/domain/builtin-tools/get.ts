@@ -30,11 +30,7 @@ function buildExtractionPrompt(query: string, context: ToolHandlerContext): stri
     itemLabel: "extracted item",
     metadataPrefix: "get-result:",
     emptyConditionLabel: "results are found",
-  }, {
-    configDir: context.configDir,
-    fileSystem: context.fileSystem,
-    pathOperations: context.pathOperations,
-  });
+  }, context.templates?.researchOutputContract);
 
   return [
     "You are a full-scale research agent resolving a task query against the current project.",

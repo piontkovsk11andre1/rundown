@@ -19,17 +19,13 @@ function buildForLoopResearchPrompt(
   source: string,
   contextBefore: string,
   taskText: string,
-  context: Pick<Parameters<ToolHandlerFn>[0], "configDir" | "fileSystem" | "pathOperations">,
+  context: Pick<Parameters<ToolHandlerFn>[0], "templates">,
 ): string {
   const outputContract = buildResearchOutputPromptContract({
     itemLabel: "item",
     metadataPrefix: "for-item:",
     emptyConditionLabel: "items are found",
-  }, {
-    configDir: context.configDir,
-    fileSystem: context.fileSystem,
-    pathOperations: context.pathOperations,
-  });
+  }, context.templates?.researchOutputContract);
 
   return [
     "You are a full-scale research agent preparing concrete loop items for a for-each task.",
@@ -157,9 +153,7 @@ export const forLoopHandler: ToolHandlerFn = async (context) => {
         context.contextBefore,
         context.task.text,
         {
-          configDir: context.configDir,
-          fileSystem: context.fileSystem,
-          pathOperations: context.pathOperations,
+          templates: context.templates,
         },
       );
       const runResult = await context.workerExecutor.runWorker({

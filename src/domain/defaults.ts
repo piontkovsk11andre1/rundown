@@ -85,6 +85,15 @@ If no {{emptyConditionLabel}}, return an exactly empty response (no lines, no bl
 Do not include commentary.
 `;
 
+/**
+ * Canonical inline output contract sentence for authored `get:` tasks.
+ *
+ * Used across planner and execution templates to keep get-output guidance
+ * stable and prevent prompt drift.
+ */
+export const DEFAULT_GET_OUTPUT_CONTRACT_SENTENCE =
+  "Output one item per line using plain lines or Markdown list items (bulleted or numbered only, no JSON). Do not use Markdown task checkbox syntax (- [ ] / - [x]) and do not include commentary. Preserve discovery order. If none are found, return an exactly empty response (no lines, no blank lines, no whitespace-only output).";
+
 const DEFAULT_PLANNING_FEATURE_REFERENCE_SHARED_FRAGMENT = `\
 Use built-in prefixes when they improve execution quality{{qualitySuffix}}:
 
@@ -144,11 +153,14 @@ Heuristics:
 
 Output contract requirements for agentic tasks:
 
-- For every newly authored \`get:\` {{inlineTaskSubject}}, include this canonical inline output contract sentence in task text: \`Output one item per line using plain lines or Markdown list items (bulleted or numbered only, no JSON). If none are found, output exactly nothing.\` Keep discovery-order wording explicit when relevant, and avoid a literal \`get-result:\` prefix in output instructions because the runtime writes canonical \`get-result:\` sub-items.
-- For \`loop:\` {{inlineTaskSubject}} that mixes iterative discovery with durable context capture, use this bounded child pattern so outputs stay reusable across passes:
+- For every newly authored \`get:\` {{inlineTaskSubject}}, include this canonical inline output contract sentence in task text: \`${DEFAULT_GET_OUTPUT_CONTRACT_SENTENCE}\` Keep discovery-order wording explicit when relevant, and avoid a literal \`get-result:\` prefix in output instructions because the runtime writes canonical \`get-result:\` sub-items.
+- For iterative/unknown \`loop:\` {{inlineTaskSubject}}, require loop decomposition with child \`get:\` + child \`for:\` + child \`memory:\` + optional child \`fast:\` + terminal \`end:\` so per-item execution stays explicit, outputs remain reusable across passes, and the loop always has a deterministic stop signal.
+- For \`loop:\` {{inlineTaskSubject}} that mixes iterative discovery with durable context capture, use this bounded child pattern:
 
   \`- [ ] loop: audit rollout blockers until no new blockers appear\`
-  \`  - [ ] get: list one blocker per line. Output one item per line using plain lines or Markdown list items (bulleted or numbered only, no JSON). If none are found, output exactly nothing.\`
+  \`  - [ ] get: list one blocker per line. ${DEFAULT_GET_OUTPUT_CONTRACT_SENTENCE}\`
+  \`  - [ ] for: run per-blocker implementation/verification child tasks from source task context\`
+  \`    - [ ] fast: apply one small mechanical blocker fix when confidence is high\` (optional)
   \`  - [ ] memory: capture blocker trends that should influence the next pass\`
   \`  - [ ] end: stop when two consecutive passes produce no new blockers\`
 
@@ -265,6 +277,13 @@ ${DEFAULT_TEMPLATE_VARS_SECTION}
 Execute the selected task.
 
 Complete the task described above. Make the necessary changes to the project.
+
+## \`get:\` output contract
+
+When the selected task uses the \`get:\` prefix, enforce this output contract exactly:
+
+- \`${DEFAULT_GET_OUTPUT_CONTRACT_SENTENCE}\`
+- Avoid emitting a literal \`get-result:\` prefix unless it is part of the discovered value; the runtime writes canonical \`get-result:\` sub-items.
 
 - By default, do not modify the source Markdown task file (\`{{file}}\`).
 - Exception: if the selected task explicitly requires edits to \`{{file}}\`, make only the requested content changes.
@@ -1298,7 +1317,11 @@ When newly added TODO items involve uncertain facts, unknown constraints, or ite
 2. Add \`memory:\` capture tasks second to persist reusable context from those findings.
 3. Add implementation/edit tasks after discovery and memory capture tasks.
 
+When authoring those implementation/edit tasks, explicitly classify low-risk mechanical subtasks as \`fast:\` (inline or directive parent) instead of leaving them plain/unprefixed.
+
 Do not invert this order unless the source document provides a hard dependency that requires a different sequence.
+
+For iterative/unknown work that needs repeated passes, you MUST author a \`loop:\` task (not a flat sequence) and decompose it with child \`get:\`, child \`for:\`, child \`memory:\`, optional child \`fast:\` (typically under \`for:\` for per-item mechanical actions), and a terminal child \`end:\` stop condition.
 
 ${DEFAULT_PLAN_FEATURE_REFERENCE_SECTION}
 
@@ -1336,16 +1359,21 @@ Plan for bounded iterative workflows. Favor patterns that discover values, itera
 When adding or fixing loop-oriented TODO items, strongly prefer this composition:
 
 1. \`get:\` discovers an iterable set of items/values.
-2. \`end:\` defines a deterministic stop rule (for example no discovered values, no new items, or a bounded pass counter).
-3. \`for:\` iterates discovered values and runs per-item implementation/review child tasks.
-4. \`for:\` child task wording must state per-item execution intent (implementation and/or verification actions) derived from the source task context.
+2. \`for:\` iterates discovered values and runs per-item implementation/review child tasks.
+3. \`memory:\` captures durable findings/trends from each pass so the next pass can reuse context.
+4. \`end:\` defines a deterministic stop rule (for example no discovered values, no new items, or a bounded pass counter).
+5. For each per-item child task under \`for:\`, explicitly encode execution intent with a canonical directive: use \`fast:\` for low-risk mechanical actions, and use \`verify:\` for risky or state-sensitive checks. Do not leave per-item child tasks unprefixed.
+6. \`for:\` child task wording must state per-item execution intent (implementation and/or verification actions) derived from the source task context.
 
 Preferred loop authoring shape:
 
 - \`- [ ] loop: <bounded iterative objective>\`
 - \`  - [ ] get: <discover iterable items in stable order>\`
-- \`  - [ ] end: stop when get returns no items (or another explicit deterministic rule)\`
 - \`  - [ ] for: <run per-item implementation/verification tasks from source task context for each discovered item>\`
+- \`    - [ ] fast: <small/mechanical per-item action when confidence is high>\`
+- \`    - [ ] verify: <risky/state-sensitive per-item check when additional assurance is needed>\`
+- \`  - [ ] memory: <capture reusable findings from this pass for next-pass reuse>\`
+- \`  - [ ] end: stop when get returns no items (or another explicit deterministic rule)\`
 
 Use clear, deterministic stop conditions. Avoid open-ended loops without an explicit terminal rule.
 
@@ -1383,6 +1411,7 @@ Rules:
 - You may fix prefixes on existing unchecked items: normalize aliases to canonical form (e.g. \`check:\` → \`verify:\`), add a missing prefix when the task clearly needs one, or remove an incorrect prefix.
 - Remove obviously wrong duplicate directive groups/prefix wrappers and duplicate inline prefixes on unchecked items (for example repeated \`fast:\`/\`verify:\` wrappers or stacked identical prefixes introduced by prior planning passes).
 - For loop-oriented tasks, require explicit \`get:\` + \`for:\` + \`end:\` composition unless the source document provides a stronger deterministic pattern.
+- Under \`for:\` parents, do not leave per-item child tasks plain/unprefixed. Classify each per-item child task with explicit execution intent (\`fast:\` for low-risk mechanical actions; \`verify:\` for risky/state-sensitive checks).
 - Any \`loop:\` task must include an explicit terminal \`end:\` stop condition (inline or child item).
 - Do not change any \`- [ ]\` item to \`- [x]\`.
 - Do not remove or move any existing item (checked or unchecked).
@@ -1466,7 +1495,11 @@ When newly added child TODO items involve uncertain facts, unknown constraints, 
 2. Add \`memory:\` capture child tasks second to persist reusable context from those findings.
 3. Add implementation/edit child tasks after discovery and memory capture tasks.
 
+When authoring those implementation/edit child tasks, explicitly classify low-risk mechanical subtasks as \`fast:\` (inline or directive parent) instead of leaving them plain/unprefixed.
+
 Do not invert this order unless the parent task or source document provides a hard dependency that requires a different sequence.
+
+For iterative/unknown child work that needs repeated passes, you MUST author a \`loop:\` child task (not a flat sequence) and decompose it with child \`get:\`, child \`for:\`, child \`memory:\`, optional child \`fast:\` (typically under \`for:\` for per-item mechanical actions), and a terminal child \`end:\` stop condition.
 
 ${DEFAULT_DEEP_PLAN_FEATURE_REFERENCE_SECTION}
 
@@ -1802,7 +1835,7 @@ Do not write step output files in this mode.
 - Emit exactly one extracted item per line.
 - Preserve discovery order.
 - Do not add commentary, headings, labels, code fences, or JSON.
-- If no items are found, print nothing.
+- If no items are found, return an exactly empty stdout response (no lines, no blank lines, no whitespace-only output).
 `;
 
 /**

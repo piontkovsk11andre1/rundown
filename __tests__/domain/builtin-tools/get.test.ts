@@ -244,18 +244,13 @@ describe("builtin-tools/get getHandler", () => {
       })),
     });
 
-    context.configDir = "C:/workspace/.rundown";
-    context.fileSystem.exists = vi.fn((targetPath: string) => targetPath === "C:/workspace/.rundown/research-output-contract.md");
-    context.fileSystem.readText = vi.fn((targetPath: string) => {
-      if (targetPath === "C:/workspace/.rundown/research-output-contract.md") {
-        return [
-          "- One {{itemLabel}} each line",
-          "- Prefix literal: `{{metadataPrefix}}`",
-          "- Empty when {{emptyConditionLabel}}",
-        ].join("\n");
-      }
-      return source;
-    });
+    context.templates = {
+      researchOutputContract: [
+        "- One {{itemLabel}} each line",
+        "- Prefix literal: `{{metadataPrefix}}`",
+        "- Empty when {{emptyConditionLabel}}",
+      ].join("\n"),
+    };
 
     await getHandler(context);
 

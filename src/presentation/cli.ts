@@ -433,11 +433,11 @@ const designCommand = program
     [
       "",
       "Examples:",
-      "  - rundown design release --label \"Initial baseline\"",
-      "  - rundown design release --workspace ../source-workspace --label \"Initial baseline\"",
-      "  - rundown design diff",
-      "  - rundown design diff preview",
-      "  - rundown design diff --workspace ../source-workspace",
+      "  - rd design release --label \"Initial baseline\"",
+      "  - rd design release --workspace ../source-workspace --label \"Initial baseline\"",
+      "  - rd design diff",
+      "  - rd design diff preview",
+      "  - rd design diff --workspace ../source-workspace",
     ].join("\n"),
   );
 
@@ -469,9 +469,9 @@ designCommand
     [
       "",
       "Examples:",
-      "  - rundown design diff",
-      "  - rundown design diff preview",
-      "  - rundown design diff --workspace ../source-workspace",
+      "  - rd design diff",
+      "  - rd design diff preview",
+      "  - rd design diff --workspace ../source-workspace",
     ].join("\n"),
   );
 

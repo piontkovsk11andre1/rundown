@@ -11392,7 +11392,7 @@ describe.sequential("CLI integration", () => {
     const helpOutput = result.stdoutWrites.join("\n");
     const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
     expect(compactHelpOutput).toContain("--workspace <dir> Workspace directory to use for linked/multi-workspace resolution");
-    expect(compactHelpOutput).toContain("rundown design diff --workspace ../source-workspace");
+    expect(compactHelpOutput).toContain("rd design diff --workspace ../source-workspace");
   });
 
   it("docs --help falls back to root help because docs command is removed", async () => {

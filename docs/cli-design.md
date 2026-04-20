@@ -4,7 +4,7 @@ Manage design-doc revision lifecycle separately from migration execution.
 
 Use `design` commands for revision snapshots and revision diffs; use `migrate` commands for migration proposal generation, execution, and satellites.
 
-## `rundown design release`
+## `rd design release`
 
 Release `design/current/` into the next immutable `design/rev.N/` snapshot.
 
@@ -21,7 +21,7 @@ No-change behavior is preserved: when `design/current/` is byte-for-byte unchang
 Synopsis:
 
 ```bash
-rundown design release [options]
+rd design release [options]
 ```
 
 Arguments:
@@ -40,13 +40,13 @@ Examples:
 
 ```bash
 # Create next immutable design revision snapshot
-rundown design release --label "snapshot"
+rd design release --label "snapshot"
 
 # Use explicit workspace for linked/multi-workspace resolution
-rundown design release --workspace ../platform-core
+rd design release --workspace ../platform-core
 ```
 
-## `rundown design diff [target]`
+## `rd design diff [target]`
 
 Show revision diff context using either shorthand target or explicit selectors.
 
@@ -70,7 +70,7 @@ Explicit selector form:
 Synopsis:
 
 ```bash
-rundown design diff [target] [options]
+rd design diff [target] [options]
 ```
 
 Arguments:
@@ -90,13 +90,13 @@ Examples:
 
 ```bash
 # Summary diff against current draft
-rundown design diff
+rd design diff
 
 # Preview diff with source reference listing
-rundown design diff preview
+rd design diff preview
 
 # Explicit selector form
-rundown design diff --from rev.2 --to current
+rd design diff --from rev.2 --to current
 ```
 
 Migration file naming:

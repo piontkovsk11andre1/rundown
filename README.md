@@ -141,7 +141,7 @@ specs/
 A concrete example:
 
 ```text
-design/rev.0/Target.md             # Last released revision (`rundown design release`)
+design/rev.0/Target.md             # Last released revision (`rd design release`)
 design/rev.1/Target.md
 design/current/Target.md           # Current design document
 

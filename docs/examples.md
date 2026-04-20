@@ -452,26 +452,26 @@ Terminal-stop examples:
 
 ## 21. Release design revisions and diff before migration
 
-Use `rundown design` when you want to manage design-document revisions directly.
+Use `rd design` when you want to manage design-document revisions directly.
 
 ```bash
 # Release design/current into the next immutable design/rev.N snapshot
-rundown design release --dir ./migrations
+rd design release --dir ./migrations
 
 # Add optional label metadata to the released revision
-rundown design release --dir ./migrations --label "Auth v2 baseline"
+rd design release --dir ./migrations --label "Auth v2 baseline"
 
 # When linked workspace selection is ambiguous, choose explicitly
-rundown design release --dir ./migrations --workspace ../source-workspace --label "Auth v2 baseline"
+rd design release --dir ./migrations --workspace ../source-workspace --label "Auth v2 baseline"
 
 # Shorthand diff against current draft
-rundown design diff --dir ./migrations
+rd design diff --dir ./migrations
 
 # Preview diff with revision source references
-rundown design diff preview --dir ./migrations
+rd design diff preview --dir ./migrations
 
 # Explicit selector form
-rundown design diff --dir ./migrations --from rev.3 --to current
+rd design diff --dir ./migrations --from rev.3 --to current
 ```
 
 What happens:
@@ -504,6 +504,6 @@ rundown migrate up --dir ./migrations -- opencode run
 rundown migrate down 1 --dir ./migrations -- opencode run
 ```
 
-`migrate` intentionally excludes design-revision actions; use `rundown design release` and `rundown design diff` for revision lifecycle work.
+`migrate` intentionally excludes design-revision actions; use `rd design release` and `rd design diff` for revision lifecycle work.
 
 If linked workspace resolution is ambiguous (for example `.rundown/workspace.link` has multiple records and no default), `migrate`/`design` commands fail with candidate guidance and require `--workspace <dir>`.

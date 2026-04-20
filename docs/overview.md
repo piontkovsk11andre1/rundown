@@ -31,7 +31,7 @@ In addition to execute/verify task running, rundown supports a prediction-orient
 
 Command-boundary rule:
 
-- `rundown design ...` is for design-doc revision lifecycle (`release`, `diff`).
+- `rd design ...` is the canonical naming for design-doc revision lifecycle (`release`, `diff`).
 - `rundown migrate ...` is for migration lifecycle (proposal generation, execution, satellites, user-session flow).
 
 Prediction migration naming convention:

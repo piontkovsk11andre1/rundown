@@ -522,6 +522,67 @@ describe("run-task-execution helpers", () => {
     expect(typeof profileEntry.lastSuccessAt).toBe("string");
   });
 
+  it("emits startup warnings for unhealthy worker-health entries before task iteration", async () => {
+    const cwd = "/workspace";
+    const taskFile = `${cwd}/tasks.md`;
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task: createTask(taskFile, "implement feature"),
+      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] implement feature\n" }),
+      gitClient: createGitClientMock(),
+    });
+
+    dependencies.workerHealthStore = {
+      read: vi.fn(() => ({
+        schemaVersion: 1,
+        updatedAt: "2026-04-20T10:00:00.000Z",
+        entries: [
+          {
+            key: buildWorkerHealthWorkerKey(["opencode", "run", "$bootstrap"]),
+            source: "worker" as const,
+            status: WORKER_HEALTH_STATUS_UNAVAILABLE,
+            lastFailureClass: WORKER_FAILURE_CLASS_TRANSPORT_UNAVAILABLE,
+            lastFailureAt: "2026-04-16T13:00:48.000Z",
+          },
+          {
+            key: buildWorkerHealthWorkerKey(["opencode", "run", "$bootstrap", "--model", "opus"]),
+            source: "worker" as const,
+            status: WORKER_HEALTH_STATUS_COOLING_DOWN,
+            cooldownUntil: "2099-04-16T03:39:20.000Z",
+          },
+          {
+            key: buildWorkerHealthProfileKey("fast"),
+            source: "profile" as const,
+            status: WORKER_HEALTH_STATUS_UNAVAILABLE,
+          },
+          {
+            key: buildWorkerHealthWorkerKey(["already", "healthy"]),
+            source: "worker" as const,
+            status: WORKER_HEALTH_STATUS_HEALTHY,
+          },
+        ],
+      })),
+      write: vi.fn(),
+      filePath: vi.fn(() => `${cwd}/.rundown/worker-health.json`),
+    };
+
+    const runTask = createRunTaskExecution(dependencies);
+    const code = await runTask(createOptions({ verify: false }));
+
+    expect(code).toBe(0);
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "warn",
+      message: "Worker \"opencode run $bootstrap\" is unavailable (transport_unavailable since 2026-04-16T13:00:48.000Z).",
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "warn",
+      message: "Worker \"opencode run $bootstrap --model opus\" is cooling down until 2099-04-16T03:39:20.000Z.",
+    }));
+    const startupWarnings = events.filter((event) => event.kind === "warn"
+      && event.message.startsWith("Worker \""));
+    expect(startupWarnings).toHaveLength(2);
+  });
+
   it("preserves quoted cli-args when executing inline cli tasks", async () => {
     const cwd = "/workspace";
     const taskFile = `${cwd}/tasks.md`;

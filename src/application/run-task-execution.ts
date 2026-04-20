@@ -88,6 +88,7 @@ import type {
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import {
   buildWorkerHealthProfileKey,
+  evaluateWorkerHealthEligibility,
   WORKER_FAILURE_CLASS_EXECUTION_FAILURE_OTHER,
   WORKER_FAILURE_CLASS_SUCCESS,
   WORKER_FAILURE_CLASS_TRANSPORT_UNAVAILABLE,
@@ -134,6 +135,83 @@ function resolveCooldownSecondsForFailureClass(
   }
 
   return healthPolicy?.cooldownSecondsByFailureClass?.execution_failure_other ?? 0;
+}
+
+function emitStartupUnhealthyWorkerWarnings(params: {
+  entries: readonly WorkerHealthEntry[];
+  nowMs: number;
+  emit: EmitFn;
+}): void {
+  const { entries, nowMs, emit } = params;
+
+  for (const entry of entries) {
+    if (entry.source !== "worker") {
+      continue;
+    }
+
+    const eligibility = evaluateWorkerHealthEligibility(entry, nowMs);
+    if (eligibility.eligible) {
+      continue;
+    }
+
+    const workerLabel = formatWorkerHealthEntryLabel(entry);
+    if (eligibility.reason === "cooling_down") {
+      const cooldownSuffix = typeof entry.cooldownUntil === "string" && entry.cooldownUntil.trim().length > 0
+        ? " until " + entry.cooldownUntil
+        : "";
+      emit({
+        kind: "warn",
+        message: "Worker \"" + workerLabel + "\" is cooling down" + cooldownSuffix + ".",
+      });
+      continue;
+    }
+
+    const failureClass = entry.lastFailureClass;
+    const failureAt = entry.lastFailureAt;
+    let detailSuffix = "";
+    if (failureClass && failureAt) {
+      detailSuffix = " (" + failureClass + " since " + failureAt + ")";
+    } else if (failureClass) {
+      detailSuffix = " (" + failureClass + ")";
+    } else if (failureAt) {
+      detailSuffix = " (since " + failureAt + ")";
+    }
+
+    emit({
+      kind: "warn",
+      message: "Worker \"" + workerLabel + "\" is unavailable" + detailSuffix + ".",
+    });
+  }
+}
+
+function formatWorkerHealthEntryLabel(entry: WorkerHealthEntry): string {
+  const keyPrefix = "worker:";
+  const workerKeyPayload = entry.key.startsWith(keyPrefix)
+    ? entry.key.slice(keyPrefix.length)
+    : entry.key;
+  const parsedTokens = tryParseWorkerCommandTokens(workerKeyPayload);
+  if (parsedTokens && parsedTokens.length > 0) {
+    return parsedTokens.join(" ");
+  }
+
+  const trimmedPayload = workerKeyPayload.trim();
+  return trimmedPayload.length > 0 ? trimmedPayload : "(unknown worker)";
+}
+
+function tryParseWorkerCommandTokens(value: string): string[] | null {
+  if (!value.startsWith("[") || !value.endsWith("]")) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed) || parsed.some((token) => typeof token !== "string")) {
+      return null;
+    }
+    return parsed as string[];
+  } catch {
+    return null;
+  }
 }
 
 function updateWorkerHealthForAttemptOutcome(params: {
@@ -760,6 +838,11 @@ export function createRunTaskExecution(
       loadedWorkerConfig?.workers?.fallbacks?.length ?? 0,
     );
     const maxFailoverAttemptsPerRun = healthPolicy?.maxFailoverAttemptsPerRun;
+    emitStartupUnhealthyWorkerWarnings({
+      entries: workerHealthEntries,
+      nowMs: Date.now(),
+      emit,
+    });
 
     // Initialize run-scoped mutable state shared across task iterations.
     const state: Parameters<typeof runTaskIteration>[0]["state"] = {

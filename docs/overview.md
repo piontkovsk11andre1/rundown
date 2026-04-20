@@ -36,10 +36,10 @@ Command-boundary rule:
 
 Prediction migration naming convention:
 
-- migration step: `0007-implement-feature.md`
-- satellite artifact: `0007--snapshot.md`
+- migration step: `7. Implement Feature.md`
+- satellite artifact: `7.1 Snapshot.md`
 
-The double-dash split distinguishes sequential migration steps from generated satellite files at the same migration number.
+Satellites use dotted numeric suffixes on the same migration number (`N.1`, `N.2`, `N.3`).
 
 Predicted-state test semantics:
 

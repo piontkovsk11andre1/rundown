@@ -30,11 +30,11 @@ Actions:
 - omitted: generate next migration
 - `up`: execute migration tasks (`run-all` style)
 - `down [n]`: alias of `rundown undo [--last n]`
-- `snapshot`: generate `NNNN--snapshot.md`
-- `backlog`: generate `NNNN--backlog.md`
-- `context`: (re)generate `NNNN--context.md`
-- `review`: generate `NNNN--review.md`
-- `user-experience`: generate `NNNN--user-experience.md`
+- `snapshot`: generate `N.1 Snapshot.md`
+- `backlog`: generate `N.2 Backlog.md`
+- `context`: (re)generate `N.4 Context.md`
+- `review`: generate `N.3 Review.md`
+- `user-experience`: generate `N.5 User Experience.md`
 - `user-session`: interactive migration discussion session
 
 Options:
@@ -68,7 +68,7 @@ Mixed-placement example:
   "workspace": {
     "directories": {
       "design": "design",
-      "specs": "checks/specs",
+      "specs": "specs",
       "migrations": "migrations"
     },
     "placement": {
@@ -86,7 +86,7 @@ Linked workspace example (resolved roots):
 - resolved workspace (`sourcedir`): `/Users/alex/platform-core`
 - effective paths:
   - design -> `/Users/alex/platform-core/design`
-  - specs -> `/Users/alex/client-a/checks/specs`
+  - specs -> `/Users/alex/client-a/specs`
   - migrations -> `/Users/alex/platform-core/migrations`
 
 Examples:

@@ -383,7 +383,7 @@ program
       "Examples:",
       "  - rundown start \"Ship auth flow\" --design-dir design --specs-dir specs --migrations-dir migrations -- opencode run",
       "  - rundown start \"Ship auth flow\" --design-placement sourcedir --specs-placement workdir --migrations-placement sourcedir -- opencode run",
-      "  - rundown start \"Ship auth flow\" --dir ./predict-auth --design-dir docs --specs-dir checks --migrations-dir changes -- opencode run",
+      "  - rundown start \"Ship auth flow\" --dir ./predict-auth --design-dir design --specs-dir specs --migrations-dir migrations -- opencode run",
     ].join("\n"),
   );
 

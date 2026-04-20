@@ -101,7 +101,7 @@ rd design diff --from rev.2 --to current
 
 Migration file naming:
 
-- step migration: `0007-implement-feature.md`
-- satellite artifact: `0007--snapshot.md`
+- step migration: `7. Implement Feature.md`
+- satellite artifact: `7.1 Snapshot.md`
 
-Single dash identifies a migration step; double dash identifies a satellite artifact type for the same migration position.
+Use `N. Title.md` for migrations and `N.1` / `N.2` / `N.3` suffixes for snapshot/backlog/review satellites.

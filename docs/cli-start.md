@@ -8,7 +8,7 @@ By default, `start` creates a design-first project structure and prepares migrat
 - `design/current/Target.md`
 - `AGENTS.md`
 - `migrations/`
-- `migrations/0001-initialize.md`
+- `migrations/1. Initialization.md`
 - `specs/`
 - `.rundown/`
 
@@ -82,5 +82,5 @@ Examples:
 rundown start "Ship auth flow" -- opencode run
 rundown start "Ship auth flow" --design-dir design --specs-dir specs --migrations-dir migrations -- opencode run
 rundown start "Ship auth flow" --design-placement sourcedir --specs-placement workdir --migrations-placement sourcedir -- opencode run
-rundown start "Ship auth flow" --dir ./predict-auth --design-dir docs --specs-dir checks --migrations-dir changes -- opencode run
+rundown start "Ship auth flow" --dir ./predict-auth --design-dir design --specs-dir specs --migrations-dir migrations -- opencode run
 ```

@@ -1286,7 +1286,7 @@ function createMigrationDocument(
   proposalsOutput: string,
 ): string {
   return [
-    `# ${String(number)} ${toTitleCase(selected.name)}`,
+    `# ${String(number)}. ${toTitleCase(selected.name)}`,
     "",
     selected.label,
     "",

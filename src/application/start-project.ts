@@ -263,7 +263,7 @@ function buildInitialMigrationMarkdown(
   if (options?.seedFromExistingWorkspace) {
     const designTargetPath = [options.designDir ?? "design", "current", "Target.md"].join("/");
     return [
-      "# 0001 initialize",
+      "# 1. Initialize",
       "",
       "Seed migration generated from project description:",
       "",
@@ -276,7 +276,7 @@ function buildInitialMigrationMarkdown(
   }
 
   return [
-    "# 0001 initialize",
+    "# 1. Initialize",
     "",
     "Seed migration generated from project description:",
     "",

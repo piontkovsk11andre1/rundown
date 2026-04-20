@@ -39,6 +39,7 @@ import {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("prepare-task-prompts", () => {
@@ -2052,6 +2053,9 @@ describe("run-task-iteration", () => {
   });
 
   it("waits for nearest cooling-down worker and retries resolution once", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");
     const task = createTask(taskFile, "Ship release");
@@ -2089,8 +2093,8 @@ describe("run-task-iteration", () => {
     });
 
     const nowMs = Date.now();
-    const cooldownUntil = new Date(nowMs + 25).toISOString();
-    const result = await runTaskIteration({
+    const cooldownUntil = new Date(nowMs + 1_000).toISOString();
+    const iterationPromise = runTaskIteration({
       dependencies,
       emit,
       state: {
@@ -2188,9 +2192,22 @@ describe("run-task-iteration", () => {
       },
     });
 
+    let settled = false;
+    void iterationPromise.finally(() => {
+      settled = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    const result = await iterationPromise;
+
     expect(result.exitCode).toBe(0);
     expect(dispatchSpy).toHaveBeenCalledTimes(1);
-    expect(events.some((event) => event.kind === "info" && event.message.includes("All workers cooling down. Waiting"))).toBe(true);
+    const waitEvents = events.filter((event) => event.kind === "info" && event.message.includes("All workers cooling down. Waiting"));
+    expect(waitEvents).toHaveLength(1);
+    expect(waitEvents[0]?.message).toContain("Waiting 1s");
   });
 
   it("fails after one cooldown wait when worker remains ineligible", async () => {

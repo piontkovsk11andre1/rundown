@@ -1298,6 +1298,34 @@ Rules:
 `;
 
 /**
+ * Default localization alias template used to generate canonical intent keyword mappings.
+ */
+export const DEFAULT_LOCALIZE_ALIASES_TEMPLATE = `\
+You are generating localized rundown intent keyword aliases for {{language}}.
+
+Return a valid JSON object only. Do not wrap in code fences. Do not include commentary.
+
+Map localized keyword prefixes to canonical English prefixes using this exact format:
+
+{
+  "<localized-keyword>:": "<canonical-keyword>:"
+}
+
+Canonical keyword groups:
+- memory: (aliases: memorize:, remember:, inventory:)
+- verify: (aliases: confirm:, check:)
+- fast: (aliases: raw:, quick:)
+- parallel: (aliases: concurrent:, par:)
+
+Requirements:
+- Keys must end with ":".
+- Values must be one of: "memory:", "verify:", "fast:", "parallel:".
+- Include localized equivalents for canonical keywords and useful localized equivalents for listed aliases.
+- Avoid duplicate keys.
+- Use deterministic, practical mappings for the specified language/style.
+`;
+
+/**
  * Default plan-phase prompt template used to propose missing additive TODO items.
  */
 export const DEFAULT_PLAN_TEMPLATE = `\

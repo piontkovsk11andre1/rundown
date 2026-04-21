@@ -6,6 +6,7 @@ import type {
 } from "../ports/interactive-input-port.js";
 import type { SubItem } from "../parser.js";
 import type { ToolHandlerContext, ToolHandlerFn, ToolHandlerResult } from "../ports/tool-handler-port.js";
+import { msg } from "../locale.js";
 
 const OPTION_PREFIX_PATTERN = /^option\s*:\s*(.+)$/i;
 const ANSWER_PREFIX_PATTERN = /^answer\s*:\s*(.*)$/i;
@@ -24,6 +25,7 @@ interface ParsedOption {
  */
 export function createQuestionHandler(interactiveInput?: InteractiveInputPort): ToolHandlerFn {
   return async (context) => {
+    const localeMessages = context.localeMessages ?? {};
     const prompt = context.payload.trim();
     if (prompt.length === 0) {
       return {
@@ -35,7 +37,10 @@ export function createQuestionHandler(interactiveInput?: InteractiveInputPort): 
 
     const existingAnswer = findExistingAnswer(context.task.subItems);
     if (existingAnswer !== undefined) {
-      context.emit({ kind: "info", message: "Question already answered; reusing existing answer." });
+      context.emit({
+        kind: "info",
+        message: msg("tool.question.reusing-answer", {}, localeMessages),
+      });
       return {
         skipExecution: true,
         shouldVerify: false,
@@ -64,7 +69,10 @@ export function createQuestionHandler(interactiveInput?: InteractiveInputPort): 
     }
 
     if (answerResult.usedDefault && !answerResult.interactive) {
-      context.emit({ kind: "info", message: `Question default selected: ${answerResult.answer}` });
+      context.emit({
+        kind: "info",
+        message: msg("tool.question.default-selected", { answer: answerResult.answer }, localeMessages),
+      });
     }
 
     return {

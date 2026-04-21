@@ -85,6 +85,7 @@ import type {
   MemoryWriterPort,
   InteractiveInputPort,
   LocaleConfigPort,
+  LocaleAliases,
   ToolResolverPort,
   ProcessRunner,
   PathOperationsPort,
@@ -296,7 +297,7 @@ export interface AppPorts {
   memoryWriter?: MemoryWriterPort;
   interactiveInput: InteractiveInputPort;
   localeConfigPort: LocaleConfigPort;
-  localeAliases?: Record<string, string>;
+  localeAliases?: LocaleAliases;
   workerConfigPort: WorkerConfigPort;
   workerHealthStore: WorkerHealthStore;
   templateVarsLoader: TemplateVarsLoaderPort;

@@ -75,8 +75,9 @@ import type {
   TaskSelectionResult as PortTaskSelectionResult,
   TaskSelectorPort,
   TaskVerificationPort,
-  ConfigDirResult,
-  TemplateLoader,
+   ConfigDirResult,
+   LocaleAliases,
+   TemplateLoader,
   TemplateVarsLoaderPort,
   TraceWriterPort,
   VerificationStore,
@@ -554,7 +555,7 @@ export interface RunTaskDependencies {
   memoryResolver?: MemoryResolverPort;
   toolResolver?: ToolResolverPort;
   memoryWriter?: MemoryWriterPort;
-  localeAliases?: Record<string, string>;
+  localeAliases?: LocaleAliases;
   traceWriter: TraceWriterPort;
   configDir: ConfigDirResult | undefined;
   createTraceWriter: (trace: boolean, artifactContext: ArtifactContext) => TraceWriterPort;

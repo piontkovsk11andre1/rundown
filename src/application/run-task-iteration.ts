@@ -968,6 +968,7 @@ export async function runTaskIteration(params: {
     traceStatisticsConfig: completion.traceStatisticsConfig,
     currentRound: traceConfig.roundContext.currentRound,
     totalRounds: traceConfig.roundContext.totalRounds,
+    localeMessages,
   });
 
   if (completionResult.groupEnded === true) {

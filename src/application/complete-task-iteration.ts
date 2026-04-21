@@ -48,6 +48,7 @@ import {
   type WorkerFailureClass,
 } from "../domain/worker-health.js";
 import { classifyWorkerFailure } from "./worker-failure-classification.js";
+import { msg, type LocaleMessages } from "../domain/locale.js";
 import {
   normalizeRepairPathForDisplay,
   resolveInlineRundownTargetArtifactPath,
@@ -156,6 +157,7 @@ export async function completeTaskIteration(params: {
   traceStatisticsConfig?: TraceStatisticsConfig;
   currentRound?: number;
   totalRounds?: number;
+  localeMessages?: LocaleMessages;
 }): Promise<{
   continueLoop: boolean;
   exitCode?: number;
@@ -222,6 +224,7 @@ export async function completeTaskIteration(params: {
     traceStatisticsConfig,
     currentRound = 1,
     totalRounds = 1,
+    localeMessages = {},
   } = params;
   const failOnCompleteHookFailure = failOnCompleteHookError ?? false;
 
@@ -372,7 +375,10 @@ export async function completeTaskIteration(params: {
         try {
           writeFixAnnotationToFile(task, failureReason, dependencies.fileSystem);
         } catch (error) {
-          emit({ kind: "warn", message: "Failed to write verification fix annotation: " + String(error) });
+          emit({
+            kind: "warn",
+            message: msg("complete.write-fix-error", { error: String(error) }, localeMessages),
+          });
         }
       }
       // Surface verification details, trigger failure hooks, and terminate the run.
@@ -413,7 +419,7 @@ export async function completeTaskIteration(params: {
       || isParallelGroupTaskText(task.text, dependencies.toolResolver);
 
   if (isParallelGroupTask && latestTask && hasUncheckedDescendants(latestTask, latestTasks, { useChildren: true })) {
-    const message = "Parallel-group parent cannot auto-complete while unchecked descendants remain.";
+    const message = msg("complete.parallel-blocked", {}, localeMessages);
     emit({ kind: "error", message });
     await afterTaskFailed(
       dependencies,
@@ -448,12 +454,17 @@ export async function completeTaskIteration(params: {
 
     if (forLoopAdvanced) {
       if (completedLoopItem) {
-        emit({ kind: "info", message: "Loop item completed: " + completedLoopItem + "." });
+        emit({
+          kind: "info",
+          message: msg("complete.loop-item-done", { item: completedLoopItem }, localeMessages),
+        });
       }
       emit({
         kind: "info",
-        message: "Loop advanced to item: " + forLoopAdvanced.current
-          + " (" + forLoopAdvanced.remainingItems + " remaining).",
+        message: msg("complete.loop-advanced", {
+          item: forLoopAdvanced.current,
+          remaining: String(forLoopAdvanced.remainingItems),
+        }, localeMessages),
       });
       state.tasksCompleted++;
       resetArtifacts();
@@ -462,24 +473,32 @@ export async function completeTaskIteration(params: {
 
     if (forLoopCompleted) {
       if (completedLoopItem) {
-        emit({ kind: "info", message: "Loop item completed: " + completedLoopItem + "." });
+        emit({
+          kind: "info",
+          message: msg("complete.loop-item-done", { item: completedLoopItem }, localeMessages),
+        });
       }
       emit({
         kind: "info",
-        message: "Loop completed after " + loopItemCount + " "
-          + pluralize(loopItemCount, "item", "items")
-          + "; marking parent task complete.",
+        message: msg("complete.loop-done", {
+          count: String(loopItemCount),
+        }, localeMessages),
       });
     } else {
       const completionTransition = advanceForLoopUsingFileSystem(task, dependencies.fileSystem);
       if (completionTransition.advanced && completionTransition.current) {
         if (completedLoopItem) {
-          emit({ kind: "info", message: "Loop item completed: " + completedLoopItem + "." });
+          emit({
+            kind: "info",
+            message: msg("complete.loop-item-done", { item: completedLoopItem }, localeMessages),
+          });
         }
         emit({
           kind: "info",
-          message: "Loop advanced to item: " + completionTransition.current
-            + " (" + completionTransition.remainingItems + " remaining).",
+          message: msg("complete.loop-advanced", {
+            item: completionTransition.current,
+            remaining: String(completionTransition.remainingItems),
+          }, localeMessages),
         });
         state.tasksCompleted++;
         resetArtifacts();
@@ -488,13 +507,16 @@ export async function completeTaskIteration(params: {
 
       if (completionTransition.completed) {
         if (completedLoopItem) {
-          emit({ kind: "info", message: "Loop item completed: " + completedLoopItem + "." });
+          emit({
+            kind: "info",
+            message: msg("complete.loop-item-done", { item: completedLoopItem }, localeMessages),
+          });
         }
         emit({
           kind: "info",
-          message: "Loop completed after " + loopItemCount + " "
-            + pluralize(loopItemCount, "item", "items")
-            + "; marking parent task complete.",
+          message: msg("complete.loop-done", {
+            count: String(loopItemCount),
+          }, localeMessages),
         });
       } else {
         // Loop handler ran but could not advance or complete — children still
@@ -528,39 +550,43 @@ export async function completeTaskIteration(params: {
   const siblingSkipReason = terminalStop?.reason ?? skipRemainingSiblingsReason;
   if (siblingSkipReason) {
     const skipResult = skipRemainingSiblingsUsingFileSystem(task, siblingSkipReason, dependencies.fileSystem);
+    const descendantsSuffix = skipResult.skippedDescendantCount > 0
+      ? " and " + skipResult.skippedDescendantCount + " "
+        + pluralize(skipResult.skippedDescendantCount, "descendant task", "descendant tasks")
+      : "";
     if (terminalStop) {
       emit({
         kind: "info",
-        message: "Terminal stop requested by " + terminalStop.requestedBy
-          + ": skipped " + skipResult.skippedSiblingCount + " "
-          + pluralize(skipResult.skippedSiblingCount, "sibling task", "sibling tasks")
-          + (skipResult.skippedDescendantCount > 0
-            ? " and " + skipResult.skippedDescendantCount + " "
-              + pluralize(skipResult.skippedDescendantCount, "descendant task", "descendant tasks")
-            : "")
-          + ".",
+        message: msg("complete.terminal-stop", {
+          requestedBy: terminalStop.requestedBy,
+          siblings: String(skipResult.skippedSiblingCount),
+          descendants: descendantsSuffix,
+        }, localeMessages),
       });
     } else {
       emit({
         kind: "info",
-        message: "Skipped " + skipResult.skippedSiblingCount + " "
-          + pluralize(skipResult.skippedSiblingCount, "sibling task", "sibling tasks")
-          + (skipResult.skippedDescendantCount > 0
-            ? " and " + skipResult.skippedDescendantCount + " "
-              + pluralize(skipResult.skippedDescendantCount, "descendant task", "descendant tasks")
-            : "")
-          + " because end condition was met.",
+        message: msg("complete.skipped-end-condition", {
+          count: String(skipResult.skippedSiblingCount),
+          descendants: descendantsSuffix,
+        }, localeMessages),
       });
     }
     for (const skippedTaskText of skipResult.skippedTaskTexts) {
       emit({
         kind: "info",
-        message: "Skipped sibling: " + skippedTaskText + " (reason: " + siblingSkipReason + ")",
+        message: msg("complete.skipped-sibling", {
+          taskText: skippedTaskText,
+          reason: siblingSkipReason,
+        }, localeMessages),
       });
     }
   }
 
-  emit({ kind: "success", message: "Task checked: " + task.text });
+  emit({
+    kind: "success",
+    message: msg("complete.task-checked", { taskText: task.text }, localeMessages),
+  });
   emit({ kind: "group-end", status: "success" });
 
   // Tool expansions that inserted children should continue so newly inserted

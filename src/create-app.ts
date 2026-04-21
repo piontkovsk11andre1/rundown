@@ -84,6 +84,7 @@ import type {
   MemoryResolverPort,
   MemoryWriterPort,
   InteractiveInputPort,
+  LocaleConfigPort,
   ToolResolverPort,
   ProcessRunner,
   PathOperationsPort,
@@ -126,6 +127,7 @@ import {
   createSystemClock,
   createTaskRepairAdapter,
   createTaskSelectorAdapter,
+  createLocaleConfigAdapter,
   createTaskVerificationAdapter,
   createWorkerConfigAdapter,
   createWorkerExecutorAdapter,
@@ -293,6 +295,8 @@ export interface AppPorts {
   toolResolver: ToolResolverPort;
   memoryWriter?: MemoryWriterPort;
   interactiveInput: InteractiveInputPort;
+  localeConfigPort: LocaleConfigPort;
+  localeAliases?: Record<string, string>;
   workerConfigPort: WorkerConfigPort;
   workerHealthStore: WorkerHealthStore;
   templateVarsLoader: TemplateVarsLoaderPort;
@@ -315,6 +319,8 @@ function createAppPorts(overrides: Partial<AppPorts> = {}): AppPorts {
     configDir: pathOperations.join(workingDirectory.cwd(), CONFIG_DIR_NAME),
     isExplicit: false,
   };
+  const localeConfigPort = overrides.localeConfigPort ?? createLocaleConfigAdapter();
+  const localeConfig = localeConfigPort.load(configDir.configDir);
   const verificationStore = overrides.verificationStore
     ?? createArtifactVerificationStore(configDir.configDir);
   const taskVerification = overrides.taskVerification
@@ -367,6 +373,8 @@ function createAppPorts(overrides: Partial<AppPorts> = {}): AppPorts {
     memoryReader,
     memoryWriter,
     interactiveInput,
+    localeConfigPort,
+    localeAliases: overrides.localeAliases ?? localeConfig?.aliases,
     workerConfigPort: overrides.workerConfigPort ?? createWorkerConfigAdapter(),
     workerHealthStore: overrides.workerHealthStore ?? createFsWorkerHealthStore(),
     templateVarsLoader: overrides.templateVarsLoader ?? createFsTemplateVarsLoaderAdapter(),
@@ -420,6 +428,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
     templateVarsLoader: ports.templateVarsLoader,
     workerConfigPort: ports.workerConfigPort,
     workerHealthStore: ports.workerHealthStore,
+    localeAliases: ports.localeAliases,
     traceWriter: ports.traceWriter,
     cliBlockExecutor: ports.cliBlockExecutor,
     configDir: ports.configDir,

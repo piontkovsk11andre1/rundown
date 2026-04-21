@@ -554,6 +554,7 @@ export interface RunTaskDependencies {
   memoryResolver?: MemoryResolverPort;
   toolResolver?: ToolResolverPort;
   memoryWriter?: MemoryWriterPort;
+  localeAliases?: Record<string, string>;
   traceWriter: TraceWriterPort;
   configDir: ConfigDirResult | undefined;
   createTraceWriter: (trace: boolean, artifactContext: ArtifactContext) => TraceWriterPort;

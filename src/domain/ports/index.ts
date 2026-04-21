@@ -117,6 +117,9 @@ export type { PathOperationsPort } from "./path-operations-port.js";
 /** Configuration directory discovery contracts and result type. */
 export type { ConfigDirPort, ConfigDirResult } from "./config-dir-port.js";
 
+/** Locale configuration persistence contracts and schema. */
+export type { LocaleConfig, LocaleConfigPort } from "./locale-config-port.js";
+
 /** Worker configuration loading abstraction. */
 export type { WorkerConfigPort } from "./worker-config-port.js";
 

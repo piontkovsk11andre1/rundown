@@ -2,6 +2,7 @@ import { computeChildIndent } from "../planner.js";
 import type { ToolHandlerContext, ToolHandlerFn } from "../ports/tool-handler-port.js";
 import type { ProcessRunMode } from "../ports/process-runner.js";
 import { escapeExtractionMetadataValue } from "../metadata-escape.js";
+import { msg } from "../locale.js";
 import { buildResearchOutputPromptContract } from "./research-output-prompt.js";
 
 const GET_RESULT_PREFIX_PATTERN = /^get-result\s*:\s*(.*)$/i;
@@ -241,9 +242,10 @@ function emitOutcome(
   details: string,
   kind: "info" | "warn" = "info",
 ): void {
+  const localeMessages = context.localeMessages ?? {};
   context.emit({
     kind,
-    message: `Get outcome: ${outcome}; ${details}`,
+    message: msg("tool.get.outcome", { outcome, details }, localeMessages),
   });
 }
 
@@ -320,6 +322,7 @@ function upsertResultSubItems(source: string, context: ToolHandlerContext, resul
 }
 
 export const getHandler: ToolHandlerFn = async (context) => {
+  const localeMessages = context.localeMessages ?? {};
   const query = context.payload.trim();
   if (query.length === 0) {
     return {
@@ -363,7 +366,7 @@ export const getHandler: ToolHandlerFn = async (context) => {
   if (existingResults.length > 0 && policyResolution.policy === "refresh") {
     context.emit({
       kind: "info",
-      message: "Get rerun policy set to refresh; replacing existing get-result values.",
+      message: msg("tool.get.refresh-policy", {}, localeMessages),
     });
   }
 

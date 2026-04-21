@@ -6135,6 +6135,138 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("UNRELATED TEMPLATE"))).toBe(false);
   });
 
+  it("translate expands cli fenced blocks from <what> and <how> by default", async () => {
+    const workspace = makeTempWorkspace();
+    const whatPath = path.join(workspace, "what.md");
+    const howPath = path.join(workspace, "how.md");
+    const outputPath = path.join(workspace, "output.md");
+    const whatMarkerName = "what-cli-block-ran.txt";
+    const howMarkerName = "how-cli-block-ran.txt";
+    const whatMarkerPath = path.join(workspace, "what-cli-block-ran.txt");
+    const howMarkerPath = path.join(workspace, "how-cli-block-ran.txt");
+
+    fs.writeFileSync(
+      whatPath,
+      [
+        "# What",
+        "```cli",
+        `node -e \"require('node:fs').writeFileSync('${whatMarkerName}','1')\"`,
+        "```",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      howPath,
+      [
+        "# How",
+        "```cli",
+        `node -e \"require('node:fs').writeFileSync('${howMarkerName}','1')\"`,
+        "```",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "translate",
+      "what.md",
+      "how.md",
+      "output.md",
+      "--print-prompt",
+      "--worker",
+      "opencode",
+      "run",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(fs.existsSync(whatMarkerPath)).toBe(true);
+    expect(fs.existsSync(howMarkerPath)).toBe(true);
+    expect(result.logs.some((line) => line.includes("<command>node -e"))).toBe(true);
+    expect(fs.existsSync(outputPath)).toBe(false);
+  });
+
+  it("translate --ignore-cli-block leaves cli fenced blocks unexpanded", async () => {
+    const workspace = makeTempWorkspace();
+    const whatPath = path.join(workspace, "what.md");
+    const howPath = path.join(workspace, "how.md");
+    const markerPath = path.join(workspace, "cli-block-ran.txt");
+
+    fs.writeFileSync(
+      whatPath,
+      [
+        "# What",
+        "```cli",
+        `node -e \"require('node:fs').writeFileSync(${JSON.stringify(markerPath)},'1')\"`,
+        "```",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+    fs.writeFileSync(howPath, "# How\nReference vocabulary.\n", "utf-8");
+
+    const result = await runCli([
+      "translate",
+      "what.md",
+      "how.md",
+      "output.md",
+      "--print-prompt",
+      "--ignore-cli-block",
+      "--worker",
+      "opencode",
+      "run",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(fs.existsSync(markerPath)).toBe(false);
+    expect(result.logs.some((line) => line.includes("```cli"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("<command>"))).toBe(false);
+  });
+
+  it("translate annotates timed-out cli fenced block output", async () => {
+    const workspace = makeTempWorkspace();
+    const whatPath = path.join(workspace, "what.md");
+    const howPath = path.join(workspace, "how.md");
+
+    fs.writeFileSync(
+      whatPath,
+      [
+        "# What",
+        "```cli",
+        "node -e \"setTimeout(function () {}, 2000)\"",
+        "```",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+    fs.writeFileSync(howPath, "# How\nReference vocabulary.\n", "utf-8");
+
+    const result = await runCli([
+      "translate",
+      "what.md",
+      "how.md",
+      "output.md",
+      "--print-prompt",
+      "--cli-block-timeout",
+      "50",
+      "--worker",
+      "opencode",
+      "run",
+    ], workspace);
+
+    const combinedOutput = [
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n");
+
+    expect(result.code).toBe(0);
+    expect(combinedOutput.includes('<command exit_code="timeout">node -e &quot;setTimeout(function () {}, 2000)&quot;</command>')).toBe(true);
+    expect(combinedOutput.includes("ERROR: command timed out")).toBe(true);
+    expect(combinedOutput.includes("Command timed out after 50ms.")).toBe(true);
+  });
+
   it("run expands cli blocks in custom templates after template variable substitution", async () => {
     const workspace = makeTempWorkspace();
     const projectDir = path.join(workspace, "project");

@@ -7,6 +7,7 @@ import type { ArtifactRunContext, CommandExecutionOptions } from "./index.js";
 import type { TemplateVars } from "../template.js";
 import type { ParsedWorkerPattern } from "../worker-pattern.js";
 import type { TerminalStopSignal } from "../terminal-control.js";
+import type { LocaleMessages } from "../locale.js";
 
 /**
  * Classifies how a tool participates in the prefix chain.
@@ -89,6 +90,7 @@ export interface ToolHandlerContext {
   keepArtifacts: boolean;
   templateVars: TemplateVars;
   showAgentOutput: boolean;
+  localeMessages?: LocaleMessages;
   templates?: {
     researchOutputContract: string;
   };

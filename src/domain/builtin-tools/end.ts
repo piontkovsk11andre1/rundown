@@ -1,10 +1,15 @@
 import type { ToolHandlerFn } from "../ports/tool-handler-port.js";
 import type { ProcessRunMode } from "../ports/process-runner.js";
+import { msg, type LocaleMessages } from "../locale.js";
 import {
   classifyTerminalPayload,
   resolveTerminalStopExitCode,
   type TerminalPrefixAlias,
 } from "../terminal-control.js";
+
+function resolveLocaleMessages(context: Parameters<ToolHandlerFn>[0]): LocaleMessages {
+  return (context as Parameters<ToolHandlerFn>[0] & { localeMessages?: LocaleMessages }).localeMessages ?? {};
+}
 
 function tryParseJson(raw: string): Record<string, unknown> | null {
   try {
@@ -130,20 +135,27 @@ async function evaluateCondition(context: Parameters<ToolHandlerFn>[0], conditio
  * to process for this task.
  */
 export const endHandler: ToolHandlerFn = async (context) => {
+  const localeMessages = resolveLocaleMessages(context);
   const condition = context.payload.trim();
   if (condition.length === 0) {
-    context.emit({ kind: "warn", message: "End tool requires a non-empty condition payload." });
+    const message = msg("tool.end.missing-payload", {}, localeMessages);
+    context.emit({ kind: "warn", message });
     return {
       exitCode: 1,
-      failureMessage: "End tool requires a non-empty condition payload.",
+      failureMessage: message,
       failureReason: "End condition payload is empty.",
     };
   }
 
-  context.emit({ kind: "info", message: "Evaluating optional skip condition." });
+  context.emit({ kind: "info", message: msg("tool.end.evaluating-optional", {}, localeMessages) });
   const conditionResult = await evaluateCondition(context, condition);
   if (!conditionResult.ok) {
-    context.emit({ kind: "warn", message: conditionResult.failureMessage ?? "Failed to evaluate optional condition." });
+    context.emit({
+      kind: "warn",
+      message: msg("tool.end.eval-failed", {
+        reason: conditionResult.failureMessage ?? "Failed to evaluate optional condition.",
+      }, localeMessages),
+    });
     return {
       exitCode: conditionResult.exitCode ?? 1,
       failureMessage: conditionResult.failureMessage,
@@ -153,7 +165,7 @@ export const endHandler: ToolHandlerFn = async (context) => {
 
   const decision = conditionResult.decision;
   if (decision === "yes") {
-    context.emit({ kind: "info", message: "Optional condition met; skipping remaining sibling tasks." });
+    context.emit({ kind: "info", message: msg("tool.end.optional-met", {}, localeMessages) });
     return {
       skipExecution: true,
       skipRemainingSiblings: {
@@ -163,7 +175,7 @@ export const endHandler: ToolHandlerFn = async (context) => {
   }
 
   if (decision === "no") {
-    context.emit({ kind: "info", message: "Optional condition not met; continuing execution." });
+    context.emit({ kind: "info", message: msg("tool.end.optional-not-met", {}, localeMessages) });
     return {
       skipExecution: true,
     };
@@ -171,7 +183,7 @@ export const endHandler: ToolHandlerFn = async (context) => {
 
   context.emit({
     kind: "warn",
-    message: "Optional condition response was ambiguous; defaulting to no and continuing execution.",
+    message: msg("tool.end.optional-ambiguous", {}, localeMessages),
   });
   return {
     skipExecution: true,
@@ -195,6 +207,7 @@ function resolveRequestedTerminalAlias(taskText: string): TerminalPrefixAlias {
  * - `yes` requests graceful stop, `no` continues.
  */
 export const terminalHandler: ToolHandlerFn = async (context) => {
+  const localeMessages = resolveLocaleMessages(context);
   const requestedBy = resolveRequestedTerminalAlias(context.task.text);
   const payload = classifyTerminalPayload(context.payload);
   const gracefulExitCode = resolveTerminalStopExitCode();
@@ -202,7 +215,7 @@ export const terminalHandler: ToolHandlerFn = async (context) => {
   if (payload.mode === "unconditional") {
     context.emit({
       kind: "info",
-      message: "Terminal stop requested by " + requestedBy + ":; stopping after current completion phase.",
+      message: msg("tool.end.terminal-stop", { requestedBy }, localeMessages),
     });
     return {
       skipExecution: true,
@@ -219,11 +232,16 @@ export const terminalHandler: ToolHandlerFn = async (context) => {
 
   context.emit({
     kind: "info",
-    message: "Evaluating terminal stop condition from " + requestedBy + ":.",
+    message: msg("tool.end.evaluating-terminal", { requestedBy }, localeMessages),
   });
   const conditionResult = await evaluateCondition(context, payload.condition);
   if (!conditionResult.ok) {
-    context.emit({ kind: "warn", message: conditionResult.failureMessage ?? "Failed to evaluate terminal condition." });
+    context.emit({
+      kind: "warn",
+      message: msg("tool.end.eval-failed", {
+        reason: conditionResult.failureMessage ?? "Failed to evaluate terminal condition.",
+      }, localeMessages),
+    });
     return {
       exitCode: conditionResult.exitCode ?? 1,
       failureMessage: conditionResult.failureMessage,
@@ -234,7 +252,7 @@ export const terminalHandler: ToolHandlerFn = async (context) => {
   if (conditionResult.decision === "yes") {
     context.emit({
       kind: "info",
-      message: "Terminal condition met; stopping run/loop after current completion phase.",
+      message: msg("tool.end.terminal-met", {}, localeMessages),
     });
     return {
       skipExecution: true,
@@ -252,7 +270,7 @@ export const terminalHandler: ToolHandlerFn = async (context) => {
   if (conditionResult.decision === "no") {
     context.emit({
       kind: "info",
-      message: "Terminal condition not met; continuing execution.",
+      message: msg("tool.end.terminal-not-met", {}, localeMessages),
     });
     return {
       skipExecution: true,
@@ -261,7 +279,7 @@ export const terminalHandler: ToolHandlerFn = async (context) => {
 
   context.emit({
     kind: "warn",
-    message: "Terminal condition response was ambiguous; defaulting to no and continuing execution.",
+    message: msg("tool.end.terminal-ambiguous", {}, localeMessages),
   });
   return {
     skipExecution: true,

@@ -70,6 +70,7 @@ import {
   createRunCommandAction,
   createStartCommandAction,
   createTestCommandAction,
+  createTranslateCommandAction,
   createUnlockCommandAction,
 } from "./cli-command-actions.js";
 
@@ -744,12 +745,11 @@ program
     String(DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS),
   )
   .allowUnknownOption(false)
-  .action(withCliAction(async (_what: string, _how: string, _output: string, _opts: Record<string, unknown>) => {
-    if (!TRANSLATE_MODES.includes("wait")) {
-      throw new Error("Invalid --mode value: wait. Allowed: wait.");
-    }
-    throw new Error("The `translate` command is registered but not yet available in this build.");
-  }));
+  .action(withCliAction(createTranslateCommandAction({
+    getApp,
+    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
+    translateModes: TRANSLATE_MODES,
+  })));
 
 program
   .command("add")

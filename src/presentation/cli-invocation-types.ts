@@ -98,3 +98,13 @@ export interface QueryCommandInvocationOptions extends WorkerCommandInvocationOp
   deep?: number;
   verbose?: boolean;
 }
+
+/**
+ * Normalized invocation payload for the `translate` command.
+ */
+export interface TranslateCommandInvocationOptions extends WorkerCommandInvocationOptions {
+  what: string;
+  how: string;
+  output: string;
+  verbose?: boolean;
+}

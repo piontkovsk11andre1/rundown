@@ -33,6 +33,7 @@ import {
   resolvePlanMarkdownFile,
   resolveResearchMarkdownFile,
   resolveMakeMarkdownFile,
+  resolveTranslateMarkdownFiles,
   resolveVerifyFlag,
 } from "./cli-options.js";
 import type { RunDefaultsConfig } from "../domain/worker-config.js";
@@ -50,6 +51,7 @@ import type {
   PlanCommandInvocationOptions,
   QueryCommandInvocationOptions,
   ResearchCommandInvocationOptions,
+  TranslateCommandInvocationOptions,
 } from "./cli-invocation-types.js";
 import { resolveInvocationWorkspaceContext } from "./invocation-workspace-context.js";
 import { getAgentsTemplate } from "../domain/agents-template.js";
@@ -299,6 +301,10 @@ interface MakeActionDependencies extends WorkerActionDependencies {
   makeModes: readonly ProcessRunMode[];
 }
 
+interface TranslateActionDependencies extends WorkerActionDependencies {
+  translateModes: readonly ProcessRunMode[];
+}
+
 interface AddActionDependencies extends WorkerActionDependencies {
   addModes: readonly ProcessRunMode[];
 }
@@ -363,6 +369,7 @@ interface TestCommandOptions {
 }
 
 type TestCommandHandler = (options: TestCommandOptions) => CliActionResult;
+type TranslateCommandHandler = (options: TranslateCommandInvocationOptions) => CliActionResult;
 type WithCommandHandler = (options: { harness: string }) => Promise<WithTaskResult>;
 
 type ConfigMutationScope = "local" | "global";
@@ -1180,6 +1187,63 @@ export function createResearchCommandAction({
     };
 
     return getApp().researchTask(request);
+  };
+}
+
+/**
+ * Creates the `translate` command action handler.
+ *
+ * The returned action resolves `<what>`, `<how>`, and `<output>` markdown paths
+ * and shared worker runtime options before invoking the application
+ * `translateTask` workflow.
+ */
+export function createTranslateCommandAction({
+  getApp,
+  getWorkerFromSeparator,
+  translateModes,
+}: TranslateActionDependencies): (
+  whatMarkdownFile: string,
+  howMarkdownFile: string,
+  outputMarkdownFile: string,
+  opts: CliOpts,
+) => CliActionResult {
+  return (
+    whatMarkdownFile: string,
+    howMarkdownFile: string,
+    outputMarkdownFile: string,
+    opts: CliOpts,
+  ) => {
+    const workspaceRuntimeOptions = resolveWorkerWorkspaceRuntimeOptions();
+    const resolvedMarkdownFiles = resolveTranslateMarkdownFiles(
+      whatMarkdownFile,
+      howMarkdownFile,
+      outputMarkdownFile,
+    );
+    const mode = parseRunnerMode(opts.mode as string | undefined, translateModes);
+    const sharedRuntimeOptions = resolveSharedWorkerRuntimeOptions(opts, getWorkerFromSeparator);
+
+    const request: TranslateCommandInvocationOptions = {
+      what: resolvedMarkdownFiles.whatMarkdownFile,
+      how: resolvedMarkdownFiles.howMarkdownFile,
+      output: resolvedMarkdownFiles.outputMarkdownFile,
+      ...workspaceRuntimeOptions,
+      mode,
+      workerPattern: sharedRuntimeOptions.workerPattern,
+      showAgentOutput: sharedRuntimeOptions.showAgentOutput,
+      dryRun: Boolean(opts.dryRun as boolean | undefined),
+      printPrompt: Boolean(opts.printPrompt as boolean | undefined),
+      keepArtifacts: sharedRuntimeOptions.keepArtifacts,
+      varsFileOption: sharedRuntimeOptions.varsFileOption,
+      cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,
+      trace: sharedRuntimeOptions.trace,
+      forceUnlock: sharedRuntimeOptions.forceUnlock,
+      ignoreCliBlock: sharedRuntimeOptions.ignoreCliBlock,
+      cliBlockTimeoutMs: sharedRuntimeOptions.cliBlockTimeoutMs,
+      configDirOption: sharedRuntimeOptions.configDirOption,
+      verbose: resolveVerboseOption(opts),
+    };
+
+    return resolveTranslateCommandHandler(getApp())(request);
   };
 }
 
@@ -2674,6 +2738,21 @@ function resolveTestCommandHandler(appInstance: CliApp): TestCommandHandler {
   }
 
   throw new Error("The `test` command is not available in this build.");
+}
+
+/**
+ * Resolves the active translate command implementation for the current app build.
+ */
+function resolveTranslateCommandHandler(appInstance: CliApp): TranslateCommandHandler {
+  const maybeTranslateHandler = appInstance as CliApp & {
+    translateTask?: TranslateCommandHandler;
+  };
+
+  if (typeof maybeTranslateHandler.translateTask === "function") {
+    return maybeTranslateHandler.translateTask;
+  }
+
+  throw new Error("The `translate` command is not available in this build.");
 }
 
 /**

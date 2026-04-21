@@ -546,7 +546,10 @@ export async function runVerifyRepairLoop(
     emitRepairAttempt(attempts, previousFailure);
     emit({
       kind: "info",
-      message: msg("verify.repair-attempt-start", { n: String(attempts) }, localeMessages),
+      message: msg("verify.repair-attempt-start", {
+        n: String(attempts),
+        total: String(input.maxRepairAttempts),
+      }, localeMessages),
     });
 
     // Each repair invocation performs one repair cycle and one verification pass.

@@ -1783,7 +1783,10 @@ export function createRunTaskExecution(
         if (rounds > 1) {
           emit({
             kind: "info",
-            message: "Round " + (round + 1) + "/" + rounds + " - resetting checkboxes and running all tasks...",
+            message: msg("run.round-start", {
+              current: String(round + 1),
+              total: String(rounds),
+            }, localeMessages),
           });
         }
 
@@ -1830,12 +1833,10 @@ export function createRunTaskExecution(
       if (rounds > 1 && terminalStopExitCode === null) {
         emit({
           kind: "success",
-          message:
-            "All "
-            + rounds
-            + " rounds completed successfully ("
-            + totalTasksCompletedAcrossRounds
-            + " tasks total).",
+          message: msg("run.rounds-success", {
+            rounds: String(rounds),
+            tasks: String(totalTasksCompletedAcrossRounds),
+          }, localeMessages),
         });
       }
 

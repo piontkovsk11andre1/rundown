@@ -278,7 +278,12 @@ export function createPlanTask(
       if (error instanceof FileLockError) {
         emit({
           kind: "error",
-          message: msg("plan.lock-error", { source: error.filePath }, localeMessages),
+          message: msg("plan.lock-error", {
+            source: error.filePath,
+            pid: String(error.holder.pid),
+            command: error.holder.command,
+            startTime: error.holder.startTime,
+          }, localeMessages),
         });
         return EXIT_CODE_FAILURE;
       }
@@ -1526,7 +1531,7 @@ function emitPlanPromptSelectionInfo(options: {
     ? "loop planner template with deterministic `get:` + `for:` + `end:` guidance"
     : "standard planner template";
   const templateMessage = msg(
-    "plan.template-info",
+    options.dryRun ? "plan.dry-run-template-info" : "plan.template-info",
     {
       path: templatePathMessage,
       behavior: templateBehaviorSuffix,

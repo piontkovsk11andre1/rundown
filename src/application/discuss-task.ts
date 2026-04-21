@@ -355,7 +355,12 @@ export function createDiscussTask(
       if (error instanceof FileLockError) {
         emit({
           kind: "error",
-          message: msg("discuss.lock-error", { filePath: error.filePath }, localeMessages),
+          message: msg("discuss.lock-error", {
+            filePath: error.filePath,
+            pid: String(error.holder.pid),
+            command: error.holder.command,
+            startTime: error.holder.startTime,
+          }, localeMessages),
         });
         return EXIT_CODE_FAILURE;
       }

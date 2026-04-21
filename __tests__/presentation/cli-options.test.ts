@@ -4250,6 +4250,85 @@ describe("CLI plan and utility command normalization", () => {
     }
   });
 
+  it("passes translate options through with separator worker command", async () => {
+    const translateTask = vi.fn(async () => 0);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-translate-options-"));
+    const whatFile = path.join(tempRoot, "what.md");
+    const howFile = path.join(tempRoot, "how.md");
+    const outputFile = path.join(tempRoot, "output.md");
+    fs.writeFileSync(whatFile, "# What\n", "utf8");
+    fs.writeFileSync(howFile, "# How\n", "utf8");
+
+    try {
+      const call = await invokeTranslateAndCaptureCall([
+        "translate",
+        whatFile,
+        howFile,
+        outputFile,
+        "--dry-run",
+        "--print-prompt",
+        "--keep-artifacts",
+        "--trace",
+        "--force-unlock",
+        "--ignore-cli-block",
+        "--cli-block-timeout",
+        "1234",
+        "--vars-file",
+        "custom-vars.json",
+        "--var",
+        "env=prod",
+        "--",
+        "opencode",
+        "run",
+      ], translateTask);
+
+      expect(call.what).toBe(whatFile);
+      expect(call.how).toBe(howFile);
+      expect(call.output).toBe(outputFile);
+      expect(call.mode).toBe("wait");
+      expect(call.dryRun).toBe(true);
+      expect(call.printPrompt).toBe(true);
+      expect(call.keepArtifacts).toBe(true);
+      expect(call.trace).toBe(true);
+      expect(call.forceUnlock).toBe(true);
+      expect(call.ignoreCliBlock).toBe(true);
+      expect(call.cliBlockTimeoutMs).toBe(1234);
+      expect(call.varsFileOption).toBe("custom-vars.json");
+      expect(call.cliTemplateVarArgs).toEqual(["env=prod"]);
+      expect(call.workerCommand).toEqual(["opencode", "run"]);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("prefers --worker pattern over separator worker command for translate", async () => {
+    const translateTask = vi.fn(async () => 0);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-translate-worker-priority-"));
+    const whatFile = path.join(tempRoot, "what.md");
+    const howFile = path.join(tempRoot, "how.md");
+    const outputFile = path.join(tempRoot, "output.md");
+    fs.writeFileSync(whatFile, "# What\n", "utf8");
+    fs.writeFileSync(howFile, "# How\n", "utf8");
+
+    try {
+      const call = await invokeTranslateAndCaptureCall([
+        "translate",
+        whatFile,
+        howFile,
+        outputFile,
+        "--worker",
+        "claude -p",
+        "--",
+        "opencode",
+        "run",
+      ], translateTask);
+
+      expect(call.workerCommand).toEqual(["claude", "-p"]);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("defaults research mode to wait", async () => {
     const researchTask = vi.fn(async () => 0);
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-research-mode-default-"));
@@ -5051,6 +5130,42 @@ async function invokeResearchAndCaptureCall(args: string[], researchTask: Return
 
   expect(researchTask).toHaveBeenCalledTimes(1);
   return withLegacyWorkerCommand(researchTask.mock.calls[0][0] as RunTaskCall);
+}
+
+async function invokeTranslateAndCaptureCall(args: string[], translateTask: ReturnType<typeof vi.fn>): Promise<RunTaskCall> {
+  const previousEnv = captureEnv();
+
+  process.env.RUNDOWN_DISABLE_AUTO_PARSE = "1";
+  process.env.RUNDOWN_TEST_MODE = "1";
+
+  vi.doMock("../../src/create-app.js", () => ({
+    createApp: () => ({
+      runTask: vi.fn(async () => 0),
+      reverifyTask: vi.fn(async () => 0),
+      nextTask: vi.fn(async () => 0),
+      listTasks: vi.fn(async () => 0),
+      planTask: vi.fn(async () => 0),
+      researchTask: vi.fn(async () => 0),
+      translateTask,
+      initProject: vi.fn(async () => 0),
+      manageArtifacts: vi.fn(() => 0),
+    }),
+  }));
+
+  try {
+    const { parseCliArgs } = await import("../../src/presentation/cli.js");
+    await parseCliArgs(normalizeLegacyWorkerPatternArgs(args));
+  } catch (error) {
+    const message = String(error);
+    if (!/CLI exited with code \d+/.test(message)) {
+      throw error;
+    }
+  } finally {
+    restoreEnv(previousEnv);
+  }
+
+  expect(translateTask).toHaveBeenCalledTimes(1);
+  return withLegacyWorkerCommand(translateTask.mock.calls[0][0] as RunTaskCall);
 }
 
 async function invokeRunAndExpectExitWithGlobalLogCapture(

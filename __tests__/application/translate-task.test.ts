@@ -143,21 +143,23 @@ describe("translate-task", () => {
       verbose: true,
     }));
 
+    const resolvedOutputFile = path.resolve(cwd, outputFile);
+
     expect(code).toBe(0);
-    expect(vi.mocked(dependencies.fileLock.acquire)).toHaveBeenCalledWith(outputFile, { command: "translate" });
+    expect(vi.mocked(dependencies.fileLock.acquire)).toHaveBeenCalledWith(resolvedOutputFile, { command: "translate" });
     expect(vi.mocked(dependencies.workerExecutor.runWorker)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(dependencies.workerExecutor.runWorker)).toHaveBeenCalledWith(expect.objectContaining({
       artifactPhase: "translate",
     }));
     expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenCalledWith(
-      outputFile,
+      resolvedOutputFile,
       "# Translated\n\nDomain-native output\n",
     );
     expect(events).toContainEqual({
       kind: "info",
       message: "Running translate worker: opencode run [mode=wait]",
     });
-    expect(events).toContainEqual({ kind: "success", message: "Translated document written to: " + outputFile });
+    expect(events).toContainEqual({ kind: "success", message: "Translated document written to: " + resolvedOutputFile });
     expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
       expect.objectContaining({ runId: "run-translate" }),
       expect.objectContaining({
@@ -166,6 +168,37 @@ describe("translate-task", () => {
       }),
     );
     expect(vi.mocked(dependencies.fileLock.releaseAll)).toHaveBeenCalledTimes(1);
+  });
+
+  it("acquires and writes output lock using execution-cwd-resolved path", async () => {
+    const cwd = "/workspace";
+    const whatFile = path.join(cwd, "what.md");
+    const howFile = path.join(cwd, "how.md");
+    const outputFile = "nested/output.md";
+    const resolvedOutputFile = path.resolve(cwd, outputFile);
+    const { dependencies, events } = createDependencies({
+      cwd,
+      whatFile,
+      howFile,
+      outputFile: resolvedOutputFile,
+      whatContent: "# What\nShip auth flow.\n",
+      howContent: "# How\nUse bounded contexts.\n",
+    });
+
+    const translateTask = createTranslateTask(dependencies);
+    const code = await translateTask(createOptions({
+      what: whatFile,
+      how: howFile,
+      output: outputFile,
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.fileLock.acquire)).toHaveBeenCalledWith(resolvedOutputFile, { command: "translate" });
+    expect(vi.mocked(dependencies.fileSystem.writeText)).toHaveBeenCalledWith(
+      resolvedOutputFile,
+      "# Translated\n\nDomain-native output\n",
+    );
+    expect(events).toContainEqual({ kind: "success", message: "Translated document written to: " + resolvedOutputFile });
   });
 
   it("returns failure when output file is locked by another process", async () => {
@@ -201,6 +234,65 @@ describe("translate-task", () => {
     expect(vi.mocked(dependencies.workerExecutor.runWorker)).not.toHaveBeenCalled();
     expect(events.some((event) => event.kind === "error" && event.message.includes("Source file is locked by another rundown process"))).toBe(true);
     expect(events.some((event) => event.kind === "error" && event.message.includes("pid=4321"))).toBe(true);
+  });
+
+  it("force-unlocks stale source lock on resolved output path when enabled", async () => {
+    const cwd = "/workspace";
+    const whatFile = path.join(cwd, "what.md");
+    const howFile = path.join(cwd, "how.md");
+    const outputFile = "nested/output.md";
+    const resolvedOutputFile = path.resolve(cwd, outputFile);
+    const { dependencies, events } = createDependencies({
+      cwd,
+      whatFile,
+      howFile,
+      outputFile: resolvedOutputFile,
+      whatContent: "# What\nShip auth flow.\n",
+      howContent: "# How\nUse bounded contexts.\n",
+    });
+    vi.mocked(dependencies.fileLock.isLocked).mockReturnValue(false);
+
+    const translateTask = createTranslateTask(dependencies);
+    const code = await translateTask(createOptions({
+      what: whatFile,
+      how: howFile,
+      output: outputFile,
+      forceUnlock: true,
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.fileLock.isLocked)).toHaveBeenCalledWith(resolvedOutputFile);
+    expect(vi.mocked(dependencies.fileLock.forceRelease)).toHaveBeenCalledWith(resolvedOutputFile);
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Force-unlocked stale source lock: " + resolvedOutputFile))).toBe(true);
+  });
+
+  it("does not force-unlock active source lock when enabled", async () => {
+    const cwd = "/workspace";
+    const whatFile = path.join(cwd, "what.md");
+    const howFile = path.join(cwd, "how.md");
+    const outputFile = "nested/output.md";
+    const resolvedOutputFile = path.resolve(cwd, outputFile);
+    const { dependencies } = createDependencies({
+      cwd,
+      whatFile,
+      howFile,
+      outputFile: resolvedOutputFile,
+      whatContent: "# What\nShip auth flow.\n",
+      howContent: "# How\nUse bounded contexts.\n",
+    });
+    vi.mocked(dependencies.fileLock.isLocked).mockReturnValue(true);
+
+    const translateTask = createTranslateTask(dependencies);
+    const code = await translateTask(createOptions({
+      what: whatFile,
+      how: howFile,
+      output: outputFile,
+      forceUnlock: true,
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.fileLock.isLocked)).toHaveBeenCalledWith(resolvedOutputFile);
+    expect(vi.mocked(dependencies.fileLock.forceRelease)).not.toHaveBeenCalled();
   });
 });
 

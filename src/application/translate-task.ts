@@ -65,6 +65,7 @@ export function createTranslateTask(
 
   return async function translateTask(options: TranslateTaskOptions): Promise<number> {
     const executionCwd = options.cwd ?? dependencies.workingDirectory.cwd();
+    const outputDocumentPath = dependencies.pathOperations.resolve(executionCwd, options.output);
 
     let whatDocument: string;
     try {
@@ -140,14 +141,14 @@ export function createTranslateTask(
     }
 
     if (options.forceUnlock) {
-      if (!dependencies.fileLock.isLocked(options.output)) {
-        dependencies.fileLock.forceRelease(options.output);
-        emit({ kind: "info", message: "Force-unlocked stale source lock: " + options.output });
+      if (!dependencies.fileLock.isLocked(outputDocumentPath)) {
+        dependencies.fileLock.forceRelease(outputDocumentPath);
+        emit({ kind: "info", message: "Force-unlocked stale source lock: " + outputDocumentPath });
       }
     }
 
     try {
-      dependencies.fileLock.acquire(options.output, { command: "translate" });
+      dependencies.fileLock.acquire(outputDocumentPath, { command: "translate" });
     } catch (error) {
       if (error instanceof FileLockError) {
         emit({
@@ -193,7 +194,7 @@ export function createTranslateTask(
         commandName: "translate",
         workerCommand: resolvedWorkerCommand,
         mode: options.mode,
-        source: options.output,
+        source: outputDocumentPath,
         keepArtifacts: options.keepArtifacts,
       });
 
@@ -245,15 +246,15 @@ export function createTranslateTask(
         return finishTranslate(EXIT_CODE_FAILURE, "execution-failed");
       }
 
-      try {
-        dependencies.fileSystem.writeText(options.output, runResult.stdout);
+        try {
+        dependencies.fileSystem.writeText(outputDocumentPath, runResult.stdout);
       } catch {
-        const message = "Translate produced output, but failed to write Markdown document: " + options.output;
+        const message = "Translate produced output, but failed to write Markdown document: " + outputDocumentPath;
         emit({ kind: "error", message });
         return finishTranslate(EXIT_CODE_FAILURE, "execution-failed");
       }
 
-      emit({ kind: "success", message: "Translated document written to: " + options.output });
+      emit({ kind: "success", message: "Translated document written to: " + outputDocumentPath });
       return finishTranslate(EXIT_CODE_SUCCESS, "completed");
     } finally {
       if (artifactContext && !artifactsFinalized) {

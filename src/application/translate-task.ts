@@ -2,6 +2,15 @@ import { EXIT_CODE_FAILURE, EXIT_CODE_SUCCESS } from "../domain/exit-codes.js";
 import { renderTemplate, type TemplateVars } from "../domain/template.js";
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import { FileLockError } from "../domain/ports/file-lock.js";
+import {
+  createOutputVolumeEvent,
+  createPhaseCompletedEvent,
+  createPhaseStartedEvent,
+  createRunCompletedEvent,
+  createRunStartedEvent,
+  type TraceRunStatus,
+} from "../domain/trace.js";
+import { countTraceLines } from "./run-task-utils.js";
 import { resolveWorkerPatternForInvocation } from "./resolve-worker.js";
 import { loadProjectTemplatesFromPorts } from "./project-templates.js";
 import type {
@@ -14,6 +23,7 @@ import type {
   PathOperationsPort,
   ProcessRunMode,
   TemplateLoader,
+  TraceWriterPort,
   WorkerConfigPort,
   WorkerExecutorPort,
   WorkingDirectoryPort,
@@ -33,7 +43,9 @@ export interface TranslateTaskDependencies {
   templateLoader: TemplateLoader;
   pathOperations: PathOperationsPort;
   artifactStore: ArtifactStore;
+  traceWriter: TraceWriterPort;
   configDir: ConfigDirResult | undefined;
+  createTraceWriter: (trace: boolean, artifactContext: ArtifactContext) => TraceWriterPort;
   output: ApplicationOutputPort;
 }
 
@@ -170,9 +182,35 @@ export function createTranslateTask(
     let artifactContext: ArtifactContext | null = null;
     let artifactsFinalized = false;
     let artifactStatus: ArtifactStoreStatus = "running";
+    let traceWriter: TraceWriterPort = dependencies.traceWriter;
+    let tracePhaseCount = 0;
+    let traceCompleted = false;
+    let traceStartedAtMs = 0;
+
+    const nowIso = (): string => new Date().toISOString();
+    const toTraceStatus = (status: ArtifactStoreStatus): TraceRunStatus => status;
+
+    const completeTraceRun = (status: ArtifactStoreStatus): void => {
+      if (!artifactContext || traceCompleted) {
+        return;
+      }
+
+      traceWriter.write(createRunCompletedEvent({
+        timestamp: nowIso(),
+        run_id: artifactContext.runId,
+        payload: {
+          status: toTraceStatus(status),
+          total_duration_ms: Math.max(0, Date.now() - traceStartedAtMs),
+          total_phases: tracePhaseCount,
+        },
+      }));
+      traceCompleted = true;
+    };
 
     const finishTranslate = (code: number, status: ArtifactStoreStatus): number => {
       artifactStatus = status;
+      completeTraceRun(status);
+      traceWriter.flush();
       if (artifactContext) {
         finalizeTranslateArtifacts(
           dependencies.artifactStore,
@@ -197,6 +235,23 @@ export function createTranslateTask(
         source: outputDocumentPath,
         keepArtifacts: options.keepArtifacts,
       });
+      traceWriter = dependencies.createTraceWriter(options.trace, artifactContext);
+      traceStartedAtMs = Date.now();
+
+      traceWriter.write(createRunStartedEvent({
+        timestamp: nowIso(),
+        run_id: artifactContext.runId,
+        payload: {
+          command: "translate",
+          source: options.what,
+          worker: resolvedWorkerCommand,
+          mode: options.mode,
+          transport: "pattern",
+          task_text: "Translate document",
+          task_file: options.what,
+          task_line: 1,
+        },
+      }));
 
       if (options.verbose) {
         emit({
@@ -204,6 +259,19 @@ export function createTranslateTask(
           message: "Running translate worker: " + resolvedWorkerCommand.join(" ") + " [mode=" + options.mode + "]",
         });
       }
+
+      const phaseSequence = tracePhaseCount + 1;
+      tracePhaseCount = phaseSequence;
+      const phaseStartedAtMs = Date.now();
+      traceWriter.write(createPhaseStartedEvent({
+        timestamp: nowIso(),
+        run_id: artifactContext.runId,
+        payload: {
+          phase: "execute",
+          sequence: phaseSequence,
+          command: resolvedWorkerCommand,
+        },
+      }));
 
       const runResult = await dependencies.workerExecutor.runWorker({
         workerPattern: resolvedWorkerPattern,
@@ -224,6 +292,32 @@ export function createTranslateTask(
         },
         artifactPhaseLabel: "translate",
       });
+      const phaseTimestamp = nowIso();
+      traceWriter.write(createPhaseCompletedEvent({
+        timestamp: phaseTimestamp,
+        run_id: artifactContext.runId,
+        payload: {
+          phase: "execute",
+          sequence: phaseSequence,
+          exit_code: runResult.exitCode,
+          duration_ms: Math.max(0, Date.now() - phaseStartedAtMs),
+          stdout_bytes: Buffer.byteLength(runResult.stdout, "utf8"),
+          stderr_bytes: Buffer.byteLength(runResult.stderr, "utf8"),
+          output_captured: options.mode === "wait",
+        },
+      }));
+      traceWriter.write(createOutputVolumeEvent({
+        timestamp: phaseTimestamp,
+        run_id: artifactContext.runId,
+        payload: {
+          phase: "execute",
+          sequence: phaseSequence,
+          stdout_bytes: Buffer.byteLength(runResult.stdout, "utf8"),
+          stderr_bytes: Buffer.byteLength(runResult.stderr, "utf8"),
+          stdout_lines: countTraceLines(runResult.stdout),
+          stderr_lines: countTraceLines(runResult.stderr),
+        },
+      }));
 
       if (options.verbose) {
         emit({
@@ -246,7 +340,7 @@ export function createTranslateTask(
         return finishTranslate(EXIT_CODE_FAILURE, "execution-failed");
       }
 
-        try {
+      try {
         dependencies.fileSystem.writeText(outputDocumentPath, runResult.stdout);
       } catch {
         const message = "Translate produced output, but failed to write Markdown document: " + outputDocumentPath;
@@ -259,6 +353,8 @@ export function createTranslateTask(
     } finally {
       if (artifactContext && !artifactsFinalized) {
         const finalStatus = artifactStatus === "running" ? "failed" : artifactStatus;
+        completeTraceRun(finalStatus);
+        traceWriter.flush();
         finalizeTranslateArtifacts(
           dependencies.artifactStore,
           artifactContext,

@@ -11,6 +11,7 @@ import type {
   ApplicationOutputEvent,
   FileLock,
   FileSystem,
+  TraceWriterPort,
 } from "../../src/domain/ports/index.js";
 import { FileLockError } from "../../src/domain/ports/file-lock.js";
 
@@ -167,7 +168,56 @@ describe("translate-task", () => {
         preserve: false,
       }),
     );
+    const traceEvents = vi.mocked(dependencies.createTraceWriter).mock.results[0]?.value.write.mock.calls
+      .map((call) => call[0]);
+    expect(traceEvents?.some((event) => event?.event_type === "run.started")).toBe(true);
+    expect(traceEvents?.some((event) => event?.event_type === "phase.started")).toBe(true);
+    expect(traceEvents?.some((event) => event?.event_type === "phase.completed")).toBe(true);
+    expect(traceEvents?.some((event) => event?.event_type === "output.volume")).toBe(true);
+    expect(traceEvents?.some((event) => event?.event_type === "run.completed")).toBe(true);
     expect(vi.mocked(dependencies.fileLock.releaseAll)).toHaveBeenCalledTimes(1);
+  });
+
+  it("finalizes failed runs with preserved artifacts and trace completion", async () => {
+    const cwd = "/workspace";
+    const whatFile = path.join(cwd, "what.md");
+    const howFile = path.join(cwd, "how.md");
+    const outputFile = path.join(cwd, "output.md");
+    const { dependencies, artifactStore, traceWriter, events } = createDependencies({
+      cwd,
+      whatFile,
+      howFile,
+      outputFile,
+      whatContent: "# What\nShip auth flow.\n",
+      howContent: "# How\nUse bounded contexts.\n",
+    });
+
+    vi.mocked(dependencies.workerExecutor.runWorker).mockResolvedValue({
+      exitCode: 2,
+      stdout: "",
+      stderr: "translate failed",
+    });
+
+    const translateTask = createTranslateTask(dependencies);
+    const code = await translateTask(createOptions({
+      what: whatFile,
+      how: howFile,
+      output: outputFile,
+      trace: true,
+    }));
+
+    expect(code).toBe(1);
+    expect(vi.mocked(artifactStore.finalize)).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: "run-translate" }),
+      expect.objectContaining({
+        status: "execution-failed",
+        preserve: true,
+      }),
+    );
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Runtime artifacts saved at"))).toBe(true);
+    const traceEvents = vi.mocked(traceWriter.write).mock.calls.map((call) => call[0]);
+    expect(traceEvents.some((event) => event.event_type === "run.completed" && event.payload.status === "execution-failed")).toBe(true);
+    expect(vi.mocked(traceWriter.flush)).toHaveBeenCalledTimes(1);
   });
 
   it("acquires and writes output lock using execution-cwd-resolved path", async () => {
@@ -308,6 +358,7 @@ function createDependencies(options: {
   events: ApplicationOutputEvent[];
   artifactStore: ArtifactStore;
   fileSystem: FileSystem;
+  traceWriter: TraceWriterPort & { write: ReturnType<typeof vi.fn>; flush: ReturnType<typeof vi.fn> };
 } {
   const events: ApplicationOutputEvent[] = [];
 
@@ -352,6 +403,11 @@ function createDependencies(options: {
     rm: vi.fn(),
   };
 
+  const traceWriter = {
+    write: vi.fn(),
+    flush: vi.fn(),
+  };
+
   const dependencies: TranslateTaskDependencies = {
     workerExecutor: {
       runWorker: vi.fn(async () => ({
@@ -379,10 +435,12 @@ function createDependencies(options: {
       isAbsolute: (filePath) => path.isAbsolute(filePath),
     },
     artifactStore,
+    traceWriter,
     configDir: {
       configDir: path.join(options.cwd, ".rundown"),
       isExplicit: false,
     },
+    createTraceWriter: vi.fn(() => traceWriter),
     output: {
       emit: (event) => events.push(event),
     },
@@ -393,6 +451,7 @@ function createDependencies(options: {
     events,
     artifactStore,
     fileSystem,
+    traceWriter,
   };
 }
 

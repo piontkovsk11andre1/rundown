@@ -630,7 +630,15 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       templateLoader: ports.templateLoader,
       pathOperations: ports.pathOperations,
       artifactStore: ports.artifactStore,
+      traceWriter: ports.traceWriter,
       configDir: ports.configDir,
+      createTraceWriter: (trace, artifactContext) => {
+        if (!trace) {
+          return ports.traceWriter;
+        }
+
+        return createArtifactTraceWriter(ports, artifactContext);
+      },
       output: ports.output,
     }),
     queryTask: (ports) => createQueryTask({

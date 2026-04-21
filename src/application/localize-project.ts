@@ -5,6 +5,7 @@ import {
   DEFAULT_DISCUSS_TEMPLATE,
   DEFAULT_HELP_TEMPLATE,
   DEFAULT_LOCALIZE_ALIASES_TEMPLATE,
+  DEFAULT_LOCALIZE_MESSAGES_TEMPLATE,
   DEFAULT_LOCALIZE_PROMPT_TEMPLATE,
   DEFAULT_MIGRATE_BACKLOG_TEMPLATE,
   DEFAULT_MIGRATE_CONTEXT_TEMPLATE,
@@ -38,6 +39,8 @@ import {
   DEFAULT_VERIFY_TEMPLATE,
 } from "../domain/defaults.js";
 import { EXIT_CODE_FAILURE, EXIT_CODE_SUCCESS } from "../domain/exit-codes.js";
+import { msg, type LocaleMessages } from "../domain/locale.js";
+import { MESSAGES, type MessageId } from "../domain/messages.js";
 import type {
   ConfigDirResult,
   FileSystem,
@@ -159,20 +162,68 @@ function renderAliasPrompt(language: string): string {
   return renderTemplate(DEFAULT_LOCALIZE_ALIASES_TEMPLATE, vars);
 }
 
+function renderMessagesPrompt(language: string, catalog: string): string {
+  const vars: TemplateVars = {
+    task: "Localize messages",
+    file: "",
+    context: "",
+    taskIndex: 0,
+    taskLine: 1,
+    source: "",
+    language,
+    catalog,
+  };
+
+  return renderTemplate(DEFAULT_LOCALIZE_MESSAGES_TEMPLATE, vars);
+}
+
+function isMessageId(value: string): value is MessageId {
+  return value in MESSAGES;
+}
+
+function parseLocaleMessages(stdout: string): Record<string, string> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout.trim());
+  } catch (error) {
+    throw new Error(String(error));
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("Locale messages must be a JSON object.");
+  }
+
+  const messages: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (!isMessageId(key)) {
+      throw new Error(`Locale messages contain unknown key: ${key}.`);
+    }
+
+    if (typeof value !== "string" || value.length === 0) {
+      throw new Error(`Locale message \"${key}\" must be a non-empty string value.`);
+    }
+
+    messages[key] = value;
+  }
+
+  return messages;
+}
+
 export function createLocalizeProject(
   dependencies: LocalizeProjectDependencies,
 ): (options: LocalizeProjectOptions) => Promise<number> {
   const emit = dependencies.output.emit.bind(dependencies.output);
+  const localeMessages: LocaleMessages = {};
 
   return async function localizeProject(options: LocalizeProjectOptions): Promise<number> {
     const language = options.language.trim();
     if (language.length === 0) {
-      emit({ kind: "error", message: "Missing language: provide a non-empty --language value." });
+      emit({ kind: "error", message: msg("localize.missing-language", {}, localeMessages) });
       return EXIT_CODE_FAILURE;
     }
 
     if (!dependencies.configDir?.configDir) {
-      emit({ kind: "error", message: "Unable to localize: no config directory is available." });
+      emit({ kind: "error", message: msg("localize.no-config-dir", {}, localeMessages) });
       return EXIT_CODE_FAILURE;
     }
 
@@ -189,7 +240,7 @@ export function createLocalizeProject(
     if (resolvedWorker.workerCommand.length === 0) {
       emit({
         kind: "error",
-        message: "No worker command available: .rundown/config.json has no configured worker. Configure a worker before running localize.",
+        message: msg("localize.no-worker", {}, localeMessages),
       });
       return EXIT_CODE_FAILURE;
     }
@@ -218,13 +269,23 @@ export function createLocalizeProject(
       if (result.exitCode !== 0) {
         emit({
           kind: "error",
-          message: `Failed to localize ${template.fileName}: worker exited with code ${result.exitCode ?? "null"}.`,
+          message: msg(
+            "localize.template-error",
+            {
+              fileName: template.fileName,
+              exitCode: String(result.exitCode ?? "null"),
+            },
+            localeMessages,
+          ),
         });
         return EXIT_CODE_FAILURE;
       }
 
       dependencies.fileSystem.writeText(templatePath, result.stdout);
-      emit({ kind: "success", message: `Translated ${template.fileName}` });
+      emit({
+        kind: "success",
+        message: msg("localize.template-done", { fileName: template.fileName }, localeMessages),
+      });
     }
 
     const aliasesPrompt = renderAliasPrompt(language);
@@ -241,7 +302,11 @@ export function createLocalizeProject(
     if (aliasesResult.exitCode !== 0) {
       emit({
         kind: "error",
-        message: `Failed to generate locale aliases: worker exited with code ${aliasesResult.exitCode ?? "null"}.`,
+        message: msg(
+          "localize.aliases-error",
+          { exitCode: String(aliasesResult.exitCode ?? "null") },
+          localeMessages,
+        ),
       });
       return EXIT_CODE_FAILURE;
     }
@@ -252,17 +317,65 @@ export function createLocalizeProject(
     } catch (error) {
       emit({
         kind: "error",
-        message: error instanceof Error ? error.message : String(error),
+        message: msg(
+          "localize.aliases-parse-error",
+          { error: error instanceof Error ? error.message : String(error) },
+          localeMessages,
+        ),
       });
       return EXIT_CODE_FAILURE;
     }
 
+    const catalog = JSON.stringify(MESSAGES, null, 2);
+    const messagesPrompt = renderMessagesPrompt(language, catalog);
+    const messagesResult = await dependencies.workerExecutor.runWorker({
+      workerPattern: resolvedWorker.workerPattern,
+      prompt: messagesPrompt,
+      mode: "wait",
+      captureOutput: true,
+      cwd: configDir,
+      configDir,
+      timeoutMs: workerTimeoutMs,
+    });
+
+    if (messagesResult.exitCode !== 0) {
+      emit({
+        kind: "error",
+        message: msg(
+          "localize.messages-error",
+          { exitCode: String(messagesResult.exitCode ?? "null") },
+          localeMessages,
+        ),
+      });
+      return EXIT_CODE_FAILURE;
+    }
+
+    let messages: Record<string, string>;
+    try {
+      messages = parseLocaleMessages(messagesResult.stdout);
+    } catch (error) {
+      emit({
+        kind: "error",
+        message: msg(
+          "localize.messages-parse-error",
+          { error: error instanceof Error ? error.message : String(error) },
+          localeMessages,
+        ),
+      });
+      return EXIT_CODE_FAILURE;
+    }
+
+    emit({
+      kind: "success",
+      message: msg("localize.messages-done", { count: String(Object.keys(messages).length) }, localeMessages),
+    });
+
     const localeConfigPath = `${configDir}/${LOCALE_CONFIG_FILE_NAME}`;
     dependencies.fileSystem.writeText(
       localeConfigPath,
-      JSON.stringify({ language, aliases }, null, 2) + "\n",
+      JSON.stringify({ language, aliases, messages }, null, 2) + "\n",
     );
-    emit({ kind: "success", message: `Wrote ${localeConfigPath}` });
+    emit({ kind: "success", message: msg("localize.locale-written", { path: localeConfigPath }, localeMessages) });
     return EXIT_CODE_SUCCESS;
   };
 }

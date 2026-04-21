@@ -841,6 +841,7 @@ export async function runTaskIteration(params: {
     cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace:
       preparedPrompts.cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace,
     forceRetryMetadata: execution.forceRetryMetadata,
+    localeMessages,
   });
 
   // Convert execution failures into lifecycle failure handling with hooks.

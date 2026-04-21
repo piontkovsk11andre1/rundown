@@ -19,6 +19,7 @@ import type {
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import type { RunTaskDependencies } from "./run-task-execution.js";
 import { type RunnerMode } from "./run-task-worker-command.js";
+import { msg, type LocaleMessages } from "../domain/locale.js";
 import {
   computeTaskContextMetrics,
   type TaskContextMetrics,
@@ -26,7 +27,6 @@ import {
 import { createTraceRunSession } from "./trace-run-session.js";
 import type { PrefixChain } from "../domain/prefix-chain.js";
 import { executeToolChain } from "./tool-execution.js";
-import { pluralize } from "./run-task-utils.js";
 import type { TerminalStopSignal } from "../domain/terminal-control.js";
 
 const INCLUDE_STACK_ENV = "RUNDOWN_INCLUDE_STACK";
@@ -128,6 +128,7 @@ export async function dispatchTaskExecution(params: {
     previousRunId: string;
     previousExitCode: number;
   };
+  localeMessages?: LocaleMessages;
 }): Promise<TaskExecutionDispatchResult> {
   const {
     dependencies,
@@ -167,7 +168,9 @@ export async function dispatchTaskExecution(params: {
     cliExecutionOptionsWithVerificationTemplateFailureAbort,
     cliExecutionOptionsWithVerificationTemplateFailureAbortAndTrace,
     forceRetryMetadata,
+    localeMessages: localeMessagesInput,
   } = params;
+  const localeMessages = localeMessagesInput ?? dependencies.localeMessages ?? {};
 
   // Compute richer task context metrics only when trace collection is enabled.
   const taskContextMetrics: TaskContextMetrics = trace
@@ -390,8 +393,8 @@ export async function dispatchTaskExecution(params: {
   // Verify-only mode skips execution and returns verification-only settings.
   if (onlyVerify) {
     emit({ kind: "info", message: configuredOnlyVerify
-      ? "Only verify mode — skipping task execution."
-      : "Verify-only task mode — skipping task execution."
+      ? msg("dispatch.only-verify-mode", {}, localeMessages)
+      : msg("dispatch.verify-only-task", {}, localeMessages)
     });
     return {
       kind: "ready-for-completion",
@@ -406,7 +409,13 @@ export async function dispatchTaskExecution(params: {
   if (task.isInlineCli) {
     const inlineCliCommand = resolveInlineCliCommand(task);
     const inlineCliCwd = dependencies.pathOperations.dirname(dependencies.pathOperations.resolve(task.file));
-    emit({ kind: "info", message: "Executing inline CLI: " + inlineCliCommand + " [cwd=" + inlineCliCwd + "]" });
+    emit({
+      kind: "info",
+      message: msg("dispatch.inline-cli-running", {
+        command: inlineCliCommand,
+        cwd: inlineCliCwd,
+      }, localeMessages),
+    });
     const inlineCliPhaseTrace = traceRunSession.beginPhase("execute", [inlineCliCommand]);
     const cliResult = await dependencies.workerExecutor.executeInlineCli(inlineCliCommand, inlineCliCwd, {
       env: executionEnv,
@@ -483,7 +492,13 @@ export async function dispatchTaskExecution(params: {
       ...buildTaskHierarchyTemplateVars(task),
     } satisfies TemplateVars);
 
-    emit({ kind: "info", message: "Running tool expansion: " + resolvedTool.name + " [template=" + resolvedTool.templatePath + "]" });
+    emit({
+      kind: "info",
+      message: msg("dispatch.tool-running", {
+        toolName: resolvedTool.name,
+        templatePath: resolvedTool.templatePath ?? "",
+      }, localeMessages),
+    });
     const executePhaseTrace = traceRunSession.beginPhase("execute", selectedWorkerCommand);
     traceRunSession.emitPromptMetrics(renderedToolPrompt, expandedContextBefore, "execute.md");
     const runResult = await dependencies.workerExecutor.runWorker({
@@ -538,12 +553,12 @@ export async function dispatchTaskExecution(params: {
       dependencies.fileSystem.writeText(task.file, updatedSource);
       emit({
         kind: "info",
-        message: "Inserted " + subitemLines.length + " "
-          + pluralize(subitemLines.length, "tool-generated child TODO item", "tool-generated child TODO items")
-          + ".",
+        message: msg("dispatch.tool-inserted-items", {
+          count: String(subitemLines.length),
+        }, localeMessages),
       });
     } else {
-      emit({ kind: "info", message: "Tool expansion produced no child TODO items." });
+      emit({ kind: "info", message: msg("dispatch.tool-no-items", {}, localeMessages) });
     }
 
     return {
@@ -557,7 +572,13 @@ export async function dispatchTaskExecution(params: {
   }
 
   // Default branch executes the configured worker command for standard tasks.
-  emit({ kind: "info", message: resolvedWorkerCommand.join(" ") + " [" + mode + "]" });
+  emit({
+    kind: "info",
+    message: msg("dispatch.worker-running", {
+      command: resolvedWorkerCommand.join(" "),
+      mode,
+    }, localeMessages),
+  });
   const executePhaseTrace = traceRunSession.beginPhase("execute", resolvedWorkerCommand);
   traceRunSession.emitPromptMetrics(prompt, expandedContextBefore, "execute.md");
   const runResult = await dependencies.workerExecutor.runWorker({

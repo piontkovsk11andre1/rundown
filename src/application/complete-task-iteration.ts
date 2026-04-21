@@ -323,6 +323,7 @@ export async function completeTaskIteration(params: {
         onVerificationEfficiency: (metrics) => {
           verificationEfficiency = metrics;
         },
+        localeMessages,
       }));
     } catch (error) {
       const failureCode = await handleTemplateCliFailure(

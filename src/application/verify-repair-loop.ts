@@ -23,6 +23,7 @@ import {
   areOutputsSuspiciouslySimilar,
   containsKnownUsageLimitPattern,
 } from "../domain/services/output-similarity.js";
+import { msg, type LocaleMessages } from "../domain/locale.js";
 
 type ArtifactContext = any;
 
@@ -78,6 +79,7 @@ export interface VerifyRepairLoopInput {
   isInlineCliTask?: boolean;
   isToolExpansionTask?: boolean;
   onVerificationEfficiency?: (metrics: { verifyAttempts: number; repairAttempts: number }) => void;
+  localeMessages?: LocaleMessages;
 }
 
 /**
@@ -121,6 +123,7 @@ export async function runVerifyRepairLoop(
   const isExplicitlyEmptyOutput = (stdout: string | undefined): boolean =>
     typeof stdout === "string" && stdout.trim().length === 0;
   const emit = dependencies.output.emit.bind(dependencies.output);
+  const localeMessages = input.localeMessages ?? {};
   const emitWorkerOutput = (stdout: string, stderr: string): void => {
     if (!input.showAgentOutput) {
       return;
@@ -136,8 +139,6 @@ export async function runVerifyRepairLoop(
   };
   const repairIndent = "  ";
   const indentRepairMessage = (message: string): string => `${repairIndent}${message}`;
-  const formatRepairAttempt = (attemptNumber: number): string => "Repair attempt "
-    + attemptNumber + " of " + input.maxRepairAttempts;
   const maxResolveRepairAttempts = Number.isFinite(input.maxResolveRepairAttempts)
     && (input.maxResolveRepairAttempts ?? 0) > 0
     ? Math.floor(input.maxResolveRepairAttempts ?? 1)
@@ -428,8 +429,8 @@ export async function runVerifyRepairLoop(
 
   // Always run one initial verification before considering repairs.
   if (input.verbose) {
-    emit({ kind: "info", message: "Verify phase: running initial verification (attempt 1)." });
-    emit({ kind: "info", message: "Running verification..." });
+    emit({ kind: "info", message: msg("verify.initial-verbose", {}, localeMessages) });
+    emit({ kind: "info", message: msg("verify.running-verbose", {}, localeMessages) });
   }
 
   const initialVerificationStartedAt = Date.now();
@@ -470,7 +471,7 @@ export async function runVerifyRepairLoop(
     && typeof verificationStdout === "string"
     && areOutputsSuspiciouslySimilar(input.executionStdout, verificationStdout)
   ) {
-    const usageLimitFailureReason = "Possible API usage limit detected: identical or near-identical responses across execution and verification phases; aborting verify/repair to avoid wasting quota. Please check your API quota and rate-limit status.";
+    const usageLimitFailureReason = msg("verify.usage-limit", {}, localeMessages);
     emitUsageLimitDetected({
       phase: "verify",
       reason: usageLimitFailureReason,
@@ -502,9 +503,9 @@ export async function runVerifyRepairLoop(
   if (valid) {
     dependencies.verificationStore.remove(input.task);
     emitVerificationEfficiency();
-    emit({ kind: "success", message: "Verify phase complete: verification passed on initial attempt." });
+    emit({ kind: "success", message: msg("verify.passed-initial", {}, localeMessages) });
     if (input.verbose) {
-      emit({ kind: "success", message: "Verification passed." });
+      emit({ kind: "success", message: msg("verify.passed-verbose", {}, localeMessages) });
     }
     return { valid: true, failureReason: null };
   }
@@ -514,8 +515,13 @@ export async function runVerifyRepairLoop(
     const failureReason = cumulativeFailureReasons.at(-1) ?? initialFailureReason;
     emitRepairOutcome(false, 0);
     emitVerificationEfficiency();
-    emit({ kind: "warn", message: "Repair phase skipped: repair is disabled." });
-    emit({ kind: "error", message: "Last validation error: " + (failureReason ?? "Verification failed (no details).") });
+    emit({ kind: "warn", message: msg("verify.repair-disabled", {}, localeMessages) });
+    emit({
+      kind: "error",
+      message: msg("verify.last-error", {
+        reason: failureReason ?? "Verification failed (no details).",
+      }, localeMessages),
+    });
     return { valid: false, failureReason };
   }
 
@@ -523,7 +529,10 @@ export async function runVerifyRepairLoop(
   const repairWarningReason = initialFailureReason ?? "Verification failed (no details).";
   emit({
     kind: "warn",
-    message: "Verification failed: " + repairWarningReason + ". Running repair (" + input.maxRepairAttempts + " attempt(s))...",
+    message: msg("verify.repair-starting", {
+      reason: repairWarningReason,
+      count: String(input.maxRepairAttempts),
+    }, localeMessages),
   });
   let attempts = 0;
   let previousFailure = dependencies.verificationStore.read(input.task) ?? "Verification failed (no details).";
@@ -535,7 +544,10 @@ export async function runVerifyRepairLoop(
     repairAttempts = attempts;
     totalRepairAttempts = attempts;
     emitRepairAttempt(attempts, previousFailure);
-    emit({ kind: "info", message: indentRepairMessage(formatRepairAttempt(attempts) + ": starting...") });
+    emit({
+      kind: "info",
+      message: msg("verify.repair-attempt-start", { n: String(attempts) }, localeMessages),
+    });
 
     // Each repair invocation performs one repair cycle and one verification pass.
     const repairStartedAt = Date.now();
@@ -575,7 +587,7 @@ export async function runVerifyRepairLoop(
       && isExplicitlyEmptyOutput(result.verificationStdout);
 
     if (allPhaseOutputsEmpty) {
-      const emptyOutputFailureReason = "Worker output was empty across execution, verification, and repair phases; aborting because this indicates an execution/capture failure rather than an API usage limit.";
+      const emptyOutputFailureReason = msg("verify.empty-output", {}, localeMessages);
       attemptRecord.failureReason = emptyOutputFailureReason;
       cumulativeFailureReasons.push(emptyOutputFailureReason);
       emitRepairOutcome(false, attempts);
@@ -598,7 +610,7 @@ export async function runVerifyRepairLoop(
         && areOutputsSuspiciouslySimilar(input.executionStdout, result.verificationStdout);
 
       if (repairOutputMatched || reVerificationOutputMatched) {
-        const usageLimitFailureReason = "Possible API usage limit detected: identical or near-identical responses across execution and repair phases; aborting verify/repair to avoid wasting quota. Please check your API quota and rate-limit status.";
+        const usageLimitFailureReason = msg("verify.usage-limit-repair", {}, localeMessages);
         attemptRecord.failureReason = usageLimitFailureReason;
         emitUsageLimitDetected({
           phase: "repair",
@@ -639,18 +651,27 @@ export async function runVerifyRepairLoop(
       emitRepairOutcome(true, attempts);
       dependencies.verificationStore.remove(input.task);
       emitVerificationEfficiency();
-      emit({ kind: "info", message: indentRepairMessage(formatRepairAttempt(attempts) + ": passed verification.") });
-      emit({ kind: "success", message: indentRepairMessage("Repair succeeded after " + attempts + " attempt(s).") });
+      emit({
+        kind: "info",
+        message: msg("verify.repair-attempt-passed", { n: String(attempts) }, localeMessages),
+      });
+      emit({
+        kind: "success",
+        message: msg("verify.repair-succeeded", { n: String(attempts) }, localeMessages),
+      });
       return { valid: true, failureReason: null };
     }
 
     emit({
       kind: "info",
-      message: indentRepairMessage(formatRepairAttempt(attempts) + ": failed verification."),
+      message: msg("verify.repair-attempt-failed", { n: String(attempts) }, localeMessages),
     });
     emit({
       kind: "warn",
-      message: indentRepairMessage("Repair attempt " + attempts + " failed: " + (repairFailureReason ?? "Verification failed (no details).")),
+      message: msg("verify.repair-attempt-warn", {
+        n: String(attempts),
+        reason: repairFailureReason ?? "Verification failed (no details).",
+      }, localeMessages),
     });
 
     previousFailure = repairFailureReason ?? "Verification failed (no details).";
@@ -661,11 +682,11 @@ export async function runVerifyRepairLoop(
     emitResolveAttempt(previousFailure, attempts);
     emit({
       kind: "warn",
-      message: "Repair phase exhausted; running resolve phase to diagnose root cause.",
+      message: msg("verify.repair-exhausted", {}, localeMessages),
     });
     emit({
       kind: "info",
-      message: "Resolve phase: collecting failure context from " + attempts + " repair attempt(s).",
+      message: msg("verify.resolve-collecting", { count: String(attempts) }, localeMessages),
     });
 
     const resolveResult = await dependencies.taskRepair.resolve({
@@ -696,13 +717,17 @@ export async function runVerifyRepairLoop(
       cumulativeFailureReasons.push(resolveFailureReason);
       emit({
         kind: "warn",
-        message: "Resolve phase outcome: unresolved. " + summarizeDiagnosis(resolveFailureReason),
+        message: msg("verify.resolve-unresolved", {
+          diagnosis: summarizeDiagnosis(resolveFailureReason),
+        }, localeMessages),
       });
       emitRepairOutcome(false, totalRepairAttempts);
       emitVerificationEfficiency();
       emit({
         kind: "error",
-        message: "Resolve phase could not diagnose the issue: " + resolveFailureReason,
+        message: msg("verify.resolve-diagnose-error", {
+          reason: resolveFailureReason,
+        }, localeMessages),
       });
       return {
         valid: false,
@@ -713,11 +738,13 @@ export async function runVerifyRepairLoop(
     resolveDiagnosis = resolveFailureReason;
     emit({
       kind: "success",
-      message: "Resolve phase outcome: resolved diagnosis captured.",
+      message: msg("verify.resolve-succeeded", {}, localeMessages),
     });
     emit({
       kind: "info",
-      message: "Resolve diagnosis: " + summarizeDiagnosis(resolveDiagnosis),
+      message: msg("verify.resolve-diagnosis", {
+        diagnosis: summarizeDiagnosis(resolveDiagnosis),
+      }, localeMessages),
     });
     emit({
       kind: "info",
@@ -836,7 +863,12 @@ export async function runVerifyRepairLoop(
   emitVerificationEfficiency();
   emit({ kind: "warn", message: "Repair phase complete: all repair attempts exhausted." });
   const failureReason = cumulativeFailureReasons.at(-1) ?? initialFailureReason;
-  emit({ kind: "error", message: "Last validation error: " + (failureReason ?? "Verification failed (no details).") });
+  emit({
+    kind: "error",
+    message: msg("verify.last-error", {
+      reason: failureReason ?? "Verification failed (no details).",
+    }, localeMessages),
+  });
   return { valid: false, failureReason };
 }
 

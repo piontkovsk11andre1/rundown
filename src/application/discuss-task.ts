@@ -34,11 +34,8 @@ import { loadProjectTemplatesFromPorts } from "./project-templates.js";
 import { resolveWorkerPatternForInvocation } from "./resolve-worker.js";
 import {
   formatNoItemsFound,
-  formatNoItemsFoundFor,
-  formatNoItemsFoundMatching,
   formatSuccessFailureSummary,
   formatTaskLabel,
-  pluralize,
 } from "./run-task-utils.js";
 import {
   resolveTaskContextFromRuntimeMetadata,
@@ -73,6 +70,7 @@ import {
   EXIT_CODE_NO_WORK,
   EXIT_CODE_SUCCESS,
 } from "../domain/exit-codes.js";
+import { msg, type LocaleMessages } from "../domain/locale.js";
 
 export type RunnerMode = ProcessRunMode;
 
@@ -141,6 +139,7 @@ export interface DiscussTaskDependencies {
   cliBlockExecutor: CommandExecutor;
   configDir: ConfigDirResult | undefined;
   createTraceWriter: (trace: boolean, artifactContext: ArtifactContext) => TraceWriterPort;
+  localeMessages?: LocaleMessages;
   output: ApplicationOutputPort;
 }
 
@@ -174,6 +173,7 @@ export function createDiscussTask(
   dependencies: DiscussTaskDependencies,
 ): (options: DiscussTaskOptions) => Promise<number> {
   const emit = dependencies.output.emit.bind(dependencies.output);
+  const localeMessages = dependencies.localeMessages ?? {};
   const cliBlockExecutor = dependencies.cliBlockExecutor;
 
   const emitDiscussionTurnStart = (label: string): void => {
@@ -265,14 +265,17 @@ export function createDiscussTask(
 
       if (!selectedRun) {
         const target = runId === "latest" ? "latest" : runId;
-        emit({ kind: "error", message: formatNoItemsFoundFor("saved runtime artifact run", target) });
+        emit({
+          kind: "error",
+          message: msg("discuss.no-run-found", { target }, localeMessages),
+        });
         return EXIT_CODE_NO_WORK;
       }
 
       if (selectedRun.status === "metadata-missing") {
         emit({
           kind: "error",
-          message: "Selected run is missing run metadata (run.json). Re-run the original task with --keep-artifacts, then retry discuss --run.",
+          message: msg("discuss.missing-run-meta", {}, localeMessages),
         });
         return EXIT_CODE_NO_WORK;
       }
@@ -280,9 +283,9 @@ export function createDiscussTask(
       if (!isTerminalRunStatus(selectedRun.status)) {
         emit({
           kind: "error",
-          message: "Selected run is not in a terminal state (status="
-            + (selectedRun.status ?? "unknown")
-            + "). Use `rundown artifacts` to choose a completed run.",
+          message: msg("discuss.run-not-terminal", {
+            status: selectedRun.status ?? "unknown",
+          }, localeMessages),
         });
         return EXIT_CODE_NO_WORK;
       }
@@ -290,7 +293,7 @@ export function createDiscussTask(
       if (!selectedRun.task) {
         emit({
           kind: "error",
-          message: "Selected run has no task metadata to discuss. Choose a different run or execute tasks again to refresh artifacts.",
+          message: msg("discuss.no-task-meta", {}, localeMessages),
         });
         return EXIT_CODE_NO_WORK;
       }
@@ -299,8 +302,7 @@ export function createDiscussTask(
       if (metadataError) {
         emit({
           kind: "error",
-          message: "Selected run has invalid task metadata: " + metadataError
-            + " Re-run the task to regenerate runtime artifacts.",
+          message: msg("discuss.invalid-task-meta", { error: metadataError }, localeMessages),
         });
         return EXIT_CODE_NO_WORK;
       }
@@ -317,7 +319,10 @@ export function createDiscussTask(
       // Resolve markdown sources up front so locking and selection operate on the same set.
       files = await dependencies.sourceResolver.resolveSources(source);
       if (files.length === 0) {
-        emit({ kind: "warn", message: formatNoItemsFoundMatching("Markdown files", source) });
+        emit({
+          kind: "warn",
+          message: msg("discuss.no-markdown-found", { source }, localeMessages),
+        });
         return EXIT_CODE_NO_WORK;
       }
 
@@ -332,7 +337,10 @@ export function createDiscussTask(
         }
 
         dependencies.fileLock.forceRelease(filePath);
-        emit({ kind: "info", message: "Force-unlocked stale source lock: " + filePath });
+        emit({
+          kind: "info",
+          message: msg("discuss.force-unlocked", { filePath }, localeMessages),
+        });
       }
     }
 
@@ -347,14 +355,7 @@ export function createDiscussTask(
       if (error instanceof FileLockError) {
         emit({
           kind: "error",
-          message: "Source file is locked by another rundown process: "
-            + error.filePath
-            + " (pid=" + error.holder.pid
-            + ", command=" + error.holder.command
-            + ", startTime=" + error.holder.startTime
-            + "). If this lock is stale, rerun with --force-unlock or run `rundown unlock "
-            + error.filePath
-            + "`.",
+          message: msg("discuss.lock-error", { filePath: error.filePath }, localeMessages),
         });
         return EXIT_CODE_FAILURE;
       }
@@ -372,8 +373,7 @@ export function createDiscussTask(
         if (!runRootExists || runRootStat?.isDirectory !== true) {
           emit({
             kind: "error",
-            message: "Selected run has no saved artifact directory: " + selectedRun.rootDir
-              + ". No saved artifacts are available on disk; they may have been purged (run without --keep-artifacts).",
+            message: msg("discuss.no-artifact-dir", { rootDir: selectedRun.rootDir }, localeMessages),
           });
           return EXIT_CODE_NO_WORK;
         }
@@ -389,7 +389,7 @@ export function createDiscussTask(
         } else {
           emit({
             kind: "info",
-            message: "Could not resolve task in the current source file state; using saved run metadata from run.json.",
+            message: msg("discuss.task-resolved-fallback", {}, localeMessages),
           });
           taskContext = createFallbackTaskContext(selectedRuntimeTaskMetadata, cwd, dependencies.pathOperations);
         }
@@ -404,7 +404,7 @@ export function createDiscussTask(
         // Select a single unchecked task according to configured sort behavior.
         const selectedBatch = dependencies.taskSelector.selectNextTask(files, sortMode);
         if (!selectedBatch || selectedBatch.length === 0) {
-          emit({ kind: "info", message: formatNoItemsFound("unchecked tasks") });
+          emit({ kind: "info", message: msg("discuss.no-unchecked-tasks", {}, localeMessages) });
           return EXIT_CODE_NO_WORK;
         }
 
@@ -475,13 +475,11 @@ export function createDiscussTask(
             const exitCodeLabel = error.exitCode === null ? "unknown" : String(error.exitCode);
             emit({
               kind: "error",
-              message: "`cli` fenced command failed in "
-                + error.templateLabel
-                + " (exit "
-                + exitCodeLabel
-                + "): "
-                + error.command
-                + ". Aborting run.",
+              message: msg("discuss.cli-block-failed", {
+                location: error.templateLabel,
+                code: exitCodeLabel,
+                command: error.command,
+              }, localeMessages),
             });
             return EXIT_CODE_FAILURE;
           }
@@ -493,13 +491,16 @@ export function createDiscussTask(
         if (finishedRunPromptContext) {
           emit({
             kind: "info",
-            message: "Finished task: " + formatTaskLabel(taskContext.task)
-              + " (run "
-              + finishedRunPromptContext.run.runId
-              + ")",
+            message: msg("discuss.finished-verbose", {
+              label: formatTaskLabel(taskContext.task),
+              runId: finishedRunPromptContext.run.runId,
+            }, localeMessages),
           });
         } else {
-          emit({ kind: "info", message: "Next task: " + formatTaskLabel(taskContext.task) });
+          emit({
+            kind: "info",
+            message: msg("discuss.next-verbose", { label: formatTaskLabel(taskContext.task) }, localeMessages),
+          });
         }
       }
 
@@ -512,15 +513,17 @@ export function createDiscussTask(
         if (dryRunSuppressesCliExpansion && !options.ignoreCliBlock) {
           emit({
             kind: "info",
-            message: "Dry run — skipped `cli` fenced block execution; would execute "
-              + promptCliBlockCount
-              + " "
-              + pluralize(promptCliBlockCount, "block", "blocks")
-              + ".",
+            message: msg("discuss.dry-run-cli-skipped", { count: String(promptCliBlockCount) }, localeMessages),
           });
         }
-        emit({ kind: "info", message: "Dry run — would discuss with: " + resolvedWorkerCommand.join(" ") });
-        emit({ kind: "info", message: "Prompt length: " + prompt.length + " chars" });
+        emit({
+          kind: "info",
+          message: msg("discuss.dry-run-would-run", { command: resolvedWorkerCommand.join(" ") }, localeMessages),
+        });
+        emit({
+          kind: "info",
+          message: msg("discuss.prompt-length", { length: String(prompt.length) }, localeMessages),
+        });
         return EXIT_CODE_SUCCESS;
       }
 
@@ -528,7 +531,7 @@ export function createDiscussTask(
       if (resolvedWorkerCommand.length === 0) {
         emit({
           kind: "error",
-          message: "No worker command available: .rundown/config.json has no configured worker, and no CLI worker was provided. Use --worker <pattern> or -- <command>.",
+          message: msg("discuss.no-worker", {}, localeMessages),
         });
         return EXIT_CODE_FAILURE;
       }
@@ -588,7 +591,9 @@ export function createDiscussTask(
         }));
       }
 
-      const discussionTurnLabel = "Discuss turn: " + formatTaskLabel(taskContext.task);
+      const discussionTurnLabel = msg("discuss.group-label", {
+        label: formatTaskLabel(taskContext.task),
+      }, localeMessages);
       emitDiscussionTurnStart(discussionTurnLabel);
       discussionTurnStarted = true;
 
@@ -597,7 +602,9 @@ export function createDiscussTask(
         if (verbose) {
           emit({
             kind: "info",
-            message: "Running discussion worker: " + resolvedWorkerCommand.join(" ") + " [mode=tui]",
+            message: msg("discuss.worker-running-verbose", {
+              command: resolvedWorkerCommand.join(" "),
+            }, localeMessages),
           });
         }
         const result = await dependencies.workerExecutor.runWorker({
@@ -616,9 +623,9 @@ export function createDiscussTask(
         if (verbose) {
           emit({
             kind: "info",
-            message: "Discussion worker completed (exit "
-              + (result.exitCode === null ? "null" : String(result.exitCode))
-              + ").",
+            message: msg("discuss.worker-done-verbose", {
+              code: result.exitCode === null ? "null" : String(result.exitCode),
+            }, localeMessages),
           });
         }
 
@@ -677,14 +684,14 @@ export function createDiscussTask(
         if (options.keepArtifacts) {
           emit({
             kind: "info",
-            message: "Runtime artifacts saved at " + dependencies.artifactStore.displayPath(artifactContext) + ".",
+            message: msg("discuss.artifacts-saved", {
+              path: dependencies.artifactStore.displayPath(artifactContext),
+            }, localeMessages),
           });
         }
 
         if (checkboxMutations.length > 0) {
-          const message = "Discussion changed checkbox state in "
-            + checkboxMutations[0]
-            + ". Discuss mode may rewrite task text, but must not mark/unmark checkboxes.";
+          const message = msg("discuss.checkbox-changed", { filePath: checkboxMutations[0] ?? "" }, localeMessages);
           emit({
             kind: "error",
             message,

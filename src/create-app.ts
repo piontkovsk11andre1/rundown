@@ -723,6 +723,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       traceWriter: ports.traceWriter,
       cliBlockExecutor: ports.cliBlockExecutor,
       configDir: ports.configDir,
+      localeMessages: ports.localeMessages ?? {},
       createTraceWriter: (trace, artifactContext) => {
         if (!trace) {
           return ports.traceWriter;

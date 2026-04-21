@@ -7,6 +7,7 @@ import {
   type ParsedWorkerPattern,
 } from "../domain/worker-pattern.js";
 import fs from "node:fs";
+import path from "node:path";
 
 type CliOptionMap = Record<string, string | string[] | boolean>;
 
@@ -470,6 +471,58 @@ export function resolveAddMarkdownFile(markdownFile: string): string {
   return resolvedMarkdownFile;
 }
 
+export interface ResolvedTranslateMarkdownFiles {
+  whatMarkdownFile: string;
+  howMarkdownFile: string;
+  outputMarkdownFile: string;
+}
+
+/**
+ * Validates and resolves the Markdown paths expected by the `translate` command.
+ */
+export function resolveTranslateMarkdownFiles(
+  whatMarkdownFile: string,
+  howMarkdownFile: string,
+  outputMarkdownFile: string,
+): ResolvedTranslateMarkdownFiles {
+  const resolvedWhatMarkdownFile = resolveSingleMarkdownFile({
+    commandName: "translate",
+    usage: "rundown translate <what> <how> <output> [options]",
+    invalidPathLabel: "translate <what>",
+    markdownFiles: [whatMarkdownFile],
+  });
+  const resolvedHowMarkdownFile = resolveSingleMarkdownFile({
+    commandName: "translate",
+    usage: "rundown translate <what> <how> <output> [options]",
+    invalidPathLabel: "translate <how>",
+    markdownFiles: [howMarkdownFile],
+  });
+  const resolvedOutputMarkdownFile = resolveSingleMarkdownFile({
+    commandName: "translate",
+    usage: "rundown translate <what> <how> <output> [options]",
+    invalidPathLabel: "translate <output>",
+    markdownFiles: [outputMarkdownFile],
+  });
+
+  validateExistingTranslateInputMarkdownFile(resolvedWhatMarkdownFile, "<what>");
+  validateExistingTranslateInputMarkdownFile(resolvedHowMarkdownFile, "<how>");
+  validateTranslateOutputMarkdownFile(resolvedOutputMarkdownFile);
+
+  if (isSamePath(resolvedOutputMarkdownFile, resolvedHowMarkdownFile)) {
+    throw new Error(
+      "Invalid translate document path: "
+        + resolvedOutputMarkdownFile
+        + ". The `translate` command does not allow <output> to be the same path as <how>.",
+    );
+  }
+
+  return {
+    whatMarkdownFile: resolvedWhatMarkdownFile,
+    howMarkdownFile: resolvedHowMarkdownFile,
+    outputMarkdownFile: resolvedOutputMarkdownFile,
+  };
+}
+
 interface ResolveSingleMarkdownFileOptions {
   commandName: string;
   usage: string;
@@ -507,6 +560,128 @@ function resolveSingleMarkdownFile({
  */
 function containsGlobPattern(value: string): boolean {
   return /[*?[\]{}]/.test(value);
+}
+
+function validateExistingTranslateInputMarkdownFile(markdownFile: string, argumentLabel: "<what>" | "<how>"): void {
+  if (containsGlobPattern(markdownFile)) {
+    throw new Error(
+      "Invalid translate document path for "
+        + argumentLabel
+        + ": "
+        + markdownFile
+        + ". The `translate` command requires an existing Markdown file and does not accept directory or glob inputs.",
+    );
+  }
+
+  if (!fs.existsSync(markdownFile)) {
+    throw new Error(
+      "Invalid translate document path for "
+        + argumentLabel
+        + ": "
+        + markdownFile
+        + ". The `translate` command requires an existing Markdown file; the provided path does not exist.",
+    );
+  }
+
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(markdownFile);
+  } catch {
+    throw new Error(
+      "Invalid translate document path for "
+        + argumentLabel
+        + ": "
+        + markdownFile
+        + ". The `translate` command requires an existing Markdown file and cannot read this path.",
+    );
+  }
+
+  if (!stats.isFile()) {
+    throw new Error(
+      "Invalid translate document path for "
+        + argumentLabel
+        + ": "
+        + markdownFile
+        + ". The `translate` command requires an existing Markdown file and does not accept directory or glob inputs.",
+    );
+  }
+}
+
+function validateTranslateOutputMarkdownFile(markdownFile: string): void {
+  if (containsGlobPattern(markdownFile)) {
+    throw new Error(
+      "Invalid translate document path for <output>: "
+        + markdownFile
+        + ". The `translate` command requires exactly one non-directory Markdown file and does not accept directory or glob inputs.",
+    );
+  }
+
+  const parentDirectory = path.dirname(markdownFile);
+  if (!fs.existsSync(parentDirectory)) {
+    throw new Error(
+      "Invalid translate document path for <output>: "
+        + markdownFile
+        + ". Parent directory does not exist: "
+        + parentDirectory
+        + ".",
+    );
+  }
+
+  let parentStats: fs.Stats;
+  try {
+    parentStats = fs.statSync(parentDirectory);
+  } catch {
+    throw new Error(
+      "Invalid translate document path for <output>: "
+        + markdownFile
+        + ". Cannot access parent directory: "
+        + parentDirectory
+        + ".",
+    );
+  }
+
+  if (!parentStats.isDirectory()) {
+    throw new Error(
+      "Invalid translate document path for <output>: "
+        + markdownFile
+        + ". Parent path is not a directory: "
+        + parentDirectory
+        + ".",
+    );
+  }
+
+  if (!fs.existsSync(markdownFile)) {
+    return;
+  }
+
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(markdownFile);
+  } catch {
+    throw new Error(
+      "Invalid translate document path for <output>: "
+        + markdownFile
+        + ". The `translate` command requires exactly one non-directory Markdown file and cannot read this path.",
+    );
+  }
+
+  if (stats.isDirectory()) {
+    throw new Error(
+      "Invalid translate document path for <output>: "
+        + markdownFile
+        + ". The `translate` command requires exactly one non-directory Markdown file and does not accept directory or glob inputs.",
+    );
+  }
+}
+
+function isSamePath(leftPath: string, rightPath: string): boolean {
+  const resolvedLeftPath = path.resolve(leftPath);
+  const resolvedRightPath = path.resolve(rightPath);
+  if (process.platform === "win32") {
+    return resolvedLeftPath.toLowerCase() === resolvedRightPath.toLowerCase();
+  }
+
+  return resolvedLeftPath === resolvedRightPath;
 }
 
 /**

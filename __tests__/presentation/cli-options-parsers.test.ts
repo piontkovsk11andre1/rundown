@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   parseCooldown,
   parseMaxItems,
   parseResolveRepairAttempts,
   parseScanCount,
+  resolveTranslateMarkdownFiles,
 } from "../../src/presentation/cli-options.js";
 
 describe("parseCooldown", () => {
@@ -76,5 +80,86 @@ describe("parseResolveRepairAttempts", () => {
 
   it("rejects non-integer values", () => {
     expect(() => parseResolveRepairAttempts("abc")).toThrow("Invalid --resolve-repair-attempts value: abc");
+  });
+});
+
+describe("resolveTranslateMarkdownFiles", () => {
+  it("accepts existing markdown inputs and markdown output in existing parent directory", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-translate-opts-"));
+    try {
+      const whatPath = path.join(tempRoot, "what.md");
+      const howPath = path.join(tempRoot, "how.markdown");
+      const outputPath = path.join(tempRoot, "out.md");
+
+      fs.writeFileSync(whatPath, "# What\n", "utf8");
+      fs.writeFileSync(howPath, "# How\n", "utf8");
+
+      expect(resolveTranslateMarkdownFiles(whatPath, howPath, outputPath)).toEqual({
+        whatMarkdownFile: whatPath,
+        howMarkdownFile: howPath,
+        outputMarkdownFile: outputPath,
+      });
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects non-markdown input paths", () => {
+    expect(() => resolveTranslateMarkdownFiles("what.txt", "how.md", "out.md")).toThrow(
+      "Invalid translate <what> document path: what.txt",
+    );
+  });
+
+  it("rejects missing <what> file", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-translate-opts-"));
+    try {
+      const whatPath = path.join(tempRoot, "what.md");
+      const howPath = path.join(tempRoot, "how.md");
+      const outputPath = path.join(tempRoot, "out.md");
+      fs.writeFileSync(howPath, "# How\n", "utf8");
+
+      expect(() => resolveTranslateMarkdownFiles(whatPath, howPath, outputPath)).toThrow(
+        `Invalid translate document path for <what>: ${whatPath}`,
+      );
+      expect(() => resolveTranslateMarkdownFiles(whatPath, howPath, outputPath)).toThrow("does not exist");
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects when output parent directory does not exist", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-translate-opts-"));
+    try {
+      const whatPath = path.join(tempRoot, "what.md");
+      const howPath = path.join(tempRoot, "how.md");
+      const outputPath = path.join(tempRoot, "missing", "out.md");
+
+      fs.writeFileSync(whatPath, "# What\n", "utf8");
+      fs.writeFileSync(howPath, "# How\n", "utf8");
+
+      expect(() => resolveTranslateMarkdownFiles(whatPath, howPath, outputPath)).toThrow(
+        `Invalid translate document path for <output>: ${outputPath}`,
+      );
+      expect(() => resolveTranslateMarkdownFiles(whatPath, howPath, outputPath)).toThrow("Parent directory does not exist");
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects when output path matches how path", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-translate-opts-"));
+    try {
+      const whatPath = path.join(tempRoot, "what.md");
+      const howPath = path.join(tempRoot, "how.md");
+
+      fs.writeFileSync(whatPath, "# What\n", "utf8");
+      fs.writeFileSync(howPath, "# How\n", "utf8");
+
+      expect(() => resolveTranslateMarkdownFiles(whatPath, howPath, howPath)).toThrow(
+        "The `translate` command does not allow <output> to be the same path as <how>",
+      );
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
   });
 });

@@ -116,8 +116,6 @@ interface FinishedRunPromptContext {
 
 interface RelatedRunCandidate {
   run: ArtifactRunMetadata;
-  phases: FinishedRunPhaseScan | null;
-  artifactsUnavailable: boolean;
 }
 
 /**
@@ -462,20 +460,7 @@ export function createDiscussTask(
           .filter((run, index, runs) => runs.findIndex((candidate) => candidate.runId === run.runId) === index)
           .sort((left, right) => compareStartedAtDesc(left.startedAt, right.startedAt))
           .slice(0, 5)
-          .map((run) => {
-            const runDirStat = dependencies.fileSystem.stat(run.rootDir);
-            const artifactsUnavailable = !dependencies.fileSystem.exists(run.rootDir)
-              || runDirStat?.isDirectory !== true;
-            const phases = artifactsUnavailable
-              ? null
-              : scanRunPhases(run.rootDir, dependencies.fileSystem, dependencies.pathOperations);
-
-            return {
-              run,
-              phases,
-              artifactsUnavailable,
-            };
-          });
+          .map((run) => ({ run }));
 
         relatedRunsSummary = buildRelatedRunsSummary(
           relatedRuns,
@@ -1179,14 +1164,18 @@ function buildRelatedRunsSummary(
   const divider = "| --- | --- | --- | --- | --- |";
   const rows = candidates.map((candidate) => {
     const run = candidate.run;
-    const outcome = candidate.artifactsUnavailable
-      ? "artifacts unavailable"
-      : formatRelatedRunOutcome(candidate.phases ?? {
-        execute: [],
-        verify: [],
-        repair: [],
-        all: [],
-      });
+    const runDirStat = fileSystem.stat(run.rootDir);
+    const runDirAvailable = fileSystem.exists(run.rootDir) && runDirStat?.isDirectory === true;
+    let outcome = "artifacts unavailable";
+
+    if (runDirAvailable) {
+      try {
+        const phases = scanRunPhases(run.rootDir, fileSystem, pathOperations);
+        outcome = formatRelatedRunOutcome(phases);
+      } catch {
+        outcome = "artifacts unavailable";
+      }
+    }
 
     return "| "
       + run.runId

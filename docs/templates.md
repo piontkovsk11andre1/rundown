@@ -35,7 +35,6 @@ Store templates in `.rundown/`:
   test-verify.md
   migrate.md
   migrate-snapshot.md
-  migrate-review.md
   query-seed.md
   query-execute.md
   query-stream-execute.md
@@ -72,7 +71,6 @@ Store templates in `.rundown/`:
 | `.rundown/undo.md` | Instructions for preparing and applying rollback prompts in `rundown undo` |
 | `.rundown/migrate.md` | Instructions for the migrate planning scan loop in `rundown migrate`; worker must output kebab-case migration names or `DONE` |
 | `.rundown/migrate-snapshot.md` | Instructions for generating batch-end `N.1 Snapshot.md` checkpoints in `rundown migrate up` |
-| `.rundown/migrate-review.md` | Instructions for migration review against design and context in `rundown migrate` |
 | `.rundown/query-seed.md` | Instructions for seed extraction and decomposition in `rundown query` |
 | `.rundown/query-execute.md` | Instructions for non-stream query execution in `rundown query` |
 | `.rundown/query-stream-execute.md` | Instructions for streamed query execution in `rundown query --stream` |

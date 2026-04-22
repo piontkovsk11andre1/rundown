@@ -792,65 +792,6 @@ Return Markdown only.
 `;
 
 /**
- * Default migrate-review template used to compare current state to design.
- */
-export const DEFAULT_MIGRATE_REVIEW_TEMPLATE = `\
-You are reviewing migration progress against intended design.
-
-## Position
-
-- Current migration number: {{position}}
-
-## Design revisions
-
-- Comparison available: {{designRevisionDiffHasComparison}}
-- Previous revision: {{designRevisionFromRevision}}
-- Target: {{designRevisionToTarget}}
-- Summary: {{designRevisionDiffSummary}}
-- Added files: {{designRevisionDiffAddedCount}}
-- Modified files: {{designRevisionDiffModifiedCount}}
-- Removed files: {{designRevisionDiffRemovedCount}}
-
-### Changed files
-
-{{designRevisionDiffFiles}}
-
-## Design
-
-{{design}}
-
-## Design context sources
-
-- Managed docs layout detected: {{designContextHasManagedDocs}}
-
-{{designContextSourceReferences}}
-
-## Latest context
-
-{{latestContext}}
-
-## Latest migration
-
-{{latestMigration}}
-
-## Latest backlog
-
-{{latestBacklog}}
-
-## Migration history
-
-{{migrationHistory}}
-
-## Task
-
-Write a Markdown review with:
-- Alignment: where implementation trajectory matches design
-- Drift: where trajectory diverges and why
-- Risk: implications of drift
-- Recommendations: concrete corrective next migrations
-`;
-
-/**
  * Default undo prompt template used by the undo command.
  */
 export const DEFAULT_UNDO_TEMPLATE = DEFAULT_TASK_TEMPLATE;

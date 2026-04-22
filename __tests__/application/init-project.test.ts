@@ -99,23 +99,7 @@ describe("init-project", () => {
       expect.any(String),
     );
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/.rundown/migrate-context.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
       "/workspace/.rundown/migrate-snapshot.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/.rundown/migrate-backlog.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/.rundown/migrate-review.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/.rundown/migrate-ux.md",
       expect.any(String),
     );
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
@@ -242,23 +226,7 @@ describe("init-project", () => {
       expect.any(String),
     );
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/config/.rundown-custom/migrate-context.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
       "/workspace/config/.rundown-custom/migrate-snapshot.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/config/.rundown-custom/migrate-backlog.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/config/.rundown-custom/migrate-review.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/config/.rundown-custom/migrate-ux.md",
       expect.any(String),
     );
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(

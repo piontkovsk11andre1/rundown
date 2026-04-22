@@ -7,7 +7,7 @@ import {
   parseMigrationFilename,
   parseMigrationDirectory,
 } from "../domain/migration-parser.js";
-import type { MigrationState, SatelliteType } from "../domain/migration-types.js";
+import type { MigrationState } from "../domain/migration-types.js";
 import {
   EXIT_CODE_FAILURE,
   EXIT_CODE_SUCCESS,
@@ -56,11 +56,6 @@ interface PredictionDirectoryContext {
   designPath: string;
   specsPath: string;
   migrationsPath: string;
-}
-
-interface SatelliteAtMigration {
-  migrationNumber: number;
-  filePath: string;
 }
 
 export interface TestSpecsDependencies {
@@ -546,14 +541,15 @@ function selectFutureScope(
   const snapshotLookupCeiling = typeof future === "number"
     ? Math.max(0, targetNumber - 1)
     : targetNumber;
-  const snapshotPath = getLatestSatellitePathAtOrBefore(state, "snapshot", snapshotLookupCeiling);
-  const snapshotMigrationNumber = getMigrationNumberBySatellitePath(state, snapshotPath);
+  const snapshot = selectSnapshotForFutureScope(state, snapshotLookupCeiling);
+  const snapshotPath = snapshot?.filePath ?? null;
+  const snapshotMigrationNumber = snapshot?.migrationNumber ?? 0;
 
   const migrationPaths = state.migrations
     .filter((migration) => migration.number > snapshotMigrationNumber && migration.number <= targetNumber)
     .map((migration) => migration.filePath);
 
-  const latestContextPath = getLatestSatellitePathAtOrBefore(state, "context", targetNumber);
+  const latestContextPath = null;
 
   return {
     targetLabel,
@@ -561,6 +557,36 @@ function selectFutureScope(
     latestContextPath,
     migrationPaths,
   };
+}
+
+function selectSnapshotForFutureScope(
+  state: MigrationState,
+  maxMigrationNumber: number,
+): { migrationNumber: number; filePath: string } | null {
+  const latestSnapshot = state.latestSnapshot;
+  if (latestSnapshot && latestSnapshot.migrationNumber <= maxMigrationNumber) {
+    return {
+      migrationNumber: latestSnapshot.migrationNumber,
+      filePath: latestSnapshot.filePath,
+    };
+  }
+
+  for (let index = state.migrations.length - 1; index >= 0; index -= 1) {
+    const migration = state.migrations[index];
+    if (!migration || migration.number > maxMigrationNumber) {
+      continue;
+    }
+
+    const snapshot = migration.satellites.find((satellite) => satellite.type === "snapshot");
+    if (snapshot) {
+      return {
+        migrationNumber: migration.number,
+        filePath: snapshot.filePath,
+      };
+    }
+  }
+
+  return null;
 }
 
 function readMigrationState(fileSystem: FileSystem, migrationsDir: string): MigrationState {
@@ -581,55 +607,4 @@ function isMigrationLikeMarkdown(fileName: string): boolean {
   }
 
   return parseMigrationFilename(fileName) !== null;
-}
-
-function getLatestSatellitePathAtOrBefore(
-  state: MigrationState,
-  type: SatelliteType,
-  maxMigrationNumber: number,
-): string | null {
-  const latest = getLatestSatelliteAtOrBefore(state, type, maxMigrationNumber);
-  return latest ? latest.filePath : null;
-}
-
-function getLatestSatelliteAtOrBefore(
-  state: MigrationState,
-  type: SatelliteType,
-  maxMigrationNumber: number,
-): SatelliteAtMigration | null {
-  for (let index = state.migrations.length - 1; index >= 0; index -= 1) {
-    const migration = state.migrations[index];
-    if (!migration) {
-      continue;
-    }
-
-    if (migration.number > maxMigrationNumber) {
-      continue;
-    }
-
-    for (const satellite of migration.satellites) {
-      if (satellite.type === type) {
-        return {
-          migrationNumber: migration.number,
-          filePath: satellite.filePath,
-        };
-      }
-    }
-  }
-
-  return null;
-}
-
-function getMigrationNumberBySatellitePath(state: MigrationState, satellitePath: string | null): number {
-  if (!satellitePath) {
-    return 0;
-  }
-
-  for (const migration of state.migrations) {
-    if (migration.satellites.some((satellite) => satellite.filePath === satellitePath)) {
-      return migration.number;
-    }
-  }
-
-  return 0;
 }

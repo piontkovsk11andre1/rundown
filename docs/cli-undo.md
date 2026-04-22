@@ -4,6 +4,13 @@ Undo completed task runs using AI-generated reversal actions from execution arti
 
 Unlike `revert`, `undo` is semantic (artifact/context driven) rather than commit-level git history reversal.
 
+## Important: `migrate down` behavior change
+
+`rundown migrate down [n]` is no longer an alias for `rundown undo`.
+
+- `rundown undo` reverses completed execution runs from artifacts.
+- `rundown migrate down [n]` operates on prediction artifacts in `migrations/` (removes the last migration files and updates snapshot/backlog state), not on materialized implementation state.
+
 ## Global option: `--config-dir <path>`
 
 `--config-dir <path>` is available on every command.

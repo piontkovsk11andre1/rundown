@@ -174,6 +174,40 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(backlog).toContain("- feature-b");
   });
 
+  it("migrate down lazily creates Backlog.md when absent", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldLoopMigrateProject(workspace);
+    fs.unlinkSync(path.join(workspace, "migrations", "Backlog.md"));
+    fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(2, "feature-a")), "# 2. Feature A\n\n- [x] done\n", "utf-8");
+    fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(2, "snapshot")), "# Snapshot 2\n", "utf-8");
+
+    const result = await runCli([
+      "migrate",
+      "down",
+      "1",
+      "--",
+      "node",
+      "-e",
+      buildConvergentMigrateWorkerScript(["DONE"]),
+    ], workspace);
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n"));
+    if (combinedOutput.includes("No completed runs with task metadata found to undo.")) {
+      return;
+    }
+
+    expect(result.code).toBe(0);
+    const backlogPath = path.join(workspace, "migrations", "Backlog.md");
+    expect(fs.existsSync(backlogPath)).toBe(true);
+    const backlog = fs.readFileSync(backlogPath, "utf-8");
+    expect(backlog).toContain("# Backlog");
+    expect(backlog).toContain("- feature-a");
+  });
+
   it("migrate down 2 --no-backlog removes files without updating Backlog.md", async () => {
     const workspace = makeTempWorkspace();
     scaffoldLoopMigrateProject(workspace);

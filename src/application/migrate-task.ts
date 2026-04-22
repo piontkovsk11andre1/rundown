@@ -718,11 +718,14 @@ async function runMigrateLoop(input: {
       }
       const answer = await dependencies.interactiveInput.prompt({
         kind: "confirm",
-        message: "Files created. Edit if needed. Continue?",
+        message: "Migration files created. Review or edit them, then confirm to continue prediction.",
         defaultValue: true,
       });
       if (answer.value.trim().toLowerCase() !== "true") {
-        emit({ kind: "info", message: "Stopped after file creation by confirmation prompt." });
+        emit({
+          kind: "info",
+          message: "Stopped at migration file checkpoint before prediction continuation.",
+        });
         return EXIT_CODE_SUCCESS;
       }
     }

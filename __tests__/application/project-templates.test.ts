@@ -9,12 +9,8 @@ import {
   DEFAULT_DISCUSS_TEMPLATE,
   DEFAULT_DISCUSS_FINISHED_TEMPLATE,
   DEFAULT_HELP_TEMPLATE,
-  DEFAULT_MIGRATE_BACKLOG_TEMPLATE,
-  DEFAULT_MIGRATE_CONTEXT_TEMPLATE,
-  DEFAULT_MIGRATE_REVIEW_TEMPLATE,
   DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
   DEFAULT_MIGRATE_TEMPLATE,
-  DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_QUERY_AGGREGATION_TEMPLATE,
   DEFAULT_QUERY_EXECUTION_TEMPLATE,
@@ -71,11 +67,7 @@ describe("project-templates", () => {
       testFuture: DEFAULT_TEST_FUTURE_TEMPLATE,
       testMaterialized: DEFAULT_TEST_MATERIALIZED_TEMPLATE,
       migrate: DEFAULT_MIGRATE_TEMPLATE,
-      migrateContext: DEFAULT_MIGRATE_CONTEXT_TEMPLATE,
       migrateSnapshot: DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
-      migrateBacklog: DEFAULT_MIGRATE_BACKLOG_TEMPLATE,
-      migrateReview: DEFAULT_MIGRATE_REVIEW_TEMPLATE,
-      migrateUx: DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE,
       querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
       querySeedYn: DEFAULT_QUERY_YN_SEED_TEMPLATE,
       querySeedSuccessError: DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
@@ -138,11 +130,7 @@ describe("project-templates", () => {
       testFuture: DEFAULT_TEST_FUTURE_TEMPLATE,
       testMaterialized: DEFAULT_TEST_MATERIALIZED_TEMPLATE,
       migrate: DEFAULT_MIGRATE_TEMPLATE,
-      migrateContext: DEFAULT_MIGRATE_CONTEXT_TEMPLATE,
       migrateSnapshot: DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
-      migrateBacklog: DEFAULT_MIGRATE_BACKLOG_TEMPLATE,
-      migrateReview: DEFAULT_MIGRATE_REVIEW_TEMPLATE,
-      migrateUx: DEFAULT_MIGRATE_USER_EXPERIENCE_TEMPLATE,
       querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
       querySeedYn: DEFAULT_QUERY_YN_SEED_TEMPLATE,
       querySeedSuccessError: DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
@@ -170,11 +158,7 @@ describe("project-templates", () => {
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "test-future.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "test-materialized.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "migrate.md"));
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "migrate-context.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "migrate-snapshot.md"));
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "migrate-backlog.md"));
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "migrate-review.md"));
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "migrate-ux.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed-yn.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed-success-error.md"));
@@ -203,20 +187,8 @@ describe("project-templates", () => {
         if (filePath.endsWith("migrate.md")) {
           return "MIGRATE";
         }
-        if (filePath.endsWith("migrate-context.md")) {
-          return "MIGRATE_CONTEXT";
-        }
         if (filePath.endsWith("migrate-snapshot.md")) {
           return "MIGRATE_SNAPSHOT";
-        }
-        if (filePath.endsWith("migrate-backlog.md")) {
-          return "MIGRATE_BACKLOG";
-        }
-        if (filePath.endsWith("migrate-review.md")) {
-          return "MIGRATE_REVIEW";
-        }
-        if (filePath.endsWith("migrate-ux.md")) {
-          return "MIGRATE_UX";
         }
         return null;
       }),
@@ -233,11 +205,7 @@ describe("project-templates", () => {
     expect(templates.testFuture).toBe("TEST_FUTURE");
     expect(templates.testMaterialized).toBe("TEST_MATERIALIZED");
     expect(templates.migrate).toBe("MIGRATE");
-    expect(templates.migrateContext).toBe("MIGRATE_CONTEXT");
     expect(templates.migrateSnapshot).toBe("MIGRATE_SNAPSHOT");
-    expect(templates.migrateBacklog).toBe("MIGRATE_BACKLOG");
-    expect(templates.migrateReview).toBe("MIGRATE_REVIEW");
-    expect(templates.migrateUx).toBe("MIGRATE_UX");
   });
 
   it("loads help template override from help.md", () => {

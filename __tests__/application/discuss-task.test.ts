@@ -232,6 +232,154 @@ describe("discuss-task", () => {
     expect(events).toContainEqual({ kind: "text", text: "Discuss prompt for: Refine rollout scope" });
   });
 
+  it("includes related run history in source-mode discuss prompt when matching runs exist", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Refine rollout scope");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Refine rollout scope\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [ ] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "discuss.md"))) {
+        return "related={{relatedRunsSummary}}";
+      }
+      return null;
+    });
+
+    vi.mocked(dependencies.artifactStore.listSaved).mockReturnValue([
+      {
+        runId: "run-newer",
+        rootDir: path.join(cwd, ".rundown", "runs", "run-newer"),
+        relativePath: ".rundown/runs/run-newer",
+        commandName: "run",
+        keepArtifacts: true,
+        startedAt: "2026-04-22T12:00:00.000Z",
+        status: "completed",
+        source: "tasks.md",
+        task: {
+          text: "Refine rollout scope",
+          file: "tasks.md",
+          line: 1,
+          index: 0,
+          source: "- [ ] Refine rollout scope\n",
+        },
+      },
+      {
+        runId: "run-ignored-command",
+        rootDir: path.join(cwd, ".rundown", "runs", "run-ignored-command"),
+        relativePath: ".rundown/runs/run-ignored-command",
+        commandName: "discuss",
+        keepArtifacts: true,
+        startedAt: "2026-04-22T12:30:00.000Z",
+        status: "discuss-completed",
+        source: "tasks.md",
+        task: {
+          text: "Refine rollout scope",
+          file: taskFile,
+          line: 1,
+          index: 0,
+          source: "- [ ] Refine rollout scope\n",
+        },
+      },
+    ]);
+    vi.mocked(dependencies.artifactStore.listFailed).mockReturnValue([
+      {
+        runId: "run-older",
+        rootDir: path.join(cwd, ".rundown", "runs", "run-older"),
+        relativePath: ".rundown/runs/run-older",
+        commandName: "run",
+        keepArtifacts: true,
+        startedAt: "2026-04-20T12:00:00.000Z",
+        status: "failed",
+        source: "tasks.md",
+        task: {
+          text: "Refine rollout scope",
+          file: taskFile,
+          line: 1,
+          index: 0,
+          source: "- [ ] Refine rollout scope\n",
+        },
+      },
+    ]);
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      printPrompt: true,
+    }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(dependencies.artifactStore.listSaved)).toHaveBeenCalledWith(path.join(cwd, ".rundown"));
+    expect(vi.mocked(dependencies.artifactStore.listFailed)).toHaveBeenCalledWith(path.join(cwd, ".rundown"));
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain("run-newer");
+    expect(prompt).toContain("run-older");
+    expect(prompt).toContain("artifacts unavailable");
+    expect(prompt).not.toContain("run-ignored-command");
+  });
+
+  it("includes no-previous-runs message in source-mode prompt when no matching runs exist", async () => {
+    const cwd = "/workspace";
+    const taskFile = path.join(cwd, "tasks.md");
+    const task = createTask(taskFile, "Refine rollout scope");
+    const fileSystem = createInMemoryFileSystem({
+      [taskFile]: "- [ ] Refine rollout scope\n",
+    });
+    const { dependencies, events } = createDependencies({
+      cwd,
+      task,
+      source: "- [ ] Refine rollout scope\n",
+      contextBefore: "",
+      fileSystem,
+    });
+
+    vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
+      if (templatePath.endsWith(path.join(".rundown", "discuss.md"))) {
+        return "related={{relatedRunsSummary}}";
+      }
+      return null;
+    });
+    vi.mocked(dependencies.artifactStore.listSaved).mockReturnValue([
+      {
+        runId: "run-other-file",
+        rootDir: path.join(cwd, ".rundown", "runs", "run-other-file"),
+        relativePath: ".rundown/runs/run-other-file",
+        commandName: "run",
+        keepArtifacts: true,
+        startedAt: "2026-04-22T12:00:00.000Z",
+        status: "completed",
+        source: "other.md",
+        task: {
+          text: "Different task",
+          file: path.join(cwd, "other.md"),
+          line: 1,
+          index: 0,
+          source: "- [ ] Different task\n",
+        },
+      },
+    ]);
+    vi.mocked(dependencies.artifactStore.listFailed).mockReturnValue([]);
+
+    const discussTask = createDiscussTask(dependencies);
+    const code = await discussTask(createOptions({
+      source: "tasks.md",
+      printPrompt: true,
+    }));
+
+    expect(code).toBe(0);
+    const prompt = events.find((event) => event.kind === "text")?.text ?? "";
+    expect(prompt).toContain("No previous run attempts found for this task.");
+  });
+
+
   it("uses --run latest to render discuss-finished prompt from saved run artifacts", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");
@@ -2588,6 +2736,10 @@ describe("discuss-task", () => {
     expect(workerCall?.prompt).toContain("Refine rollout scope");
     expect(workerCall?.prompt).toContain("`" + taskFile + "` (line 42)");
     expect(DEFAULT_DISCUSS_TEMPLATE).toContain("Discuss and refine the selected task before execution.");
+  });
+
+  it("keeps discuss template permissive edit wording", () => {
+    expect(DEFAULT_DISCUSS_TEMPLATE).toContain("You may modify the source Markdown task text as part of discussion when it helps");
   });
 
   it("captures discuss output into artifacts when --keep-artifacts is set", async () => {

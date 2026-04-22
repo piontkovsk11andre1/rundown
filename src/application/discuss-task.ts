@@ -114,6 +114,12 @@ interface FinishedRunPromptContext {
   phases: FinishedRunPhaseScan;
 }
 
+interface RelatedRunCandidate {
+  run: ArtifactRunMetadata;
+  phases: FinishedRunPhaseScan | null;
+  artifactsUnavailable: boolean;
+}
+
 /**
  * Task selection payload returned by the task selector port.
  */
@@ -371,6 +377,7 @@ export function createDiscussTask(
 
       let taskContext: ResolvedTaskContext;
       let finishedRunPromptContext: FinishedRunPromptContext | null = null;
+      let relatedRunsSummary = "No previous run attempts found for this task.";
 
       if (selectedRun && selectedRuntimeTaskMetadata) {
         const runRootExists = dependencies.fileSystem.exists(selectedRun.rootDir);
@@ -416,6 +423,65 @@ export function createDiscussTask(
         const selectedTask = selectedBatch[0]!;
 
         taskContext = resolveTaskContext(selectedTask);
+
+        const selectedTaskFile = dependencies.pathOperations.isAbsolute(taskContext.task.file)
+          ? dependencies.pathOperations.resolve(taskContext.task.file)
+          : dependencies.pathOperations.resolve(cwd, taskContext.task.file);
+        const selectedTaskFileBasename = extractBaseName(selectedTaskFile);
+        const savedRuns = dependencies.artifactStore.listSaved(artifactBaseDir);
+        const failedRuns = dependencies.artifactStore.listFailed(artifactBaseDir);
+        const relatedRuns = savedRuns
+          .concat(failedRuns)
+          .filter((run) => {
+            if (run.commandName !== "run") {
+              return false;
+            }
+
+            if (!run.task) {
+              return false;
+            }
+
+            const runTaskFile = run.task.file;
+            const hasTaskFile = typeof runTaskFile === "string" && runTaskFile.trim() !== "";
+            if (hasTaskFile) {
+              const normalizedRunTaskFile = dependencies.pathOperations.isAbsolute(runTaskFile)
+                ? dependencies.pathOperations.resolve(runTaskFile)
+                : dependencies.pathOperations.resolve(cwd, runTaskFile);
+              if (normalizedRunTaskFile !== selectedTaskFile) {
+                return false;
+              }
+
+              return matchesTaskIdentity(taskContext.task, run.task);
+            }
+
+            const sourceBasename = extractBaseName(
+              run.source ?? run.task.source,
+            );
+            return sourceBasename !== "" && sourceBasename === selectedTaskFileBasename;
+          })
+          .filter((run, index, runs) => runs.findIndex((candidate) => candidate.runId === run.runId) === index)
+          .sort((left, right) => compareStartedAtDesc(left.startedAt, right.startedAt))
+          .slice(0, 5)
+          .map((run) => {
+            const runDirStat = dependencies.fileSystem.stat(run.rootDir);
+            const artifactsUnavailable = !dependencies.fileSystem.exists(run.rootDir)
+              || runDirStat?.isDirectory !== true;
+            const phases = artifactsUnavailable
+              ? null
+              : scanRunPhases(run.rootDir, dependencies.fileSystem, dependencies.pathOperations);
+
+            return {
+              run,
+              phases,
+              artifactsUnavailable,
+            };
+          });
+
+        relatedRunsSummary = buildRelatedRunsSummary(
+          relatedRuns,
+          dependencies.fileSystem,
+          dependencies.pathOperations,
+        );
       }
 
       // Resolve worker command and prompt template for the selected task.
@@ -458,7 +524,7 @@ export function createDiscussTask(
         : renderDiscussPrompt(templates.discuss, taskContext, {
           ...templateVarsWithUserVariables,
           ...templateVarsWithMemory,
-        });
+        }, relatedRunsSummary);
       const promptCliBlockCount = extractCliBlocks(renderedPrompt).length;
       const dryRunSuppressesCliExpansion = dryRun && !printPrompt;
       let prompt = renderedPrompt;
@@ -760,6 +826,7 @@ function renderDiscussPrompt(
   template: string,
   taskContext: ResolvedTaskContext,
   extraTemplateVars: ExtraTemplateVars,
+  relatedRunsSummary: string,
 ): string {
   const vars: TemplateVars = {
     ...extraTemplateVars,
@@ -769,6 +836,7 @@ function renderDiscussPrompt(
     taskIndex: taskContext.task.index,
     taskLine: taskContext.task.line,
     source: taskContext.source,
+    relatedRunsSummary,
     ...buildTaskHierarchyTemplateVars(taskContext.task),
   };
 
@@ -1047,4 +1115,116 @@ function extractCommitSha(extra: Record<string, unknown> | undefined): string {
   return typeof commitSha === "string" && commitSha.trim() !== ""
     ? commitSha
     : "(none)";
+}
+
+function matchesTaskIdentity(task: Task, runTask: RuntimeTaskMetadata): boolean {
+  const hasText = typeof runTask.text === "string" && runTask.text.trim() !== "";
+  const hasLine = Number.isInteger(runTask.line) && runTask.line > 0;
+  const hasIndex = Number.isInteger(runTask.index) && runTask.index >= 0;
+
+  if (hasText && hasLine) {
+    return runTask.text === task.text && runTask.line === task.line;
+  }
+
+  if (hasText && hasIndex) {
+    return runTask.text === task.text && runTask.index === task.index;
+  }
+
+  if (hasText) {
+    return runTask.text === task.text;
+  }
+
+  if (hasLine) {
+    return runTask.line === task.line;
+  }
+
+  return true;
+}
+
+function compareStartedAtDesc(left: string, right: string): number {
+  const leftMs = Date.parse(left);
+  const rightMs = Date.parse(right);
+
+  if (Number.isFinite(leftMs) && Number.isFinite(rightMs)) {
+    return rightMs - leftMs;
+  }
+
+  if (Number.isFinite(leftMs)) {
+    return -1;
+  }
+
+  if (Number.isFinite(rightMs)) {
+    return 1;
+  }
+
+  return right.localeCompare(left);
+}
+
+function extractBaseName(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, "/");
+  const segments = normalized.split("/").filter((segment) => segment.length > 0);
+  return segments[segments.length - 1] ?? "";
+}
+
+function buildRelatedRunsSummary(
+  candidates: RelatedRunCandidate[],
+  fileSystem: FileSystem,
+  pathOperations: PathOperationsPort,
+): string {
+  if (candidates.length === 0) {
+    return "No previous run attempts found for this task.";
+  }
+
+  const header = "| Run ID | Status | Started | Run dir | Outcome |";
+  const divider = "| --- | --- | --- | --- | --- |";
+  const rows = candidates.map((candidate) => {
+    const run = candidate.run;
+    const outcome = candidate.artifactsUnavailable
+      ? "artifacts unavailable"
+      : formatRelatedRunOutcome(candidate.phases ?? {
+        execute: [],
+        verify: [],
+        repair: [],
+        all: [],
+      });
+
+    return "| "
+      + run.runId
+      + " | "
+      + (run.status ?? "unknown")
+      + " | "
+      + run.startedAt
+      + " | "
+      + run.rootDir
+      + " | "
+      + outcome
+      + " |";
+  });
+
+  return [header, divider, ...rows].join("\n");
+}
+
+function formatRelatedRunOutcome(phases: FinishedRunPhaseScan): string {
+  if (phases.all.length === 0) {
+    return "no phase metadata";
+  }
+
+  const latestVerify = phases.verify.at(-1);
+  if (latestVerify) {
+    const verifyVerdict = latestVerify.verificationResult || "(n/a)";
+    const verifyExit = latestVerify.exitCode === null ? "null" : String(latestVerify.exitCode);
+    return "verify=" + verifyVerdict
+      + " (exit="
+      + verifyExit
+      + "), repair="
+      + String(phases.repair.length);
+  }
+
+  const latestPhase = phases.all.at(-1);
+  if (!latestPhase) {
+    return "no phase metadata";
+  }
+
+  const exitCodeLabel = latestPhase.exitCode === null ? "null" : String(latestPhase.exitCode);
+  return latestPhase.phase + " exit=" + exitCodeLabel;
 }

@@ -309,12 +309,18 @@ Discuss and refine the selected task before execution.
 
 Use this session to help the user shape the task into a clear, executable outcome.
 
-You may modify the source Markdown task text as part of discussion when it helps:
+Primary role:
 
-- rewrite unclear task wording
-- split a broad task into smaller actionable items
-- add sub-items to capture concrete steps
-- clarify scope, assumptions, constraints, or acceptance criteria
+- analyze the selected task and answer user questions
+- use related run history as supporting context when helpful
+- keep the session conversational-first unless the user explicitly requests edits
+
+Editing contract:
+
+- do not edit the source Markdown task text by default
+- only edit when the user explicitly asks (for example: rewrite wording, split tasks, add sub-items, or clarify scope)
+- do not mark tasks complete or change checkbox state
+- do not perform implementation work in this phase
 
 ## Related run history
 
@@ -338,9 +344,8 @@ Sub-items:
 
 Rules:
 - collaborate with the user; confirm intent when needed
-- keep edits focused on improving task clarity and executability
-- do not mark tasks complete or change checkbox state
-- do not perform implementation work in this phase
+- when explicit edits are requested, keep changes focused on task clarity and executability
+- otherwise stay non-mutating and discussion-only
 `;
 
 /**

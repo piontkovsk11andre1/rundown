@@ -1,0 +1,113 @@
+name: Agent — Materialize
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'migrations/**.md'
+
+concurrency:
+  group: agent-materialize-main
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    name: Materialize pending migrations
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      models: read
+
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rundown
+        uses: ./.github/actions/setup-rundown
+
+      - name: Detect pending migration files
+        id: detect
+        run: |
+          # Find migration files added/modified in this push that still have unchecked tasks
+          PENDING=""
+          for f in $(git diff --name-only HEAD~1 HEAD -- 'migrations/*.md' 2>/dev/null || git show --name-only --format="" HEAD -- 'migrations/*.md'); do
+            if [ -f "$f" ]; then
+              UNCHECKED=$(node dist/cli.js list "$f" 2>/dev/null | wc -l || echo 0)
+              if [ "$UNCHECKED" -gt 0 ]; then
+                PENDING="$PENDING $f"
+              fi
+            fi
+          done
+          PENDING=$(echo "$PENDING" | xargs)
+          echo "files=$PENDING" >> "$GITHUB_OUTPUT"
+          if [ -n "$PENDING" ]; then
+            echo "has_pending=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_pending=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure git identity
+        if: steps.detect.outputs.has_pending == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create agent branch
+        if: steps.detect.outputs.has_pending == 'true'
+        run: |
+          BRANCH="agent/materialize-$(date +%s)"
+          git checkout -b "$BRANCH"
+          echo "BRANCH=$BRANCH" >> "$GITHUB_ENV"
+
+      - name: Materialize migrations
+        if: steps.detect.outputs.has_pending == 'true'
+        run: |
+          for f in ${{ steps.detect.outputs.files }}; do
+            echo "--- Materializing $f ---"
+            node dist/cli.js materialize "$f"
+          done
+
+      - name: Check for changes
+        if: steps.detect.outputs.has_pending == 'true'
+        id: changes
+        run: |
+          git add -A
+          if git diff --staged --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push branch
+        if: steps.detect.outputs.has_pending == 'true' && steps.changes.outputs.changed == 'true'
+        run: git push origin "$BRANCH"
+
+      - name: Open PR
+        if: steps.detect.outputs.has_pending == 'true' && steps.changes.outputs.changed == 'true'
+        run: |
+          MIGRATION_LIST=$(echo "${{ steps.detect.outputs.files }}" | tr ' ' '\n' | sed 's/^/- /' | tr '\n' ' ')
+          gh pr create \
+            --title "feat: materialize migrations" \
+            --body "Automated materialization of pending migrations:
+
+          $MIGRATION_LIST
+
+          Each completed task is a separate commit. Review and merge to close the loop." \
+            --label "ai-generated" \
+            --head "$BRANCH" \
+            --base main
+
+      - name: Upload run traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-traces-${{ github.run_id }}
+          path: .rundown/runs/
+          retention-days: 14

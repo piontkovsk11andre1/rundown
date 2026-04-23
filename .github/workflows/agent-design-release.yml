@@ -1,0 +1,75 @@
+name: Agent — Design Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'design/current/**'
+
+concurrency:
+  group: agent-design-release
+  cancel-in-progress: false
+
+jobs:
+  design-release:
+    name: Release design snapshot and generate migrations
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      models: read
+
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rundown
+        uses: ./.github/actions/setup-rundown
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create agent branch
+        run: |
+          BRANCH="agent/design-release-$(date +%s)"
+          git checkout -b "$BRANCH"
+          echo "BRANCH=$BRANCH" >> "$GITHUB_ENV"
+
+      - name: Release design snapshot
+        run: node dist/cli.js design release
+
+      - name: Generate migrations
+        run: node dist/cli.js migrate
+
+      - name: Check for changes
+        id: changes
+        run: |
+          git add -A
+          if git diff --staged --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git commit -m "chore: design release + generated migrations"
+          git push origin "$BRANCH"
+
+      - name: Open PR
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          gh pr create \
+            --title "chore: design release + generated migrations" \
+            --body "Automated migration generation from design change. Review migration files before merging — merge triggers materialization." \
+            --label "ai-generated" \
+            --head "$BRANCH" \
+            --base main

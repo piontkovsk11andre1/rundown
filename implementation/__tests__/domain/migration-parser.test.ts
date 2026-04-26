@@ -57,6 +57,29 @@ describe("parseMigrationDirectory", () => {
     expect(state.backlogPath).toBe(path.join(migrationsDir, "Backlog.md"));
   });
 
+  it("ignores legacy suffix satellite files gracefully", () => {
+    const migrationsDir = path.join("/tmp", "project", "migrations");
+    const files = [
+      path.join(migrationsDir, "1. Initialize.md"),
+      path.join(migrationsDir, "1.3 Review.md"),
+      path.join(migrationsDir, "0002-add-auth.md"),
+      path.join(migrationsDir, "0002.snapshot.md"),
+      path.join(migrationsDir, "0002.context.md"),
+      path.join(migrationsDir, "0002.backlog.md"),
+      path.join(migrationsDir, "Backlog.md"),
+    ];
+
+    expect(() => parseMigrationDirectory(files, migrationsDir)).not.toThrow();
+
+    const state = parseMigrationDirectory(files, migrationsDir);
+    expect(state.currentPosition).toBe(2);
+    expect(state.migrations).toHaveLength(2);
+    expect(state.migrations[0]?.number).toBe(1);
+    expect(state.migrations[0]?.satellites.map((satellite) => satellite.type)).toEqual(["review"]);
+    expect(state.migrations[1]?.number).toBe(2);
+    expect(state.migrations[1]?.satellites).toEqual([]);
+  });
+
   it("uses latest snapshot and ignores removed satellite types in dotted files", () => {
     const migrationsDir = path.join("/tmp", "project", "migrations");
     const files = [

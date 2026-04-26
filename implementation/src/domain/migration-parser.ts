@@ -7,6 +7,7 @@ const SATELLITE_PATTERN = /^(\d{4})--(.+)\.md$/;
 const MIGRATION_PATTERN = /^(\d{4})-(?!-)(.+)\.md$/;
 const DOTTED_MIGRATION_PATTERN = /^(\d+)\.\s+(.+)\.md$/;
 const DOTTED_SATELLITE_PATTERN = /^(\d+)\.(\d+)\s+(.+)\.md$/;
+const LEGACY_SATELLITE_SUFFIX_PATTERN = /\.(snapshot|context|backlog)\.md$/i;
 
 const DOTTED_SATELLITE_INDEX_BY_TYPE: Record<SatelliteFilenameType, number> = {
   snapshot: 1,
@@ -46,6 +47,10 @@ export function formatSatelliteFilename(number: number, type: SatelliteFilenameT
 }
 
 function parseMigrationFilenameDetailed(filename: string): ParsedMigrationEntry | null {
+  if (LEGACY_SATELLITE_SUFFIX_PATTERN.test(filename)) {
+    return null;
+  }
+
   const dottedSatelliteMatch = filename.match(DOTTED_SATELLITE_PATTERN);
   if (dottedSatelliteMatch) {
     const number = Number.parseInt(dottedSatelliteMatch[1]!, 10);

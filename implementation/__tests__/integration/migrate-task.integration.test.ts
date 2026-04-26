@@ -267,6 +267,46 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(fs.existsSync(path.join(workspace, "migrations", formatSatelliteFilename(2, "snapshot")))).toBe(true);
   });
 
+  it("migrate up stamps migratedAt and migrate down clears it for the same run", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldLoopMigrateProject(workspace);
+
+    const upResult = await runCli([
+      "migrate",
+      "--dir",
+      "migrations",
+      "--",
+      "node",
+      "-e",
+      buildConvergentMigrateWorkerScript(["feature-a"]),
+    ], workspace);
+
+    expect(upResult.code).toBe(0);
+
+    const rev1MetaPath = path.join(workspace, "docs", "rev.1.meta.json");
+    const rev1MetaAfterUp = JSON.parse(fs.readFileSync(rev1MetaPath, "utf-8")) as {
+      migratedAt?: string | null;
+    };
+    expect(rev1MetaAfterUp.migratedAt).toBeTypeOf("string");
+
+    const downResult = await runCli([
+      "migrate",
+      "down",
+      "1",
+      "--",
+      "node",
+      "-e",
+      buildConvergentMigrateWorkerScript(["DONE"]),
+    ], workspace);
+
+    expect(downResult.code).toBe(0);
+
+    const rev1MetaAfterDown = JSON.parse(fs.readFileSync(rev1MetaPath, "utf-8")) as {
+      migratedAt?: string | null;
+    };
+    expect(rev1MetaAfterDown.migratedAt).toBeNull();
+  });
+
   it("migrate down 2 removes migrations, updates Backlog.md, and prunes later snapshots", async () => {
     const workspace = makeTempWorkspace();
     scaffoldLoopMigrateProject(workspace);

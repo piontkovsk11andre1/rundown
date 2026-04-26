@@ -471,6 +471,36 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(backlog).toContain("- rev2-modified-file");
   });
 
+  it("migrate down rewrites prediction tree to rewound revision boundary", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldRevisionPlanningStampProject(workspace);
+    seedPlannedRevisionMigrations(workspace, "docs", [
+      { revision: 1, migrations: [formatMigrationFilename(2, "rev1-added-file")] },
+      { revision: 2, migrations: [formatMigrationFilename(3, "rev2-modified-file")] },
+    ]);
+
+    const predictionDir = path.join(workspace, "prediction", "migrations");
+    fs.mkdirSync(predictionDir, { recursive: true });
+    fs.writeFileSync(path.join(predictionDir, formatSatelliteFilename(2, "snapshot")), "# Snapshot 2 stale\n", "utf-8");
+    fs.writeFileSync(path.join(predictionDir, formatSatelliteFilename(3, "snapshot")), "# Snapshot 3 stale\n", "utf-8");
+
+    const downResult = await runCli([
+      "migrate",
+      "--dir",
+      "migrations",
+      "down",
+      "--",
+      "node",
+      "-e",
+      buildConvergentMigrateWorkerScript(["DONE"]),
+    ], workspace);
+
+    expect(downResult.code).toBe(0);
+    expect(fs.existsSync(path.join(predictionDir, formatSatelliteFilename(2, "snapshot")))).toBe(true);
+    expect(fs.existsSync(path.join(predictionDir, formatSatelliteFilename(3, "snapshot")))).toBe(false);
+    expect(fs.readFileSync(path.join(predictionDir, formatSatelliteFilename(2, "snapshot")), "utf-8")).toBe("# Snapshot 2\n");
+  });
+
   it("migrate down --no-backlog skips Backlog.md push", async () => {
     const workspace = makeTempWorkspace();
     scaffoldRevisionPlanningStampProject(workspace);

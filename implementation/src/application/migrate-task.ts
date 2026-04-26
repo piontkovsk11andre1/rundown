@@ -338,8 +338,13 @@ export function createMigrateTask(
   };
 }
 
-function persistPredictionBaselineSnapshot(fileSystem: FileSystem, migrationsDir: string, projectRoot: string): void {
-  const predictionInputs = readPredictionInputs(fileSystem, migrationsDir, projectRoot);
+function persistPredictionBaselineSnapshot(
+  fileSystem: FileSystem,
+  migrationsDir: string,
+  projectRoot: string,
+  options?: { preferPredictionTree?: boolean },
+): void {
+  const predictionInputs = readPredictionInputs(fileSystem, migrationsDir, projectRoot, options);
   const baseline = createPredictionBaseline(predictionInputs);
   const predictionDir = resolveWorkspacePath({
     fileSystem,
@@ -550,7 +555,13 @@ function applyPendingPredictionPatch(
   }
 }
 
-function readPredictionInputs(fileSystem: FileSystem, migrationsDir: string, projectRoot: string): PredictionInputs {
+function readPredictionInputs(
+  fileSystem: FileSystem,
+  migrationsDir: string,
+  projectRoot: string,
+  options?: { preferPredictionTree?: boolean },
+): PredictionInputs {
+  const shouldPreferPredictionTree = options?.preferPredictionTree !== false;
   const predictionDir = resolveWorkspacePath({
     fileSystem,
     workspaceRoot: projectRoot,
@@ -561,7 +572,7 @@ function readPredictionInputs(fileSystem: FileSystem, migrationsDir: string, pro
     fileSystem,
     predictionDir,
   });
-  const shouldReadFromPredictionTree = predictionTrackedFiles.length > 0;
+  const shouldReadFromPredictionTree = shouldPreferPredictionTree && predictionTrackedFiles.length > 0;
 
   const migrationFiles = fileSystem.readdir(migrationsDir)
     .filter((entry) => entry.isFile)
@@ -1337,6 +1348,10 @@ async function runMigrateDown(input: {
     }
     dependencies.fileSystem.unlink(path.join(migrationsDir, entry.name));
   }
+
+  persistPredictionBaselineSnapshot(dependencies.fileSystem, migrationsDir, workspaceRoot, {
+    preferPredictionTree: false,
+  });
 
   return EXIT_CODE_SUCCESS;
 }

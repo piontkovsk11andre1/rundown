@@ -56,7 +56,7 @@ One-line description of each file in [implementation/src/](../../implementation/
 | `builtin-tools/parallel.ts` | `parallel:` / `concurrent:` / `par:` handler. |
 | `builtin-tools/end.ts` | `optional:` / `skip:` / `end:` / `exit:` / `return:` / `quit:` / `break:` handlers. |
 | `builtin-tools/profile.ts` | `profile=name` modifier. |
-| `builtin-tools/force.ts` | `force:` modifier (skip repair loop). |
+| `builtin-tools/force.ts` | `force:` modifier (wrap iteration in top-level retry loop). |
 | `builtin-tools/get.ts` | `get:` extraction handler. |
 | `builtin-tools/memory.ts` | `memory:` / `memorize:` / `remember:` / `inventory:` handlers (registered dynamically). |
 | `builtin-tools/template-tool.ts` | Generic `.md`-file tool handler. |

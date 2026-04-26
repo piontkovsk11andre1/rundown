@@ -15,7 +15,7 @@ Registration flags:
 - The verification worker receives a prompt rendered from the verify template plus the task's context (text, sub-items, document context, frontmatter).
 - Worker stdout decides outcome:
   - `OK` (case-insensitive variants normalized) → task completes.
-  - anything else → repair loop applies (unless `force:` modifier disables it).
+  - anything else → repair loop applies (or, if `force:` wraps the task, the iteration is retried from scratch up to the `force:` cap).
 
 ## When to use
 

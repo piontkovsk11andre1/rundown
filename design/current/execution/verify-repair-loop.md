@@ -20,7 +20,8 @@ EXECUTE → VERIFY → (repair → VERIFY)* → optional RESOLVE → optional RE
 
 - Default `--repair-attempts <n>`: number of repair iterations before the loop gives up.
 - Each iteration runs `repair` then `verify`. The iteration counter is exposed to attempt-aware worker routing (see [../workers/worker-routing.md](../workers/worker-routing.md)).
-- `force:` modifier sets the effective attempts to 0 — no repair, single execute+verify.
+- `force:` modifier wraps the iteration in a top-level retry loop (default 2 attempts; `force: N,` sets the cap explicitly). Each attempt is a fresh execute+verify (+ repair) cycle, with retry-boundary git checkpoints stashed between attempts. It does **not** disable the inner repair loop.
+- `fast:` / `raw:` / `quick:` prefix triggers `fast-execution` intent: execute only, no verify, no repair.
 - `--no-repair` (Commander negated option) disables repair regardless of `--repair-attempts`.
 
 ## Verification contract

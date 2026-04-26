@@ -23,14 +23,14 @@ Key options:
 | `--reset-after` | Reset all checkboxes after success |
 | `--sort <mode>` | `name-sort` / `none` / `old-first` / `new-first` |
 | `--vars-file <file>` | Load template vars from JSON/YAML |
-| `-V, --var <key=val>` (repeatable) | Inline template var |
+| `--var <key=value>` (repeatable) | Inline template var |
 | `--trace` | Enable JSONL trace writer |
 | `--keep-artifacts` | Retain `.rundown/runs/<run-id>/` on success |
 | `--print-prompt` | Print rendered prompt without running worker |
 | `--dry-run` | Report what would run without spawning workers |
 | `--show-agent-output` | Mirror worker stdout to console |
 | `--ignore-cli-block` | Treat `cli:` blocks as plain tasks |
-| `--cli-block-timeout-ms <n>` | Timeout for inline `cli:` blocks |
+| `--cli-block-timeout <ms>` | Timeout for inline `cli:` blocks (milliseconds; `0` disables) |
 | `--force-unlock` | Break stale file lock at startup |
 
 ## `materialize <source>`
@@ -39,12 +39,7 @@ Convenience wrapper for `run --all --revertable`. Same options as `run`. The CI 
 
 ## `call <source>`
 
-Run a single named task by 1-based index or text match.
-
-```
-rundown call tasks.md --index 3
-rundown call tasks.md --text "deploy staging"
-```
+Run a full clean pass across all tasks with CLI block caching enabled. Internally equivalent to `run --all --clean --cache-cli-blocks`. Useful as the canonical "stateless full-document pass" entry point where `cli:` block results are cached for the duration of the pass. Inherits all `run`-style options.
 
 ## `do <seed-text> <markdown-file>`
 
@@ -52,7 +47,16 @@ Bootstraps a new Markdown task file from `<seed-text>` (via `make`'s research+pl
 
 ## `loop <source>`
 
-Like `run --all`, but **repeats** until either the source is fully checked or an error occurs. Useful when the source includes self-extending tasks (e.g. a planner-driven loop with `optional:` early exit).
+Repeatedly executes full clean `call` passes (each pass = `run --all --clean --cache-cli-blocks`) with an optional cooldown between iterations. Useful when the source includes self-extending tasks (e.g. a planner-driven loop with `optional:` early exit) that need multiple passes to converge.
+
+Loop-specific options (in addition to `run`-style options):
+
+| Option | Effect |
+|---|---|
+| `--cooldown <seconds>` | Delay between iterations (default `5`) |
+| `--iterations <n>` | Stop after N iterations (default: unlimited) |
+| `--time-limit <seconds>` | Stop loop after total runtime budget elapses |
+| `--continue-on-error` | Keep looping even after an iteration fails |
 
 ## `all <source>`
 

@@ -21,7 +21,7 @@ If `--vars-file <path>` is given with a value, rundown reads that path and error
 
 ## CLI flags
 
-`-V, --var key=value` adds a single variable. Repeatable. Flag values override file-loaded values.
+`--var key=value` adds a single variable. Repeatable. Flag values override file-loaded values.
 
 ```
 rundown run tasks.md --vars-file vars.json -V env=staging -V build=42

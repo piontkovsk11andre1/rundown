@@ -21,7 +21,7 @@ Registration:
 
 ## `force:`
 
-Handler in [src/domain/builtin-tools/force.ts](../../implementation/src/domain/builtin-tools/force.ts).
+Handler in [src/domain/builtin-tools/force.ts](../../implementation/src/domain/builtin-tools/force.ts). Extraction logic in [src/domain/prefix-chain.ts](../../implementation/src/domain/prefix-chain.ts) (`extractForceModifier`).
 
 Registration:
 
@@ -29,9 +29,11 @@ Registration:
 { kind: "modifier", handler: forceHandler }
 ```
 
-- Sets the iteration intent to `fast-execution`: `repair-attempts` is forced to 0.
-- Verification still runs (if otherwise scheduled), but a verification failure does not retry — it produces `task.failed`.
-- Useful for best-effort cleanup tasks, observation-only checks, or commands where retry would be harmful (idempotent destructive operations).
+- Wraps the iteration in a **top-level retry loop**. Default cap: 2 attempts. Explicit cap with `force: N, <task text>` (the comma is required — without it `force: 3` is treated as task text).
+- Each attempt is a full execute → verify → (repair) cycle. Retry-boundary git checkpoints (stash + restore) are taken between attempts when commit mode is active so failed attempts do not leave dirty state.
+- A successful attempt short-circuits the loop and the task is checked.
+- Useful when a task is flaky in a recoverable way and a clean retry from scratch is more reliable than the inner repair loop.
+- `force:` does **not** set the `fast-execution` intent and does **not** disable the inner repair loop — the repair loop still runs inside each attempt.
 
 ## Stacking
 
@@ -44,7 +46,7 @@ Modifiers compose with handlers and with each other:
 Resolution:
 
 1. `profile=fast` — modifier, sets the active profile to `fast`.
-2. `force:` — modifier, sets the intent to `fast-execution`.
+2. `force:` — modifier, wraps the iteration in a top-level retry loop (default 2 attempts).
 3. `verify:` — handler, runs verification with the modifications above.
 
 The order between two modifiers is irrelevant. A modifier after a handler is a syntax error (handler "wins" and consumes the rest of the prefix chain as text).

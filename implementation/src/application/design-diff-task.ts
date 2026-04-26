@@ -108,7 +108,7 @@ export function createDesignDiffTask(
     emit({
       kind: "text",
       text:
-        `${resolvedFrom} -> ${diff.toTarget.name}  (${diff.addedCount} added, ${diff.modifiedCount} modified, ${diff.removedCount} removed)\n`,
+        `${resolvedFrom} → ${diff.toTarget.name}  (${diff.addedCount} added, ${diff.modifiedCount} modified, ${diff.removedCount} removed)\n`,
     });
 
     const unifiedDiff = formatDesignRevisionUnifiedDiff(dependencies.fileSystem, diff);

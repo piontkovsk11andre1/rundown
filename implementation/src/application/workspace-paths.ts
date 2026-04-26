@@ -45,12 +45,14 @@ export const DEFAULT_WORKSPACE_DIRECTORIES: WorkspaceDirectories = {
   design: "design",
   specs: "specs",
   migrations: "migrations",
+  prediction: "prediction",
 };
 
 export const DEFAULT_WORKSPACE_PLACEMENT: WorkspacePlacementMap = {
   design: "sourcedir",
   specs: "sourcedir",
   migrations: "sourcedir",
+  prediction: "sourcedir",
 };
 
 export function resolveWorkspaceDirectories(input: {

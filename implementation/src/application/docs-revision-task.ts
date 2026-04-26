@@ -7,11 +7,11 @@ import {
   saveDesignRevisionSnapshot,
 } from "./design-context.js";
 import {
-  resolvePredictionWorkspaceDirectories,
-  resolvePredictionWorkspacePath,
-  resolvePredictionWorkspacePlacement,
-  resolvePredictionWorkspacePaths,
-} from "./prediction-workspace-paths.js";
+  resolveWorkspaceDirectories,
+  resolveWorkspacePath,
+  resolveWorkspacePlacement,
+  resolveWorkspacePaths,
+} from "./workspace-paths.js";
 import { resolveWorkspaceRootForPathSensitiveCommand } from "./workspace-selection.js";
 
 type DocsRevisionAction = "release" | "diff";
@@ -58,22 +58,22 @@ export function createDocsRevisionTask(
 
     const workspaceRoot = workspaceSelection.workspaceRoot;
     const executionContext = workspaceSelection.executionContext;
-    const workspaceDirectories = resolvePredictionWorkspaceDirectories({
+    const workspaceDirectories = resolveWorkspaceDirectories({
       fileSystem: dependencies.fileSystem,
       workspaceRoot,
     });
-    const workspacePlacement = resolvePredictionWorkspacePlacement({
+    const workspacePlacement = resolveWorkspacePlacement({
       fileSystem: dependencies.fileSystem,
       workspaceRoot,
     });
-    const workspacePaths = resolvePredictionWorkspacePaths({
+    const workspacePaths = resolveWorkspacePaths({
       fileSystem: dependencies.fileSystem,
       workspaceRoot,
       invocationRoot: executionContext.invocationDir,
       directories: workspaceDirectories,
       placement: workspacePlacement,
     });
-    const migrationsDir = resolvePredictionWorkspacePath({
+    const migrationsDir = resolveWorkspacePath({
       fileSystem: dependencies.fileSystem,
       workspaceRoot,
       invocationRoot: executionContext.invocationDir,

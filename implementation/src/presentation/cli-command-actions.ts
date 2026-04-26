@@ -570,8 +570,23 @@ export function createMaterializeCommandAction({
     ];
   };
 
+  const getMaterializeApp = (): CliApp => {
+    const app = getApp();
+    return {
+      ...app,
+      runTask: (request) => {
+        // Materialize writes implementation only; prediction refresh stays explicit via `migrate up`.
+        const materializeRequest = {
+          ...request,
+          writePredictionBucket: false,
+        };
+        return app.runTask(materializeRequest);
+      },
+    };
+  };
+
   const runAction = createRunCommandAction({
-    getApp,
+    getApp: getMaterializeApp,
     getWorkerFromSeparator,
     runnerModes,
     getInvocationArgv: getMaterializeInvocationArgv,

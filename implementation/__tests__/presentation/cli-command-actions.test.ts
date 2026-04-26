@@ -1528,6 +1528,7 @@ describe("createMaterializeCommandAction", () => {
       runAll: true,
       commitAfterComplete: true,
       keepArtifacts: true,
+      writePredictionBucket: false,
     }));
   });
 
@@ -1551,6 +1552,7 @@ describe("createMaterializeCommandAction", () => {
       runAll: true,
       keepArtifacts: true,
       commitAfterComplete: true,
+      writePredictionBucket: false,
     }));
   });
 
@@ -1593,6 +1595,7 @@ describe("createMaterializeCommandAction", () => {
         runAll: true,
         keepArtifacts: true,
         commitAfterComplete: true,
+        writePredictionBucket: false,
       }));
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -1649,6 +1652,7 @@ describe("createMaterializeCommandAction", () => {
         commitAfterComplete: true,
         commitMode: "per-task",
         commitMessageTemplate: "cli: {{task}}",
+        writePredictionBucket: false,
       }));
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });

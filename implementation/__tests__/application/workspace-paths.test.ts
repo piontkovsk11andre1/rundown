@@ -227,6 +227,28 @@ describe("prediction workspace config", () => {
     });
   });
 
+  it("roots prediction path at invocation root when prediction placement is workdir", () => {
+    const workspaceRoot = path.join(path.sep, "repo", "source");
+    const invocationRoot = path.join(path.sep, "repo", "work");
+    const configPath = path.join(workspaceRoot, ".rundown", "config.json");
+    const fileSystem = new InMemoryFileSystem({
+      [configPath]: JSON.stringify({
+        workspace: {
+          placement: {
+            prediction: "workdir",
+          },
+        },
+      }),
+    });
+
+    expect(resolveWorkspacePaths({ fileSystem, workspaceRoot, invocationRoot })).toEqual({
+      design: path.join(workspaceRoot, "design"),
+      specs: path.join(workspaceRoot, "specs"),
+      migrations: path.join(workspaceRoot, "migrations"),
+      prediction: path.join(invocationRoot, "prediction"),
+    });
+  });
+
   it("derives per-bucket paths from mixed placement roots", () => {
     const workspaceRoot = path.join(path.sep, "repo", "source");
     const invocationRoot = path.join(path.sep, "repo", "work");

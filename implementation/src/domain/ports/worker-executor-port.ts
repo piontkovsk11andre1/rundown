@@ -1,4 +1,5 @@
 import type { ProcessRunMode } from "./process-runner.js";
+import type { ArtifactStorePhase } from "./artifact-store.js";
 import type { ParsedWorkerPattern } from "../worker-pattern.js";
 
 /**
@@ -41,7 +42,7 @@ export interface WorkerExecutionOptions {
   // Optional context object recorded alongside artifacts.
   artifactContext?: unknown;
   // Optional artifact phase identifier for run segmentation.
-  artifactPhase?: "execute" | "verify" | "repair" | "resolve" | "worker" | "plan" | "discuss" | "translate";
+  artifactPhase?: ArtifactStorePhase;
   // Optional human-readable artifact phase label.
   artifactPhaseLabel?: string;
   // Optional additional metadata attached to generated artifacts.

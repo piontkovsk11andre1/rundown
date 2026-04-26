@@ -30,6 +30,7 @@ export type ArtifactStorePhase =
   | "resolve"
   | "plan"
   | "discuss"
+  | "translate"
   | "help"
   | "inline-cli"
   | "rundown-delegate"

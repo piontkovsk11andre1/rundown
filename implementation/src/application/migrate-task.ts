@@ -1,15 +1,12 @@
 import path from "node:path";
 import {
-  DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
   DEFAULT_MIGRATE_TEMPLATE,
 } from "../domain/defaults.js";
 import {
   formatMigrationFilename,
-  formatSatelliteFilename,
   parseMigrationDirectory,
   parseMigrationFilename,
 } from "../domain/migration-parser.js";
-import type { SatelliteType } from "../domain/migration-types.js";
 import { parseTasks } from "../domain/parser.js";
 import type {
   ArtifactStore,
@@ -1104,29 +1101,6 @@ async function runMigrateUp(input: {
     return EXIT_CODE_NO_WORK;
   }
 
-  await generateSatellite({
-    dependencies,
-    state: stateAfterRun,
-    projectRoot,
-    invocationRoot,
-    workspaceRoot,
-    workspaceDirectories,
-    workspacePlacement,
-    workspacePaths,
-    templateFile: "migrate-snapshot.md",
-    defaultTemplate: DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
-    satelliteType: "snapshot",
-    workerPattern,
-    workerTimeoutMs,
-    artifactContext,
-    confirm: false,
-    showAgentOutput,
-    designRevisionTarget: targetRevision,
-    additionalVars: {
-      newMigrations: migrationsFromBatch,
-    },
-  });
-
   if (targetRevision) {
     markRevisionMigrated(dependencies.fileSystem, projectRoot, targetRevision);
   }
@@ -1653,107 +1627,6 @@ async function runExploreForMigration(input: {
   if (exploreExitCode !== EXIT_CODE_SUCCESS) {
     throw new Error("Explore failed for " + migrationPath + ".");
   }
-}
-
-async function generateSatellite(input: {
-  dependencies: MigrateTaskDependencies;
-  state: ReturnType<typeof readMigrationState>;
-  projectRoot: string;
-  invocationRoot: string;
-  workspaceRoot: string;
-  workspaceDirectories: ReturnType<typeof resolveWorkspaceDirectories>;
-  workspacePlacement: ReturnType<typeof resolveWorkspacePlacement>;
-  workspacePaths: ReturnType<typeof resolveWorkspacePaths>;
-  templateFile: string;
-  defaultTemplate: string;
-  satelliteType: SatelliteType;
-  workerPattern: ParsedWorkerPattern;
-  artifactContext: ReturnType<ArtifactStore["createContext"]>;
-  workerTimeoutMs?: number;
-  confirm: boolean;
-  showAgentOutput: boolean;
-  designRevisionTarget?: string | number;
-  additionalVars?: Partial<TemplateVars>;
-}): Promise<void> {
-  const {
-    dependencies,
-    state,
-    projectRoot,
-    invocationRoot,
-    workspaceRoot,
-    workspaceDirectories,
-    workspacePlacement,
-    workspacePaths,
-    templateFile,
-    defaultTemplate,
-    satelliteType,
-    workerPattern,
-    artifactContext,
-    workerTimeoutMs,
-    confirm,
-    showAgentOutput,
-    designRevisionTarget,
-    additionalVars,
-  } = input;
-  const emit = dependencies.output.emit.bind(dependencies.output);
-
-  const template = readTemplate(
-    dependencies.templateLoader,
-    projectRoot,
-    templateFile,
-    defaultTemplate,
-  );
-  const vars = {
-    ...buildTemplateVars({
-      fileSystem: dependencies.fileSystem,
-      state,
-      projectRoot,
-      invocationRoot,
-      workspaceDirectories,
-      workspacePlacement,
-      workspacePaths,
-      designRevisionTarget,
-      newMigrations: "",
-    }),
-    ...(additionalVars ?? {}),
-  };
-  const prompt = renderTemplate(template, vars);
-
-  const result = await dependencies.workerExecutor.runWorker({
-    workerPattern,
-    prompt,
-    mode: "wait",
-    cwd: workspaceRoot,
-    timeoutMs: workerTimeoutMs,
-    artifactContext,
-    artifactPhase: "worker",
-    artifactPhaseLabel: "migrate-" + satelliteType,
-  });
-  if ((result.exitCode ?? 1) !== 0) {
-    throw new Error("Worker failed to generate migrate " + satelliteType + " output.");
-  }
-
-  if (showAgentOutput && result.stderr.length > 0) {
-    emit({ kind: "stderr", text: result.stderr });
-  }
-
-  const position = state.currentPosition > 0 ? state.currentPosition : 1;
-  const filename = formatSatelliteFilename(position, satelliteType);
-  const filePath = path.join(state.migrationsDir, filename);
-
-  if (confirm) {
-    const approved = await confirmBeforeWrite(
-      dependencies.output,
-      dependencies.interactiveInput,
-      filename,
-      result.stdout,
-    );
-    if (!approved) {
-      return;
-    }
-  }
-
-  dependencies.fileSystem.writeText(filePath, result.stdout);
 }
 
 function readTemplate(

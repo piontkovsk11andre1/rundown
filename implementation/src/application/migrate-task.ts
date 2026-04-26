@@ -54,11 +54,11 @@ import {
   type DesignRevisionDiffContext,
 } from "./design-context.js";
 import {
-  resolvePredictionWorkspaceDirectories,
-  resolvePredictionWorkspacePaths,
-  resolvePredictionWorkspacePlacement,
-  resolvePredictionWorkspacePath,
-} from "./prediction-workspace-paths.js";
+  resolveWorkspaceDirectories,
+  resolveWorkspacePaths,
+  resolveWorkspacePlacement,
+  resolveWorkspacePath,
+} from "./workspace-paths.js";
 import { resolveWorkspaceRootForPathSensitiveCommand } from "./workspace-selection.js";
 
 type MigrateAction =
@@ -162,22 +162,22 @@ export function createMigrateTask(
 
     const workspaceRoot = workspaceSelection.workspaceRoot;
     const executionContext = workspaceSelection.executionContext;
-    const workspaceDirectories = resolvePredictionWorkspaceDirectories({
+    const workspaceDirectories = resolveWorkspaceDirectories({
       fileSystem: dependencies.fileSystem,
       workspaceRoot,
     });
-    const workspacePlacement = resolvePredictionWorkspacePlacement({
+    const workspacePlacement = resolveWorkspacePlacement({
       fileSystem: dependencies.fileSystem,
       workspaceRoot,
     });
-    const workspacePaths = resolvePredictionWorkspacePaths({
+    const workspacePaths = resolveWorkspacePaths({
       fileSystem: dependencies.fileSystem,
       workspaceRoot,
       invocationRoot: executionContext.invocationDir,
       directories: workspaceDirectories,
       placement: workspacePlacement,
     });
-    const migrationsDir = resolvePredictionWorkspacePath({
+    const migrationsDir = resolveWorkspacePath({
       fileSystem: dependencies.fileSystem,
       workspaceRoot,
       invocationRoot: executionContext.invocationDir,
@@ -582,9 +582,9 @@ async function runMigrateLoop(input: {
   projectRoot: string;
   invocationRoot: string;
   workspaceRoot: string;
-  workspaceDirectories: ReturnType<typeof resolvePredictionWorkspaceDirectories>;
-  workspacePlacement: ReturnType<typeof resolvePredictionWorkspacePlacement>;
-  workspacePaths: ReturnType<typeof resolvePredictionWorkspacePaths>;
+  workspaceDirectories: ReturnType<typeof resolveWorkspaceDirectories>;
+  workspacePlacement: ReturnType<typeof resolveWorkspacePlacement>;
+  workspacePaths: ReturnType<typeof resolveWorkspacePaths>;
   workerPattern: ParsedWorkerPattern;
   slugWorkerPattern: ParsedWorkerPattern;
   artifactContext: ReturnType<ArtifactStore["createContext"]>;
@@ -862,9 +862,9 @@ async function runMigrateUp(input: {
   projectRoot: string;
   invocationRoot: string;
   workspaceRoot: string;
-  workspaceDirectories: ReturnType<typeof resolvePredictionWorkspaceDirectories>;
-  workspacePlacement: ReturnType<typeof resolvePredictionWorkspacePlacement>;
-  workspacePaths: ReturnType<typeof resolvePredictionWorkspacePaths>;
+  workspaceDirectories: ReturnType<typeof resolveWorkspaceDirectories>;
+  workspacePlacement: ReturnType<typeof resolveWorkspacePlacement>;
+  workspacePaths: ReturnType<typeof resolveWorkspacePaths>;
   workerPattern: ParsedWorkerPattern;
   slugWorkerPattern: ParsedWorkerPattern;
   artifactContext: ReturnType<ArtifactStore["createContext"]>;
@@ -1048,9 +1048,9 @@ async function runMigrateDown(input: {
   projectRoot: string;
   invocationRoot: string;
   workspaceRoot: string;
-  workspaceDirectories: ReturnType<typeof resolvePredictionWorkspaceDirectories>;
-  workspacePlacement: ReturnType<typeof resolvePredictionWorkspacePlacement>;
-  workspacePaths: ReturnType<typeof resolvePredictionWorkspacePaths>;
+  workspaceDirectories: ReturnType<typeof resolveWorkspaceDirectories>;
+  workspacePlacement: ReturnType<typeof resolveWorkspacePlacement>;
+  workspacePaths: ReturnType<typeof resolveWorkspacePaths>;
   workerPattern: ParsedWorkerPattern;
   slugWorkerPattern: ParsedWorkerPattern;
   artifactContext: ReturnType<ArtifactStore["createContext"]>;
@@ -1562,9 +1562,9 @@ async function generateSatellite(input: {
   projectRoot: string;
   invocationRoot: string;
   workspaceRoot: string;
-  workspaceDirectories: ReturnType<typeof resolvePredictionWorkspaceDirectories>;
-  workspacePlacement: ReturnType<typeof resolvePredictionWorkspacePlacement>;
-  workspacePaths: ReturnType<typeof resolvePredictionWorkspacePaths>;
+  workspaceDirectories: ReturnType<typeof resolveWorkspaceDirectories>;
+  workspacePlacement: ReturnType<typeof resolveWorkspacePlacement>;
+  workspacePaths: ReturnType<typeof resolveWorkspacePaths>;
   templateFile: string;
   defaultTemplate: string;
   satelliteType: SatelliteType;
@@ -1672,9 +1672,9 @@ function buildTemplateVars(input: {
   state: ReturnType<typeof readMigrationState>;
   projectRoot: string;
   invocationRoot: string;
-  workspaceDirectories: ReturnType<typeof resolvePredictionWorkspaceDirectories>;
-  workspacePlacement: ReturnType<typeof resolvePredictionWorkspacePlacement>;
-  workspacePaths: ReturnType<typeof resolvePredictionWorkspacePaths>;
+  workspaceDirectories: ReturnType<typeof resolveWorkspaceDirectories>;
+  workspacePlacement: ReturnType<typeof resolveWorkspacePlacement>;
+  workspacePaths: ReturnType<typeof resolveWorkspacePaths>;
   designRevisionTarget?: string | number;
   revisionDiff?: DesignRevisionDiffContext;
   newMigrations?: string;

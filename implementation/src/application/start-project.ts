@@ -39,12 +39,14 @@ interface ValidatedWorkspaceDirectories {
   designDir: string;
   specsDir: string;
   migrationsDir: string;
+  predictionDir: string;
 }
 
 interface ValidatedWorkspacePlacement {
   designPlacement: WorkspacePlacement;
   specsPlacement: WorkspacePlacement;
   migrationsPlacement: WorkspacePlacement;
+  predictionPlacement: WorkspacePlacement;
 }
 
 interface RundownConfigDocument {
@@ -53,11 +55,13 @@ interface RundownConfigDocument {
       design: string;
       specs: string;
       migrations: string;
+      prediction: string;
     };
     placement?: {
       design: WorkspacePlacement;
       specs: WorkspacePlacement;
       migrations: WorkspacePlacement;
+      prediction: WorkspacePlacement;
     };
   };
   [key: string]: unknown;
@@ -140,6 +144,10 @@ export function createStartProject(
       targetDirectory,
       workspaceDirectories.specsDir,
     );
+    const predictionDir = dependencies.pathOperations.join(
+      targetDirectory,
+      workspaceDirectories.predictionDir,
+    );
     const initialMigrationPath = dependencies.pathOperations.join(
       migrationsDir,
       formatMigrationFilename(1, "initialize"),
@@ -205,6 +213,11 @@ export function createStartProject(
     if (!dependencies.fileSystem.exists(specsDir)) {
       dependencies.fileSystem.mkdir(specsDir, { recursive: true });
       emit({ kind: "success", message: "Created " + specsDir + "/" });
+    }
+
+    if (!dependencies.fileSystem.exists(predictionDir)) {
+      dependencies.fileSystem.mkdir(predictionDir, { recursive: true });
+      emit({ kind: "success", message: "Created " + predictionDir + "/" });
     }
 
     writeFileIfMissing(
@@ -504,11 +517,18 @@ function resolveAndValidateWorkspaceDirectories(input: {
   migrationsDirOption: string | undefined;
   pathOperations: PathOperationsPort;
 }): ValidatedWorkspaceDirectories {
-  const { targetDirectory, designDirOption, specsDirOption, migrationsDirOption, pathOperations } = input;
+  const {
+    targetDirectory,
+    designDirOption,
+    specsDirOption,
+    migrationsDirOption,
+    pathOperations,
+  } = input;
   const defaults = {
     designDir: DEFAULT_WORKSPACE_DIRECTORIES.design,
     specsDir: DEFAULT_WORKSPACE_DIRECTORIES.specs,
     migrationsDir: DEFAULT_WORKSPACE_DIRECTORIES.migrations,
+    predictionDir: DEFAULT_WORKSPACE_DIRECTORIES.prediction,
   };
 
   const designDir = normalizeWorkspaceDirectoryOverride(
@@ -529,11 +549,18 @@ function resolveAndValidateWorkspaceDirectories(input: {
     "--migrations-dir",
     pathOperations,
   );
+  const predictionDir = normalizeWorkspaceDirectoryOverride(
+    targetDirectory,
+    defaults.predictionDir,
+    "prediction directory default",
+    pathOperations,
+  );
 
   const buckets: Array<{ optionName: string; relativeDir: string }> = [
     { optionName: "--design-dir", relativeDir: designDir },
     { optionName: "--specs-dir", relativeDir: specsDir },
     { optionName: "--migrations-dir", relativeDir: migrationsDir },
+    { optionName: "prediction directory default", relativeDir: predictionDir },
   ];
 
   validateWorkspaceDirectoryConflicts(buckets);
@@ -542,6 +569,7 @@ function resolveAndValidateWorkspaceDirectories(input: {
     designDir,
     specsDir,
     migrationsDir,
+    predictionDir,
   };
 }
 
@@ -631,11 +659,16 @@ function resolveAndValidateWorkspacePlacement(input: {
     input.migrationsPlacementOption ?? DEFAULT_WORKSPACE_PLACEMENT.migrations,
     "--migrations-placement",
   );
+  const predictionPlacement = normalizeWorkspacePlacementOverride(
+    DEFAULT_WORKSPACE_PLACEMENT.prediction,
+    "prediction placement default",
+  );
 
   return {
     designPlacement,
     specsPlacement,
     migrationsPlacement,
+    predictionPlacement,
   };
 }
 
@@ -691,11 +724,13 @@ function persistWorkspaceConfiguration(input: {
         design: directories.designDir,
         specs: directories.specsDir,
         migrations: directories.migrationsDir,
+        prediction: directories.predictionDir,
       },
       placement: {
         design: placement.designPlacement,
         specs: placement.specsPlacement,
         migrations: placement.migrationsPlacement,
+        prediction: placement.predictionPlacement,
       },
     },
   };

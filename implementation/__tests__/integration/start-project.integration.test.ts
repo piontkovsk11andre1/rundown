@@ -169,6 +169,7 @@ describeIfStartAvailable("start-project integration", () => {
     expect(fs.existsSync(path.join(projectDir, "AGENTS.md"))).toBe(true);
     expect(fs.existsSync(path.join(projectDir, "specs"))).toBe(true);
     expect(fs.existsSync(path.join(projectDir, "migrations"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, "prediction"))).toBe(true);
     expect(fs.existsSync(path.join(projectDir, "migrations", formatMigrationFilename(1, "initialize")))).toBe(true);
     expect(fs.existsSync(path.join(projectDir, ".rundown", "workspace.link"))).toBe(true);
     expect(fs.readFileSync(path.join(projectDir, ".rundown", "workspace.link"), "utf-8").trim()).toBe("..");
@@ -189,11 +190,13 @@ describeIfStartAvailable("start-project integration", () => {
           design?: string;
           specs?: string;
           migrations?: string;
+          prediction?: string;
         };
         placement?: {
           design?: string;
           specs?: string;
           migrations?: string;
+          prediction?: string;
         };
       };
     };
@@ -201,11 +204,13 @@ describeIfStartAvailable("start-project integration", () => {
       design: "design",
       specs: "specs",
       migrations: "migrations",
+      prediction: "prediction",
     });
     expect(defaultConfig.workspace?.placement).toEqual({
       design: "sourcedir",
       specs: "sourcedir",
       migrations: "sourcedir",
+      prediction: "sourcedir",
     });
   });
 
@@ -250,6 +255,7 @@ describeIfStartAvailable("start-project integration", () => {
     expect(fs.existsSync(path.join(workspace, "design", "current", "Target.md"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, "specs"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, "migrations"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "prediction"))).toBe(true);
     expect(fs.existsSync(path.join(workspace, "migrations", formatMigrationFilename(1, "initialize")))).toBe(true);
     expect(fs.readFileSync(path.join(workspace, ".rundown", "workspace.link"), "utf-8").trim()).toBe(".");
 
@@ -261,11 +267,13 @@ describeIfStartAvailable("start-project integration", () => {
           design?: string;
           specs?: string;
           migrations?: string;
+          prediction?: string;
         };
         placement?: {
           design?: string;
           specs?: string;
           migrations?: string;
+          prediction?: string;
         };
       };
     };
@@ -273,11 +281,13 @@ describeIfStartAvailable("start-project integration", () => {
       design: "design",
       specs: "specs",
       migrations: "migrations",
+      prediction: "prediction",
     });
     expect(config.workspace?.placement).toEqual({
       design: "sourcedir",
       specs: "sourcedir",
       migrations: "sourcedir",
+      prediction: "sourcedir",
     });
   });
 
@@ -390,6 +400,7 @@ describeIfStartAvailable("start-project integration", () => {
     expect(fs.existsSync(path.join(projectDir, "docs", "design", "current", "Target.md"))).toBe(true);
     expect(fs.existsSync(path.join(projectDir, "quality", "specs"))).toBe(true);
     expect(fs.existsSync(path.join(projectDir, "changesets"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, "prediction"))).toBe(true);
     expect(fs.existsSync(path.join(projectDir, "changesets", formatMigrationFilename(1, "initialize")))).toBe(true);
 
     const config = JSON.parse(
@@ -400,6 +411,7 @@ describeIfStartAvailable("start-project integration", () => {
           design?: string;
           specs?: string;
           migrations?: string;
+          prediction?: string;
         };
       };
     };
@@ -408,6 +420,7 @@ describeIfStartAvailable("start-project integration", () => {
       design: "docs/design",
       specs: "quality/specs",
       migrations: "changesets",
+      prediction: "prediction",
     });
   });
 
@@ -442,6 +455,7 @@ describeIfStartAvailable("start-project integration", () => {
           design?: string;
           specs?: string;
           migrations?: string;
+          prediction?: string;
         };
       };
     };
@@ -450,6 +464,7 @@ describeIfStartAvailable("start-project integration", () => {
       design: "workdir",
       specs: "sourcedir",
       migrations: "workdir",
+      prediction: "sourcedir",
     });
   });
 
@@ -624,6 +639,7 @@ describeIfStartAvailable("start-project integration", () => {
           design?: string;
           specs?: string;
           migrations?: string;
+          prediction?: string;
         };
       };
     };
@@ -632,6 +648,7 @@ describeIfStartAvailable("start-project integration", () => {
       design: "docs/design",
       specs: "quality/specs",
       migrations: "changesets",
+      prediction: "prediction",
     });
   });
 });

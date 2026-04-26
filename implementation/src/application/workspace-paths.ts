@@ -1,79 +1,79 @@
 import path from "node:path";
 import type { FileSystem } from "../domain/ports/index.js";
 
-export interface PredictionWorkspaceDirectories {
+export interface WorkspaceDirectories {
   design: string;
   specs: string;
   migrations: string;
 }
 
-type PredictionWorkspaceBucket = keyof PredictionWorkspaceDirectories;
+type WorkspaceBucket = keyof WorkspaceDirectories;
 
-export const PREDICTION_WORKSPACE_PLACEMENTS = ["sourcedir", "workdir"] as const;
+export const WORKSPACE_PLACEMENTS = ["sourcedir", "workdir"] as const;
 
-export type PredictionWorkspacePlacement = typeof PREDICTION_WORKSPACE_PLACEMENTS[number];
+export type WorkspacePlacement = typeof WORKSPACE_PLACEMENTS[number];
 
-export interface PredictionWorkspacePlacementMap {
-  design: PredictionWorkspacePlacement;
-  specs: PredictionWorkspacePlacement;
-  migrations: PredictionWorkspacePlacement;
+export interface WorkspacePlacementMap {
+  design: WorkspacePlacement;
+  specs: WorkspacePlacement;
+  migrations: WorkspacePlacement;
 }
 
-export interface PredictionWorkspacePaths {
+export interface WorkspacePaths {
   design: string;
   specs: string;
   migrations: string;
 }
 
-interface PredictionWorkspaceConfig {
-  directories: PredictionWorkspaceDirectories;
-  placement: PredictionWorkspacePlacementMap;
+interface WorkspaceConfig {
+  directories: WorkspaceDirectories;
+  placement: WorkspacePlacementMap;
 }
 
 interface RundownConfigDocument {
   workspace?: {
-    directories?: Partial<Record<PredictionWorkspaceBucket, unknown>>;
-    placement?: Partial<Record<PredictionWorkspaceBucket, unknown>>;
+    directories?: Partial<Record<WorkspaceBucket, unknown>>;
+    placement?: Partial<Record<WorkspaceBucket, unknown>>;
   };
   [key: string]: unknown;
 }
 
-export const DEFAULT_PREDICTION_WORKSPACE_DIRECTORIES: PredictionWorkspaceDirectories = {
+export const DEFAULT_WORKSPACE_DIRECTORIES: WorkspaceDirectories = {
   design: "design",
   specs: "specs",
   migrations: "migrations",
 };
 
-export const DEFAULT_PREDICTION_WORKSPACE_PLACEMENT: PredictionWorkspacePlacementMap = {
+export const DEFAULT_WORKSPACE_PLACEMENT: WorkspacePlacementMap = {
   design: "sourcedir",
   specs: "sourcedir",
   migrations: "sourcedir",
 };
 
-export function resolvePredictionWorkspaceDirectories(input: {
+export function resolveWorkspaceDirectories(input: {
   fileSystem: FileSystem;
   workspaceRoot: string;
-}): PredictionWorkspaceDirectories {
-  return resolvePredictionWorkspaceConfig(input).directories;
+}): WorkspaceDirectories {
+  return resolveWorkspaceConfig(input).directories;
 }
 
-export function resolvePredictionWorkspacePlacement(input: {
+export function resolveWorkspacePlacement(input: {
   fileSystem: FileSystem;
   workspaceRoot: string;
-}): PredictionWorkspacePlacementMap {
-  return resolvePredictionWorkspaceConfig(input).placement;
+}): WorkspacePlacementMap {
+  return resolveWorkspaceConfig(input).placement;
 }
 
-function resolvePredictionWorkspaceConfig(input: {
+function resolveWorkspaceConfig(input: {
   fileSystem: FileSystem;
   workspaceRoot: string;
-}): PredictionWorkspaceConfig {
+}): WorkspaceConfig {
   const { fileSystem, workspaceRoot } = input;
   const configPath = path.join(workspaceRoot, ".rundown", "config.json");
   if (!fileSystem.exists(configPath)) {
     return {
-      directories: { ...DEFAULT_PREDICTION_WORKSPACE_DIRECTORIES },
-      placement: { ...DEFAULT_PREDICTION_WORKSPACE_PLACEMENT },
+      directories: { ...DEFAULT_WORKSPACE_DIRECTORIES },
+      placement: { ...DEFAULT_WORKSPACE_PLACEMENT },
     };
   }
 
@@ -109,42 +109,42 @@ function resolvePredictionWorkspaceConfig(input: {
       configPath,
       key: "design",
       value: directoriesSection?.design,
-      fallback: DEFAULT_PREDICTION_WORKSPACE_DIRECTORIES.design,
+      fallback: DEFAULT_WORKSPACE_DIRECTORIES.design,
     }),
     specs: normalizeWorkspaceDirectoryValue({
       configPath,
       key: "specs",
       value: directoriesSection?.specs,
-      fallback: DEFAULT_PREDICTION_WORKSPACE_DIRECTORIES.specs,
+      fallback: DEFAULT_WORKSPACE_DIRECTORIES.specs,
     }),
     migrations: normalizeWorkspaceDirectoryValue({
       configPath,
       key: "migrations",
       value: directoriesSection?.migrations,
-      fallback: DEFAULT_PREDICTION_WORKSPACE_DIRECTORIES.migrations,
+      fallback: DEFAULT_WORKSPACE_DIRECTORIES.migrations,
     }),
-  } satisfies PredictionWorkspaceDirectories;
+  } satisfies WorkspaceDirectories;
 
   const placement = {
     design: normalizeWorkspacePlacementValue({
       configPath,
       key: "design",
       value: placementSection?.design,
-      fallback: DEFAULT_PREDICTION_WORKSPACE_PLACEMENT.design,
+      fallback: DEFAULT_WORKSPACE_PLACEMENT.design,
     }),
     specs: normalizeWorkspacePlacementValue({
       configPath,
       key: "specs",
       value: placementSection?.specs,
-      fallback: DEFAULT_PREDICTION_WORKSPACE_PLACEMENT.specs,
+      fallback: DEFAULT_WORKSPACE_PLACEMENT.specs,
     }),
     migrations: normalizeWorkspacePlacementValue({
       configPath,
       key: "migrations",
       value: placementSection?.migrations,
-      fallback: DEFAULT_PREDICTION_WORKSPACE_PLACEMENT.migrations,
+      fallback: DEFAULT_WORKSPACE_PLACEMENT.migrations,
     }),
-  } satisfies PredictionWorkspacePlacementMap;
+  } satisfies WorkspacePlacementMap;
 
   validateDirectoryConflicts(directories, configPath);
   return {
@@ -153,14 +153,14 @@ function resolvePredictionWorkspaceConfig(input: {
   };
 }
 
-export function resolvePredictionWorkspacePath(input: {
+export function resolveWorkspacePath(input: {
   fileSystem: FileSystem;
   workspaceRoot: string;
   invocationRoot?: string;
-  bucket: PredictionWorkspaceBucket;
+  bucket: WorkspaceBucket;
   overrideDir?: string;
-  directories?: PredictionWorkspaceDirectories;
-  placement?: PredictionWorkspacePlacementMap;
+  directories?: WorkspaceDirectories;
+  placement?: WorkspacePlacementMap;
 }): string {
   const { workspaceRoot, bucket, overrideDir } = input;
   const trimmedOverride = overrideDir?.trim();
@@ -168,20 +168,20 @@ export function resolvePredictionWorkspacePath(input: {
     return path.resolve(workspaceRoot, trimmedOverride);
   }
 
-  return resolvePredictionWorkspacePaths(input)[bucket];
+  return resolveWorkspacePaths(input)[bucket];
 }
 
-export function resolvePredictionWorkspacePaths(input: {
+export function resolveWorkspacePaths(input: {
   fileSystem: FileSystem;
   workspaceRoot: string;
   invocationRoot?: string;
-  directories?: PredictionWorkspaceDirectories;
-  placement?: PredictionWorkspacePlacementMap;
-}): PredictionWorkspacePaths {
+  directories?: WorkspaceDirectories;
+  placement?: WorkspacePlacementMap;
+}): WorkspacePaths {
   const { fileSystem, workspaceRoot } = input;
   const invocationRoot = input.invocationRoot ?? workspaceRoot;
-  const directories = input.directories ?? resolvePredictionWorkspaceDirectories({ fileSystem, workspaceRoot });
-  const placement = input.placement ?? resolvePredictionWorkspacePlacement({ fileSystem, workspaceRoot });
+  const directories = input.directories ?? resolveWorkspaceDirectories({ fileSystem, workspaceRoot });
+  const placement = input.placement ?? resolveWorkspacePlacement({ fileSystem, workspaceRoot });
 
   const resolvedPaths = {
     design: resolveBucketPath({
@@ -202,7 +202,7 @@ export function resolvePredictionWorkspacePaths(input: {
       root: resolvePlacementRoot(placement.migrations, workspaceRoot, invocationRoot),
       relativeDirectory: directories.migrations,
     }),
-  } satisfies PredictionWorkspacePaths;
+  } satisfies WorkspacePaths;
 
   validateResolvedBucketConflicts({
     configPath: path.join(workspaceRoot, ".rundown", "config.json"),
@@ -213,7 +213,7 @@ export function resolvePredictionWorkspacePaths(input: {
 }
 
 function resolvePlacementRoot(
-  placement: PredictionWorkspacePlacement,
+  placement: WorkspacePlacement,
   workspaceRoot: string,
   invocationRoot: string,
 ): string {
@@ -222,10 +222,10 @@ function resolvePlacementRoot(
 
 function normalizeWorkspacePlacementValue(input: {
   configPath: string;
-  key: PredictionWorkspaceBucket;
+  key: WorkspaceBucket;
   value: unknown;
-  fallback: PredictionWorkspacePlacement;
-}): PredictionWorkspacePlacement {
+  fallback: WorkspacePlacement;
+}): WorkspacePlacement {
   const { configPath, key, value, fallback } = input;
   if (value === undefined) {
     return fallback;
@@ -233,18 +233,18 @@ function normalizeWorkspacePlacementValue(input: {
   if (typeof value !== "string") {
     throw new Error(`Invalid project config at ${configPath}: "workspace.placement.${key}" must be a string.`);
   }
-  if (!PREDICTION_WORKSPACE_PLACEMENTS.includes(value as PredictionWorkspacePlacement)) {
+  if (!WORKSPACE_PLACEMENTS.includes(value as WorkspacePlacement)) {
     throw new Error(
       `Invalid project config at ${configPath}: "workspace.placement.${key}" must be "sourcedir" or "workdir".`,
     );
   }
 
-  return value as PredictionWorkspacePlacement;
+  return value as WorkspacePlacement;
 }
 
 function normalizeWorkspaceDirectoryValue(input: {
   configPath: string;
-  key: PredictionWorkspaceBucket;
+  key: WorkspaceBucket;
   value: unknown;
   fallback: string;
 }): string {
@@ -279,8 +279,8 @@ function normalizeWorkspaceDirectoryValue(input: {
   return normalizedPath;
 }
 
-function validateDirectoryConflicts(directories: PredictionWorkspaceDirectories, configPath: string): void {
-  const entries = Object.entries(directories) as Array<[PredictionWorkspaceBucket, string]>;
+function validateDirectoryConflicts(directories: WorkspaceDirectories, configPath: string): void {
+  const entries = Object.entries(directories) as Array<[WorkspaceBucket, string]>;
 
   for (let index = 0; index < entries.length; index += 1) {
     const current = entries[index];
@@ -315,7 +315,7 @@ function isAncestorOrDescendantPath(left: string, right: string): boolean {
 
 function resolveBucketPath(input: {
   configPath: string;
-  bucket: PredictionWorkspaceBucket;
+  bucket: WorkspaceBucket;
   root: string;
   relativeDirectory: string;
 }): string {
@@ -330,9 +330,9 @@ function resolveBucketPath(input: {
   return path.join(root, normalizedRelativeDirectory);
 }
 
-function validateResolvedBucketConflicts(input: { configPath: string; paths: PredictionWorkspacePaths }): void {
+function validateResolvedBucketConflicts(input: { configPath: string; paths: WorkspacePaths }): void {
   const { configPath, paths } = input;
-  const entries = Object.entries(paths) as Array<[PredictionWorkspaceBucket, string]>;
+  const entries = Object.entries(paths) as Array<[WorkspaceBucket, string]>;
 
   for (let index = 0; index < entries.length; index += 1) {
     const current = entries[index];

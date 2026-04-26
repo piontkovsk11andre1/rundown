@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { formatMigrationFilename, formatSatelliteFilename } from "../../src/domain/migration-parser.js";
 import {
+  readPredictionTreeAsTrackedFiles,
   reconcilePendingPredictedItemsAtomically,
   createPredictionReconciliationEntryPoint,
   createPredictionBaseline,
@@ -8,9 +12,73 @@ import {
   reResolvePendingPredictionSequence,
   type PredictionInputs,
 } from "../../src/domain/prediction-reconciliation.js";
+import { createNodeFileSystem } from "../../src/infrastructure/adapters/fs-file-system.js";
 
 const pathForMigration = (number: number, name: string): string => `migrations/${formatMigrationFilename(number, name)}`;
 const pathForSatellite = (number: number, type: "context" | "snapshot" | "backlog"): string => `migrations/${formatSatelliteFilename(number, type)}`;
+
+describe("readPredictionTreeAsTrackedFiles", () => {
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    for (const tempDir of tempDirs) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+    tempDirs.length = 0;
+  });
+
+  it("returns an empty list when prediction directory is empty", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-prediction-tree-"));
+    tempDirs.push(tempRoot);
+    const predictionDir = path.join(tempRoot, "prediction");
+    fs.mkdirSync(predictionDir, { recursive: true });
+
+    const trackedFiles = readPredictionTreeAsTrackedFiles({
+      fileSystem: createNodeFileSystem(),
+      predictionDir,
+    });
+
+    expect(trackedFiles).toEqual([]);
+  });
+
+  it("reads nested files and returns stable ordering", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-prediction-tree-"));
+    tempDirs.push(tempRoot);
+    const predictionDir = path.join(tempRoot, "prediction");
+
+    fs.mkdirSync(path.join(predictionDir, "src", "core"), { recursive: true });
+    fs.mkdirSync(path.join(predictionDir, "src", "api"), { recursive: true });
+    fs.writeFileSync(path.join(predictionDir, "src", "core", "z-last.ts"), "export const z = true;\n", "utf-8");
+    fs.writeFileSync(path.join(predictionDir, "src", "api", "a-first.ts"), "export const a = true;\n", "utf-8");
+    fs.writeFileSync(path.join(predictionDir, "README.md"), "# Prediction\n", "utf-8");
+
+    const trackedFiles = readPredictionTreeAsTrackedFiles({
+      fileSystem: createNodeFileSystem(),
+      predictionDir,
+    });
+
+    expect(trackedFiles).toEqual([
+      {
+        relativePath: "README.md",
+        migrationNumber: 0,
+        kind: "snapshot",
+        content: "# Prediction\n",
+      },
+      {
+        relativePath: "src/api/a-first.ts",
+        migrationNumber: 0,
+        kind: "snapshot",
+        content: "export const a = true;\n",
+      },
+      {
+        relativePath: "src/core/z-last.ts",
+        migrationNumber: 0,
+        kind: "snapshot",
+        content: "export const z = true;\n",
+      },
+    ]);
+  });
+});
 
 describe("prediction-reconciliation", () => {
   it("returns not stale when no pending predictions exist", () => {

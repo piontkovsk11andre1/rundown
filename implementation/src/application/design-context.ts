@@ -28,6 +28,8 @@ export interface DesignRevisionDirectory {
 export interface DesignRevisionMetadata {
   createdAt: string;
   label: string;
+  plannedAt: string | null;
+  migrations: string[];
 }
 
 export interface SavedDesignRevision {
@@ -83,6 +85,8 @@ interface DesignRevisionMetadataRecord {
   index: number;
   createdAt: string;
   label?: string;
+  plannedAt?: string | null;
+  migrations?: string[];
 }
 
 const REVISION_DIRECTORY_PATTERN = /^rev\.(\d+)$/i;
@@ -495,6 +499,8 @@ function resolveDesignDiffTarget(
       metadata: {
         createdAt: "",
         label: "",
+        plannedAt: null,
+        migrations: [],
       },
       metadataPath: getDesignRevisionMetadataPath(workspace.rootDir, "current"),
     };
@@ -553,6 +559,8 @@ function resolveDesignDiffTarget(
       metadata: {
         createdAt: "",
         label: "",
+        plannedAt: null,
+        migrations: [],
       },
       metadataPath: getDesignRevisionMetadataPath(workspace.rootDir, trimmedTarget),
       revisionIndex: parsedTarget?.index,
@@ -566,6 +574,8 @@ function resolveDesignDiffTarget(
     metadata: {
       createdAt: "",
       label: "",
+      plannedAt: null,
+      migrations: [],
     },
     metadataPath: getDesignRevisionMetadataPath(workspace.rootDir, "current"),
   };
@@ -580,32 +590,47 @@ function createDesignRevisionMetadata(
   index: number,
   options?: {
     label?: string;
+    plannedAt?: string | null;
+    migrations?: readonly string[];
     now?: Date;
   },
 ): DesignRevisionMetadataRecord {
   const createdAt = (options?.now ?? new Date()).toISOString();
   const label = options?.label?.trim() ?? "";
-
-  if (label.length > 0) {
-    return {
-      revision: revisionName,
-      index,
-      createdAt,
-      label,
-    };
-  }
-
-  return {
+  const metadata: DesignRevisionMetadataRecord = {
     revision: revisionName,
     index,
     createdAt,
   };
+
+  if (label.length > 0) {
+    metadata.label = label;
+  }
+
+  if (options?.plannedAt !== undefined) {
+    metadata.plannedAt = options.plannedAt;
+  }
+
+  if (options?.migrations !== undefined) {
+    metadata.migrations = [...options.migrations];
+  }
+
+  return metadata;
 }
 
-function toTemplateRevisionMetadata(metadata: { createdAt: string; label?: string }): DesignRevisionMetadata {
+function toTemplateRevisionMetadata(
+  metadata: {
+    createdAt: string;
+    label?: string;
+    plannedAt?: string | null;
+    migrations?: readonly string[];
+  },
+): DesignRevisionMetadata {
   return {
     createdAt: metadata.createdAt,
     label: metadata.label ?? "",
+    plannedAt: metadata.plannedAt ?? null,
+    migrations: metadata.migrations ? [...metadata.migrations] : [],
   };
 }
 
@@ -619,6 +644,8 @@ function readDesignRevisionMetadata(
   const fallbackMetadata: DesignRevisionMetadata = {
     createdAt: "",
     label: "",
+    plannedAt: null,
+    migrations: [],
   };
 
   if (!isFile(fileSystem, metadataPath)) {
@@ -639,6 +666,8 @@ function readDesignRevisionMetadata(
   return {
     createdAt: parsed.createdAt,
     label: parsed.label ?? "",
+    plannedAt: parsed.plannedAt ?? null,
+    migrations: parsed.migrations ? [...parsed.migrations] : [],
   };
 }
 
@@ -663,6 +692,24 @@ function isValidRevisionMetadataRecord(
   }
   if (candidate.label !== undefined && typeof candidate.label !== "string") {
     return false;
+  }
+  if (
+    candidate.plannedAt !== undefined
+    && candidate.plannedAt !== null
+    && typeof candidate.plannedAt !== "string"
+  ) {
+    return false;
+  }
+  if (candidate.migrations !== undefined) {
+    if (!Array.isArray(candidate.migrations)) {
+      return false;
+    }
+
+    for (const migration of candidate.migrations) {
+      if (typeof migration !== "string") {
+        return false;
+      }
+    }
   }
 
   return true;

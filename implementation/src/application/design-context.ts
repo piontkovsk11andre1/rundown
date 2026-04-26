@@ -1,9 +1,9 @@
 import path from "node:path";
 import type { FileSystem } from "../domain/ports/index.js";
 import {
-  resolvePredictionWorkspaceDirectories,
-  resolvePredictionWorkspacePlacement,
-} from "./prediction-workspace-paths.js";
+  resolveWorkspaceDirectories,
+  resolveWorkspacePlacement,
+} from "./workspace-paths.js";
 
 export interface DesignContextResolution {
   design: string;
@@ -1614,7 +1614,7 @@ function resolveDesignWorkspaceForRevisions(
 }
 
 function getConfiguredDesignWorkspaceDir(fileSystem: FileSystem, workspaceRoot: string): string {
-  return resolvePredictionWorkspaceDirectories({
+  return resolveWorkspaceDirectories({
     fileSystem,
     workspaceRoot,
   }).design;
@@ -1629,7 +1629,7 @@ function resolveConfiguredDesignWorkspace(
   workspacePath: string;
 } {
   const workspaceDir = getConfiguredDesignWorkspaceDir(fileSystem, workspaceRoot);
-  const placement = resolvePredictionWorkspacePlacement({
+  const placement = resolveWorkspacePlacement({
     fileSystem,
     workspaceRoot,
   });

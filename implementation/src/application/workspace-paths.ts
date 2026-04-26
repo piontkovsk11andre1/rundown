@@ -128,6 +128,12 @@ function resolveWorkspaceConfig(input: {
       value: directoriesSection?.migrations,
       fallback: DEFAULT_WORKSPACE_DIRECTORIES.migrations,
     }),
+    prediction: normalizeWorkspaceDirectoryValue({
+      configPath,
+      key: "prediction",
+      value: directoriesSection?.prediction,
+      fallback: DEFAULT_WORKSPACE_DIRECTORIES.prediction,
+    }),
   } satisfies WorkspaceDirectories;
 
   const placement = {
@@ -148,6 +154,12 @@ function resolveWorkspaceConfig(input: {
       key: "migrations",
       value: placementSection?.migrations,
       fallback: DEFAULT_WORKSPACE_PLACEMENT.migrations,
+    }),
+    prediction: normalizeWorkspacePlacementValue({
+      configPath,
+      key: "prediction",
+      value: placementSection?.prediction,
+      fallback: DEFAULT_WORKSPACE_PLACEMENT.prediction,
     }),
   } satisfies WorkspacePlacementMap;
 

@@ -658,85 +658,62 @@ async function runMigrateLoop(input: {
     }
     processedAnyRevision = true;
 
-    const plannedNames: string[] = [];
-    let plannerReturnedDone = false;
-    const knownNames = new Set<string>();
+    const latestState = readMigrationState(dependencies.fileSystem, migrationsDir);
+    const vars = buildTemplateVars({
+      fileSystem: dependencies.fileSystem,
+      state: latestState,
+      projectRoot,
+      invocationRoot,
+      workspaceDirectories,
+      workspacePlacement,
+      workspacePaths,
+      designRevisionTarget: targetRevision.name,
+      newMigrations: "",
+    });
+    const prompt = renderTemplate(planningTemplate, vars);
+    emit({
+      kind: "info",
+      message: "Planning migrations from design revision diff to "
+        + targetRevision.name
+        + " (position "
+        + String(latestState.currentPosition)
+        + ")...",
+    });
+    const result = await dependencies.workerExecutor.runWorker({
+      workerPattern: slugWorkerPattern,
+      prompt,
+      mode: "wait",
+      cwd: workspaceRoot,
+      timeoutMs: workerTimeoutMs,
+      artifactContext,
+      artifactPhase: "worker",
+      artifactPhaseLabel: "migrate-plan",
+    });
+    if ((result.exitCode ?? 1) !== 0) {
+      throw new Error("Worker failed to generate migration plan.");
+    }
+    if (showAgentOutput && result.stderr.length > 0) {
+      emit({ kind: "stderr", text: result.stderr });
+    }
 
-    for (;;) {
-      const latestState = readMigrationState(dependencies.fileSystem, migrationsDir);
-      const vars = buildTemplateVars({
-        fileSystem: dependencies.fileSystem,
-        state: latestState,
-        projectRoot,
-        invocationRoot,
-        workspaceDirectories,
-        workspacePlacement,
-        workspacePaths,
-        designRevisionTarget: targetRevision.name,
-        newMigrations: "",
-      });
-      const prompt = renderTemplate(planningTemplate, vars);
+    const proposedNames = parseProposedMigrationNames(result.stdout);
+    let plannerReturnedDone = false;
+    const plannedNames: string[] = [];
+    if (proposedNames === null) {
+      plannerReturnedDone = true;
       emit({
         kind: "info",
-        message: "Planning migrations from design revision diff to "
-          + targetRevision.name
-          + " (position "
-          + String(latestState.currentPosition)
-          + ")...",
+        message: "Planner returned DONE for " + targetRevision.name + ": no new migrations needed.",
       });
-      const result = await dependencies.workerExecutor.runWorker({
-        workerPattern: slugWorkerPattern,
-        prompt,
-        mode: "wait",
-        cwd: workspaceRoot,
-        timeoutMs: workerTimeoutMs,
-        artifactContext,
-        artifactPhase: "worker",
-        artifactPhaseLabel: "migrate-plan",
-      });
-      if ((result.exitCode ?? 1) !== 0) {
-        throw new Error("Worker failed to generate migration plan.");
-      }
-      if (showAgentOutput && result.stderr.length > 0) {
-        emit({ kind: "stderr", text: result.stderr });
-      }
-
-      const proposedNames = parseProposedMigrationNames(result.stdout);
-      if (proposedNames === null) {
-        plannerReturnedDone = true;
-        emit({
-          kind: "info",
-          message: "Planner returned DONE for " + targetRevision.name + ": no new migrations needed.",
-        });
-        break;
-      }
-
-      for (const migration of latestState.migrations) {
-        knownNames.add(migration.name);
-      }
-      for (const name of plannedNames) {
-        knownNames.add(name);
-      }
-
-      let addedInPass = 0;
+    } else {
+      const knownNames = new Set<string>(latestState.migrations.map((migration) => migration.name));
       for (const proposedName of proposedNames) {
         if (knownNames.has(proposedName)) {
           continue;
         }
         plannedNames.push(proposedName);
         knownNames.add(proposedName);
-        addedInPass += 1;
       }
-
-      if (addedInPass === 0) {
-        break;
-      }
-      emit({
-        kind: "info",
-        message: "Planner proposed "
-          + String(addedInPass)
-          + " new migration name(s); checking for additional candidates...",
-      });
     }
 
     if (plannedNames.length === 0) {
@@ -773,7 +750,7 @@ async function runMigrateLoop(input: {
       }
 
       emit({
-        kind: "info",
+        kind: "warn",
         message:
           "Planner produced no parseable migration names (expected lowercase kebab-case slugs). Re-run with --show-agent-output --keep-artifacts to inspect raw output.",
       });

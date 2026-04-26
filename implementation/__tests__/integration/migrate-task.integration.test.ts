@@ -142,8 +142,6 @@ describeIfMigrateAvailable("migrate-task integration", () => {
       "-e",
       buildConvergentMigrateWorkerScript([
         "rev1-added-file",
-        "rev1-added-file",
-        "rev2-modified-file",
         "rev2-modified-file",
       ]),
     ], workspace);

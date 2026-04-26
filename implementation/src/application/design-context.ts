@@ -107,6 +107,34 @@ export function formatRevisionDesignContext(
   return formatDesignWorkspaceContext(fileSystem, revisionAbsolutePath, designFiles, primaryFileName);
 }
 
+export function formatDesignRevisionUnifiedDiff(
+  fileSystem: FileSystem,
+  diff: DesignRevisionDiffContext,
+): string {
+  const fromFiles = diff.fromRevision && isDirectory(fileSystem, diff.fromRevision.absolutePath)
+    ? collectDirectoryFileMap(fileSystem, diff.fromRevision.absolutePath)
+    : new Map<string, { absolutePath: string; content: string }>();
+  const toFiles = isDirectory(fileSystem, diff.toTarget.absolutePath)
+    ? collectDirectoryFileMap(fileSystem, diff.toTarget.absolutePath)
+    : new Map<string, { absolutePath: string; content: string }>();
+
+  const sections = diff.changes.map((change) => {
+    const fromContent = fromFiles.get(change.relativePath)?.content ?? "";
+    const toContent = toFiles.get(change.relativePath)?.content ?? "";
+    const diffBody = formatUnifiedDiffBodyForChange(change.kind, fromContent, toContent);
+
+    return [
+      `#### ${change.relativePath} (${change.kind})`,
+      "",
+      "```diff",
+      diffBody,
+      "```",
+    ].join("\n");
+  });
+
+  return sections.join("\n\n");
+}
+
 export function resolveDesignContext(
   fileSystem: FileSystem,
   workspaceRoot: string,
@@ -1058,6 +1086,187 @@ function collectDirectoryFileMap(
   }
 
   return collected;
+}
+
+type UnifiedDiffOperation =
+  | { kind: "context"; line: string }
+  | { kind: "removed"; line: string }
+  | { kind: "added"; line: string };
+
+function formatUnifiedDiffBodyForChange(
+  kind: DesignRevisionDiffChangeKind,
+  fromContent: string,
+  toContent: string,
+): string {
+  if (kind === "added") {
+    return toLineArray(toContent).map((line) => "+" + line).join("\n");
+  }
+
+  if (kind === "removed") {
+    return toLineArray(fromContent).map((line) => "-" + line).join("\n");
+  }
+
+  return buildUnifiedDiffBody(toLineArray(fromContent), toLineArray(toContent), 3);
+}
+
+function toLineArray(content: string): string[] {
+  if (content.length === 0) {
+    return [];
+  }
+
+  const normalized = content.replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  if (normalized.endsWith("\n")) {
+    lines.pop();
+  }
+
+  return lines;
+}
+
+function buildUnifiedDiffBody(fromLines: string[], toLines: string[], contextLineCount: number): string {
+  const operations = computeUnifiedDiffOperations(fromLines, toLines);
+  let hasChanges = false;
+  for (const operation of operations) {
+    if (operation.kind !== "context") {
+      hasChanges = true;
+      break;
+    }
+  }
+
+  if (!hasChanges) {
+    return "";
+  }
+
+  const oldPrefixCounts = new Array<number>(operations.length + 1).fill(0);
+  const newPrefixCounts = new Array<number>(operations.length + 1).fill(0);
+  for (let index = 0; index < operations.length; index += 1) {
+    const operation = operations[index];
+    oldPrefixCounts[index + 1] = oldPrefixCounts[index] + (operation?.kind !== "added" ? 1 : 0);
+    newPrefixCounts[index + 1] = newPrefixCounts[index] + (operation?.kind !== "removed" ? 1 : 0);
+  }
+
+  const lines: string[] = [];
+  let index = 0;
+
+  while (index < operations.length) {
+    while (index < operations.length && operations[index]?.kind === "context") {
+      index += 1;
+    }
+
+    if (index >= operations.length) {
+      break;
+    }
+
+    const hunkStart = Math.max(0, index - contextLineCount);
+    let hunkEnd = Math.min(operations.length, index + contextLineCount + 1);
+
+    let scan = index + 1;
+    while (scan < operations.length) {
+      const operation = operations[scan];
+      if (operation?.kind !== "context") {
+        if (scan <= hunkEnd + contextLineCount) {
+          hunkEnd = Math.min(operations.length, scan + contextLineCount + 1);
+        } else {
+          break;
+        }
+      }
+      scan += 1;
+    }
+
+    const hunkOperations = operations.slice(hunkStart, hunkEnd);
+    const oldStart = oldPrefixCounts[hunkStart] + 1;
+    const newStart = newPrefixCounts[hunkStart] + 1;
+
+    let oldCount = 0;
+    let newCount = 0;
+    for (const operation of hunkOperations) {
+      if (operation.kind !== "added") {
+        oldCount += 1;
+      }
+      if (operation.kind !== "removed") {
+        newCount += 1;
+      }
+    }
+
+    lines.push(`@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`);
+    for (const operation of hunkOperations) {
+      if (operation.kind === "context") {
+        lines.push(" " + operation.line);
+      } else if (operation.kind === "removed") {
+        lines.push("-" + operation.line);
+      } else {
+        lines.push("+" + operation.line);
+      }
+    }
+
+    index = hunkEnd;
+  }
+
+  return lines.join("\n");
+}
+
+function computeUnifiedDiffOperations(fromLines: string[], toLines: string[]): UnifiedDiffOperation[] {
+  const lcsLengths = buildLcsLengthTable(fromLines, toLines);
+  const operations: UnifiedDiffOperation[] = [];
+
+  let fromIndex = 0;
+  let toIndex = 0;
+
+  while (fromIndex < fromLines.length && toIndex < toLines.length) {
+    const fromLine = fromLines[fromIndex];
+    const toLine = toLines[toIndex];
+
+    if (fromLine === toLine) {
+      operations.push({ kind: "context", line: fromLine ?? "" });
+      fromIndex += 1;
+      toIndex += 1;
+      continue;
+    }
+
+    const removeScore = lcsLengths[fromIndex + 1]?.[toIndex] ?? 0;
+    const addScore = lcsLengths[fromIndex]?.[toIndex + 1] ?? 0;
+    if (removeScore >= addScore) {
+      operations.push({ kind: "removed", line: fromLine ?? "" });
+      fromIndex += 1;
+    } else {
+      operations.push({ kind: "added", line: toLine ?? "" });
+      toIndex += 1;
+    }
+  }
+
+  while (fromIndex < fromLines.length) {
+    operations.push({ kind: "removed", line: fromLines[fromIndex] ?? "" });
+    fromIndex += 1;
+  }
+
+  while (toIndex < toLines.length) {
+    operations.push({ kind: "added", line: toLines[toIndex] ?? "" });
+    toIndex += 1;
+  }
+
+  return operations;
+}
+
+function buildLcsLengthTable(fromLines: string[], toLines: string[]): number[][] {
+  const table = new Array<number[]>(fromLines.length + 1);
+  for (let fromIndex = 0; fromIndex <= fromLines.length; fromIndex += 1) {
+    table[fromIndex] = new Array<number>(toLines.length + 1).fill(0);
+  }
+
+  for (let fromIndex = fromLines.length - 1; fromIndex >= 0; fromIndex -= 1) {
+    for (let toIndex = toLines.length - 1; toIndex >= 0; toIndex -= 1) {
+      if (fromLines[fromIndex] === toLines[toIndex]) {
+        table[fromIndex]![toIndex] = (table[fromIndex + 1]![toIndex + 1] ?? 0) + 1;
+      } else {
+        table[fromIndex]![toIndex] = Math.max(
+          table[fromIndex + 1]![toIndex] ?? 0,
+          table[fromIndex]![toIndex + 1] ?? 0,
+        );
+      }
+    }
+  }
+
+  return table;
 }
 
 function formatDesignDiffSummary(

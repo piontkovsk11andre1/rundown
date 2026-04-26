@@ -1,22 +1,24 @@
 import path from "node:path";
 import type { Migration, MigrationState, Satellite, SatelliteType } from "./migration-types.js";
 
+type SatelliteFilenameType = SatelliteType | "snapshot";
+
 const SATELLITE_PATTERN = /^(\d{4})--(.+)\.md$/;
 const MIGRATION_PATTERN = /^(\d{4})-(?!-)(.+)\.md$/;
 const DOTTED_MIGRATION_PATTERN = /^(\d+)\.\s+(.+)\.md$/;
 const DOTTED_SATELLITE_PATTERN = /^(\d+)\.(\d+)\s+(.+)\.md$/;
 
-const DOTTED_SATELLITE_INDEX_BY_TYPE: Record<SatelliteType, number> = {
+const DOTTED_SATELLITE_INDEX_BY_TYPE: Record<SatelliteFilenameType, number> = {
   snapshot: 1,
   review: 3,
 };
 
-const DOTTED_SATELLITE_LABEL_BY_TYPE: Record<SatelliteType, string> = {
+const DOTTED_SATELLITE_LABEL_BY_TYPE: Record<SatelliteFilenameType, string> = {
   snapshot: "Snapshot",
   review: "Review",
 };
 
-const SATELLITE_TYPES = new Set<SatelliteType>([
+const SATELLITE_TYPES = new Set<SatelliteFilenameType>([
   "snapshot",
   "review",
 ]);
@@ -25,7 +27,7 @@ interface ParsedMigrationEntry {
   number: number;
   name: string;
   isSatellite: boolean;
-  satelliteType: SatelliteType | null;
+  satelliteType: SatelliteFilenameType | null;
 }
 
 export interface ParsedMigrationFilename {
@@ -37,7 +39,7 @@ export function formatMigrationFilename(number: number, name: string): string {
   return `${String(number)}. ${toTitleCaseFromName(name)}.md`;
 }
 
-export function formatSatelliteFilename(number: number, type: SatelliteType): string {
+export function formatSatelliteFilename(number: number, type: SatelliteFilenameType): string {
   const satelliteIndex = DOTTED_SATELLITE_INDEX_BY_TYPE[type];
   const satelliteLabel = DOTTED_SATELLITE_LABEL_BY_TYPE[type];
   return `${String(number)}.${String(satelliteIndex)} ${satelliteLabel}.md`;
@@ -67,14 +69,14 @@ function parseMigrationFilenameDetailed(filename: string): ParsedMigrationEntry 
   if (satelliteMatch) {
     const number = Number.parseInt(satelliteMatch[1]!, 10);
     const satelliteType = satelliteMatch[2]!;
-    if (!SATELLITE_TYPES.has(satelliteType as SatelliteType)) {
+    if (!SATELLITE_TYPES.has(satelliteType as SatelliteFilenameType)) {
       return null;
     }
     return {
       number,
       name: satelliteType,
       isSatellite: true,
-      satelliteType: satelliteType as SatelliteType,
+      satelliteType: satelliteType as SatelliteFilenameType,
     };
   }
 
@@ -144,9 +146,13 @@ export function parseMigrationDirectory(files: string[], migrationsDir: string):
       continue;
     }
 
+    if (parsed.satelliteType !== "review") {
+      continue;
+    }
+
     migration.satellites.push({
       migrationNumber: parsed.number,
-      type: parsed.satelliteType!,
+      type: parsed.satelliteType,
       filePath,
     });
   }
@@ -168,7 +174,7 @@ export function parseMigrationDirectory(files: string[], migrationsDir: string):
     migrationsDir,
     migrations,
     currentPosition: getCurrentPositionFromMigrations(migrations),
-    latestSnapshot: getLatestSatelliteFromMigrations(migrations, "snapshot"),
+    latestSnapshot: null,
     backlogPath: getSingletonBacklogPath(files, migrationsDir),
   };
 
@@ -206,17 +212,17 @@ function getLatestSatelliteFromMigrations(migrations: Migration[], type: Satelli
   return satellites[satellites.length - 1]!;
 }
 
-function getSatelliteTypeFromDottedIndex(index: number): SatelliteType | null {
+function getSatelliteTypeFromDottedIndex(index: number): SatelliteFilenameType | null {
   for (const [type, value] of Object.entries(DOTTED_SATELLITE_INDEX_BY_TYPE)) {
     if (value === index) {
-      return type as SatelliteType;
+      return type as SatelliteFilenameType;
     }
   }
 
   return null;
 }
 
-function getSatelliteTypeFromLabel(label: string): SatelliteType | null {
+function getSatelliteTypeFromLabel(label: string): SatelliteFilenameType | null {
   const normalized = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   if (normalized === "snapshot") {
     return "snapshot";

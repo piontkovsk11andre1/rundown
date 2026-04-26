@@ -1,4 +1,4 @@
-export type SatelliteType = "snapshot" | "review";
+export type SatelliteType = "review";
 
 export interface Satellite {
   migrationNumber: number;

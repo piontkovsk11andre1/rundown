@@ -571,21 +571,6 @@ function selectSnapshotForFutureScope(
     };
   }
 
-  for (let index = state.migrations.length - 1; index >= 0; index -= 1) {
-    const migration = state.migrations[index];
-    if (!migration || migration.number > maxMigrationNumber) {
-      continue;
-    }
-
-    const snapshot = migration.satellites.find((satellite) => satellite.type === "snapshot");
-    if (snapshot) {
-      return {
-        migrationNumber: migration.number,
-        filePath: snapshot.filePath,
-      };
-    }
-  }
-
   return null;
 }
 

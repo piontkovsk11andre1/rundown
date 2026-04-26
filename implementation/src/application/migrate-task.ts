@@ -1208,6 +1208,31 @@ async function runMigrateDown(input: {
 
     markRevisionUnplanned(dependencies.fileSystem, workspaceRoot, revision.name);
     markRevisionUnmigrated(dependencies.fileSystem, workspaceRoot, revision.name);
+    emit({
+      kind: "info",
+      message:
+        "Rewound "
+        + revision.name
+        + " ("
+        + String(revisionMigrations.length)
+        + " migrations reverted).",
+    });
+  }
+
+  if (revisionsToRewind.length > 1) {
+    const newestRewoundRevision = revisionsToRewind[0];
+    const oldestRewoundRevision = revisionsToRewind[revisionsToRewind.length - 1];
+    if (newestRewoundRevision && oldestRewoundRevision) {
+      emit({
+        kind: "info",
+        message:
+          "Migrations rewound from "
+          + oldestRewoundRevision.name
+          + " to "
+          + newestRewoundRevision.name
+          + ".",
+      });
+    }
   }
 
   if (!noBacklog && removedMigrationRecords.length > 0) {

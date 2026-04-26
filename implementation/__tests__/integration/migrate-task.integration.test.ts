@@ -374,6 +374,41 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(backlogAfter).toBe(backlogBefore);
   });
 
+  it("migrate down handles missing migration file as already reverted", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldRevisionPlanningStampProject(workspace);
+    const rev1Migration = formatMigrationFilename(2, "rev1-added-file");
+    seedPlannedRevisionMigrations(workspace, "docs", [
+      { revision: 1, migrations: [rev1Migration] },
+    ]);
+
+    fs.unlinkSync(path.join(workspace, "migrations", rev1Migration));
+
+    const result = await runCli([
+      "migrate",
+      "--dir",
+      "migrations",
+      "down",
+      "--",
+      "node",
+      "-e",
+      buildConvergentMigrateWorkerScript(["DONE"]),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n"));
+    expect(combinedOutput).toContain(`No artifact run found for ${rev1Migration}; treating it as already reverted.`);
+
+    const rev1MetaAfterDown = readRevisionMeta(workspace, "docs", 1);
+    expect(rev1MetaAfterDown.plannedAt).toBeNull();
+    expect(rev1MetaAfterDown.migrations ?? []).toEqual([]);
+  });
+
   it("migrate down 2 rewinds two revisions, updates Backlog.md, and prunes later snapshots", async () => {
     const workspace = makeTempWorkspace();
     scaffoldRevisionPlanningStampProject(workspace);

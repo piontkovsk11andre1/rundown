@@ -43,6 +43,7 @@ import {
 import {
   discoverDesignRevisionDirectories,
   findLowestUnplannedRevision,
+  markRevisionMigrated,
   markRevisionPlanned,
   markRevisionUnmigrated,
   prepareDesignRevisionDiffContext,
@@ -1036,6 +1037,10 @@ async function runMigrateUp(input: {
       newMigrations: migrationsFromBatch,
     },
   });
+
+  if (targetRevision) {
+    markRevisionMigrated(dependencies.fileSystem, projectRoot, targetRevision);
+  }
 
   persistPredictionBaselineSnapshot(dependencies.fileSystem, migrationsDir, workspaceRoot);
   return EXIT_CODE_SUCCESS;

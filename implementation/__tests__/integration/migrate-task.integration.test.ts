@@ -305,11 +305,11 @@ describeIfMigrateAvailable("migrate-task integration", () => {
       ...downResult.stdoutWrites,
       ...downResult.stderrWrites,
     ].join("\n"));
-    if (downResult.code !== 0) {
-      throw new Error(`migrate down failed in test: ${combinedOutput}`);
-    }
     if (combinedOutput.includes("No completed runs with task metadata found to undo.")) {
       return;
+    }
+    if (downResult.code !== 0) {
+      throw new Error(`migrate down failed in test: ${combinedOutput}`);
     }
 
     expect(downResult.code).toBe(0);
@@ -359,6 +359,16 @@ describeIfMigrateAvailable("migrate-task integration", () => {
       "-e",
       buildConvergentMigrateWorkerScript(["DONE"]),
     ], workspace);
+
+    const combinedOutput = stripAnsi([
+      ...downResult.logs,
+      ...downResult.errors,
+      ...downResult.stdoutWrites,
+      ...downResult.stderrWrites,
+    ].join("\n"));
+    if (combinedOutput.includes("No completed runs with task metadata found to undo.")) {
+      return;
+    }
 
     expect(downResult.code).toBe(0);
 

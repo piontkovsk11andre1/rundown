@@ -95,9 +95,10 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(fs.existsSync(path.join(workspace, "migrations", formatSatelliteFilename(3, "snapshot")))).toBe(true);
   });
 
-  it("exits cleanly when planner outputs DONE with no file creation", async () => {
+  it("exits cleanly when planner outputs DONE for an unplanned no-op released revision pair", async () => {
     const workspace = makeTempWorkspace();
     scaffoldLoopMigrateProject(workspace);
+    scaffoldUnplannedNoOpReleasedRevisionPair(workspace, "docs");
 
     const result = await runCli([
       "migrate",
@@ -112,6 +113,15 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(result.code).toBe(0);
     expect(fs.existsSync(path.join(workspace, "migrations", formatMigrationFilename(2, "first-loop-change")))).toBe(false);
     expect(fs.existsSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "snapshot")))).toBe(true);
+
+    const rev2Meta = JSON.parse(
+      fs.readFileSync(path.join(workspace, "docs", "rev.2.meta.json"), "utf-8"),
+    ) as {
+      plannedAt?: string | null;
+      migrations?: string[];
+    };
+    expect(rev2Meta.plannedAt).toBeTypeOf("string");
+    expect(rev2Meta.migrations ?? []).toEqual([]);
   });
 
   it("migrate up generates N.1 snapshot at batch end and keeps previous snapshots", async () => {
@@ -912,7 +922,7 @@ function scaffoldReleasedDesignRevisions(workspace: string, designDir: string): 
   fs.mkdirSync(path.join(designRoot, "rev.0"), { recursive: true });
   fs.mkdirSync(path.join(designRoot, "rev.1"), { recursive: true });
 
-  fs.writeFileSync(path.join(designRoot, "current", "Design.md"), "# Design\n\nReleased rev.1 design.\n", "utf-8");
+  fs.writeFileSync(path.join(designRoot, "current", "Design.md"), "# Design\n\nWorking draft in current/.\n", "utf-8");
   fs.writeFileSync(path.join(designRoot, "rev.0", "Design.md"), "# Design\n\nBaseline design.\n", "utf-8");
   fs.writeFileSync(path.join(designRoot, "rev.1", "Design.md"), "# Design\n\nReleased rev.1 design.\n", "utf-8");
 
@@ -927,6 +937,34 @@ function scaffoldReleasedDesignRevisions(workspace: string, designDir: string): 
   fs.writeFileSync(path.join(designRoot, "rev.1.meta.json"), JSON.stringify({
     revision: "rev.1",
     index: 1,
+    createdAt: now,
+    plannedAt: null,
+    migrations: [],
+  }, null, 2) + "\n", "utf-8");
+}
+
+function scaffoldUnplannedNoOpReleasedRevisionPair(workspace: string, designDir: string): void {
+  const designRoot = path.join(workspace, designDir);
+  const now = "2026-01-02T00:00:00.000Z";
+  const rev1Path = path.join(designRoot, "rev.1", "Design.md");
+  const rev1MetaPath = path.join(designRoot, "rev.1.meta.json");
+  const rev1Meta = JSON.parse(fs.readFileSync(rev1MetaPath, "utf-8")) as {
+    revision: string;
+    index: number;
+    createdAt: string;
+    plannedAt?: string | null;
+    migrations?: string[];
+  };
+
+  rev1Meta.plannedAt = rev1Meta.createdAt;
+  rev1Meta.migrations = [formatMigrationFilename(1, "initialize")];
+  fs.writeFileSync(rev1MetaPath, JSON.stringify(rev1Meta, null, 2) + "\n", "utf-8");
+
+  fs.mkdirSync(path.join(designRoot, "rev.2"), { recursive: true });
+  fs.writeFileSync(path.join(designRoot, "rev.2", "Design.md"), fs.readFileSync(rev1Path, "utf-8"), "utf-8");
+  fs.writeFileSync(path.join(designRoot, "rev.2.meta.json"), JSON.stringify({
+    revision: "rev.2",
+    index: 2,
     createdAt: now,
     plannedAt: null,
     migrations: [],

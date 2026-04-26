@@ -41,6 +41,8 @@ import {
   type PredictionTrackedFileKind,
 } from "../domain/prediction-reconciliation.js";
 import {
+  findLowestUnplannedRevision,
+  markRevisionPlanned,
   prepareDesignRevisionDiffContext,
   resolveDesignContext,
   resolveDesignContextSourceReferences,
@@ -614,17 +616,26 @@ async function runMigrateLoop(input: {
     showAgentOutput,
   } = input;
   const emit = dependencies.output.emit.bind(dependencies.output);
+  const planningTemplate = readTemplate(
+    dependencies.templateLoader,
+    projectRoot,
+    "migrate.md",
+    DEFAULT_MIGRATE_TEMPLATE,
+  );
 
   for (;;) {
-    const plannedNames: string[] = [];
-    const knownNames = new Set<string>();
-
-    const planningTemplate = readTemplate(
-      dependencies.templateLoader,
-      projectRoot,
-      "migrate.md",
-      DEFAULT_MIGRATE_TEMPLATE,
+    const targetRevision = findLowestUnplannedRevision(
+      dependencies.fileSystem,
+      workspaceRoot,
+      { invocationRoot },
     );
+    if (!targetRevision) {
+      return EXIT_CODE_SUCCESS;
+    }
+
+    const plannedNames: string[] = [];
+    let plannerReturnedDone = false;
+    const knownNames = new Set<string>();
 
     for (;;) {
       const latestState = readMigrationState(dependencies.fileSystem, migrationsDir);
@@ -636,12 +647,15 @@ async function runMigrateLoop(input: {
         workspaceDirectories,
         workspacePlacement,
         workspacePaths,
+        designRevisionTarget: targetRevision.name,
         newMigrations: "",
       });
       const prompt = renderTemplate(planningTemplate, vars);
       emit({
         kind: "info",
-        message: "Planning next migrations from design revision diff (position "
+        message: "Planning migrations from design revision diff to "
+          + targetRevision.name
+          + " (position "
           + String(latestState.currentPosition)
           + ")...",
       });
@@ -664,11 +678,12 @@ async function runMigrateLoop(input: {
 
       const proposedNames = parseProposedMigrationNames(result.stdout);
       if (proposedNames === null) {
+        plannerReturnedDone = true;
         emit({
           kind: "info",
-          message: "Planner returned DONE: no new migrations needed.",
+          message: "Planner returned DONE for " + targetRevision.name + ": no new migrations needed.",
         });
-        return EXIT_CODE_SUCCESS;
+        break;
       }
 
       for (const migration of latestState.migrations) {
@@ -700,6 +715,38 @@ async function runMigrateLoop(input: {
     }
 
     if (plannedNames.length === 0) {
+      if (plannerReturnedDone) {
+        markRevisionPlanned(
+          dependencies.fileSystem,
+          workspaceRoot,
+          targetRevision.name,
+          [],
+        );
+        const upCode = await runMigrateUp({
+          dependencies,
+          migrationsDir,
+          projectRoot,
+          invocationRoot,
+          workspaceRoot,
+          workspaceDirectories,
+          workspacePlacement,
+          workspacePaths,
+          workerPattern,
+          slugWorkerPattern,
+          workerTimeoutMs,
+          artifactContext,
+          keepArtifacts,
+          showAgentOutput,
+          executionContext,
+          newMigrationsSource: "",
+          skipRunTaskWhenNoMigrations: false,
+        });
+        if (upCode !== EXIT_CODE_SUCCESS && upCode !== EXIT_CODE_NO_WORK) {
+          return upCode;
+        }
+        continue;
+      }
+
       emit({
         kind: "info",
         message:
@@ -718,6 +765,7 @@ async function runMigrateLoop(input: {
 
     const stateBeforeCreate = readMigrationState(dependencies.fileSystem, migrationsDir);
     const createdMigrationContents: string[] = [];
+    const createdMigrationFileNames: string[] = [];
     for (const [index, migrationName] of plannedNames.entries()) {
       const number = stateBeforeCreate.currentPosition + index + 1;
       const migrationFileName = formatMigrationFilename(number, migrationName);
@@ -725,6 +773,7 @@ async function runMigrateLoop(input: {
       const migrationContent = createMigrationDocument(number, migrationName);
       dependencies.fileSystem.writeText(migrationPath, migrationContent);
       createdMigrationContents.push(migrationContent.trim());
+      createdMigrationFileNames.push(migrationFileName);
 
       await runExploreForMigration({
         runExplore: dependencies.runExplore,
@@ -758,6 +807,13 @@ async function runMigrateLoop(input: {
         return EXIT_CODE_SUCCESS;
       }
     }
+
+    markRevisionPlanned(
+      dependencies.fileSystem,
+      workspaceRoot,
+      targetRevision.name,
+      createdMigrationFileNames,
+    );
 
     const upCode = await runMigrateUp({
       dependencies,
@@ -1429,6 +1485,7 @@ function buildTemplateVars(input: {
   workspaceDirectories: ReturnType<typeof resolvePredictionWorkspaceDirectories>;
   workspacePlacement: ReturnType<typeof resolvePredictionWorkspacePlacement>;
   workspacePaths: ReturnType<typeof resolvePredictionWorkspacePaths>;
+  designRevisionTarget?: "current" | string | number;
   newMigrations?: string;
 }): TemplateVars {
   const {
@@ -1439,6 +1496,7 @@ function buildTemplateVars(input: {
     workspaceDirectories,
     workspacePlacement,
     workspacePaths,
+    designRevisionTarget,
     newMigrations,
   } = input;
   const latestMigration = state.migrations[state.migrations.length - 1] ?? null;
@@ -1451,7 +1509,7 @@ function buildTemplateVars(input: {
   const designContextSources = resolveDesignContextSourceReferences(fileSystem, projectRoot, { invocationRoot });
   const revisionDiff = prepareDesignRevisionDiffContext(fileSystem, projectRoot, {
     invocationRoot,
-    target: "current",
+    target: designRevisionTarget ?? "current",
   });
   const previousRevisionId = revisionDiff.fromRevision?.name ?? (revisionDiff.hasComparison ? "nothing" : "");
   const currentRevisionId = revisionDiff.toTarget.name;

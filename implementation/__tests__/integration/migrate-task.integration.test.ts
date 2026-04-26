@@ -50,8 +50,7 @@ describeIfMigrateAvailable("migrate-task integration", () => {
       }, null, 2) + "\n",
       "utf-8",
     );
-    fs.mkdirSync(path.join(workspace, "design-docs", "current"), { recursive: true });
-    fs.writeFileSync(path.join(workspace, "design-docs", "current", "Design.md"), "# Design\n\nSeed design context.\n", "utf-8");
+    scaffoldReleasedDesignRevisions(workspace, "design-docs");
     fs.mkdirSync(path.join(workspace, "changesets"), { recursive: true });
     fs.writeFileSync(path.join(workspace, "changesets", formatMigrationFilename(1, "initialize")), "# 1. Initialize\n\n- [x] done\n", "utf-8");
 
@@ -899,11 +898,39 @@ function writePredictionBaselineSnapshot(workspace: string, inputs: PredictionIn
 function scaffoldLoopMigrateProject(workspace: string): void {
   fs.mkdirSync(path.join(workspace, "migrations"), { recursive: true });
   fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
-  fs.mkdirSync(path.join(workspace, "docs", "current"), { recursive: true });
-  fs.writeFileSync(path.join(workspace, "docs", "current", "Design.md"), "# Design\n\nLoop test design.\n", "utf-8");
+  scaffoldReleasedDesignRevisions(workspace, "docs");
   fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(1, "initialize")), "# 1. Initialize\n\n- [x] bootstrap\n", "utf-8");
   fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "snapshot")), "# Snapshot 1\n", "utf-8");
   fs.writeFileSync(path.join(workspace, "migrations", "Backlog.md"), "# Backlog\n\n- seed-item\n", "utf-8");
+}
+
+function scaffoldReleasedDesignRevisions(workspace: string, designDir: string): void {
+  const designRoot = path.join(workspace, designDir);
+  const now = "2026-01-01T00:00:00.000Z";
+
+  fs.mkdirSync(path.join(designRoot, "current"), { recursive: true });
+  fs.mkdirSync(path.join(designRoot, "rev.0"), { recursive: true });
+  fs.mkdirSync(path.join(designRoot, "rev.1"), { recursive: true });
+
+  fs.writeFileSync(path.join(designRoot, "current", "Design.md"), "# Design\n\nReleased rev.1 design.\n", "utf-8");
+  fs.writeFileSync(path.join(designRoot, "rev.0", "Design.md"), "# Design\n\nBaseline design.\n", "utf-8");
+  fs.writeFileSync(path.join(designRoot, "rev.1", "Design.md"), "# Design\n\nReleased rev.1 design.\n", "utf-8");
+
+  fs.writeFileSync(path.join(designRoot, "rev.0.meta.json"), JSON.stringify({
+    revision: "rev.0",
+    index: 0,
+    createdAt: now,
+    plannedAt: now,
+    migrations: [],
+  }, null, 2) + "\n", "utf-8");
+
+  fs.writeFileSync(path.join(designRoot, "rev.1.meta.json"), JSON.stringify({
+    revision: "rev.1",
+    index: 1,
+    createdAt: now,
+    plannedAt: null,
+    migrations: [],
+  }, null, 2) + "\n", "utf-8");
 }
 
 function buildConvergentMigrateWorkerScript(plannerOutputs: string[]): string {

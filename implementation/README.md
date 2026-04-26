@@ -1,6 +1,6 @@
 # `rundown`
 
-> A future-prediction, test-driven framework.
+> A test-driven future-prediction framework.
 > Use it to create art, run a business, do research, and write code.
 
 ## Prediction

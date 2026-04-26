@@ -39,7 +39,6 @@ import {
   type PredictionBaseline,
   type PredictionInputs,
   type PredictionTrackedFile,
-  type PredictionTrackedFileKind,
 } from "../domain/prediction-reconciliation.js";
 import {
   discoverDesignRevisionDirectories,
@@ -609,37 +608,12 @@ function readPredictionInputs(
       content: migrationSource,
     });
 
-    if (!shouldReadFromPredictionTree) {
-      for (const satellite of migration.satellites) {
-        const kind = toPredictionTrackedFileKind(satellite.type);
-        if (!kind) {
-          continue;
-        }
-
-        files.push({
-          relativePath: toProjectRelativePath(projectRoot, satellite.filePath),
-          migrationNumber: migration.number,
-          kind,
-          content: fileSystem.readText(satellite.filePath),
-        });
-      }
-    }
   }
 
   return {
     migrations,
     files,
   };
-}
-
-function toPredictionTrackedFileKind(type: SatelliteType): PredictionTrackedFileKind | null {
-  if (type === "snapshot") {
-    return "snapshot";
-  }
-  if (type === "review") {
-    return "review";
-  }
-  return null;
 }
 
 function toProjectRelativePath(projectRoot: string, absolutePath: string): string {

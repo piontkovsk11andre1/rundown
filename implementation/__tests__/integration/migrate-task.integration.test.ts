@@ -469,6 +469,32 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(readDirectoryFileBytes(predictionDir)).toEqual(predictionBefore);
   });
 
+  it("materialize still writes expected files into implementation/", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictionProjectForReconciliation(workspace);
+
+    fs.writeFileSync(
+      path.join(workspace, ".rundown", "config.json"),
+      JSON.stringify({
+        workers: {
+          default: ["node", "-e", buildMaterializeImplementationWriteWorkerScript()],
+        },
+      }, null, 2) + "\n",
+      "utf-8",
+    );
+
+    const result = await runCli([
+      "materialize",
+      path.join("migrations", formatMigrationFilename(2, "feature-a")),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(fs.readFileSync(path.join(workspace, "implementation", "status.txt"), "utf-8")).toBe("materialized\n");
+    expect(fs.readFileSync(path.join(workspace, "implementation", "nested", "result.json"), "utf-8")).toBe(
+      "{\"source\":\"feature-a\"}\n",
+    );
+  });
+
   it("migrate up follow-up keeps prediction tree pruned when a file is no longer predicted", async () => {
     const workspace = makeTempWorkspace();
     scaffoldPredictionProjectForReconciliation(workspace);
@@ -2058,6 +2084,26 @@ function buildMigrateUpSlugReconciliationWorkerScript(): string {
     "  process.exit(0);",
     "}",
     "console.log('slug-worker');",
+    "process.exit(0);",
+  ].join("\n");
+}
+
+function buildMaterializeImplementationWriteWorkerScript(): string {
+  return [
+    "const fs=require('node:fs');",
+    "const path=require('node:path');",
+    "const promptPath=process.argv[process.argv.length-1];",
+    "const prompt=fs.existsSync(promptPath)?fs.readFileSync(promptPath,'utf-8'):'';",
+    "if(prompt.includes('Verify whether the selected task is complete.')){",
+    "  console.log('OK');",
+    "  process.exit(0);",
+    "}",
+    "const implementationDir=path.join(process.cwd(),'implementation');",
+    "const nestedDir=path.join(implementationDir,'nested');",
+    "fs.mkdirSync(nestedDir,{recursive:true});",
+    "fs.writeFileSync(path.join(implementationDir,'status.txt'),'materialized\\n','utf-8');",
+    "fs.writeFileSync(path.join(nestedDir,'result.json'),'{\\\"source\\\":\\\"feature-a\\\"}\\n','utf-8');",
+    "console.log('applied');",
     "process.exit(0);",
   ].join("\n");
 }

@@ -209,11 +209,11 @@ describe("design-context revision metadata and immutability", () => {
     fileSystem.writeText("/repo/docs/current/Design.md", "updated design\n");
     fileSystem.writeText("/repo/docs/current/notes/api.md", "v2\n");
 
-    expect(fileSystem.readText("/repo/docs/rev.1/Design.md")).toBe("original design\n");
-    expect(fileSystem.readText("/repo/docs/rev.1/notes/api.md")).toBe("v1\n");
-    expect(JSON.parse(fileSystem.readText("/repo/docs/rev.1.meta.json"))).toEqual({
-      revision: "rev.1",
-      index: 1,
+    expect(fileSystem.readText("/repo/docs/rev.0/Design.md")).toBe("original design\n");
+    expect(fileSystem.readText("/repo/docs/rev.0/notes/api.md")).toBe("v1\n");
+    expect(JSON.parse(fileSystem.readText("/repo/docs/rev.0.meta.json"))).toEqual({
+      revision: "rev.0",
+      index: 0,
       createdAt: "2026-01-02T03:04:05.000Z",
     });
   });
@@ -298,9 +298,9 @@ describe("design-context revision metadata and immutability", () => {
     });
 
     expect(saved.kind).toBe("saved");
-    expect(JSON.parse(fileSystem.readText("/repo/design/rev.1.meta.json"))).toEqual({
-      revision: "rev.1",
-      index: 1,
+    expect(JSON.parse(fileSystem.readText("/repo/design/rev.0.meta.json"))).toEqual({
+      revision: "rev.0",
+      index: 0,
       createdAt: "2026-01-02T03:04:05.000Z",
       label: "stable",
     });
@@ -390,11 +390,11 @@ describe("design-context revision metadata and immutability", () => {
     expect(saved).toMatchObject({
       kind: "saved",
       revision: {
-        name: "rev.1",
+        name: "rev.0",
       },
     });
     if (saved.kind === "saved") {
-      expect(normalizePath(saved.revision.absolutePath)).toBe("/repo/blueprint/rev.1");
+      expect(normalizePath(saved.revision.absolutePath)).toBe("/repo/blueprint/rev.0");
       expect(normalizePath(saved.revision.sourcePath)).toBe("/repo/blueprint/current");
     }
 
@@ -605,7 +605,7 @@ describe("design-context revision metadata and immutability", () => {
     ]);
   });
 
-  it("compares rev.0 -> rev.1 when both are present and rev.1 is targeted", () => {
+  it("treats rev.0 as fresh state and shows rev.1 as initial when rev.0 and rev.1 are present and rev.1 is targeted", () => {
     const fileSystem = new InMemoryFileSystem({
       directories: {
         "/repo/docs": [
@@ -633,10 +633,9 @@ describe("design-context revision metadata and immutability", () => {
     const diff = prepareDesignRevisionDiffContext(fileSystem, "/repo", { target: "rev.1" });
 
     expect(diff.hasComparison).toBe(true);
-    expect(diff.fromRevision?.name).toBe("rev.0");
-    expect(diff.summary).toBe("Compared rev.0 -> rev.1: 0 added 1 modified 0 removed");
+    expect(diff.fromRevision).toBeNull();
+    expect(diff.summary).toBe("Compared nothing -> rev.1: 1 added 0 modified 0 removed");
     expect(diff.sourceReferences.map(normalizePath)).toEqual([
-      "/repo/docs/rev.0",
       "/repo/docs/rev.1",
     ]);
   });

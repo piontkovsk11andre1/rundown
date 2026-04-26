@@ -151,17 +151,17 @@ describe("createDocsTask", () => {
       const firstCode = await docsTask({ action: "release", dir: "migrations", label: "Baseline" });
 
       expect(firstCode).toBe(0);
-      expect(fileSystem.exists("/repo/design/rev.1")).toBe(true);
-      expect(fileSystem.exists("/repo/design/rev.1/Target.md")).toBe(true);
-      expect(fileSystem.readText("/repo/design/rev.1.meta.json")).toContain("\"label\": \"Baseline\"");
-      expect(outputEvents.some((event) => event.kind === "success" && event.message.includes("Saved design revision rev.1"))).toBe(true);
+      expect(fileSystem.exists("/repo/design/rev.0")).toBe(true);
+      expect(fileSystem.exists("/repo/design/rev.0/Target.md")).toBe(true);
+      expect(fileSystem.readText("/repo/design/rev.0.meta.json")).toContain("\"label\": \"Baseline\"");
+      expect(outputEvents.some((event) => event.kind === "success" && event.message.includes("Saved design revision rev.0"))).toBe(true);
 
       outputEvents.length = 0;
 
       const secondCode = await docsTask({ action: "release", dir: "migrations", label: "Baseline" });
 
       expect(secondCode).toBe(0);
-      expect(fileSystem.exists("/repo/design/rev.2")).toBe(false);
+      expect(fileSystem.exists("/repo/design/rev.1")).toBe(false);
       expect(outputEvents.some(
         (event) => event.kind === "info"
           && event.message.includes("No design changes detected in")

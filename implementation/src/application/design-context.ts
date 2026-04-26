@@ -320,7 +320,7 @@ export function saveDesignRevisionSnapshot(
   const revisions = discoverDesignRevisionDirectories(fileSystem, workspaceRoot, {
     invocationRoot: options?.invocationRoot,
   });
-  let nextIndex = 1;
+  let nextIndex = 0;
   for (const revision of revisions) {
     if (revision.index >= nextIndex) {
       nextIndex = revision.index + 1;
@@ -697,7 +697,7 @@ function findNearestLowerDiscoveredRevision(
       continue;
     }
 
-    if (revision.index < targetRevisionIndex) {
+    if (revision.index < targetRevisionIndex && revision.index > 0) {
       return revision;
     }
   }

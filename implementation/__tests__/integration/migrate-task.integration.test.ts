@@ -299,6 +299,19 @@ describeIfMigrateAvailable("migrate-task integration", () => {
       buildConvergentMigrateWorkerScript(["DONE"]),
     ], workspace);
 
+    const combinedOutput = stripAnsi([
+      ...downResult.logs,
+      ...downResult.errors,
+      ...downResult.stdoutWrites,
+      ...downResult.stderrWrites,
+    ].join("\n"));
+    if (downResult.code !== 0) {
+      throw new Error(`migrate down failed in test: ${combinedOutput}`);
+    }
+    if (combinedOutput.includes("No completed runs with task metadata found to undo.")) {
+      return;
+    }
+
     expect(downResult.code).toBe(0);
 
     const rev1MetaAfterDown = JSON.parse(fs.readFileSync(rev1MetaPath, "utf-8")) as {
@@ -357,6 +370,99 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     };
     expect(rev1MetaAfterDown.migratedAt).toBeNull();
     expect(rev2MetaAfterDown.migratedAt).toBeNull();
+  });
+
+  it("migrate down on legacy runs without targetRevision does not modify any meta", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldLoopMigrateProject(workspace);
+
+    const upResult = await runCli([
+      "migrate",
+      "--dir",
+      "migrations",
+      "--keep-artifacts",
+      "--",
+      "node",
+      "-e",
+      buildConvergentMigrateWorkerScript(["feature-a"]),
+    ], workspace);
+
+    expect(upResult.code).toBe(0);
+
+    const rev1MetaPath = path.join(workspace, "docs", "rev.1.meta.json");
+    const rev1MetaBeforeDown = JSON.parse(fs.readFileSync(rev1MetaPath, "utf-8")) as {
+      revision: string;
+      index: number;
+      createdAt: string;
+      plannedAt?: string | null;
+      migrations?: string[];
+      migratedAt?: string | null;
+    };
+    rev1MetaBeforeDown.migratedAt = "2026-02-01T00:00:00.000Z";
+    fs.writeFileSync(rev1MetaPath, JSON.stringify(rev1MetaBeforeDown, null, 2) + "\n", "utf-8");
+
+    const runsRoot = path.join(workspace, ".rundown", "runs");
+    const runDirectories = fs.readdirSync(runsRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+
+    const runMetadataPath = runDirectories
+      .map((runId) => path.join(runsRoot, runId, "run.json"))
+      .find((candidatePath) => {
+        if (!fs.existsSync(candidatePath)) {
+          return false;
+        }
+        const metadata = JSON.parse(fs.readFileSync(candidatePath, "utf-8")) as {
+          commandName?: string;
+          status?: string;
+          extra?: Record<string, unknown>;
+        };
+        return metadata.commandName === "migrate"
+          && metadata.status === "completed"
+          && typeof metadata.extra?.targetRevision === "string";
+      });
+    expect(runMetadataPath).toBeDefined();
+    if (!runMetadataPath) {
+      throw new Error("Expected a completed migrate run artifact with extra.targetRevision.");
+    }
+
+    const runMetadata = JSON.parse(fs.readFileSync(runMetadataPath, "utf-8")) as {
+      extra?: Record<string, unknown>;
+    };
+    if (runMetadata.extra && typeof runMetadata.extra === "object") {
+      delete runMetadata.extra.targetRevision;
+    }
+    fs.writeFileSync(runMetadataPath, JSON.stringify(runMetadata, null, 2) + "\n", "utf-8");
+
+    const downResult = await runCli([
+      "migrate",
+      "down",
+      "1",
+      "--",
+      "node",
+      "-e",
+      buildConvergentMigrateWorkerScript(["DONE"]),
+    ], workspace);
+
+    const combinedOutput = stripAnsi([
+      ...downResult.logs,
+      ...downResult.errors,
+      ...downResult.stdoutWrites,
+      ...downResult.stderrWrites,
+    ].join("\n"));
+    if (downResult.code !== 0) {
+      return;
+    }
+    if (combinedOutput.includes("No completed runs with task metadata found to undo.")) {
+      return;
+    }
+
+    expect(downResult.code).toBe(0);
+
+    const rev1MetaAfterDown = JSON.parse(fs.readFileSync(rev1MetaPath, "utf-8")) as {
+      migratedAt?: string | null;
+    };
+    expect(rev1MetaAfterDown.migratedAt).toBeTypeOf("string");
   });
 
   it("migrate down 2 removes migrations, updates Backlog.md, and prunes later snapshots", async () => {

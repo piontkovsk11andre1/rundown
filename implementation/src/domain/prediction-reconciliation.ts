@@ -3,7 +3,6 @@ import path from "node:path";
 import {
   formatMigrationFilename,
   formatSatelliteFilename,
-  parseMigrationFilename,
 } from "./migration-parser.js";
 import type { FileSystem } from "./ports/index.js";
 
@@ -879,17 +878,16 @@ function isMigrationTrackedFile(file: Pick<PredictionTrackedFile, "relativePath"
 }
 
 function isMigrationPath(relativePath: string): boolean {
-  const parsed = parseMigrationFilename(path.basename(normalizeRelativePath(relativePath)));
-  return Boolean(parsed && !parsed.isSatellite);
+  const baseName = path.basename(normalizeRelativePath(relativePath));
+  if (/^(\d+)\.(\d+)\s+.+\.md$/i.test(baseName)) {
+    return false;
+  }
+
+  return /^(\d+)\.\s+.+\.md$/i.test(baseName) || /^\d{4}-(?!-).+\.md$/i.test(baseName);
 }
 
 function isSnapshotTrackedFile(file: Pick<PredictionTrackedFile, "relativePath">): boolean {
   const normalized = normalizeRelativePath(file.relativePath);
-  const parsed = parseMigrationFilename(path.basename(normalized));
-  if (parsed?.isSatellite && parsed.satelliteType === "snapshot") {
-    return true;
-  }
-
   return /\.(?:snapshot|review)\.md$/i.test(normalized);
 }
 

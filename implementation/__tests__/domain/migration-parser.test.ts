@@ -23,8 +23,6 @@ describe("parseMigrationFilename", () => {
     expect(parseMigrationFilename("0007--snapshot.md")).toEqual({
       number: 7,
       name: "snapshot",
-      isSatellite: true,
-      satelliteType: "snapshot",
     });
 
     expect(parseMigrationFilename("0007---snapshot.md")).toBeNull();

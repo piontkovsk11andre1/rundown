@@ -21,11 +21,16 @@ const SATELLITE_TYPES = new Set<SatelliteType>([
   "review",
 ]);
 
-export interface ParsedMigrationFilename {
+interface ParsedMigrationEntry {
   number: number;
   name: string;
   isSatellite: boolean;
   satelliteType: SatelliteType | null;
+}
+
+export interface ParsedMigrationFilename {
+  number: number;
+  name: string;
 }
 
 export function formatMigrationFilename(number: number, name: string): string {
@@ -38,7 +43,7 @@ export function formatSatelliteFilename(number: number, type: SatelliteType): st
   return `${String(number)}.${String(satelliteIndex)} ${satelliteLabel}.md`;
 }
 
-export function parseMigrationFilename(filename: string): ParsedMigrationFilename | null {
+function parseMigrationFilenameDetailed(filename: string): ParsedMigrationEntry | null {
   const dottedSatelliteMatch = filename.match(DOTTED_SATELLITE_PATTERN);
   if (dottedSatelliteMatch) {
     const number = Number.parseInt(dottedSatelliteMatch[1]!, 10);
@@ -96,12 +101,24 @@ export function parseMigrationFilename(filename: string): ParsedMigrationFilenam
   };
 }
 
+export function parseMigrationFilename(filename: string): ParsedMigrationFilename | null {
+  const parsed = parseMigrationFilenameDetailed(filename);
+  if (!parsed) {
+    return null;
+  }
+
+  return {
+    number: parsed.number,
+    name: parsed.name,
+  };
+}
+
 export function parseMigrationDirectory(files: string[], migrationsDir: string): MigrationState {
   const migrationMap = new Map<number, Migration>();
 
   for (const filePath of files) {
     const filename = path.basename(filePath);
-    const parsed = parseMigrationFilename(filename);
+    const parsed = parseMigrationFilenameDetailed(filename);
     if (!parsed || parsed.isSatellite) {
       continue;
     }
@@ -117,7 +134,7 @@ export function parseMigrationDirectory(files: string[], migrationsDir: string):
 
   for (const filePath of files) {
     const filename = path.basename(filePath);
-    const parsed = parseMigrationFilename(filename);
+    const parsed = parseMigrationFilenameDetailed(filename);
     if (!parsed || !parsed.isSatellite) {
       continue;
     }

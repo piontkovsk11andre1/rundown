@@ -52,7 +52,6 @@ import {
   parseDesignRevisionDirectoryName,
   prepareDesignRevisionDiffContext,
   resolveDesignContext,
-  resolveDesignContextSourceReferences,
   type DesignRevisionDiffContext,
 } from "./design-context.js";
 import {
@@ -1724,15 +1723,11 @@ function buildTemplateVars(input: {
       invocationRoot,
       target: designRevisionTarget,
     });
-  const designContextSources = revisionDiff.toTarget.kind === "revision"
-    ? {
-      sourceReferences: [revisionDiff.toTarget.absolutePath],
-      hasManagedDocs: true,
-    }
-    : resolveDesignContextSourceReferences(fileSystem, projectRoot, { invocationRoot });
-  const design = revisionDiff.toTarget.kind === "revision"
-    ? formatRevisionDesignContext(fileSystem, revisionDiff.toTarget.absolutePath)
-    : resolveDesignContext(fileSystem, projectRoot, { invocationRoot }).design;
+  const designContextSources = {
+    sourceReferences: [revisionDiff.toTarget.absolutePath],
+    hasManagedDocs: isDirectory(fileSystem, revisionDiff.toTarget.absolutePath),
+  };
+  const design = formatRevisionDesignContext(fileSystem, revisionDiff.toTarget.absolutePath);
   const previousRevisionId = revisionDiff.fromRevision?.name ?? (revisionDiff.hasComparison ? "nothing" : "");
   const currentRevisionId = revisionDiff.toTarget.name;
   const currentRevisionCreatedAt = revisionDiff.toTarget.metadata.createdAt;

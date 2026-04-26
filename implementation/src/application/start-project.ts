@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { createInitProject } from "./init-project.js";
 import { initGitRepo } from "./git-operations.js";
 import {
@@ -33,7 +35,25 @@ export interface StartProjectOptions {
   designPlacement?: string;
   specsPlacement?: string;
   migrationsPlacement?: string;
+  noBootstrap?: boolean;
 }
+
+const BOOTSTRAP_EXCLUDED_DIRS = new Set([
+  "design",
+  "specs",
+  "migrations",
+  "prediction",
+  ".rundown",
+  ".git",
+  "node_modules",
+  "dist",
+  "coverage",
+  "build",
+  "out",
+]);
+
+const BOOTSTRAP_MAX_FILES = 5000;
+const BOOTSTRAP_MAX_BYTES = 50 * 1024 * 1024;
 
 interface ValidatedWorkspaceDirectories {
   designDir: string;
@@ -104,6 +124,11 @@ export function createStartProject(
       emit({ kind: "success", message: "Created project directory: " + targetDirectory });
     }
 
+    const implementationHadFilesBeforeStart = hasBootstrapSourceFilesBeforeStart({
+      fileSystem: dependencies.fileSystem,
+      implementationRoot: targetDirectory,
+    });
+
     let workspaceDirectories: ValidatedWorkspaceDirectories;
     let workspacePlacement: ValidatedWorkspacePlacement;
     try {
@@ -148,6 +173,12 @@ export function createStartProject(
       targetDirectory,
       workspaceDirectories.predictionDir,
     );
+    const designPathExistedBeforeStart = dependencies.fileSystem.exists(designPath);
+    const designHadFilesBeforeStart = hasAnyFilesRecursively(dependencies.fileSystem, dependencies.pathOperations.join(
+      targetDirectory,
+      workspaceDirectories.designDir,
+    ));
+    const predictionHadFilesBeforeStart = hasAnyFilesRecursively(dependencies.fileSystem, predictionDir);
     const initialMigrationPath = dependencies.pathOperations.join(
       migrationsDir,
       formatMigrationFilename(1, "initialize"),
@@ -230,6 +261,37 @@ export function createStartProject(
       emit,
     );
 
+    try {
+      const bootstrapResult = bootstrapFromExistingImplementation({
+        fileSystem: dependencies.fileSystem,
+        workspaceRoot: targetDirectory,
+        paths: {
+          designPath,
+          predictionDir,
+          implementationRoot: targetDirectory,
+          implementationHadFilesBeforeStart,
+          designPathExistedBeforeStart,
+          designHadFilesBeforeStart,
+          predictionHadFilesBeforeStart,
+        },
+        description,
+        noBootstrap: options.noBootstrap,
+      });
+
+      if (bootstrapResult.bootstrapped) {
+        emit({
+          kind: "success",
+          message: `Bootstrapped prediction baseline from existing implementation (${bootstrapResult.mirroredFiles} files mirrored).`,
+        });
+      }
+    } catch (error) {
+      emit({
+        kind: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return EXIT_CODE_FAILURE;
+    }
+
     const exploreExitCode = await runExploreSteps(
       dependencies.runExplore,
       targetDirectory,
@@ -265,6 +327,225 @@ function normalizeDescription(value: string | undefined): string {
 
 function buildDesignMarkdown(description: string): string {
   return "# " + description + "\n\n" + description + "\n";
+}
+
+function buildBootstrappedDesignMarkdown(description: string): string {
+  return [
+    "# " + description,
+    "",
+    description,
+    "",
+    "Bootstrapped from existing implementation. Replace with target description in domain language; do not list implementation details.",
+    "",
+  ].join("\n");
+}
+
+function bootstrapFromExistingImplementation(input: {
+  fileSystem: FileSystem;
+  workspaceRoot: string;
+  paths: {
+    designPath: string;
+    predictionDir: string;
+    implementationRoot: string;
+    implementationHadFilesBeforeStart: boolean;
+    designPathExistedBeforeStart: boolean;
+    designHadFilesBeforeStart: boolean;
+    predictionHadFilesBeforeStart: boolean;
+  };
+  description: string;
+  noBootstrap?: boolean;
+}): { bootstrapped: boolean; mirroredFiles: number } {
+  const {
+    fileSystem,
+    workspaceRoot,
+    paths,
+    description,
+    noBootstrap,
+  } = input;
+
+  if (noBootstrap) {
+    return { bootstrapped: false, mirroredFiles: 0 };
+  }
+
+  if (paths.designPathExistedBeforeStart || paths.designHadFilesBeforeStart || paths.predictionHadFilesBeforeStart) {
+    return { bootstrapped: false, mirroredFiles: 0 };
+  }
+
+  if (!paths.implementationHadFilesBeforeStart) {
+    return { bootstrapped: false, mirroredFiles: 0 };
+  }
+
+  const implementationFiles = listBootstrapSourceFiles({
+    fileSystem,
+    workspaceRoot,
+    implementationRoot: paths.implementationRoot,
+  });
+  if (implementationFiles.length === 0) {
+    return { bootstrapped: false, mirroredFiles: 0 };
+  }
+
+  fileSystem.writeText(paths.designPath, buildBootstrappedDesignMarkdown(description));
+
+  for (const sourceFilePath of implementationFiles) {
+    const relativePath = path.relative(paths.implementationRoot, sourceFilePath);
+    const predictionFilePath = path.join(paths.predictionDir, relativePath);
+    const predictionParentDirectory = path.dirname(predictionFilePath);
+    if (!fileSystem.exists(predictionParentDirectory)) {
+      fileSystem.mkdir(predictionParentDirectory, { recursive: true });
+    }
+
+    const content = fs.readFileSync(sourceFilePath);
+    fs.writeFileSync(predictionFilePath, content);
+  }
+
+  return {
+    bootstrapped: true,
+    mirroredFiles: implementationFiles.length,
+  };
+}
+
+function hasBootstrapSourceFilesBeforeStart(input: {
+  fileSystem: FileSystem;
+  implementationRoot: string;
+}): boolean {
+  const { fileSystem, implementationRoot } = input;
+  if (!fileSystem.exists(implementationRoot)) {
+    return false;
+  }
+  if (!fileSystem.stat(implementationRoot)?.isDirectory) {
+    return false;
+  }
+
+  const pendingDirectories = [implementationRoot];
+  while (pendingDirectories.length > 0) {
+    const currentDirectory = pendingDirectories.pop();
+    if (!currentDirectory) {
+      continue;
+    }
+
+    const directoryEntries = fs.readdirSync(currentDirectory, { withFileTypes: true });
+    for (const entry of directoryEntries) {
+      const entryPath = path.join(currentDirectory, entry.name);
+      const relativePath = path.relative(implementationRoot, entryPath).replace(/\\/g, "/");
+      if (isBootstrapExcludedRelativePath(relativePath)) {
+        continue;
+      }
+
+      if (entry.isFile()) {
+        return true;
+      }
+      if (entry.isDirectory()) {
+        pendingDirectories.push(entryPath);
+      }
+    }
+  }
+
+  return false;
+}
+
+function listBootstrapSourceFiles(input: {
+  fileSystem: FileSystem;
+  workspaceRoot: string;
+  implementationRoot: string;
+}): string[] {
+  const { fileSystem, workspaceRoot, implementationRoot } = input;
+  if (!fileSystem.exists(implementationRoot)) {
+    return [];
+  }
+  if (!fileSystem.stat(implementationRoot)?.isDirectory) {
+    return [];
+  }
+
+  const discoveredFiles: string[] = [];
+  const pendingDirectories = [implementationRoot];
+  let totalBytes = 0;
+
+  while (pendingDirectories.length > 0) {
+    const currentDirectory = pendingDirectories.pop();
+    if (!currentDirectory) {
+      continue;
+    }
+
+    const directoryEntries = fs.readdirSync(currentDirectory, { withFileTypes: true });
+    for (const entry of directoryEntries) {
+      const entryPath = path.join(currentDirectory, entry.name);
+      const relativePath = path.relative(implementationRoot, entryPath).replace(/\\/g, "/");
+
+      if (entry.isDirectory()) {
+        if (isBootstrapExcludedRelativePath(relativePath)) {
+          continue;
+        }
+        pendingDirectories.push(entryPath);
+        continue;
+      }
+
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      if (isBootstrapExcludedRelativePath(relativePath)) {
+        continue;
+      }
+
+      discoveredFiles.push(entryPath);
+
+      const fileSizeBytes = fs.statSync(entryPath).size;
+      totalBytes += fileSizeBytes;
+
+      if (discoveredFiles.length > BOOTSTRAP_MAX_FILES || totalBytes > BOOTSTRAP_MAX_BYTES) {
+        throw new Error(
+          `Bootstrap aborted: implementation tree exceeds limit (${discoveredFiles.length} files, ${totalBytes} bytes). `
+          + "Limit is 5000 files or 50MB. Use --no-bootstrap and initialize prediction manually.",
+        );
+      }
+    }
+  }
+
+  discoveredFiles.sort((left, right) => {
+    const leftRelative = path.relative(workspaceRoot, left).replace(/\\/g, "/");
+    const rightRelative = path.relative(workspaceRoot, right).replace(/\\/g, "/");
+    return leftRelative.localeCompare(rightRelative);
+  });
+  return discoveredFiles;
+}
+
+function isBootstrapExcludedRelativePath(relativePath: string): boolean {
+  const normalizedPath = relativePath.replace(/\\/g, "/").replace(/^\.\//, "");
+  if (normalizedPath.length === 0) {
+    return false;
+  }
+
+  const topLevelSegment = normalizedPath.split("/", 1)[0];
+  return topLevelSegment !== undefined && BOOTSTRAP_EXCLUDED_DIRS.has(topLevelSegment);
+}
+
+function hasAnyFilesRecursively(fileSystem: FileSystem, rootDirectory: string): boolean {
+  if (!fileSystem.exists(rootDirectory)) {
+    return false;
+  }
+  if (!fileSystem.stat(rootDirectory)?.isDirectory) {
+    return false;
+  }
+
+  const pendingDirectories = [rootDirectory];
+  while (pendingDirectories.length > 0) {
+    const currentDirectory = pendingDirectories.pop();
+    if (!currentDirectory) {
+      continue;
+    }
+
+    for (const entry of fileSystem.readdir(currentDirectory)) {
+      const entryPath = path.join(currentDirectory, entry.name);
+      if (entry.isFile) {
+        return true;
+      }
+      if (entry.isDirectory) {
+        pendingDirectories.push(entryPath);
+      }
+    }
+  }
+
+  return false;
 }
 
 function buildInitialMigrationMarkdown(

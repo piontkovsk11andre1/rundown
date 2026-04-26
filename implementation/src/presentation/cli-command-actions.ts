@@ -1350,6 +1350,7 @@ export function createStartCommandAction({
       specsPlacement: normalizeOptionalString(opts.specsPlacement),
       migrationsDir: normalizeOptionalString(opts.migrationsDir),
       migrationsPlacement: normalizeOptionalString(opts.migrationsPlacement),
+      noBootstrap: Boolean(opts.noBootstrap as boolean | undefined),
     });
   };
 }

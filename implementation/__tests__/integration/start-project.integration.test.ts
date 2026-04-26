@@ -525,6 +525,47 @@ describeIfStartAvailable("start-project integration", () => {
     expect(targetDesignSource).toContain("Bootstrapped from existing implementation. Replace with target description in domain language; do not list implementation details.");
   });
 
+  it("mirrors existing workspace files into prediction byte-for-byte when bootstrap fires", async () => {
+    const workspace = makeTempWorkspace();
+    const projectDirName = "existing-project-mirror";
+    const projectDir = path.join(workspace, projectDirName);
+
+    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
+
+    fs.mkdirSync(path.join(projectDir, "src"), { recursive: true });
+    fs.mkdirSync(path.join(projectDir, "assets"), { recursive: true });
+    fs.mkdirSync(path.join(projectDir, "dist"), { recursive: true });
+    fs.writeFileSync(path.join(projectDir, "src", "foo.ts"), "export const foo = 1;\n", "utf-8");
+    fs.writeFileSync(path.join(projectDir, "package.json"), "{\"name\":\"mirror-test\"}\n", "utf-8");
+    const binarySource = Buffer.from([0, 255, 10, 13, 128, 42]);
+    fs.writeFileSync(path.join(projectDir, "assets", "sample.bin"), binarySource);
+    fs.writeFileSync(path.join(projectDir, "dist", "bundle.js"), "ignored output\n", "utf-8");
+
+    const result = await runCli([
+      "start",
+      "Existing mirror start",
+      "--dir",
+      projectDirName,
+    ], workspace);
+
+    expect(result.code).toBe(0);
+
+    const sourceTs = fs.readFileSync(path.join(projectDir, "src", "foo.ts"));
+    const mirroredTs = fs.readFileSync(path.join(projectDir, "prediction", "src", "foo.ts"));
+    expect(mirroredTs.equals(sourceTs)).toBe(true);
+
+    const sourcePackageJson = fs.readFileSync(path.join(projectDir, "package.json"));
+    const mirroredPackageJson = fs.readFileSync(path.join(projectDir, "prediction", "package.json"));
+    expect(mirroredPackageJson.equals(sourcePackageJson)).toBe(true);
+
+    const mirroredBinary = fs.readFileSync(path.join(projectDir, "prediction", "assets", "sample.bin"));
+    expect(mirroredBinary.equals(binarySource)).toBe(true);
+
+    expect(fs.existsSync(path.join(projectDir, "prediction", "dist", "bundle.js"))).toBe(false);
+  });
+
   it("uses configured design directory path in non-empty workspace migration seed", async () => {
     const workspace = makeTempWorkspace();
     const projectDirName = "existing-custom-design";

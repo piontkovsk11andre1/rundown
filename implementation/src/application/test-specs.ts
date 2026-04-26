@@ -25,10 +25,10 @@ import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import { resolveDesignContext, resolveDesignContextSourceReferences } from "./design-context.js";
 import { resolveEffectiveWorkspaceRoot } from "../domain/workspace-link.js";
 import {
-  resolvePredictionWorkspaceDirectories,
-  resolvePredictionWorkspacePath,
-  resolvePredictionWorkspacePlacement,
-} from "./prediction-workspace-paths.js";
+  resolveWorkspaceDirectories,
+  resolveWorkspacePath,
+  resolveWorkspacePlacement,
+} from "./workspace-paths.js";
 
 interface TestRunResult {
   ok: boolean;
@@ -88,15 +88,15 @@ export function createTestSpecs(
       ? dependencies.workerConfigPort.load(dependencies.configDir.configDir)?.workerTimeoutMs
       : undefined;
     const workspaceRoot = resolveWorkspaceRootFromCurrentDir(dependencies.fileSystem, invocationDir);
-    const workspaceDirectories = resolvePredictionWorkspaceDirectories({
+    const workspaceDirectories = resolveWorkspaceDirectories({
       fileSystem: dependencies.fileSystem,
       workspaceRoot,
     });
-    const workspacePlacement = resolvePredictionWorkspacePlacement({
+    const workspacePlacement = resolveWorkspacePlacement({
       fileSystem: dependencies.fileSystem,
       workspaceRoot,
     });
-    const specsDir = resolvePredictionWorkspacePath({
+    const specsDir = resolveWorkspacePath({
       fileSystem: dependencies.fileSystem,
       workspaceRoot,
       invocationRoot: invocationDir,
@@ -387,15 +387,15 @@ function buildTestContext(
     };
   }
 
-  const workspaceDirectories = resolvePredictionWorkspaceDirectories({
+  const workspaceDirectories = resolveWorkspaceDirectories({
     fileSystem,
     workspaceRoot: projectRoot,
   });
-  const workspacePlacement = resolvePredictionWorkspacePlacement({
+  const workspacePlacement = resolveWorkspacePlacement({
     fileSystem,
     workspaceRoot: projectRoot,
   });
-  const migrationsDir = resolvePredictionWorkspacePath({
+  const migrationsDir = resolveWorkspacePath({
     fileSystem,
     workspaceRoot: projectRoot,
     invocationRoot,
@@ -451,11 +451,11 @@ function resolvePredictionDirectoryContext(
   fileSystem: FileSystem,
   workspaceRoot: string,
   invocationRoot: string,
-  workspaceDirectories: ReturnType<typeof resolvePredictionWorkspaceDirectories>,
-  workspacePlacement: ReturnType<typeof resolvePredictionWorkspacePlacement>,
+  workspaceDirectories: ReturnType<typeof resolveWorkspaceDirectories>,
+  workspacePlacement: ReturnType<typeof resolveWorkspacePlacement>,
 ): PredictionDirectoryContext {
   return {
-    designPath: resolvePredictionWorkspacePath({
+    designPath: resolveWorkspacePath({
       fileSystem,
       workspaceRoot,
       invocationRoot,
@@ -463,7 +463,7 @@ function resolvePredictionDirectoryContext(
       directories: workspaceDirectories,
       placement: workspacePlacement,
     }),
-    specsPath: resolvePredictionWorkspacePath({
+    specsPath: resolveWorkspacePath({
       fileSystem,
       workspaceRoot,
       invocationRoot,
@@ -471,7 +471,7 @@ function resolvePredictionDirectoryContext(
       directories: workspaceDirectories,
       placement: workspacePlacement,
     }),
-    migrationsPath: resolvePredictionWorkspacePath({
+    migrationsPath: resolveWorkspacePath({
       fileSystem,
       workspaceRoot,
       invocationRoot,

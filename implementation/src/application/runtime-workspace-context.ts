@@ -99,6 +99,7 @@ export function buildWorkspaceContextTemplateVars(
     design: path.join(resolvePlacementRoot(context, placement.design), directories.design),
     specs: path.join(resolvePlacementRoot(context, placement.specs), directories.specs),
     migrations: path.join(resolvePlacementRoot(context, placement.migrations), directories.migrations),
+    prediction: path.join(resolvePlacementRoot(context, placement.prediction), directories.prediction),
   };
 
   return {
@@ -109,12 +110,15 @@ export function buildWorkspaceContextTemplateVars(
     workspaceDesignDir: directories.design,
     workspaceSpecsDir: directories.specs,
     workspaceMigrationsDir: directories.migrations,
+    workspacePredictionDir: directories.prediction,
     workspaceDesignPlacement: placement.design,
     workspaceSpecsPlacement: placement.specs,
     workspaceMigrationsPlacement: placement.migrations,
+    workspacePredictionPlacement: placement.prediction,
     workspaceDesignPath: paths.design,
     workspaceSpecsPath: paths.specs,
     workspaceMigrationsPath: paths.migrations,
+    workspacePredictionPath: paths.prediction,
   };
 }
 
@@ -152,14 +156,15 @@ function isWorkspaceDirectories(value: unknown): value is WorkspaceDirectories {
     return false;
   }
 
-  if (!("design" in value) || !("specs" in value) || !("migrations" in value)) {
+  if (!("design" in value) || !("specs" in value) || !("migrations" in value) || !("prediction" in value)) {
     return false;
   }
 
   const record = value as Record<string, unknown>;
   return typeof record.design === "string"
     && typeof record.specs === "string"
-    && typeof record.migrations === "string";
+    && typeof record.migrations === "string"
+    && typeof record.prediction === "string";
 }
 
 /**

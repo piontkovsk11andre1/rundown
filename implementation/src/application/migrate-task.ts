@@ -41,6 +41,7 @@ import {
   type PredictionTrackedFileKind,
 } from "../domain/prediction-reconciliation.js";
 import {
+  discoverDesignRevisionDirectories,
   findLowestUnplannedRevision,
   markRevisionPlanned,
   prepareDesignRevisionDiffContext,
@@ -622,6 +623,7 @@ async function runMigrateLoop(input: {
     "migrate.md",
     DEFAULT_MIGRATE_TEMPLATE,
   );
+  let processedAnyRevision = false;
 
   for (;;) {
     const targetRevision = findLowestUnplannedRevision(
@@ -630,8 +632,26 @@ async function runMigrateLoop(input: {
       { invocationRoot },
     );
     if (!targetRevision) {
+      if (!processedAnyRevision) {
+        const releasedRevisions = discoverDesignRevisionDirectories(
+          dependencies.fileSystem,
+          workspaceRoot,
+          { invocationRoot },
+        );
+        const highestReleasedRevision = releasedRevisions[releasedRevisions.length - 1];
+        if (highestReleasedRevision) {
+          emit({
+            kind: "info",
+            message:
+              "Migrations are caught up to "
+              + highestReleasedRevision.name
+              + " (highest released revision). Edit design/current/ and run rundown design release to create the next revision.",
+          });
+        }
+      }
       return EXIT_CODE_SUCCESS;
     }
+    processedAnyRevision = true;
 
     const plannedNames: string[] = [];
     let plannerReturnedDone = false;

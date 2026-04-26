@@ -207,6 +207,47 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(combinedOutput).toContain("Migrations are caught up to rev.1 (highest released revision). Edit design/current/ and run rundown design release to create the next revision.");
   });
 
+  it("migrate skips re-planning on re-run", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldLoopMigrateProject(workspace);
+
+    const plannerScript = buildReplanSkipAssertionWorkerScript(
+      "first-run-only-slug",
+      "second-run-should-not-plan",
+    );
+
+    const firstResult = await runCli([
+      "migrate",
+      "--dir",
+      "migrations",
+      "--",
+      "node",
+      "-e",
+      plannerScript,
+    ], workspace);
+
+    const secondResult = await runCli([
+      "migrate",
+      "--dir",
+      "migrations",
+      "--",
+      "node",
+      "-e",
+      plannerScript,
+    ], workspace);
+
+    expect(firstResult.code).toBe(0);
+    expect(secondResult.code).toBe(0);
+    expect(fs.existsSync(path.join(workspace, "migrations", formatMigrationFilename(2, "first-run-only-slug")))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "migrations", formatMigrationFilename(3, "second-run-should-not-plan")))).toBe(false);
+
+    const plannerCallCount = Number.parseInt(
+      fs.readFileSync(path.join(workspace, ".migrate-plan.seq"), "utf-8"),
+      10,
+    );
+    expect(plannerCallCount).toBe(1);
+  });
+
   it("migrate up generates N.1 snapshot at batch end and keeps previous snapshots", async () => {
     const workspace = makeTempWorkspace();
     scaffoldLoopMigrateProject(workspace);
@@ -1122,6 +1163,55 @@ function buildConvergentMigrateWorkerScript(plannerOutputs: string[]): string {
     "  const next=plannerOutputs.length>0?plannerOutputs[bounded]:'DONE';",
     "  fs.writeFileSync(seqPath,String(index+1));",
     "  console.log(next);",
+    "  process.exit(0);",
+    "}",
+    "if(prompt.includes('updating the migration snapshot at the end of a migration batch')){",
+    "  console.log('# Snapshot');",
+    "  console.log('');",
+    "  console.log('batch-snapshot-updated');",
+    "  process.exit(0);",
+    "}",
+    "console.log('applied');",
+    "process.exit(0);",
+  ].join("\n");
+}
+
+function buildReplanSkipAssertionWorkerScript(firstSlug: string, secondSlug: string): string {
+  return [
+    "const fs=require('node:fs');",
+    "const path=require('node:path');",
+    "const promptPath=process.argv[process.argv.length-1];",
+    "const prompt=fs.existsSync(promptPath)?fs.readFileSync(promptPath,'utf-8'):'';",
+    "const planSeqPath=path.join(process.cwd(),'.migrate-plan.seq');",
+    "const slugSeqPath=path.join(process.cwd(),'.migrate-plan.slug.seq');",
+    `const firstSlug=${JSON.stringify(firstSlug)};`,
+    `const secondSlug=${JSON.stringify(secondSlug)};`,
+    "if(prompt.includes('Verify whether the selected task is complete.')){",
+    "  console.log('OK');",
+    "  process.exit(0);",
+    "}",
+    "if(prompt.includes('Inventory design changes not yet reflected in the current snapshot.')){",
+    "  let planIndex=0;",
+    "  if(fs.existsSync(planSeqPath)){",
+    "    planIndex=Number.parseInt(fs.readFileSync(planSeqPath,'utf-8'),10)||0;",
+    "  }",
+    "  fs.writeFileSync(planSeqPath,String(planIndex+1));",
+    "",
+    "  if(planIndex===0){",
+    "    const slugCalls=fs.existsSync(slugSeqPath)?(Number.parseInt(fs.readFileSync(slugSeqPath,'utf-8'),10)||0):0;",
+    "    fs.writeFileSync(slugSeqPath,String(slugCalls+1));",
+    "    console.log(firstSlug);",
+    "    process.exit(0);",
+    "  }",
+    "",
+    "  if(planIndex===1){",
+    "    console.log('DONE');",
+    "    process.exit(0);",
+    "  }",
+    "",
+    "  const slugCalls=fs.existsSync(slugSeqPath)?(Number.parseInt(fs.readFileSync(slugSeqPath,'utf-8'),10)||0):0;",
+    "  fs.writeFileSync(slugSeqPath,String(slugCalls+1));",
+    "  console.log(secondSlug);",
     "  process.exit(0);",
     "}",
     "if(prompt.includes('updating the migration snapshot at the end of a migration batch')){",

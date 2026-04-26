@@ -3,6 +3,7 @@ import {
   discoverDesignRevisionDirectories,
   findLowestUnplannedRevision,
   markRevisionPlanned,
+  markRevisionUnplanned,
   markRevisionUnmigrated,
   prepareDesignRevisionDiffContext,
   resolveDesignContext,
@@ -291,6 +292,92 @@ describe("design-context revision metadata and immutability", () => {
     expect(typeof persisted.createdAt).toBe("string");
     expect(persisted.createdAt.length).toBeGreaterThan(0);
     expect(typeof persisted.plannedAt).toBe("string");
+    expect(persisted.migrations).toEqual([]);
+  });
+
+  it("marks a revision unplanned by clearing plannedAt and migrations", () => {
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        "/repo/design": [
+          { name: "rev.2", isDirectory: true, isFile: false },
+        ],
+        "/repo/design/rev.2": [{ name: "Target.md", isDirectory: false, isFile: true }],
+      },
+      files: {
+        "/repo/design/rev.2/Target.md": "two\n",
+        "/repo/design/rev.2.meta.json": JSON.stringify({
+          revision: "rev.2",
+          index: 2,
+          createdAt: "2026-01-02T00:00:00.000Z",
+          label: "Release 2",
+          plannedAt: "2026-01-02T00:01:00.000Z",
+          migrations: ["140. Something.md"],
+          migratedAt: "2026-01-02T00:02:00.000Z",
+          extra: "preserve-me",
+        }),
+      },
+      stats: {
+        "/repo/design": { isDirectory: true, isFile: false },
+        "/repo/design/rev.2": { isDirectory: true, isFile: false },
+        "/repo/design/rev.2.meta.json": { isDirectory: false, isFile: true },
+      },
+    });
+
+    markRevisionUnplanned(fileSystem, "/repo", "rev.2");
+
+    const persisted = JSON.parse(fileSystem.readText("/repo/design/rev.2.meta.json")) as {
+      revision: string;
+      index: number;
+      createdAt: string;
+      label?: string;
+      plannedAt?: string | null;
+      migrations?: string[];
+      migratedAt?: string | null;
+      extra?: string;
+    };
+
+    expect(persisted.revision).toBe("rev.2");
+    expect(persisted.index).toBe(2);
+    expect(persisted.createdAt).toBe("2026-01-02T00:00:00.000Z");
+    expect(persisted.label).toBe("Release 2");
+    expect(persisted.plannedAt).toBeNull();
+    expect(persisted.migrations).toEqual([]);
+    expect(persisted.migratedAt).toBe("2026-01-02T00:02:00.000Z");
+    expect(persisted.extra).toBe("preserve-me");
+  });
+
+  it("creates missing metadata when marking revision unplanned", () => {
+    const fileSystem = new InMemoryFileSystem({
+      directories: {
+        "/repo/design": [
+          { name: "rev.3", isDirectory: true, isFile: false },
+        ],
+        "/repo/design/rev.3": [{ name: "Target.md", isDirectory: false, isFile: true }],
+      },
+      files: {
+        "/repo/design/rev.3/Target.md": "three\n",
+      },
+      stats: {
+        "/repo/design": { isDirectory: true, isFile: false },
+        "/repo/design/rev.3": { isDirectory: true, isFile: false },
+      },
+    });
+
+    markRevisionUnplanned(fileSystem, "/repo", "rev.3");
+
+    const persisted = JSON.parse(fileSystem.readText("/repo/design/rev.3.meta.json")) as {
+      revision: string;
+      index: number;
+      createdAt: string;
+      plannedAt?: string | null;
+      migrations?: string[];
+    };
+
+    expect(persisted.revision).toBe("rev.3");
+    expect(persisted.index).toBe(3);
+    expect(typeof persisted.createdAt).toBe("string");
+    expect(persisted.createdAt.length).toBeGreaterThan(0);
+    expect(persisted.plannedAt).toBeNull();
     expect(persisted.migrations).toEqual([]);
   });
 

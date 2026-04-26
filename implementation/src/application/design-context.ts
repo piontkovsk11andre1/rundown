@@ -336,6 +336,36 @@ export function markRevisionPlanned(
   writeTextAtomically(fileSystem, metadataPath, serializedMetadata);
 }
 
+export function markRevisionUnplanned(
+  fileSystem: FileSystem,
+  workspaceRoot: string,
+  revisionName: string,
+): void {
+  const parsedRevision = parseDesignRevisionDirectoryName(revisionName);
+  if (!parsedRevision) {
+    throw new Error("Invalid revision name: " + revisionName + ". Expected format rev.N.");
+  }
+
+  const workspace = resolveDesignWorkspaceForRevisions(fileSystem, workspaceRoot);
+  const metadataPath = getDesignRevisionMetadataPath(workspace.rootDir, revisionName);
+  const nowIso = new Date().toISOString();
+  const existingMetadata = readRevisionMetadataRecord(fileSystem, metadataPath);
+
+  const metadata: Record<string, unknown> = {
+    ...(existingMetadata ?? {}),
+    revision: revisionName,
+    index: parsedRevision.index,
+    plannedAt: null,
+    migrations: [],
+  };
+  if (typeof metadata.createdAt !== "string" || metadata.createdAt.trim().length === 0) {
+    metadata.createdAt = nowIso;
+  }
+
+  const serializedMetadata = JSON.stringify(metadata, null, 2) + "\n";
+  writeTextAtomically(fileSystem, metadataPath, serializedMetadata);
+}
+
 export function markRevisionUnmigrated(
   fileSystem: FileSystem,
   workspaceRoot: string,

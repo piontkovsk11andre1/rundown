@@ -46,6 +46,7 @@ import {
   markRevisionMigrated,
   markRevisionPlanned,
   markRevisionUnmigrated,
+  parseDesignRevisionDirectoryName,
   prepareDesignRevisionDiffContext,
   resolveDesignContext,
   resolveDesignContextSourceReferences,
@@ -1206,6 +1207,70 @@ async function runMigrateDown(input: {
   }
 
   return EXIT_CODE_SUCCESS;
+}
+
+function resolveRewindTarget(
+  metas: ReadonlyArray<{
+    index: number;
+    name: string;
+    metadata: {
+      plannedAt: string | null;
+    };
+  }>,
+  downCount?: number,
+  toRevName?: string,
+): { stopAfter: string } {
+  const sortedMetas = metas
+    .slice()
+    .sort((left, right) => left.index - right.index);
+  const plannedRevisions = sortedMetas
+    .filter((revision) => revision.metadata.plannedAt !== null);
+
+  if (toRevName !== undefined) {
+    if (downCount !== undefined) {
+      throw new Error("Cannot combine `migrate down [n]` with `--to <revName>`. Choose one rewind target mode.");
+    }
+
+    const normalizedToRevisionName = toRevName.trim();
+    const parsedTargetRevision = parseDesignRevisionDirectoryName(normalizedToRevisionName);
+    if (!parsedTargetRevision) {
+      throw new Error(
+        "Invalid --to value: "
+          + toRevName
+          + ". Allowed: rev.<n> (for example: rev.0).",
+      );
+    }
+
+    if (parsedTargetRevision.index === 0) {
+      return { stopAfter: "rev.0" };
+    }
+
+    const matchedPlannedRevision = plannedRevisions.find((revision) => revision.index === parsedTargetRevision.index);
+    if (!matchedPlannedRevision) {
+      throw new Error(
+        "Invalid --to value: "
+          + normalizedToRevisionName
+          + ". Target revision must be currently planned (or rev.0).",
+      );
+    }
+
+    return { stopAfter: matchedPlannedRevision.name };
+  }
+
+  const highestPlannedRevision = plannedRevisions[plannedRevisions.length - 1];
+  if (!highestPlannedRevision) {
+    return { stopAfter: "rev.0" };
+  }
+
+  const requestedDownCount = Number.isFinite(downCount)
+    ? Math.max(1, Math.floor(downCount ?? 1))
+    : 1;
+  const stopAfterIndex = Math.max(0, highestPlannedRevision.index - requestedDownCount);
+  const matchedStopAfterRevision = sortedMetas.find((revision) => revision.index === stopAfterIndex);
+
+  return {
+    stopAfter: matchedStopAfterRevision?.name ?? `rev.${String(stopAfterIndex)}`,
+  };
 }
 
 function collectTargetRevisionsFromRuns(

@@ -9,7 +9,6 @@ import path from "node:path";
 import {
   DEFAULT_DISCUSS_TEMPLATE,
   DEFAULT_DISCUSS_FINISHED_TEMPLATE,
-  DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
   DEFAULT_MIGRATE_TEMPLATE,
   DEFAULT_TEST_VERIFY_TEMPLATE,
   DEFAULT_TEST_FUTURE_TEMPLATE,
@@ -50,8 +49,6 @@ export interface ProjectTemplates {
   testMaterialized: string;
   // Template used by migrate planning (.rundown/migrate.md).
   migrate: string;
-  // Template used to generate migration snapshots.
-  migrateSnapshot: string;
 }
 
 /**
@@ -76,7 +73,6 @@ export interface ProjectTemplates {
  * - `.rundown/test-future.md`
  * - `.rundown/test-materialized.md`
  * - `.rundown/migrate.md`
- * - `.rundown/migrate-snapshot.md`
  *
  * @param configDir Optional absolute or relative path to the project template directory.
  * @returns The resolved set of templates used by each execution phase.
@@ -98,7 +94,6 @@ export function loadProjectTemplates(configDir?: string): ProjectTemplates {
       testFuture: DEFAULT_TEST_FUTURE_TEMPLATE,
       testMaterialized: DEFAULT_TEST_MATERIALIZED_TEMPLATE,
       migrate: DEFAULT_MIGRATE_TEMPLATE,
-      migrateSnapshot: DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
     };
   }
 
@@ -122,9 +117,6 @@ export function loadProjectTemplates(configDir?: string): ProjectTemplates {
     testMaterialized:
       loadFile(path.join(configDir, "test-materialized.md")) ?? DEFAULT_TEST_MATERIALIZED_TEMPLATE,
     migrate: loadFile(path.join(configDir, "migrate.md")) ?? DEFAULT_MIGRATE_TEMPLATE,
-    migrateSnapshot:
-      loadFile(path.join(configDir, "migrate-snapshot.md")) ??
-      DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
   };
 }
 

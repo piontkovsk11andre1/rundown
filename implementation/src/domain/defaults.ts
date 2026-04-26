@@ -754,52 +754,41 @@ Rules:
  * Default migrate-snapshot template used for batch-end checkpoint updates.
  */
 export const DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE = `\
-You are updating the migration snapshot at the end of a migration batch.
+You are producing the predicted whole-application snapshot at design revision {{designRevisionToTarget}}.
+
+The migrations listed below were just applied. Your task is to write the snapshot that describes the application **state after these migrations are in place**, not the delta itself. The delta is provided as evidence; the deliverable is a coherent post-state document.
 
 ## Position
 
 - Current migration number: {{position}}
 
-## Design revision reference
-
-- Comparison available: {{designRevisionDiffHasComparison}}
-- Previous revision: {{designRevisionFromRevision}}
-- Target: {{designRevisionToTarget}}
-- Summary: {{designRevisionDiffSummary}}
-- Added files: {{designRevisionDiffAddedCount}}
-- Modified files: {{designRevisionDiffModifiedCount}}
-- Removed files: {{designRevisionDiffRemovedCount}}
-
-### Changed files
-
-{{designRevisionDiffFiles}}
-
-### Diff source references
-
-{{designRevisionDiffSources}}
-
-## Design content
+## Target revision ({{designRevisionToTarget}})
 
 {{design}}
 
-## Previous snapshot
-
-{{latestSnapshot}}
-
-## New migrations since snapshot
+## Newly applied migrations (evidence, do not just summarize these)
 
 {{newMigrations}}
 
-## Backlog
+## Previous snapshot (evolve from this; preserve still-true facts)
+
+{{latestSnapshot}}
+
+## Backlog (context only; do not duplicate into the snapshot)
 
 {{backlog}}
 
-## Task
+## Output contract
 
-Update the snapshot to reflect changes introduced by the new migrations.
-Reference the design revision in the snapshot.
-Keep concise - capture decisions and structure, not exhaustive detail.
-Return Markdown only.
+Produce Markdown describing the predicted application state at {{designRevisionToTarget}}. Cover:
+
+- **Modules / packages** - what exists and its role.
+- **Public surfaces** - exported types, commands, CLI options, ports/adapters at module boundaries.
+- **Invariants** - facts about the system that remain true after the migrations.
+- **Key flows** - the main runtime paths a user/operator would hit, end-to-end.
+- **Open boundaries** - things deliberately left unimplemented or deferred (link to backlog items by name when relevant).
+
+Be concrete. Reference file paths, command names, and template var names by their real names (no placeholders). Do not include changelog-style sentences ("we added X") - write in the present tense describing the state, not the change. Length: as long as needed to faithfully represent the system; do not pad.
 `;
 
 /**

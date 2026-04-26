@@ -237,6 +237,8 @@ export function createMigrateTask(
       keepArtifacts: Boolean(options.keepArtifacts),
     });
 
+    const artifactRunExtra: Record<string, unknown> = {};
+
     try {
       let exitCode: number = EXIT_CODE_SUCCESS;
       if (!action) {
@@ -257,6 +259,7 @@ export function createMigrateTask(
           showAgentOutput: Boolean(options.showAgentOutput),
           executionContext,
           confirm: Boolean(options.confirm),
+          artifactRunExtra,
         });
       } else if (action === "up") {
         exitCode = await runMigrateUp({
@@ -277,6 +280,7 @@ export function createMigrateTask(
           executionContext,
           newMigrationsSource: "",
           skipRunTaskWhenNoMigrations: false,
+          artifactRunExtra,
         });
       } else {
         exitCode = await runMigrateDown({
@@ -297,21 +301,28 @@ export function createMigrateTask(
           executionContext,
           downCount: options.downCount,
           noBacklog: Boolean(options.noBacklog),
+          artifactRunExtra,
         });
       }
 
+      const finalizeExtra = Object.keys(artifactRunExtra).length > 0
+        ? artifactRunExtra
+        : undefined;
       dependencies.artifactStore.finalize(artifactContext, {
         status: exitCode === EXIT_CODE_SUCCESS ? "completed" : "failed",
         preserve: Boolean(options.keepArtifacts),
+        extra: finalizeExtra,
       });
       return exitCode;
     } catch (error) {
+      const finalizeExtra: Record<string, unknown> = {
+        ...artifactRunExtra,
+        error: error instanceof Error ? error.message : String(error),
+      };
       dependencies.artifactStore.finalize(artifactContext, {
         status: "failed",
         preserve: Boolean(options.keepArtifacts),
-        extra: {
-          error: error instanceof Error ? error.message : String(error),
-        },
+        extra: finalizeExtra,
       });
       emit({ kind: "error", message: error instanceof Error ? error.message : String(error) });
       return EXIT_CODE_FAILURE;
@@ -597,6 +608,7 @@ async function runMigrateLoop(input: {
   };
   confirm: boolean;
   showAgentOutput: boolean;
+  artifactRunExtra: Record<string, unknown>;
 }): Promise<number> {
   const {
     dependencies,
@@ -615,6 +627,7 @@ async function runMigrateLoop(input: {
     executionContext,
     confirm,
     showAgentOutput,
+    artifactRunExtra,
   } = input;
   const emit = dependencies.output.emit.bind(dependencies.output);
   const planningTemplate = readTemplate(
@@ -742,6 +755,8 @@ async function runMigrateLoop(input: {
           executionContext,
           newMigrationsSource: "",
           skipRunTaskWhenNoMigrations: false,
+          targetRevision: targetRevision.name,
+          artifactRunExtra,
         });
         if (upCode !== EXIT_CODE_SUCCESS && upCode !== EXIT_CODE_NO_WORK) {
           return upCode;
@@ -835,6 +850,8 @@ async function runMigrateLoop(input: {
       executionContext,
       newMigrationsSource: createdMigrationContents.join("\n\n---\n\n"),
       skipRunTaskWhenNoMigrations: false,
+      targetRevision: targetRevision.name,
+      artifactRunExtra,
     });
     if (upCode !== EXIT_CODE_SUCCESS) {
       return upCode;
@@ -865,6 +882,8 @@ async function runMigrateUp(input: {
   };
   newMigrationsSource: string;
   skipRunTaskWhenNoMigrations: boolean;
+  targetRevision?: string;
+  artifactRunExtra: Record<string, unknown>;
 }): Promise<number> {
   const {
     dependencies,
@@ -884,7 +903,13 @@ async function runMigrateUp(input: {
     executionContext,
     newMigrationsSource,
     skipRunTaskWhenNoMigrations,
+    targetRevision,
+    artifactRunExtra,
   } = input;
+
+  if (targetRevision) {
+    artifactRunExtra.targetRevision = targetRevision;
+  }
 
   if (!dependencies.runTask) {
     throw new Error("migrate up requires runTask dependency.");
@@ -1038,6 +1063,7 @@ async function runMigrateDown(input: {
   };
   downCount?: number;
   noBacklog: boolean;
+  artifactRunExtra: Record<string, unknown>;
 }): Promise<number> {
   const {
     dependencies,
@@ -1057,6 +1083,7 @@ async function runMigrateDown(input: {
     executionContext,
     downCount,
     noBacklog,
+    artifactRunExtra,
   } = input;
 
   const emit = dependencies.output.emit.bind(dependencies.output);
@@ -1151,6 +1178,7 @@ async function runMigrateDown(input: {
     executionContext,
     newMigrationsSource: fallbackSnapshotSource,
     skipRunTaskWhenNoMigrations: false,
+    artifactRunExtra,
   });
 
   return upCode;

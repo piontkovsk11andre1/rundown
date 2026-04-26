@@ -92,12 +92,31 @@ describe("prediction workspace config", () => {
     const fileSystem = new InMemoryFileSystem({});
     const workspaceRoot = path.join(path.sep, "repo");
 
-    expect(resolveWorkspaceDirectories({ fileSystem, workspaceRoot })).toEqual(
-      DEFAULT_WORKSPACE_DIRECTORIES,
-    );
-    expect(resolveWorkspacePlacement({ fileSystem, workspaceRoot })).toEqual(
-      DEFAULT_WORKSPACE_PLACEMENT,
-    );
+    expect(DEFAULT_WORKSPACE_DIRECTORIES).toEqual({
+      design: "design",
+      specs: "specs",
+      migrations: "migrations",
+      prediction: "prediction",
+    });
+    expect(DEFAULT_WORKSPACE_PLACEMENT).toEqual({
+      design: "sourcedir",
+      specs: "sourcedir",
+      migrations: "sourcedir",
+      prediction: "sourcedir",
+    });
+
+    expect(resolveWorkspaceDirectories({ fileSystem, workspaceRoot })).toEqual({
+      design: "design",
+      specs: "specs",
+      migrations: "migrations",
+      prediction: "prediction",
+    });
+    expect(resolveWorkspacePlacement({ fileSystem, workspaceRoot })).toEqual({
+      design: "sourcedir",
+      specs: "sourcedir",
+      migrations: "sourcedir",
+      prediction: "sourcedir",
+    });
   });
 
   it("falls back to sourcedir placement for buckets not configured", () => {

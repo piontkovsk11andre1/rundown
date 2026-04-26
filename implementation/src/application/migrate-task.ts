@@ -79,6 +79,7 @@ export interface MigrateTaskOptions {
   keepArtifacts?: boolean;
   showAgentOutput?: boolean;
   runId?: string;
+  writePredictionBucket?: boolean;
 }
 
 export interface MigrateTaskDependencies {
@@ -287,6 +288,7 @@ export function createMigrateTask(
           executionContext,
           newMigrationsSource: "",
           skipRunTaskWhenNoMigrations: false,
+          writePredictionBucket: options.writePredictionBucket,
           artifactRunExtra,
         });
       } else {
@@ -861,6 +863,7 @@ async function runMigrateLoop(input: {
           executionContext,
           newMigrationsSource: "",
           skipRunTaskWhenNoMigrations: false,
+          writePredictionBucket: false,
           targetRevision: targetRevision.name,
           artifactRunExtra,
         });
@@ -956,6 +959,7 @@ async function runMigrateLoop(input: {
       executionContext,
       newMigrationsSource: createdMigrationContents.join("\n\n---\n\n"),
       skipRunTaskWhenNoMigrations: false,
+      writePredictionBucket: false,
       targetRevision: targetRevision.name,
       artifactRunExtra,
     });
@@ -988,6 +992,7 @@ async function runMigrateUp(input: {
   };
   newMigrationsSource: string;
   skipRunTaskWhenNoMigrations: boolean;
+  writePredictionBucket?: boolean;
   targetRevision?: string;
   artifactRunExtra: Record<string, unknown>;
 }): Promise<number> {
@@ -1009,6 +1014,7 @@ async function runMigrateUp(input: {
     executionContext,
     newMigrationsSource,
     skipRunTaskWhenNoMigrations,
+    writePredictionBucket = true,
     targetRevision,
     artifactRunExtra,
   } = input;
@@ -1102,7 +1108,9 @@ async function runMigrateUp(input: {
 
   const stateAfterRun = readMigrationState(dependencies.fileSystem, migrationsDir);
   if (stateAfterRun.currentPosition <= 0) {
-    persistPredictionBaselineSnapshot(dependencies.fileSystem, migrationsDir, workspaceRoot);
+    persistPredictionBaselineSnapshot(dependencies.fileSystem, migrationsDir, workspaceRoot, {
+      writePredictionBucket,
+    });
     return EXIT_CODE_SUCCESS;
   }
 
@@ -1116,7 +1124,9 @@ async function runMigrateUp(input: {
     : newMigrationsSource;
 
   if (migrationsFromBatch.trim().length === 0) {
-    persistPredictionBaselineSnapshot(dependencies.fileSystem, migrationsDir, workspaceRoot);
+    persistPredictionBaselineSnapshot(dependencies.fileSystem, migrationsDir, workspaceRoot, {
+      writePredictionBucket,
+    });
     return EXIT_CODE_NO_WORK;
   }
 
@@ -1147,7 +1157,9 @@ async function runMigrateUp(input: {
     markRevisionMigrated(dependencies.fileSystem, projectRoot, targetRevision);
   }
 
-  persistPredictionBaselineSnapshot(dependencies.fileSystem, migrationsDir, workspaceRoot);
+  persistPredictionBaselineSnapshot(dependencies.fileSystem, migrationsDir, workspaceRoot, {
+    writePredictionBucket,
+  });
   return EXIT_CODE_SUCCESS;
 }
 

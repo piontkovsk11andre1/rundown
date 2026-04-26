@@ -1510,7 +1510,7 @@ function buildTemplateVars(input: {
   workspaceDirectories: ReturnType<typeof resolvePredictionWorkspaceDirectories>;
   workspacePlacement: ReturnType<typeof resolvePredictionWorkspacePlacement>;
   workspacePaths: ReturnType<typeof resolvePredictionWorkspacePaths>;
-  designRevisionTarget?: "current" | string | number;
+  designRevisionTarget?: string | number;
   newMigrations?: string;
 }): TemplateVars {
   const {
@@ -1534,7 +1534,7 @@ function buildTemplateVars(input: {
   const designContextSources = resolveDesignContextSourceReferences(fileSystem, projectRoot, { invocationRoot });
   const revisionDiff = prepareDesignRevisionDiffContext(fileSystem, projectRoot, {
     invocationRoot,
-    target: designRevisionTarget ?? "current",
+    target: designRevisionTarget,
   });
   const previousRevisionId = revisionDiff.fromRevision?.name ?? (revisionDiff.hasComparison ? "nothing" : "");
   const currentRevisionId = revisionDiff.toTarget.name;

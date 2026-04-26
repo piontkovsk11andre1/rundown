@@ -566,6 +566,37 @@ describeIfStartAvailable("start-project integration", () => {
     expect(fs.existsSync(path.join(projectDir, "prediction", "dist", "bundle.js"))).toBe(false);
   });
 
+  it("fails with a clear error when bootstrap mirror exceeds the 50MB cap", async () => {
+    const workspace = makeTempWorkspace();
+    const projectDirName = "existing-project-too-large";
+    const projectDir = path.join(workspace, projectDirName);
+
+    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
+
+    fs.mkdirSync(path.join(projectDir, "src"), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, "src", "large.bin"),
+      Buffer.alloc(50 * 1024 * 1024 + 1, 7),
+    );
+
+    const result = await runCli([
+      "start",
+      "Existing mirror start too large",
+      "--dir",
+      projectDirName,
+    ], workspace);
+
+    expect(result.code).toBe(1);
+    const stderr = [...result.errors, ...result.stderrWrites].join("\n");
+    expect(stderr).toContain("Bootstrap aborted: implementation tree exceeds limit");
+    expect(stderr).toContain("Limit is 5000 files or 50MB");
+    expect(stderr).toContain("Use --no-bootstrap");
+
+    expect(fs.existsSync(path.join(projectDir, "prediction", "src", "large.bin"))).toBe(false);
+  });
+
   it("uses configured design directory path in non-empty workspace migration seed", async () => {
     const workspace = makeTempWorkspace();
     const projectDirName = "existing-custom-design";

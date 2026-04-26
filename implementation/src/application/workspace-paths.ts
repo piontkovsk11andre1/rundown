@@ -219,6 +219,12 @@ export function resolveWorkspacePaths(input: {
       root: resolvePlacementRoot(placement.migrations, workspaceRoot, invocationRoot),
       relativeDirectory: directories.migrations,
     }),
+    prediction: resolveBucketPath({
+      configPath: path.join(workspaceRoot, ".rundown", "config.json"),
+      bucket: "prediction",
+      root: resolvePlacementRoot(placement.prediction, workspaceRoot, invocationRoot),
+      relativeDirectory: directories.prediction,
+    }),
   } satisfies WorkspacePaths;
 
   validateResolvedBucketConflicts({

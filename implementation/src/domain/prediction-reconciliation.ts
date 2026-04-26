@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
+import path from "node:path";
 import { formatMigrationFilename, formatSatelliteFilename } from "./migration-parser.js";
+import type { FileSystem } from "./ports/index.js";
 
 export type PredictionTrackedFileKind =
   | "migration"
@@ -103,6 +105,51 @@ export interface ReconciledPendingPredictionState {
   preservedCompletedMigrationNumbers: number[];
   reconciledPendingMigrationNumbers: number[];
   patch: PendingPredictionAtomicPatch;
+}
+
+export function readPredictionTreeAsTrackedFiles(input: {
+  fileSystem: FileSystem;
+  predictionDir: string;
+}): PredictionTrackedFile[] {
+  const { fileSystem, predictionDir } = input;
+  if (!fileSystem.exists(predictionDir)) {
+    return [];
+  }
+
+  const pendingDirectories = [predictionDir];
+  const files: Array<{ absolutePath: string; relativePath: string }> = [];
+
+  while (pendingDirectories.length > 0) {
+    const currentDirectory = pendingDirectories.pop();
+    if (!currentDirectory) {
+      continue;
+    }
+
+    for (const entry of fileSystem.readdir(currentDirectory)) {
+      const entryPath = path.join(currentDirectory, entry.name);
+      if (entry.isDirectory) {
+        pendingDirectories.push(entryPath);
+        continue;
+      }
+      if (!entry.isFile) {
+        continue;
+      }
+
+      files.push({
+        absolutePath: entryPath,
+        relativePath: path.relative(predictionDir, entryPath).replace(/\\/g, "/"),
+      });
+    }
+  }
+
+  return files
+    .sort((left, right) => left.relativePath.localeCompare(right.relativePath))
+    .map((file) => ({
+      relativePath: normalizeRelativePath(file.relativePath),
+      migrationNumber: 0,
+      kind: "snapshot",
+      content: fileSystem.readText(file.absolutePath),
+    }));
 }
 
 export function createPredictionBaseline(inputs: PredictionInputs): PredictionBaseline {

@@ -33,6 +33,7 @@ import {
   createPredictionBaseline,
   createPredictionReconciliationEntryPoint,
   detectStalePendingPredictions,
+  readPredictionTreeAsTrackedFiles,
   reResolvePendingPredictionSequence,
   reconcilePendingPredictedItemsAtomically,
   type PredictionBaseline,
@@ -550,6 +551,18 @@ function applyPendingPredictionPatch(
 }
 
 function readPredictionInputs(fileSystem: FileSystem, migrationsDir: string, projectRoot: string): PredictionInputs {
+  const predictionDir = resolveWorkspacePath({
+    fileSystem,
+    workspaceRoot: projectRoot,
+    invocationRoot: projectRoot,
+    bucket: "prediction",
+  });
+  const predictionTrackedFiles = readPredictionTreeAsTrackedFiles({
+    fileSystem,
+    predictionDir,
+  });
+  const shouldReadFromPredictionTree = predictionTrackedFiles.length > 0;
+
   const migrationFiles = fileSystem.readdir(migrationsDir)
     .filter((entry) => entry.isFile)
     .map((entry) => path.join(migrationsDir, entry.name))
@@ -568,6 +581,10 @@ function readPredictionInputs(fileSystem: FileSystem, migrationsDir: string, pro
   });
 
   const files: PredictionTrackedFile[] = [];
+  if (shouldReadFromPredictionTree) {
+    files.push(...predictionTrackedFiles);
+  }
+
   for (const migration of state.migrations) {
     const migrationSource = fileSystem.readText(migration.filePath);
     files.push({
@@ -577,18 +594,20 @@ function readPredictionInputs(fileSystem: FileSystem, migrationsDir: string, pro
       content: migrationSource,
     });
 
-    for (const satellite of migration.satellites) {
-      const kind = toPredictionTrackedFileKind(satellite.type);
-      if (!kind) {
-        continue;
-      }
+    if (!shouldReadFromPredictionTree) {
+      for (const satellite of migration.satellites) {
+        const kind = toPredictionTrackedFileKind(satellite.type);
+        if (!kind) {
+          continue;
+        }
 
-      files.push({
-        relativePath: toProjectRelativePath(projectRoot, satellite.filePath),
-        migrationNumber: migration.number,
-        kind,
-        content: fileSystem.readText(satellite.filePath),
-      });
+        files.push({
+          relativePath: toProjectRelativePath(projectRoot, satellite.filePath),
+          migrationNumber: migration.number,
+          kind,
+          content: fileSystem.readText(satellite.filePath),
+        });
+      }
     }
   }
 

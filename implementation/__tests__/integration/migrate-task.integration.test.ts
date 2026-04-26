@@ -307,6 +307,58 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(rev1MetaAfterDown.migratedAt).toBeNull();
   });
 
+  it("migrate down across two revisions clears both migratedAt stamps", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldRevisionPlanningStampProject(workspace);
+
+    const upResult = await runCli([
+      "migrate",
+      "--dir",
+      "migrations",
+      "--",
+      "node",
+      "-e",
+      buildConvergentMigrateWorkerScript([
+        "rev1-added-file",
+        "rev2-modified-file",
+      ]),
+    ], workspace);
+
+    expect(upResult.code).toBe(0);
+
+    const rev1MetaPath = path.join(workspace, "docs", "rev.1.meta.json");
+    const rev2MetaPath = path.join(workspace, "docs", "rev.2.meta.json");
+    const rev1MetaAfterUp = JSON.parse(fs.readFileSync(rev1MetaPath, "utf-8")) as {
+      migratedAt?: string | null;
+    };
+    const rev2MetaAfterUp = JSON.parse(fs.readFileSync(rev2MetaPath, "utf-8")) as {
+      migratedAt?: string | null;
+    };
+    expect(rev1MetaAfterUp.migratedAt).toBeTypeOf("string");
+    expect(rev2MetaAfterUp.migratedAt).toBeTypeOf("string");
+
+    const downResult = await runCli([
+      "migrate",
+      "down",
+      "2",
+      "--",
+      "node",
+      "-e",
+      buildConvergentMigrateWorkerScript(["DONE"]),
+    ], workspace);
+
+    expect(downResult.code).toBe(0);
+
+    const rev1MetaAfterDown = JSON.parse(fs.readFileSync(rev1MetaPath, "utf-8")) as {
+      migratedAt?: string | null;
+    };
+    const rev2MetaAfterDown = JSON.parse(fs.readFileSync(rev2MetaPath, "utf-8")) as {
+      migratedAt?: string | null;
+    };
+    expect(rev1MetaAfterDown.migratedAt).toBeNull();
+    expect(rev2MetaAfterDown.migratedAt).toBeNull();
+  });
+
   it("migrate down 2 removes migrations, updates Backlog.md, and prunes later snapshots", async () => {
     const workspace = makeTempWorkspace();
     scaffoldLoopMigrateProject(workspace);

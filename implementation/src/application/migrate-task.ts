@@ -639,6 +639,12 @@ async function runMigrateLoop(input: {
         newMigrations: "",
       });
       const prompt = renderTemplate(planningTemplate, vars);
+      emit({
+        kind: "info",
+        message: "Planning next migrations from design revision diff (position "
+          + String(latestState.currentPosition)
+          + ")...",
+      });
       const result = await dependencies.workerExecutor.runWorker({
         workerPattern: slugWorkerPattern,
         prompt,
@@ -658,6 +664,10 @@ async function runMigrateLoop(input: {
 
       const proposedNames = parseProposedMigrationNames(result.stdout);
       if (proposedNames === null) {
+        emit({
+          kind: "info",
+          message: "Planner returned DONE: no new migrations needed.",
+        });
         return EXIT_CODE_SUCCESS;
       }
 
@@ -681,11 +691,30 @@ async function runMigrateLoop(input: {
       if (addedInPass === 0) {
         break;
       }
+      emit({
+        kind: "info",
+        message: "Planner proposed "
+          + String(addedInPass)
+          + " new migration name(s); checking for additional candidates...",
+      });
     }
 
     if (plannedNames.length === 0) {
+      emit({
+        kind: "info",
+        message:
+          "Planner produced no parseable migration names (expected lowercase kebab-case slugs). Re-run with --show-agent-output --keep-artifacts to inspect raw output.",
+      });
       return EXIT_CODE_SUCCESS;
     }
+
+    emit({
+      kind: "info",
+      message: "Creating "
+        + String(plannedNames.length)
+        + " migration file(s): "
+        + plannedNames.join(", "),
+    });
 
     const stateBeforeCreate = readMigrationState(dependencies.fileSystem, migrationsDir);
     const createdMigrationContents: string[] = [];

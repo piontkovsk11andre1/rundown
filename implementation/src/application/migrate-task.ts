@@ -342,21 +342,23 @@ function persistPredictionBaselineSnapshot(
   fileSystem: FileSystem,
   migrationsDir: string,
   projectRoot: string,
-  options?: { preferPredictionTree?: boolean },
+  options?: { preferPredictionTree?: boolean; writePredictionBucket?: boolean },
 ): void {
   const predictionInputs = readPredictionInputs(fileSystem, migrationsDir, projectRoot, options);
   const baseline = createPredictionBaseline(predictionInputs);
-  const predictionDir = resolveWorkspacePath({
-    fileSystem,
-    workspaceRoot: projectRoot,
-    invocationRoot: projectRoot,
-    bucket: "prediction",
-  });
-  writePredictionTree({
-    fileSystem,
-    predictionDir,
-    baseline: predictionInputs,
-  });
+  if (options?.writePredictionBucket !== false) {
+    const predictionDir = resolveWorkspacePath({
+      fileSystem,
+      workspaceRoot: projectRoot,
+      invocationRoot: projectRoot,
+      bucket: "prediction",
+    });
+    writePredictionTree({
+      fileSystem,
+      predictionDir,
+      baseline: predictionInputs,
+    });
+  }
   savePredictionBaseline(fileSystem, migrationsDir, baseline);
 }
 

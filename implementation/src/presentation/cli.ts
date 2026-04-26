@@ -403,7 +403,11 @@ const migrateCommand = program
   .option("--confirm", "Show generated content and confirm before writing files", false)
   .option("--no-backlog", "Do not push removed migrations to Backlog.md when running migrate down")
   .option("--to <revName>", "Target revision boundary for migrate down (format: rev.<n>)")
-  .option("--run <id|latest>", "Choose artifact run id or 'latest' for down", "latest")
+  .option(
+    "--run <id|latest>",
+    "[deprecated] Legacy down run target (ignored by revision-boundary rewind); will be removed next release",
+    "latest",
+  )
   .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
   .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
   .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
@@ -412,6 +416,7 @@ const migrateCommand = program
   .action(withCliAction(createMigrateCommandAction({
     getApp,
     getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
+    getInvocationArgv: () => runtimeState.invocationArgv ?? process.argv.slice(2),
   })));
 
 migrateCommand.addHelpText(

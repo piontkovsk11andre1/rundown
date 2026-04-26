@@ -11626,6 +11626,7 @@ describe.sequential("CLI integration", () => {
     expect(compactHelpOutput).toContain("--workspace <dir> Workspace directory to use for linked/multi-workspace resolution");
     expect(compactHelpOutput).toContain("Linked workspace selection:");
     expect(compactHelpOutput).toContain("Required when .rundown/workspace.link has multiple records with no default");
+    expect(compactHelpOutput).toContain("--run <id|latest> [deprecated] Legacy down run target");
   });
 
   it("design diff --help includes --workspace examples", async () => {

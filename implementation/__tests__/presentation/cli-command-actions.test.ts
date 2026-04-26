@@ -2196,6 +2196,28 @@ describe("createMigrateCommandAction", () => {
     expect(() => action("preview", undefined, {})).toThrow("Invalid migrate action: preview");
     expect(migrateTask).not.toHaveBeenCalled();
   });
+
+  it("emits deprecation warning when --run is passed", async () => {
+    const migrateTask = vi.fn(async () => 0);
+    const emitOutput = vi.fn<(event: ApplicationOutputEvent) => void>();
+    const app = { migrateTask, emitOutput } as unknown as CliApp;
+    const action = createMigrateCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+      getInvocationArgv: () => ["migrate", "down", "--run", "latest"],
+    });
+
+    const exitCode = await action("down", undefined, {
+      run: "latest",
+    });
+
+    expect(exitCode).toBe(0);
+    expect(emitOutput).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "warn",
+      message: "--run is deprecated; migrate down now rewinds whole revisions. Will be removed in the next release.",
+    }));
+    expect(migrateTask).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("createDesignReleaseCommandAction", () => {

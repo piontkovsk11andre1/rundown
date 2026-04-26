@@ -1347,12 +1347,22 @@ export function createStartCommandAction({
 export function createMigrateCommandAction({
   getApp,
   getWorkerFromSeparator,
+  getInvocationArgv,
 }: WorkerActionDependencies): (
   action: string | undefined,
   count: string | undefined,
   opts: CliOpts,
   ) => CliActionResult {
   return (action: string | undefined, count: string | undefined, opts: CliOpts) => {
+    const app = getApp();
+    const invocationArgv = resolveInvocationArgv(getInvocationArgv);
+    if (hasCliOption(invocationArgv, "--run")) {
+      app.emitOutput?.({
+        kind: "warn",
+        message: "--run is deprecated; migrate down now rewinds whole revisions. Will be removed in the next release.",
+      });
+    }
+
     const workerPattern = resolveWorkerPattern(opts.worker, getWorkerFromSeparator);
     const slugWorkerPattern = typeof opts.slugWorker === "string"
       ? resolveWorkerPattern(opts.slugWorker, getWorkerFromSeparator)
@@ -1371,7 +1381,7 @@ export function createMigrateCommandAction({
       throw new Error("The optional [count] argument is only supported for `migrate down [n]`.");
     }
 
-    return resolveMigrateCommandHandler(getApp())({
+    return resolveMigrateCommandHandler(app)({
       action: normalizedAction,
       downCount: parseLastCount(count),
       toRevName: normalizeOptionalString(opts.to),

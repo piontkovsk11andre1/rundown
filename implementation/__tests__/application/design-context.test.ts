@@ -995,6 +995,7 @@ describe("design-context revision metadata and immutability", () => {
 
     expect(diff.hasComparison).toBe(true);
     expect(diff.fromRevision?.name).toBe("rev.0");
+    expect(diff.modifiedCount).toBe(1);
     expect(diff.summary).toBe("Compared rev.0 -> rev.1: 0 added 1 modified 0 removed");
     expect(diff.sourceReferences.map(normalizePath)).toEqual([
       "/repo/docs/rev.0",

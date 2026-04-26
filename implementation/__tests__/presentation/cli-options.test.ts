@@ -708,7 +708,7 @@ describe("CLI run option normalization", () => {
 
     const compactHelpOutput = stripAnsi(result.output).replace(/\s+/g, " ");
     expect(compactHelpOutput).toContain("materialize [options] <source>");
-    expect(compactHelpOutput).toContain("Run all tasks with revertable defaults (equivalent to `run --all --revertable`).");
+    expect(compactHelpOutput).toContain("Run all tasks with revertable defaults (equivalent to `run --all --revertable`). Writes implementation/ only; refresh prediction/ with `rundown migrate up`.");
   });
 
   it("expands materialize alias to run --all --revertable", async () => {

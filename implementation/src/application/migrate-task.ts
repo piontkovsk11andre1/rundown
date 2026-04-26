@@ -1296,21 +1296,6 @@ async function runMigrateDown(input: {
     }
   }
 
-  const remainingState = readMigrationState(dependencies.fileSystem, migrationsDir);
-  for (const entry of dependencies.fileSystem.readdir(migrationsDir)) {
-    if (!entry.isFile) {
-      continue;
-    }
-    const parsed = parseMigrationFilename(entry.name);
-    if (!parsed || !parsed.isSatellite || parsed.satelliteType !== "snapshot") {
-      continue;
-    }
-    if (parsed.number <= remainingState.currentPosition) {
-      continue;
-    }
-    dependencies.fileSystem.unlink(path.join(migrationsDir, entry.name));
-  }
-
   persistPredictionBaselineSnapshot(dependencies.fileSystem, migrationsDir, workspaceRoot, {
     preferPredictionTree: false,
   });

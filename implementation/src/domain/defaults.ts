@@ -751,47 +751,6 @@ Rules:
 `;
 
 /**
- * Default migrate-snapshot template used for batch-end checkpoint updates.
- */
-export const DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE = `\
-You are producing the next predicted implementation state at design revision {{designRevisionToTarget}}.
-
-The migrations listed below were just applied. Your task is to write the predicted implementation state **after these migrations are in place**, not the delta itself. The delta is provided as evidence; the deliverable is a coherent post-state document grounded in the prediction tree.
-
-## Position
-
-- Current migration number: {{position}}
-
-## Target revision ({{designRevisionToTarget}})
-
-{{design}}
-
-## Newly applied migrations (evidence, do not just summarize these)
-
-{{newMigrations}}
-
-## Current prediction tree ({{workspacePredictionPath}}) (evolve from this; preserve still-true facts)
-
-{{latestSnapshot}}
-
-## Backlog (context only; do not duplicate into the predicted state)
-
-{{backlog}}
-
-## Output contract
-
-Produce Markdown describing the predicted application state at {{designRevisionToTarget}} using \`{{workspacePredictionPath}}\` as the canonical tree. Cover:
-
-- **Modules / packages** - what exists and its role.
-- **Public surfaces** - exported types, commands, CLI options, ports/adapters at module boundaries.
-- **Invariants** - facts about the system that remain true after the migrations.
-- **Key flows** - the main runtime paths a user/operator would hit, end-to-end.
-- **Open boundaries** - things deliberately left unimplemented or deferred (link to backlog items by name when relevant).
-
-Be concrete. Reference file paths, command names, and template var names by their real names (no placeholders). Do not include changelog-style sentences ("we added X") - write in the present tense describing the state, not the change. Length: as long as needed to faithfully represent the system; do not pad.
-`;
-
-/**
  * Default undo prompt template used by the undo command.
  */
 export const DEFAULT_UNDO_TEMPLATE = DEFAULT_TASK_TEMPLATE;

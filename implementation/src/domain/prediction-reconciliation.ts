@@ -61,9 +61,6 @@ export interface PredictionReconciliationEntryPoint {
   preservedCompletedMigrationNumbers: number[];
   pendingPredictionMigrationNumbers: number[];
   latestExecutedMigration: PredictionTrackedFile | null;
-  latestContext: PredictionTrackedFile | null;
-  latestSnapshot: PredictionTrackedFile | null;
-  latestBacklog: PredictionTrackedFile | null;
 }
 
 export interface ReResolvedPredictionItem {
@@ -301,13 +298,6 @@ export function createPredictionReconciliationEntryPoint(input: {
       migrationNumber: lastCompletedMigrationNumber,
       matches: (file) => isMigrationTrackedFile(file),
     }),
-    latestContext: null,
-    latestSnapshot: findLatestFileAtOrBefore({
-      files: input.current.files,
-      migrationNumber: lastCompletedMigrationNumber,
-      matches: (file) => isSnapshotTrackedFile(file),
-    }),
-    latestBacklog: null,
   };
 }
 

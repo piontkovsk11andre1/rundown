@@ -725,7 +725,7 @@ You are planning migration names for a prediction-driven project.
 
 {{designContextSourceReferences}}
 
-Read the current prediction tree at `{{workspacePredictionPath}}` directly.
+Read the current prediction tree at \`{{workspacePredictionPath}}\` directly.
 
 ## Migration history
 
@@ -790,7 +790,7 @@ Verify whether the selected test assertion is true.
 
 {{designContextSourceReferences}}
 
-Read the current prediction tree at `{{workspacePredictionPath}}` directly.
+Read the current prediction tree at \`{{workspacePredictionPath}}\` directly.
 
 ### Migration history
 

@@ -1527,7 +1527,7 @@ function scaffoldPredictionProject(workspace: string): void {
   fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(1, "initialize")), "# 0001 initialize\n", "utf-8");
   fs.writeFileSync(path.join(workspace, "migrations", "Backlog.md"), "# Backlog\n", "utf-8");
   fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
-  fs.writeFileSync(path.join(workspace, ".rundown", "migrate.md"), "{{design}}\n{{latestSnapshot}}\n{{backlog}}\n{{migrationHistory}}\n", "utf-8");
+  fs.writeFileSync(path.join(workspace, ".rundown", "migrate.md"), "{{design}}\n{{migrationHistory}}\n", "utf-8");
 }
 
 function scaffoldPredictionProjectForReconciliation(workspace: string): void {

@@ -711,6 +711,46 @@ describe("CLI run option normalization", () => {
     expect(compactHelpOutput).toContain("Run all tasks with revertable defaults (equivalent to `run --all --revertable`). Writes implementation/ only; refresh prediction/ with `rundown migrate up`.");
   });
 
+  it("registers start in root help with workspace-track description", async () => {
+    const runTask = vi.fn(async () => 0);
+    const result = await invokeRunAndCaptureHelpOutput([
+      "--help",
+    ], runTask);
+
+    expect(runTask).not.toHaveBeenCalled();
+
+    const compactHelpOutput = stripAnsi(result.output).replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("start [options] <description>");
+    expect(compactHelpOutput).toContain("Scaffold a new workspace with design/, prediction/, and migrations/ tracks.");
+  });
+
+  it("registers migrate in root help with prediction-tree description", async () => {
+    const runTask = vi.fn(async () => 0);
+    const result = await invokeRunAndCaptureHelpOutput([
+      "--help",
+    ], runTask);
+
+    expect(runTask).not.toHaveBeenCalled();
+
+    const compactHelpOutput = stripAnsi(result.output).replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("migrate [options] [action] [count]");
+    expect(compactHelpOutput).toContain("Generate and manage revision-aware prediction migrations. Writes the predicted-implementation tree into prediction/.");
+  });
+
+  it("keeps start help text focused on design revision snapshots", async () => {
+    const runTask = vi.fn(async () => 0);
+    const result = await invokeRunAndCaptureHelpOutput([
+      "start",
+      "--help",
+    ], runTask);
+
+    expect(runTask).not.toHaveBeenCalled();
+
+    const compactHelpOutput = stripAnsi(result.output).replace(/\s+/g, " ");
+    expect(compactHelpOutput).toContain("Design workflow:");
+    expect(compactHelpOutput).toContain("Historical snapshots are stored under design/rev.N/ as immutable revisions");
+  });
+
   it("expands materialize alias to run --all --revertable", async () => {
     const runTask = vi.fn(async () => 0);
     const call = await invokeRunAndCaptureCall([

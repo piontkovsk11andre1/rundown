@@ -80,6 +80,18 @@ describe("project-templates", () => {
     expect(DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE).toBe(EXPECTED_MIGRATE_SNAPSHOT_TEMPLATE);
   });
 
+  it("keeps migrate planner and snapshot prompts on prediction-tree wording", () => {
+    const renderedPlannerPrompt = DEFAULT_MIGRATE_TEMPLATE.replaceAll("{{workspacePredictionPath}}", "prediction/");
+    const renderedSnapshotPrompt = DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE.replaceAll("{{workspacePredictionPath}}", "prediction/");
+
+    for (const renderedPrompt of [renderedPlannerPrompt, renderedSnapshotPrompt]) {
+      expect(renderedPrompt).toContain("prediction/");
+      expect(renderedPrompt).not.toContain("satellite");
+      expect(renderedPrompt).not.toContain(".snapshot.md");
+      expect(renderedPrompt).not.toContain("*.snapshot.md");
+    }
+  });
+
   it("returns defaults when config directory is unavailable", () => {
     const templateLoader: TemplateLoader = { load: vi.fn(() => null) };
     const templates = loadProjectTemplatesFromPorts(undefined, templateLoader, path);

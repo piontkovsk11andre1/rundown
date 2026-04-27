@@ -258,6 +258,10 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(capturedPrompt).toContain("+line added in rev.2");
     expect(capturedPrompt).toContain("#### added.md (added)");
     expect(capturedPrompt).toContain("+added file from rev.2");
+    expect(capturedPrompt).toContain("## Current prediction tree (");
+    expect(capturedPrompt).not.toContain("satellite");
+    expect(capturedPrompt).not.toContain(".snapshot.md");
+    expect(capturedPrompt).not.toContain("*.snapshot.md");
   });
 
   it("migrate exits success with caught-up message when all released revisions are planned", async () => {

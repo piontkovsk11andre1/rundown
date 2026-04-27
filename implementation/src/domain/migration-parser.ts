@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { Migration, MigrationReviewType, MigrationState } from "./migration-types.js";
 
-type ReviewFilenameType = MigrationReviewType | "snapshot";
+type ReviewFilenameType = MigrationReviewType;
 
 const DOUBLE_DASH_AUX_PATTERN = /^(\d{4})--(.+)\.md$/;
 const MIGRATION_PATTERN = /^(\d{4})-(?!-)(.+)\.md$/;
@@ -9,19 +9,14 @@ const DOTTED_MIGRATION_PATTERN = /^(\d+)\.\s+(.+)\.md$/;
 const DOTTED_AUX_PATTERN = /^(\d+)\.(\d+)\s+(.+)\.md$/;
 
 const DOTTED_AUX_INDEX_BY_TYPE: Record<ReviewFilenameType, number> = {
-  snapshot: 1,
   review: 3,
 };
 
 const DOTTED_AUX_LABEL_BY_TYPE: Record<ReviewFilenameType, string> = {
-  snapshot: "Snapshot",
   review: "Review",
 };
 
-const RECOGNIZED_AUX_TYPES = new Set<ReviewFilenameType>([
-  "snapshot",
-  "review",
-]);
+const RECOGNIZED_AUX_TYPES = new Set<ReviewFilenameType>(["review"]);
 
 interface ParsedMigrationEntry {
   number: number;
@@ -37,10 +32,6 @@ export interface ParsedMigrationFilename {
 
 export function formatMigrationFilename(number: number, name: string): string {
   return `${String(number)}. ${toTitleCaseFromName(name)}.md`;
-}
-
-export function formatSnapshotFilename(number: number): string {
-  return formatAuxiliaryFilename(number, "snapshot");
 }
 
 function formatAuxiliaryFilename(number: number, type: ReviewFilenameType): string {
@@ -204,9 +195,6 @@ function getReviewTypeFromDottedIndex(index: number): ReviewFilenameType | null 
 
 function getReviewTypeFromLabel(label: string): ReviewFilenameType | null {
   const normalized = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  if (normalized === "snapshot") {
-    return "snapshot";
-  }
   if (normalized === "review") {
     return "review";
   }

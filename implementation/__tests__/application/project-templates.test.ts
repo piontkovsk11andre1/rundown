@@ -9,7 +9,6 @@ import {
   DEFAULT_DISCUSS_TEMPLATE,
   DEFAULT_DISCUSS_FINISHED_TEMPLATE,
   DEFAULT_HELP_TEMPLATE,
-  DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
   DEFAULT_MIGRATE_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_QUERY_AGGREGATION_TEMPLATE,
@@ -37,57 +36,14 @@ import {
 import type { TemplateLoader } from "../../src/domain/ports/index.js";
 import { loadProjectTemplatesFromPorts } from "../../src/application/project-templates.js";
 
-const EXPECTED_MIGRATE_SNAPSHOT_TEMPLATE = [
-  "You are producing the next predicted implementation state at design revision {{designRevisionToTarget}}.",
-  "",
-  "The migrations listed below were just applied. Your task is to write the predicted implementation state **after these migrations are in place**, not the delta itself. The delta is provided as evidence; the deliverable is a coherent post-state document grounded in the prediction tree.",
-  "",
-  "## Position",
-  "",
-  "- Current migration number: {{position}}",
-  "",
-  "## Target revision ({{designRevisionToTarget}})",
-  "",
-  "{{design}}",
-  "",
-  "## Newly applied migrations (evidence, do not just summarize these)",
-  "",
-  "{{newMigrations}}",
-  "",
-  "## Current prediction tree ({{workspacePredictionPath}}) (evolve from this; preserve still-true facts)",
-  "",
-  "## Backlog (context only; do not duplicate into the predicted state)",
-  "",
-  "{{backlog}}",
-  "",
-  "## Output contract",
-  "",
-  "Produce Markdown describing the predicted application state at {{designRevisionToTarget}} using `{{workspacePredictionPath}}` as the canonical tree. Cover:",
-  "",
-  "- **Modules / packages** - what exists and its role.",
-  "- **Public surfaces** - exported types, commands, CLI options, ports/adapters at module boundaries.",
-  "- **Invariants** - facts about the system that remain true after the migrations.",
-  "- **Key flows** - the main runtime paths a user/operator would hit, end-to-end.",
-  "- **Open boundaries** - things deliberately left unimplemented or deferred (link to backlog items by name when relevant).",
-  "",
-  "Be concrete. Reference file paths, command names, and template var names by their real names (no placeholders). Do not include changelog-style sentences (\"we added X\") - write in the present tense describing the state, not the change. Length: as long as needed to faithfully represent the system; do not pad.",
-].join("\n") + "\n";
-
 describe("project-templates", () => {
-  it("keeps default migrate snapshot template text in sync", () => {
-    expect(DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE).toBe(EXPECTED_MIGRATE_SNAPSHOT_TEMPLATE);
-  });
-
-  it("keeps migrate planner and snapshot prompts on prediction-tree wording", () => {
+  it("keeps migrate planner prompt on prediction-tree wording", () => {
     const renderedPlannerPrompt = DEFAULT_MIGRATE_TEMPLATE.replaceAll("{{workspacePredictionPath}}", "prediction/");
-    const renderedSnapshotPrompt = DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE.replaceAll("{{workspacePredictionPath}}", "prediction/");
 
-    for (const renderedPrompt of [renderedPlannerPrompt, renderedSnapshotPrompt]) {
-      expect(renderedPrompt).toContain("prediction/");
-      expect(renderedPrompt).not.toContain("satellite");
-      expect(renderedPrompt).not.toContain(".snapshot.md");
-      expect(renderedPrompt).not.toContain("*.snapshot.md");
-    }
+    expect(renderedPlannerPrompt).toContain("prediction/");
+    expect(renderedPlannerPrompt).not.toContain("satellite");
+    expect(renderedPlannerPrompt).not.toContain(".snapshot.md");
+    expect(renderedPlannerPrompt).not.toContain("*.snapshot.md");
   });
 
   it("returns defaults when config directory is unavailable", () => {
@@ -208,7 +164,6 @@ describe("project-templates", () => {
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "test-future.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "test-materialized.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "migrate.md"));
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "migrate-snapshot.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed-yn.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed-success-error.md"));

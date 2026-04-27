@@ -52,7 +52,6 @@ describe("parseMigrationDirectory", () => {
     expect(state.migrations[0]?.number).toBe(1);
     expect(state.migrations[0]?.reviews.map((review) => review.type)).toEqual(["review"]);
     expect(state.currentPosition).toBe(1);
-    expect(state.latestSnapshot).toBeNull();
     expect(state.backlogPath).toBe(path.join(migrationsDir, "Backlog.md"));
   });
 

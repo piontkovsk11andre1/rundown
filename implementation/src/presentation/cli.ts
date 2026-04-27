@@ -404,7 +404,7 @@ program
 
 const migrateCommand = program
   .command("migrate")
-  .description("Generate and manage revision-aware prediction migrations.")
+  .description("Generate and manage revision-aware prediction migrations. Writes the predicted-implementation tree into prediction/.")
   .argument(
     "[action]",
     "Migration action: up | down [n]",

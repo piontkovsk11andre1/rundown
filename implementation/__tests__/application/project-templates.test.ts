@@ -42,8 +42,6 @@ describe("project-templates", () => {
 
     expect(renderedPlannerPrompt).toContain("prediction/");
     expect(renderedPlannerPrompt).not.toContain("satellite");
-    expect(renderedPlannerPrompt).not.toContain(".snapshot.md");
-    expect(renderedPlannerPrompt).not.toContain("*.snapshot.md");
   });
 
   it("returns defaults when config directory is unavailable", () => {

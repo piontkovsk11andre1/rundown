@@ -55,15 +55,15 @@ describe("parseMigrationDirectory", () => {
     expect(state.backlogPath).toBe(path.join(migrationsDir, "Backlog.md"));
   });
 
-  it("ignores legacy suffix auxiliary files gracefully", () => {
+  it("ignores malformed migration-like filenames safely", () => {
     const migrationsDir = path.join("/tmp", "project", "migrations");
     const files = [
       path.join(migrationsDir, "1. Initialize.md"),
       path.join(migrationsDir, "1.3 Review.md"),
       path.join(migrationsDir, "0002-add-auth.md"),
-      path.join(migrationsDir, "0002.snapshot.md"),
-      path.join(migrationsDir, "0002.context.md"),
-      path.join(migrationsDir, "0002.backlog.md"),
+      path.join(migrationsDir, "0002--unknown.md"),
+      path.join(migrationsDir, "0002---review.md"),
+      path.join(migrationsDir, "0002--review-extra.md"),
       path.join(migrationsDir, "Backlog.md"),
     ];
 

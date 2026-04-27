@@ -725,13 +725,7 @@ You are planning migration names for a prediction-driven project.
 
 {{designContextSourceReferences}}
 
-## Current prediction tree ({{workspacePredictionPath}})
-
-{{latestSnapshot}}
-
-## Backlog
-
-{{backlog}}
+Read the current prediction tree at `{{workspacePredictionPath}}` directly.
 
 ## Migration history
 

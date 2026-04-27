@@ -5,7 +5,6 @@ import {
   DEFAULT_DISCUSS_TEMPLATE,
   DEFAULT_DISCUSS_FINISHED_TEMPLATE,
   DEFAULT_HELP_TEMPLATE,
-  DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
   DEFAULT_MIGRATE_TEMPLATE,
   DEFAULT_PLAN_APPEND_TEMPLATE,
   DEFAULT_PLAN_LOOP_TEMPLATE,
@@ -222,7 +221,6 @@ export function createInitProject(
     write("test-future.md", DEFAULT_TEST_FUTURE_TEMPLATE);
     write("test-materialized.md", DEFAULT_TEST_MATERIALIZED_TEMPLATE);
     write("migrate.md", DEFAULT_MIGRATE_TEMPLATE);
-    write("migrate-snapshot.md", DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE);
     write("query-seed.md", DEFAULT_QUERY_SEED_TEMPLATE);
     write("query-seed-yn.md", DEFAULT_QUERY_YN_SEED_TEMPLATE);
     write("query-seed-success-error.md", DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE);

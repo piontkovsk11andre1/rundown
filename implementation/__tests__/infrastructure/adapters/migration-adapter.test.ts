@@ -39,13 +39,13 @@ describe("createMigrationAdapter", () => {
     ]);
   });
 
-  it("groups migrations and satellites correctly from mixed directory contents", () => {
+  it("groups migrations and keeps non-migration files ignored", () => {
     const migrationsDir = createTempMigrationsDir();
 
     fs.writeFileSync(path.join(migrationsDir, "0001-initialize.md"), "- [ ] init\n", "utf-8");
     fs.writeFileSync(path.join(migrationsDir, "0002-implement-feature.md"), "- [ ] impl\n", "utf-8");
     fs.writeFileSync(path.join(migrationsDir, "0003-polish.md"), "- [ ] polish\n", "utf-8");
-    fs.writeFileSync(path.join(migrationsDir, "0002--snapshot.md"), "snap\n", "utf-8");
+    fs.writeFileSync(path.join(migrationsDir, "0002--review.md"), "review\n", "utf-8");
     fs.writeFileSync(path.join(migrationsDir, "0004--unknown.md"), "ignore\n", "utf-8");
     fs.writeFileSync(path.join(migrationsDir, "Backlog.md"), "debt\n", "utf-8");
     fs.writeFileSync(path.join(migrationsDir, "README.md"), "not a migration\n", "utf-8");
@@ -57,10 +57,9 @@ describe("createMigrationAdapter", () => {
     expect(state.projectRoot).toBe(path.dirname(migrationsDir));
     expect(state.currentPosition).toBe(3);
     expect(state.migrations.map((migration) => migration.number)).toEqual([1, 2, 3]);
-    expect(state.migrations[1]?.satellites.map((satellite) => satellite.type)).toEqual(["snapshot"]);
+    expect(state.migrations[1]?.satellites.map((satellite) => satellite.type)).toEqual(["review"]);
     expect(state.migrations[2]?.satellites.map((satellite) => satellite.type)).toEqual([]);
-    expect(state.latestSnapshot?.migrationNumber).toBe(2);
-    expect(state.latestSnapshot?.type).toBe("snapshot");
+    expect(state.latestSnapshot).toBeNull();
     expect(state.backlogPath).toBe(path.join(migrationsDir, "Backlog.md"));
   });
 });

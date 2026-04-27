@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPredictionBaseline, type PredictionInputs } from "../../src/domain/prediction-reconciliation.js";
-import { formatMigrationFilename, formatSatelliteFilename, parseMigrationFilename } from "../../src/domain/migration-parser.js";
+import { formatMigrationFilename } from "../../src/domain/migration-parser.js";
 
 const tempDirs: string[] = [];
 
@@ -92,7 +92,6 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(result.code).toBe(0);
     expect(fs.existsSync(path.join(workspace, "migrations", formatMigrationFilename(2, "first-loop-change")))).toBe(true);
     expect(fs.existsSync(path.join(workspace, "migrations", formatMigrationFilename(3, "second-loop-change")))).toBe(true);
-    expect(fs.existsSync(path.join(workspace, "migrations", formatSatelliteFilename(3, "snapshot")))).toBe(true);
   });
 
   it("exits cleanly when planner outputs DONE for an unplanned no-op released revision pair", async () => {
@@ -112,7 +111,6 @@ describeIfMigrateAvailable("migrate-task integration", () => {
 
     expect(result.code).toBe(0);
     expect(fs.existsSync(path.join(workspace, "migrations", formatMigrationFilename(2, "first-loop-change")))).toBe(false);
-    expect(fs.existsSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "snapshot")))).toBe(true);
 
     const rev2Meta = JSON.parse(
       fs.readFileSync(path.join(workspace, "docs", "rev.2.meta.json"), "utf-8"),
@@ -267,7 +265,6 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     scaffoldReleasedDesignRevisions(workspace, "docs");
     fs.mkdirSync(path.join(workspace, "migrations"), { recursive: true });
     fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(1, "initialize")), "# 1. Initialize\n\n- [x] bootstrap\n", "utf-8");
-    fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "snapshot")), "# Snapshot 1\n", "utf-8");
     fs.writeFileSync(path.join(workspace, "migrations", "Backlog.md"), "# Backlog\n\n- seed-item\n", "utf-8");
 
     const rev1MetaPath = path.join(workspace, "docs", "rev.1.meta.json");
@@ -343,66 +340,6 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(plannerCallCount).toBe(1);
   });
 
-  it("migrate up generates N.1 snapshot at batch end and keeps previous snapshots", async () => {
-    const workspace = makeTempWorkspace();
-    scaffoldLoopMigrateProject(workspace);
-    fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(2, "feature-a")), "# 2. Feature A\n\n- [ ] Implement this migration\n", "utf-8");
-
-    const result = await runCli([
-      "migrate",
-      "up",
-      "--dir",
-      "migrations",
-      "--",
-      "node",
-      "-e",
-      buildConvergentMigrateWorkerScript(["DONE"]),
-    ], workspace);
-
-    expect(result.code).toBe(0);
-    expect(fs.existsSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "snapshot")))).toBe(true);
-    expect(fs.existsSync(path.join(workspace, "migrations", formatSatelliteFilename(2, "snapshot")))).toBe(true);
-  });
-
-  it("migrate snapshot prompt uses target revision design instead of docs/current", async () => {
-    const workspace = makeTempWorkspace();
-    scaffoldLoopMigrateProject(workspace);
-
-    const targetSentinel = "SNAPSHOT-TARGET-REV1-SENTINEL";
-    const currentOnlySentinel = "SNAPSHOT-CURRENT-ONLY-SENTINEL";
-
-    fs.writeFileSync(
-      path.join(workspace, "docs", "rev.1", "Target.md"),
-      `# Target\n\n${targetSentinel}\n`,
-      "utf-8",
-    );
-    fs.writeFileSync(
-      path.join(workspace, "docs", "current", "Target.md"),
-      `# Target\n\n${currentOnlySentinel}\n`,
-      "utf-8",
-    );
-
-    const result = await runCli([
-      "migrate",
-      "--dir",
-      "migrations",
-      "--",
-      "node",
-      "-e",
-      buildSnapshotPromptCaptureWorkerScript(["rev1-apply"]),
-    ], workspace);
-
-    expect(result.code).toBe(0);
-    expect(fs.existsSync(path.join(workspace, "migrations", formatMigrationFilename(2, "rev1-apply")))).toBe(true);
-
-    const capturedPromptPath = path.join(workspace, ".captured-migrate-snapshot-prompt.txt");
-    expect(fs.existsSync(capturedPromptPath)).toBe(true);
-    const capturedPrompt = fs.readFileSync(capturedPromptPath, "utf-8");
-    expect(capturedPrompt).toContain("rev.1");
-    expect(capturedPrompt).toContain(targetSentinel);
-    expect(capturedPrompt).not.toContain(currentOnlySentinel);
-  });
-
   it("migrate up writes predicted files into prediction/", async () => {
     const workspace = makeTempWorkspace();
     scaffoldPredictionProjectForReconciliation(workspace);
@@ -455,7 +392,7 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     const predictionDir = path.join(workspace, "prediction");
     fs.mkdirSync(path.join(predictionDir, "migrations"), { recursive: true });
     fs.writeFileSync(path.join(predictionDir, "migrations", formatMigrationFilename(2, "feature-a")), "# predicted 2\n", "utf-8");
-    fs.writeFileSync(path.join(predictionDir, "migrations", formatSatelliteFilename(2, "snapshot")), "# snapshot predicted 2\n", "utf-8");
+    fs.writeFileSync(path.join(predictionDir, "notes.md"), "# prediction notes\n", "utf-8");
     fs.writeFileSync(path.join(predictionDir, "migrations", "raw.bin"), Buffer.from([0, 255, 17, 42]));
 
     const predictionBefore = readDirectoryFileBytes(predictionDir);
@@ -505,12 +442,11 @@ describeIfMigrateAvailable("migrate-task integration", () => {
         workers: {
           default: ["node", "-e", buildMigrateUpExecutionOnlyWorkerScript()],
         },
-      }, null, 2) + "\n",
+    }, null, 2) + "\n",
       "utf-8",
     );
 
     const removedMigration = formatMigrationFilename(3, "feature-b");
-    const removedSnapshot = formatSatelliteFilename(3, "snapshot");
     const predictionMigrationsDir = path.join(workspace, "prediction", "migrations");
 
     const firstResult = await runCli([
@@ -521,12 +457,9 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     ], workspace);
     expect(firstResult.code).toBe(0);
     expect(fs.existsSync(path.join(predictionMigrationsDir, removedMigration))).toBe(true);
-    expect(fs.existsSync(path.join(predictionMigrationsDir, removedSnapshot))).toBe(true);
 
     fs.unlinkSync(path.join(workspace, "migrations", removedMigration));
-    fs.unlinkSync(path.join(workspace, "migrations", removedSnapshot));
     fs.unlinkSync(path.join(predictionMigrationsDir, removedMigration));
-    fs.unlinkSync(path.join(predictionMigrationsDir, removedSnapshot));
 
     const result = await runCli([
       "migrate",
@@ -537,7 +470,6 @@ describeIfMigrateAvailable("migrate-task integration", () => {
 
     expect([0, 3]).toContain(result.code);
     expect(fs.existsSync(path.join(predictionMigrationsDir, removedMigration))).toBe(false);
-    expect(fs.existsSync(path.join(predictionMigrationsDir, removedSnapshot))).toBe(false);
   });
 
   it("migrate down rewinds one planned revision by default", async () => {
@@ -606,36 +538,6 @@ describeIfMigrateAvailable("migrate-task integration", () => {
 
     const backlog = fs.readFileSync(path.join(workspace, "migrations", "Backlog.md"), "utf-8");
     expect(backlog).toContain("- rev2-modified-file");
-  });
-
-  it("migrate down rewrites prediction tree to rewound revision boundary", async () => {
-    const workspace = makeTempWorkspace();
-    scaffoldRevisionPlanningStampProject(workspace);
-    seedPlannedRevisionMigrations(workspace, "docs", [
-      { revision: 1, migrations: [formatMigrationFilename(2, "rev1-added-file")] },
-      { revision: 2, migrations: [formatMigrationFilename(3, "rev2-modified-file")] },
-    ]);
-
-    const predictionDir = path.join(workspace, "prediction", "migrations");
-    fs.mkdirSync(predictionDir, { recursive: true });
-    fs.writeFileSync(path.join(predictionDir, formatSatelliteFilename(2, "snapshot")), "# Snapshot 2 stale\n", "utf-8");
-    fs.writeFileSync(path.join(predictionDir, formatSatelliteFilename(3, "snapshot")), "# Snapshot 3 stale\n", "utf-8");
-
-    const downResult = await runCli([
-      "migrate",
-      "--dir",
-      "migrations",
-      "down",
-      "--",
-      "node",
-      "-e",
-      buildConvergentMigrateWorkerScript(["DONE"]),
-    ], workspace);
-
-    expect(downResult.code).toBe(0);
-    expect(fs.existsSync(path.join(predictionDir, formatSatelliteFilename(2, "snapshot")))).toBe(true);
-    expect(fs.existsSync(path.join(predictionDir, formatSatelliteFilename(3, "snapshot")))).toBe(false);
-    expect(fs.readFileSync(path.join(predictionDir, formatSatelliteFilename(2, "snapshot")), "utf-8")).toBe("# Snapshot 2\n");
   });
 
   it("migrate down --no-backlog skips Backlog.md push", async () => {
@@ -712,7 +614,7 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(rev1MetaAfterDown.migrations ?? []).toEqual([]);
   });
 
-  it("migrate down 2 rewinds two revisions, updates Backlog.md, and prunes later snapshots", async () => {
+  it("migrate down 2 rewinds two revisions and updates Backlog.md", async () => {
     const workspace = makeTempWorkspace();
     scaffoldRevisionPlanningStampProject(workspace);
     seedPlannedRevisionMigrations(workspace, "docs", [
@@ -743,8 +645,6 @@ describeIfMigrateAvailable("migrate-task integration", () => {
 
     expect(fs.existsSync(path.join(workspace, "migrations", formatMigrationFilename(2, "rev1-added-file")))).toBe(false);
     expect(fs.existsSync(path.join(workspace, "migrations", formatMigrationFilename(3, "rev2-modified-file")))).toBe(false);
-    expect(fs.existsSync(path.join(workspace, "migrations", formatSatelliteFilename(2, "snapshot")))).toBe(false);
-    expect(fs.existsSync(path.join(workspace, "migrations", formatSatelliteFilename(3, "snapshot")))).toBe(false);
 
     const rev1MetaAfterDown = readRevisionMeta(workspace, "docs", 1);
     const rev2MetaAfterDown = readRevisionMeta(workspace, "docs", 2);
@@ -948,22 +848,10 @@ describeIfMigrateAvailable("migrate-task integration", () => {
           content: "# 0002 feature-a\n\n- [ ] implement feature a\n",
         },
         {
-          relativePath: `migrations/${formatSatelliteFilename(2, "snapshot")}`,
-          migrationNumber: 2,
-          kind: "snapshot",
-          content: "# Snapshot 0002 old\n",
-        },
-        {
           relativePath: `migrations/${formatMigrationFilename(3, "feature-b")}`,
           migrationNumber: 3,
           kind: "migration",
           content: "# 0003 feature-b\n\n- [ ] implement feature b\n",
-        },
-        {
-          relativePath: `migrations/${formatSatelliteFilename(3, "snapshot")}`,
-          migrationNumber: 3,
-          kind: "snapshot",
-          content: "# Snapshot 0003 old\n",
         },
       ],
     });
@@ -1027,22 +915,10 @@ describeIfMigrateAvailable("migrate-task integration", () => {
           content: "# 0002 feature-a\n\n- [ ] implement feature a\n",
         },
         {
-          relativePath: `migrations/${formatSatelliteFilename(2, "snapshot")}`,
-          migrationNumber: 2,
-          kind: "snapshot",
-          content: "# Snapshot 0002 old\n",
-        },
-        {
           relativePath: `migrations/${formatMigrationFilename(3, "feature-b")}`,
           migrationNumber: 3,
           kind: "migration",
           content: "# 0003 feature-b\n\n- [ ] implement feature b\n",
-        },
-        {
-          relativePath: `migrations/${formatSatelliteFilename(3, "snapshot")}`,
-          migrationNumber: 3,
-          kind: "snapshot",
-          content: "# Snapshot 0003 old\n",
         },
       ],
     });
@@ -1103,22 +979,10 @@ describeIfMigrateAvailable("migrate-task integration", () => {
           content: "# 0002 feature-a\n\n- [ ] implement feature a\n",
         },
         {
-          relativePath: `migrations/${formatSatelliteFilename(2, "snapshot")}`,
-          migrationNumber: 2,
-          kind: "snapshot",
-          content: "# Snapshot 0002 old\n",
-        },
-        {
           relativePath: `migrations/${formatMigrationFilename(3, "feature-b")}`,
           migrationNumber: 3,
           kind: "migration",
           content: "# 0003 feature-b\n\n- [ ] implement feature b\n",
-        },
-        {
-          relativePath: `migrations/${formatSatelliteFilename(3, "snapshot")}`,
-          migrationNumber: 3,
-          kind: "snapshot",
-          content: "# Snapshot 0003 old\n",
         },
       ],
     });
@@ -1662,7 +1526,6 @@ function scaffoldPredictionProject(workspace: string): void {
   fs.writeFileSync(path.join(workspace, "Design.md"), "# Design\n\nSeed design context.\n", "utf-8");
   fs.mkdirSync(path.join(workspace, "migrations"), { recursive: true });
   fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(1, "initialize")), "# 0001 initialize\n", "utf-8");
-  fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "snapshot")), "# Snapshot\n", "utf-8");
   fs.writeFileSync(path.join(workspace, "migrations", "Backlog.md"), "# Backlog\n", "utf-8");
   fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
   fs.writeFileSync(path.join(workspace, ".rundown", "migrate.md"), "{{design}}\n{{latestSnapshot}}\n{{backlog}}\n{{migrationHistory}}\n", "utf-8");
@@ -1673,11 +1536,8 @@ function scaffoldPredictionProjectForReconciliation(workspace: string): void {
   fs.mkdirSync(path.join(workspace, "migrations"), { recursive: true });
   fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(1, "initialize")), "# 0001 initialize\n\n- [x] bootstrap\n", "utf-8");
   fs.writeFileSync(path.join(workspace, "migrations", "Backlog.md"), "# Backlog\n\n- baseline\n", "utf-8");
-  fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "snapshot")), "# Snapshot 0001\n", "utf-8");
   fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(2, "feature-a")), "# 0002 feature-a\n\n- [ ] implement feature a\n", "utf-8");
-  fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(2, "snapshot")), "# Snapshot 0002 old\n", "utf-8");
   fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(3, "feature-b")), "# 0003 feature-b\n\n- [ ] implement feature b\n", "utf-8");
-  fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(3, "snapshot")), "# Snapshot 0003 old\n", "utf-8");
   fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
 }
 
@@ -1693,7 +1553,6 @@ function scaffoldLoopMigrateProject(workspace: string): void {
   fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
   scaffoldReleasedDesignRevisions(workspace, "docs");
   fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(1, "initialize")), "# 1. Initialize\n\n- [x] bootstrap\n", "utf-8");
-  fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "snapshot")), "# Snapshot 1\n", "utf-8");
   fs.writeFileSync(path.join(workspace, "migrations", "Backlog.md"), "# Backlog\n\n- seed-item\n", "utf-8");
 }
 
@@ -1797,7 +1656,6 @@ function scaffoldRevisionPlanningStampProject(workspace: string): void {
   }, null, 2) + "\n", "utf-8");
 
   fs.writeFileSync(path.join(migrationsDir, formatMigrationFilename(1, "initialize")), "# 1. Initialize\n\n- [x] bootstrap\n", "utf-8");
-  fs.writeFileSync(path.join(migrationsDir, formatSatelliteFilename(1, "snapshot")), "# Snapshot 1\n", "utf-8");
   fs.writeFileSync(path.join(migrationsDir, "Backlog.md"), "# Backlog\n\n- seed-item\n", "utf-8");
 }
 
@@ -1844,15 +1702,6 @@ function seedPlannedRevisionMigrations(
       fs.writeFileSync(
         path.join(workspace, "migrations", migrationFileName),
         `# ${migrationFileName}\n\n- [x] done\n`,
-        "utf-8",
-      );
-      const parsedMigration = parseMigrationFilename(migrationFileName);
-      if (!parsedMigration) {
-        continue;
-      }
-      fs.writeFileSync(
-        path.join(workspace, "migrations", formatSatelliteFilename(parsedMigration.number, "snapshot")),
-        `# Snapshot ${String(parsedMigration.number)}\n`,
         "utf-8",
       );
     }
@@ -2109,40 +1958,6 @@ function buildPlannerPromptCaptureWorkerScript(): string {
     "}",
     "if(prompt.includes('updating the migration snapshot at the end of a migration batch')){",
     "  console.log('# Snapshot');",
-    "  process.exit(0);",
-    "}",
-    "console.log('applied');",
-    "process.exit(0);",
-  ].join("\n");
-}
-
-function buildSnapshotPromptCaptureWorkerScript(plannerOutputs: string[]): string {
-  return [
-    "const fs=require('node:fs');",
-    "const path=require('node:path');",
-    "const promptPath=process.argv[process.argv.length-1];",
-    "const prompt=fs.existsSync(promptPath)?fs.readFileSync(promptPath,'utf-8'):'';",
-    "const capturedPath=path.join(process.cwd(),'.captured-migrate-snapshot-prompt.txt');",
-    "const seqPath=path.join(process.cwd(),'.migrate-plan.seq');",
-    `const plannerOutputs=${JSON.stringify(plannerOutputs)};`,
-    "if(prompt.includes('You are producing the predicted whole-application snapshot at design revision')){",
-    "  fs.writeFileSync(capturedPath,prompt,'utf-8');",
-    "  console.log('# Snapshot');",
-    "  process.exit(0);",
-    "}",
-    "if(prompt.includes('Inventory design changes not yet reflected in the current snapshot.')){",
-    "  let index=0;",
-    "  if(fs.existsSync(seqPath)){",
-    "    index=Number.parseInt(fs.readFileSync(seqPath,'utf-8'),10)||0;",
-    "  }",
-    "  const bounded=Math.min(index, Math.max(plannerOutputs.length-1, 0));",
-    "  const next=plannerOutputs.length>0?plannerOutputs[bounded]:'DONE';",
-    "  fs.writeFileSync(seqPath,String(index+1));",
-    "  console.log(next);",
-    "  process.exit(0);",
-    "}",
-    "if(prompt.includes('Verify whether the selected task is complete.')){",
-    "  console.log('OK');",
     "  process.exit(0);",
     "}",
     "console.log('applied');",

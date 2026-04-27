@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatMigrationFilename, formatSatelliteFilename } from "../../src/domain/migration-parser.js";
+import { formatMigrationFilename } from "../../src/domain/migration-parser.js";
 
 const tempDirs: string[] = [];
 
@@ -51,8 +51,6 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
 
     fs.mkdirSync(path.join(sourceWorkspace, "changesets"), { recursive: true });
     fs.writeFileSync(path.join(sourceWorkspace, "changesets", formatMigrationFilename(1, "initialize")), "# 0001 initialize\n", "utf-8");
-    fs.writeFileSync(path.join(sourceWorkspace, "changesets", formatSatelliteFilename(1, "context")), "# Context\n", "utf-8");
-    fs.writeFileSync(path.join(sourceWorkspace, "changesets", formatSatelliteFilename(1, "snapshot")), "# Snapshot\n", "utf-8");
 
     fs.mkdirSync(path.join(sourceWorkspace, "quality", "specs"), { recursive: true });
     fs.writeFileSync(path.join(sourceWorkspace, "quality", "specs", "linked.md"), "linked assertion", "utf-8");
@@ -135,7 +133,6 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
     fs.writeFileSync(path.join(workspace, "Design.md"), "# Design\n\nSHOULD_NOT_APPEAR_DESIGN\n", "utf-8");
     fs.mkdirSync(path.join(workspace, "migrations"), { recursive: true });
     fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(1, "initialize")), "# 0001 initialize\n", "utf-8");
-    fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "snapshot")), "SNAP-SHOULD-NOT-APPEAR\n", "utf-8");
     fs.mkdirSync(path.join(workspace, "specs"), { recursive: true });
     fs.writeFileSync(path.join(workspace, "specs", "materialized-context.md"), "assert materialized prompt scope", "utf-8");
 
@@ -150,8 +147,7 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
         "const prompt=fs.readFileSync(p,'utf-8');",
         "const hasPredictedSection=prompt.includes('## Predicted context');",
         "const hasDesignToken=prompt.includes('SHOULD_NOT_APPEAR_DESIGN');",
-        "const hasSnapshotToken=prompt.includes('SNAP-SHOULD-NOT-APPEAR');",
-        "if(!hasPredictedSection&&!hasDesignToken&&!hasSnapshotToken){console.log('OK');process.exit(0);}",
+        "if(!hasPredictedSection&&!hasDesignToken){console.log('OK');process.exit(0);}",
         "console.log('NOT_OK: expected materialized mode prompt to ignore design and migration context');process.exit(0);",
       ].join(""),
     ], workspace);
@@ -481,65 +477,17 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
     expect(combinedOutput).toContain("PASS design-sources.md");
   });
 
-  it("rundown test --future <n> uses previous snapshot plus migrations up to target", async () => {
-    const workspace = makeTempWorkspace();
-    scaffoldPredictedState(workspace, {
-      template: "MODE={{testMode}}\nTARGET={{futureTarget}}\nSNAP={{latestSnapshot}}\nHISTORY={{migrationHistory}}",
-    });
-    fs.mkdirSync(path.join(workspace, "specs"), { recursive: true });
-    fs.writeFileSync(path.join(workspace, "specs", "future-target.md"), "assert targeted future", "utf-8");
-
-    fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(2, "add-feature")), "# 0002 add feature\n", "utf-8");
-    fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "snapshot")), "SNAP-1\n", "utf-8");
-    fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(2, "snapshot")), "SNAP-2\n", "utf-8");
-
-    const result = await runCli([
-      "test",
-      "--future",
-      "2",
-      "--dir",
-      "specs",
-      "--",
-      "node",
-      "-e",
-      [
-        "const fs=require('node:fs');",
-        "const p=process.argv[process.argv.length-1];",
-        "const prompt=fs.readFileSync(p,'utf-8');",
-        "const hasMode=prompt.includes('MODE=future');",
-        "const hasTarget=prompt.includes('TARGET=2');",
-        "const hasSnapshotOne=prompt.includes('SNAP-1');",
-        "const hasSnapshotTwo=prompt.includes('SNAP-2');",
-        "const hasMigrationOne=prompt.includes('1. Initialize.md');",
-        "const hasMigrationTwo=prompt.includes('2. Add Feature.md');",
-        "if(hasMode&&hasTarget&&hasSnapshotOne&&!hasSnapshotTwo&&!hasMigrationOne&&hasMigrationTwo){console.log('OK');process.exit(0);}",
-        "console.log('NOT_OK: expected previous snapshot with migrations up to target');process.exit(0);",
-      ].join(""),
-    ], workspace);
-
-    expect(result.code).toBe(0);
-    const combinedOutput = stripAnsi([
-      ...result.logs,
-      ...result.errors,
-      ...result.stdoutWrites,
-      ...result.stderrWrites,
-    ].join("\n"));
-    expect(combinedOutput).toContain("PASS future-target.md");
-  });
-
   it("rundown test --future <n> prompt uses predicted context and excludes materialized source content", async () => {
     const workspace = makeTempWorkspace();
     fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
     fs.writeFileSync(
       path.join(workspace, ".rundown", "test-future.md"),
-      "MODE={{testMode}}\nTARGET={{futureTarget}}\nDESIGN={{design}}\nSNAP={{latestSnapshot}}\nHISTORY={{migrationHistory}}\nINCLUDED={{includedDirectories}}\nEXCLUDED={{excludedDirectories}}",
+      "MODE={{testMode}}\nTARGET={{futureTarget}}\nDESIGN={{design}}\nHISTORY={{migrationHistory}}\nINCLUDED={{includedDirectories}}\nEXCLUDED={{excludedDirectories}}",
       "utf-8",
     );
     fs.writeFileSync(path.join(workspace, "Design.md"), "# Design\n\nFUTURE_TARGET_DESIGN_TOKEN\n", "utf-8");
     fs.mkdirSync(path.join(workspace, "migrations"), { recursive: true });
     fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(1, "initialize")), "# 0001 initialize\n", "utf-8");
-    fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "context")), "# Context\n", "utf-8");
-    fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "snapshot")), "FUTURE_TARGET_SNAPSHOT_TOKEN\n", "utf-8");
     fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(2, "future-step")), "# 0002 future step\n", "utf-8");
     fs.mkdirSync(path.join(workspace, "src"), { recursive: true });
     fs.writeFileSync(path.join(workspace, "src", "materialized-only.txt"), "MATERIALIZED_SOURCE_TOKEN\n", "utf-8");
@@ -560,12 +508,11 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
         "const hasMode=prompt.includes('MODE=future');",
         "const hasTarget=prompt.includes('TARGET=2');",
         "const hasDesignToken=prompt.includes('FUTURE_TARGET_DESIGN_TOKEN');",
-        "const hasSnapshotToken=prompt.includes('FUTURE_TARGET_SNAPSHOT_TOKEN');",
         "const hasMigrationTwo=prompt.includes('2. Future Step.md');",
         "const includesDesignAndMigrations=/INCLUDED=[\\s\\S]*design[\\s\\S]*migrations/i.test(prompt);",
         "const excludesSpecsDir=/EXCLUDED=.*specs/i.test(prompt);",
         "const hasMaterializedSourceToken=prompt.includes('MATERIALIZED_SOURCE_TOKEN');",
-        "if(hasMode&&hasTarget&&hasDesignToken&&hasSnapshotToken&&hasMigrationTwo&&includesDesignAndMigrations&&excludesSpecsDir&&!hasMaterializedSourceToken){console.log('OK');process.exit(0);}",
+        "if(hasMode&&hasTarget&&hasDesignToken&&hasMigrationTwo&&includesDesignAndMigrations&&excludesSpecsDir&&!hasMaterializedSourceToken){console.log('OK');process.exit(0);}",
         "console.log('NOT_OK: expected future target mode prompt to use only predicted context');process.exit(0);",
       ].join(""),
     ], workspace);
@@ -580,60 +527,11 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
     expect(combinedOutput).toContain("PASS future-target-context.md");
   });
 
-  it("rundown test --future uses latest snapshot plus remaining migrations", async () => {
-    const workspace = makeTempWorkspace();
-    scaffoldPredictedState(workspace, {
-      template: "MODE={{testMode}}\nTARGET={{futureTarget}}\nSNAP={{latestSnapshot}}\nHISTORY={{migrationHistory}}",
-    });
-    fs.mkdirSync(path.join(workspace, "specs"), { recursive: true });
-    fs.writeFileSync(path.join(workspace, "specs", "future-latest.md"), "assert latest future", "utf-8");
-
-    fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(2, "add-feature")), "# 0002 add feature\n", "utf-8");
-    fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(3, "polish")), "# 0003 polish\n", "utf-8");
-    fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "snapshot")), "SNAP-1\n", "utf-8");
-    fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(2, "snapshot")), "SNAP-2\n", "utf-8");
-
-    const result = await runCli([
-      "test",
-      "--future",
-      "--dir",
-      "specs",
-      "--",
-      "node",
-      "-e",
-      [
-        "const fs=require('node:fs');",
-        "const p=process.argv[process.argv.length-1];",
-        "const prompt=fs.readFileSync(p,'utf-8');",
-        "const hasMode=prompt.includes('MODE=future');",
-        "const hasTarget=prompt.includes('TARGET=3');",
-        "const hasSnapshotOne=prompt.includes('SNAP-1');",
-        "const hasSnapshotTwo=prompt.includes('SNAP-2');",
-        "const hasMigrationOne=prompt.includes('1. Initialize.md');",
-        "const hasMigrationTwo=prompt.includes('2. Add Feature.md');",
-        "const hasMigrationThree=prompt.includes('3. Polish.md');",
-        "if(hasMode&&hasTarget&&!hasSnapshotOne&&hasSnapshotTwo&&!hasMigrationOne&&!hasMigrationTwo&&hasMigrationThree){console.log('OK');process.exit(0);}",
-        "console.log('NOT_OK: expected latest snapshot with only migrations after it');process.exit(0);",
-      ].join(""),
-    ], workspace);
-
-    expect(result.code).toBe(0);
-    const combinedOutput = stripAnsi([
-      ...result.logs,
-      ...result.errors,
-      ...result.stdoutWrites,
-      ...result.stderrWrites,
-    ].join("\n"));
-    expect(combinedOutput).toContain("PASS future-latest.md");
-  });
-
   it("rundown test --future prompt includes predicted context and excludes materialized source content", async () => {
     const workspace = makeTempWorkspace();
     fs.writeFileSync(path.join(workspace, "Design.md"), "# Design\n\nFUTURE_DESIGN_TOKEN\n", "utf-8");
     fs.mkdirSync(path.join(workspace, "migrations"), { recursive: true });
     fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(1, "initialize")), "# 0001 initialize\n", "utf-8");
-    fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "context")), "# Context\n", "utf-8");
-    fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "snapshot")), "FUTURE_SNAPSHOT_TOKEN\n", "utf-8");
     fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(2, "future-step")), "# 0002 future step\n", "utf-8");
     fs.mkdirSync(path.join(workspace, "src"), { recursive: true });
     fs.writeFileSync(path.join(workspace, "src", "materialized-only.txt"), "MATERIALIZED_SOURCE_TOKEN\n", "utf-8");
@@ -652,10 +550,9 @@ describeIfTestSpecsAvailable("test-specs integration", () => {
         "const prompt=fs.readFileSync(p,'utf-8');",
         "const hasPredictedSection=prompt.includes('## Predicted context');",
         "const hasDesignToken=prompt.includes('FUTURE_DESIGN_TOKEN');",
-        "const hasSnapshotToken=prompt.includes('FUTURE_SNAPSHOT_TOKEN');",
         "const hasMigrationTwo=prompt.includes('2. Future Step.md');",
         "const hasMaterializedSourceToken=prompt.includes('MATERIALIZED_SOURCE_TOKEN');",
-        "if(hasPredictedSection&&hasDesignToken&&hasSnapshotToken&&hasMigrationTwo&&!hasMaterializedSourceToken){console.log('OK');process.exit(0);}",
+        "if(hasPredictedSection&&hasDesignToken&&hasMigrationTwo&&!hasMaterializedSourceToken){console.log('OK');process.exit(0);}",
         "console.log('NOT_OK: expected future mode prompt to use only predicted context');process.exit(0);",
       ].join(""),
     ], workspace);
@@ -676,8 +573,6 @@ function scaffoldPredictedState(workspace: string, options?: { template?: string
   fs.writeFileSync(path.join(workspace, "Design.md"), "# Design\n\nSeed design context.\n", "utf-8");
   fs.mkdirSync(path.join(workspace, "migrations"), { recursive: true });
   fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(1, "initialize")), "# 0001 initialize\n", "utf-8");
-  fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "context")), "# Context\n", "utf-8");
-  fs.writeFileSync(path.join(workspace, "migrations", formatSatelliteFilename(1, "snapshot")), "# Snapshot\n", "utf-8");
   fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
   fs.writeFileSync(path.join(workspace, ".rundown", "test-verify.md"), template, "utf-8");
 }

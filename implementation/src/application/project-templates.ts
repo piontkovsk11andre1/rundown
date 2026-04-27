@@ -7,7 +7,6 @@ import {
   DEFAULT_DISCUSS_TEMPLATE,
   DEFAULT_DISCUSS_FINISHED_TEMPLATE,
   DEFAULT_HELP_TEMPLATE,
-  DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
   DEFAULT_MIGRATE_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
   DEFAULT_QUERY_AGGREGATION_TEMPLATE,
@@ -69,7 +68,6 @@ export interface ProjectTemplates {
   testFuture: string;
   testMaterialized: string;
   migrate: string;
-  migrateSnapshot: string;
   querySeed: string;
   querySeedYn: string;
   querySeedSuccessError: string;
@@ -117,7 +115,6 @@ export function loadProjectTemplatesFromPorts(
       testFuture: DEFAULT_TEST_FUTURE_TEMPLATE,
       testMaterialized: DEFAULT_TEST_MATERIALIZED_TEMPLATE,
       migrate: DEFAULT_MIGRATE_TEMPLATE,
-      migrateSnapshot: DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE,
       querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
       querySeedYn: DEFAULT_QUERY_YN_SEED_TEMPLATE,
       querySeedSuccessError: DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
@@ -166,7 +163,6 @@ export function loadProjectTemplatesFromPorts(
     testFuture: loadTemplateWithFallback("test-future.md", DEFAULT_TEST_FUTURE_TEMPLATE),
     testMaterialized: loadTemplateWithFallback("test-materialized.md", DEFAULT_TEST_MATERIALIZED_TEMPLATE),
     migrate: loadTemplateWithFallback("migrate.md", DEFAULT_MIGRATE_TEMPLATE),
-    migrateSnapshot: loadTemplateWithFallback("migrate-snapshot.md", DEFAULT_MIGRATE_SNAPSHOT_TEMPLATE),
     querySeed: loadTemplateWithFallback("query-seed.md", DEFAULT_QUERY_SEED_TEMPLATE),
     querySeedYn: loadTemplateWithFallback("query-seed-yn.md", DEFAULT_QUERY_YN_SEED_TEMPLATE),
     querySeedSuccessError: loadTemplateWithFallback(

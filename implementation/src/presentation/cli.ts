@@ -354,7 +354,7 @@ program
 
 program
   .command("start")
-  .description("Scaffold a new prediction project with a design/current/Target.md workspace.")
+  .description("Scaffold a new workspace with design/, prediction/, and migrations/ tracks.")
   .argument("<description>", "Seed description for design/current/Target.md")
   .option("--dir <path>", "Target project directory (default: current working directory)")
   .option("--design-dir <path>", "Design workspace directory (default: design)", "design")

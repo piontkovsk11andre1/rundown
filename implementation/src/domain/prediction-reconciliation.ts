@@ -409,11 +409,11 @@ export function reconcilePendingPredictedItemsAtomically(input: {
 
   const targetSet = new Set(targetPendingMigrationNumbers);
   const filesToReplace = currentFiles.filter(
-    (file) => targetSet.has(file.migrationNumber) && (isMigrationTrackedFile(file) || isSnapshotTrackedFile(file)),
+    (file) => targetSet.has(file.migrationNumber) && isMigrationTrackedFile(file),
   );
   const removeRelativePaths = uniqueSortedStrings(filesToReplace.map((file) => normalizeRelativePath(file.relativePath)));
   const preservedFiles = currentFiles.filter(
-    (file) => !(targetSet.has(file.migrationNumber) && (isMigrationTrackedFile(file) || isSnapshotTrackedFile(file))),
+    (file) => !(targetSet.has(file.migrationNumber) && isMigrationTrackedFile(file)),
   );
 
   const defaultPrefix = inferMigrationPrefix(currentFiles);

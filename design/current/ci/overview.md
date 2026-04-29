@@ -28,7 +28,7 @@ Developer commits design/current/...
         ▼ (after merge)
    agent-design-release.yml
         │   ├─ design release  (snapshot design/current → design/rev.N)
-        │   └─ migrate         (write migrations/N. Title.md + N.1 Snapshot.md)
+        │   └─ migrate         (write migrations/N. Title.md)
         │
         ▼ opens PR
    ci.yml runs again on PR

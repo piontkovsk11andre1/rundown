@@ -46,7 +46,7 @@ Default-deny everywhere else.
 | Configure git identity | `github-actions[bot]` | bot identity for the bot's commits |
 | Create branch | `agent/design-release-<epoch>` | unique per run |
 | `design release` | `node implementation/dist/cli.js design release` | copies `design/current/` → `design/rev.<N>/` |
-| `migrate` | `node implementation/dist/cli.js migrate` | writes `migrations/<N>. Title.md` + `<N>.1 Snapshot.md` |
+| `migrate` | `node implementation/dist/cli.js migrate` | writes `migrations/<N>. Title.md` |
 | Diff check | `git diff --staged --quiet` | skip commit if nothing changed |
 | Commit & push | `chore: design release + generated migrations` | only on changes |
 | Open PR | `gh pr create … --label ai-generated` | for human review |

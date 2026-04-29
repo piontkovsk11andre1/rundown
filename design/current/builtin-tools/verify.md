@@ -21,7 +21,7 @@ Registration flags:
 
 - Quality gates that re-run a check without performing work.
 - Asserting external state ("API returned 200", "tests pass on CI").
-- Spec assertions in `test`/`test --future` flows.
+- Spec assertions in `test` flows.
 
 ## Aliases
 

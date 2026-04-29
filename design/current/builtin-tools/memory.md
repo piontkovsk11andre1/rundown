@@ -29,4 +29,4 @@ Memory layout follows the workspace memory contract — see [../project-layout/m
 
 ## Workflow integration
 
-`migrate` uses memory to carry context between planner iterations (see [../prediction/migrations.md](../prediction/migrations.md)). The dedicated top-level `memory-clean`, `memory-validate`, and `memory-view` commands inspect and curate the source-local memory used for that scope (see [../cli/maintenance-commands.md](../cli/maintenance-commands.md)).
+`migrate` uses memory to carry context between planner iterations (see [../lifecycle/migrate.md](../lifecycle/migrate.md)). The dedicated top-level `memory-clean`, `memory-validate`, and `memory-view` commands inspect and curate the source-local memory used for that scope (see [../cli/maintenance-commands.md](../cli/maintenance-commands.md)).

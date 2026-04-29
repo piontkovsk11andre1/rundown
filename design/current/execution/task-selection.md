@@ -15,7 +15,7 @@
 
 - Selection is a pure function of the source's bytes plus sort mode.
 - Re-running with the same input always produces the same task ordering.
-- This determinism is what makes `materialize` and `test --future` reproducible.
+- This determinism is what makes lifecycle commands like `materialize` reproducible.
 
 ## Why not graph-based dependencies
 

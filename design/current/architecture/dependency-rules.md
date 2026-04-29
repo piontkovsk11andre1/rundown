@@ -35,4 +35,4 @@ infrastructure → domain
 
 ## Why this matters
 
-The strictness of these rules is what makes the prediction model viable: predictable code is easier to predict. Use cases that depend only on ports can be reasoned about (and tested) without spinning up shells or filesystems, which is exactly what `rundown test --future` needs to do at scale.
+The strictness of these rules keeps the lifecycle model reliable: predictable code is easier to reason about. Use cases that depend only on ports can be tested without spinning up shells or filesystems, which is essential for fast, repeatable quality gates.

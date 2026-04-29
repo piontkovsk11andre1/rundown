@@ -17,4 +17,4 @@ rundown test specs/
 
 Specs are Markdown files of checkbox-style assertions. Each assertion is a verify-only task that reads workspace context and returns `OK` or a failure reason on stdout, using the same verification contract as the run loop.
 
-`rundown test` has no `--future` mode.
+Future-mode testing is no longer part of rundown.

@@ -21,7 +21,6 @@ Terminology used across `design/current/`. Definitions reflect current implement
 | **Lockfile** | A per-source `.rundown/<basename>.lock` file colocated with the source, preventing concurrent rundown instances from touching the same Markdown file. |
 | **Config dir** | The effective `.rundown/` directory, resolved by upward walk from the working dir or set explicitly via `--config-dir`. |
 | **Migration** | A numbered Markdown file under `migrations/`, e.g. `7. Implement Feature.md`. |
-| **Snapshot** | A satellite migration file `N.1 Snapshot.md` describing predicted state after migration `N`. |
-| **Backlog** | Singleton file `migrations/Backlog.md` capturing in-flight or deferred work surfaced by `migrate down`. |
+| **Pending migration** | A numbered migration file in `migrations/` that records planner-authored intent until external lifecycle tooling consumes it. |
 | **Materialize** | Convenience for `run --all --revertable` against a migration; produces per-task commits aligned with the migration track. |
 | **Composition root** | [src/create-app.ts](../../implementation/src/create-app.ts) — the only place where ports are wired to adapters. |

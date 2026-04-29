@@ -28,9 +28,9 @@ Each file is a use case factory: it accepts a `Dependencies` bag of ports and re
 | [task-execution-dispatch.ts](../../implementation/src/application/task-execution-dispatch.ts) | Routes execute/verify/repair phases |
 | [verify-repair-loop.ts](../../implementation/src/application/verify-repair-loop.ts) | Bounded repair retries |
 | [plan-task.ts](../../implementation/src/application/plan-task.ts) | Scan-based planner with convergence detection |
-| [migrate-task.ts](../../implementation/src/application/migrate-task.ts) | Planner convergence + `migrate up`/`down` |
+| [migrate-task.ts](../../implementation/src/application/migrate-task.ts) | Planner convergence loop for authoring pending migrations |
 | [docs-task.ts](../../implementation/src/application/docs-task.ts) | `design release`/`design diff` |
-| [test-specs.ts](../../implementation/src/application/test-specs.ts) | Spec assertion runner (materialized + future modes) |
+| [test-specs.ts](../../implementation/src/application/test-specs.ts) | Spec assertion runner (materialized mode) |
 | [start-project.ts](../../implementation/src/application/start-project.ts) | Workspace scaffolding |
 | [with-task.ts](../../implementation/src/application/with-task.ts) | Harness preset application |
 | [translate-task.ts](../../implementation/src/application/translate-task.ts) | Localization use case |

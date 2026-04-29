@@ -6,7 +6,7 @@ Reversal, re-execution, configuration, and housekeeping.
 
 | Command | Behavior |
 |---|---|
-| `undo` | Semantic reversal via worker. Reads most recent run artifact and asks the worker to undo. See [../prediction/undo-and-revert.md](../prediction/undo-and-revert.md). |
+| `undo` | Semantic reversal via worker. Reads most recent run artifact and asks the worker to undo. See [../lifecycle/undo-and-revert.md](../lifecycle/undo-and-revert.md). |
 | `revert` | Reverts revertable commits via `GitClient` and unchecks the corresponding boxes. Targets are selected by run id (`--run`, `--last <n>`, or `--all`); there is no positional source argument. |
 
 ## Re-execution

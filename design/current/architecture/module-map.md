@@ -21,9 +21,8 @@ One-line description of each file in [implementation/src/](../../implementation/
 | `checkbox.ts` | Pure checkbox state mutation; `resetAllCheckboxes` exported as public API. |
 | `todo-lines.ts` | Helpers for inserting and reformatting checkbox lines. |
 | `planner.ts` | Plan-output validation and additive TODO insertion used by `plan` / `migrate` convergence loops. |
-| `migration-parser.ts` | Parses migration filenames (`N. Title.md`, `N.M Snapshot.md`). |
+| `migration-parser.ts` | Parses migration filenames (`N. Title.md`). |
 | `migration-types.ts` | Migration-related types. |
-| `prediction-reconciliation.ts` | Reconciles predicted vs materialized state for `test --future`. |
 | `metadata-escape.ts` | Escapes metadata strings written into Markdown. |
 
 ### Worker and config
@@ -94,7 +93,7 @@ One-line description of each file in [implementation/src/](../../implementation/
 
 (See [layers.md](layers.md) for the high-traffic ones; this is the full list.)
 
-`run-task.ts`, `run-task-execution.ts`, `run-task-iteration.ts`, `run-task-utils.ts`, `run-task-worker-command.ts`, `run-lifecycle.ts`, `task-execution-dispatch.ts`, `task-context-resolution.ts`, `iteration-mode.ts`, `verify-repair-loop.ts`, `repair-template-resolution.ts`, `complete-task-iteration.ts`, `dry-run-dispatch.ts`, `prepare-task-prompts.ts`, `tool-execution.ts`, `cli-block-handlers.ts`, `cached-command-executor.ts`, `git-operations.ts`, `manage-artifacts.ts`, `trace-artifacts.ts`, `trace-enrichment.ts`, `trace-only-enrichment.ts`, `trace-run-session.ts`, `worker-failure-classification.ts`, `worker-health-status.ts`, `resolve-worker.ts`, `runtime-workspace-context.ts`, `workspace-selection.ts`, `workspace-lifecycle.ts`, `prediction-workspace-paths.ts`, `design-context.ts`, `docs-task.ts`, `docs-revision-task.ts`, `discuss-task.ts`, `help-task.ts`, `query-task.ts`, `query-output.ts`, `next-task.ts`, `list-tasks.ts`, `log-runs.ts`, `init-project.ts`, `start-project.ts`, `project-templates.ts`, `localize-project.ts`, `translate-task.ts`, `migrate-task.ts`, `plan-task.ts`, `research-task.ts`, `revert-task.ts`, `reverify-task.ts`, `undo-task.ts`, `unlock-task.ts`, `view-memory.ts`, `validate-memory.ts`, `clean-memory.ts`, `test-specs.ts`, `with-task.ts`, `config-mutation.ts`, `checkbox-operations.ts`.
+`run-task.ts`, `run-task-execution.ts`, `run-task-iteration.ts`, `run-task-utils.ts`, `run-task-worker-command.ts`, `run-lifecycle.ts`, `task-execution-dispatch.ts`, `task-context-resolution.ts`, `iteration-mode.ts`, `verify-repair-loop.ts`, `repair-template-resolution.ts`, `complete-task-iteration.ts`, `dry-run-dispatch.ts`, `prepare-task-prompts.ts`, `tool-execution.ts`, `cli-block-handlers.ts`, `cached-command-executor.ts`, `git-operations.ts`, `manage-artifacts.ts`, `trace-artifacts.ts`, `trace-enrichment.ts`, `trace-only-enrichment.ts`, `trace-run-session.ts`, `worker-failure-classification.ts`, `worker-health-status.ts`, `resolve-worker.ts`, `runtime-workspace-context.ts`, `workspace-selection.ts`, `workspace-lifecycle.ts`, `design-context.ts`, `docs-task.ts`, `docs-revision-task.ts`, `discuss-task.ts`, `help-task.ts`, `query-task.ts`, `query-output.ts`, `next-task.ts`, `list-tasks.ts`, `log-runs.ts`, `init-project.ts`, `start-project.ts`, `project-templates.ts`, `localize-project.ts`, `translate-task.ts`, `migrate-task.ts`, `plan-task.ts`, `research-task.ts`, `revert-task.ts`, `reverify-task.ts`, `undo-task.ts`, `unlock-task.ts`, `view-memory.ts`, `validate-memory.ts`, `clean-memory.ts`, `test-specs.ts`, `with-task.ts`, `config-mutation.ts`, `checkbox-operations.ts`.
 
 ## `infrastructure/`
 

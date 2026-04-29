@@ -27,7 +27,6 @@ The standard directory layout for a rundown-managed project. Configurable via `c
 │
 ├── migrations/
 │   ├── 1. <Title>.md        # plan + checkboxes for revision N
-│   ├── 1.1 Snapshot.md      # link to design/rev.1
 │   ├── 2. <Title>.md
 │   └── ...
 │
@@ -46,8 +45,8 @@ The standard directory layout for a rundown-managed project. Configurable via `c
 ## Why these names
 
 - **`.rundown/`** — discovered by upward walk; mirrors `.git/` ergonomics.
-- **`design/current/`** — separation between the working design (writable) and snapshots (`rev.<N>/`, immutable). See [../prediction/snapshots-and-backlog.md](../prediction/snapshots-and-backlog.md).
-- **`migrations/`** — numbered files, sortable; the migration number is the design revision delta. Snapshot pointers `<N>.1 Snapshot.md` keep design and migration files in lock-step.
+- **`design/current/`** — separation between the working design (writable) and snapshots (`rev.<N>/`, immutable). See [../lifecycle/design-revisions.md](../lifecycle/design-revisions.md).
+- **`migrations/`** — numbered files, sortable; each file captures planner-authored intent for a single revision delta and is consumed by lifecycle tooling.
 - **`specs/`** — optional location for acceptance specs referenced by `verify` and `migrate`.
 - **`implementation/`** — optional, for monorepo-style projects where rundown manages design but is decoupled from the source workspace. The `workspace.implementation` config field lets users point elsewhere.
 

@@ -1,4 +1,4 @@
-# Prediction-lifecycle commands
+# Lifecycle commands
 
 The commands that move the prediction workflow forward.
 
@@ -33,8 +33,6 @@ Key options:
 | Action | Behavior |
 |---|---|
 | (none) | Run the planner convergence loop until `DONE` |
-| `up` | Execute pending migrations and write `N.1 Snapshot.md` |
-| `down [n]` | Remove last `n` migrations, prune their snapshots, optionally append to `Backlog.md`, regenerate the now-current snapshot |
 
 Memory-related operations are top-level commands (`memory-view`, `memory-validate`, `memory-clean`), not actions of `migrate`. See [maintenance-commands.md](maintenance-commands.md).
 
@@ -59,9 +57,7 @@ Note: the historical name `docs` is still wired (the application file is `docs-t
 | Action / option | Effect |
 |---|---|
 | (no action) | Materialized mode — assertions in `--dir` (default `specs/`) evaluated against current workspace |
-| `--future` | Predicted-state mode using latest snapshot |
-| `--future <n>` | Predicted-state mode at migration `n` |
 | `test new "<prompt>"` | Create a new spec assertion file from the given prompt |
 | `test new "<prompt>" --run` | Create the spec and immediately verify it |
 
-See [../prediction/test-modes.md](../prediction/test-modes.md) for semantics.
+See [../lifecycle/test.md](../lifecycle/test.md) for semantics.

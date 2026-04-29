@@ -9,7 +9,7 @@
 | [command-surface.md](command-surface.md) | The full command tree at a glance |
 | [execution-commands.md](execution-commands.md) | `run`, `materialize`, `call`, `do`, `loop`, `all` |
 | [planning-commands.md](planning-commands.md) | `plan`, `add`, `make`, `explore`, `research`, `query`, `translate` |
-| [prediction-commands.md](prediction-commands.md) | `start`, `migrate`, `design`, `test` |
+| [lifecycle-commands.md](lifecycle-commands.md) | `start`, `migrate`, `design`, `test` |
 | [review-commands.md](review-commands.md) | `discuss`, `next`, `list`, `log`, `artifacts` |
 | [maintenance-commands.md](maintenance-commands.md) | `undo`, `revert`, `reverify`, `unlock`, `init`, `localize`, `with`, `config`, `workspace`, `worker-health`, memory commands |
 | [global-options.md](global-options.md) | `--config-dir`, `--agents`, output flags |

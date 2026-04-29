@@ -1,13 +1,5 @@
 import path from "node:path";
-import {
-  DEFAULT_TEST_FUTURE_TEMPLATE,
-  DEFAULT_TEST_MATERIALIZED_TEMPLATE,
-} from "../domain/defaults.js";
-import {
-  parseMigrationFilename,
-  parseMigrationDirectory,
-} from "../domain/migration-parser.js";
-import type { MigrationState } from "../domain/migration-types.js";
+import { DEFAULT_TEST_MATERIALIZED_TEMPLATE } from "../domain/defaults.js";
 import {
   EXIT_CODE_FAILURE,
   EXIT_CODE_SUCCESS,
@@ -22,7 +14,6 @@ import type {
 } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
-import { resolveDesignContext, resolveDesignContextSourceReferences } from "./design-context.js";
 import { resolveEffectiveWorkspaceRoot } from "../domain/workspace-link.js";
 import {
   resolveWorkspaceDirectories,
@@ -36,24 +27,11 @@ interface TestRunResult {
 }
 
 interface TestContext {
-  mode: "materialized" | "future";
+  mode: "materialized";
   includedDirectories: string;
   includedDirectoriesJson: string;
   excludedDirectories: string;
   excludedDirectoriesJson: string;
-  futureTarget: string;
-  design: string;
-  designContextSourceReferences: string;
-  designContextSourceReferencesJson: string;
-  designContextHasManagedDocs: string;
-  migrationHistory: string;
-  lowContextGuidance: string;
-}
-
-interface PredictionDirectoryContext {
-  designPath: string;
-  specsPath: string;
-  migrationsPath: string;
 }
 
 export interface TestSpecsDependencies {
@@ -70,7 +48,6 @@ export interface TestSpecsOptions {
   prompt?: string;
   run?: boolean;
   dir?: string;
-  future?: true | number;
   workerPattern: ParsedWorkerPattern;
   showAgentOutput?: boolean;
 }
@@ -103,14 +80,6 @@ export function createTestSpecs(
       directories: workspaceDirectories,
       placement: workspacePlacement,
     });
-    const predictionDirectoryContext = resolvePredictionDirectoryContext(
-      dependencies.fileSystem,
-      workspaceRoot,
-      invocationDir,
-      workspaceDirectories,
-      workspacePlacement,
-    );
-
     if (options.action === "new") {
       const assertion = (options.prompt ?? "").trim();
       if (assertion.length === 0) {
@@ -135,8 +104,7 @@ export function createTestSpecs(
       return runSpecFiles([createdSpecPath], {
         cwd: workspaceRoot,
         invocationRoot: invocationDir,
-        future: options.future,
-        predictionDirectoryContext,
+        fileSystem: dependencies.fileSystem,
         workerPattern: options.workerPattern,
         workerTimeoutMs,
         showAgentOutput: options.showAgentOutput,
@@ -165,8 +133,7 @@ export function createTestSpecs(
     return runSpecFiles(specFiles, {
       cwd: workspaceRoot,
       invocationRoot: invocationDir,
-      future: options.future,
-      predictionDirectoryContext,
+      fileSystem: dependencies.fileSystem,
       workerPattern: options.workerPattern,
       workerTimeoutMs,
       showAgentOutput: options.showAgentOutput,
@@ -178,8 +145,7 @@ export function createTestSpecs(
     options: {
       cwd: string;
       invocationRoot: string;
-      future: true | number | undefined;
-      predictionDirectoryContext: PredictionDirectoryContext;
+      fileSystem: FileSystem;
       workerPattern: ParsedWorkerPattern;
       workerTimeoutMs?: number;
       showAgentOutput?: boolean;
@@ -188,27 +154,19 @@ export function createTestSpecs(
     const {
       cwd,
       invocationRoot,
-      future,
-      predictionDirectoryContext,
+      fileSystem,
       workerPattern,
       workerTimeoutMs,
       showAgentOutput,
     } = options;
 
-    const verifyTemplate = loadTestVerifyTemplate(dependencies.templateLoader, cwd, future !== undefined);
+    const verifyTemplate = loadTestVerifyTemplate(dependencies.templateLoader, cwd);
     const testContext = buildTestContext(
-      dependencies.fileSystem,
+      fileSystem,
       cwd,
       invocationRoot,
-      predictionDirectoryContext,
-      future,
     );
-    const executionCwd = testContext.mode === "materialized"
-      ? invocationRoot
-      : cwd;
-    if (testContext.lowContextGuidance.length > 0) {
-      emit({ kind: "warn", message: testContext.lowContextGuidance });
-    }
+    const executionCwd = invocationRoot;
 
     let passed = 0;
     let failed = 0;
@@ -224,16 +182,10 @@ export function createTestSpecs(
         source: assertion,
         assertion,
         testMode: testContext.mode,
-        futureTarget: testContext.futureTarget,
         includedDirectories: testContext.includedDirectories,
         includedDirectoriesJson: testContext.includedDirectoriesJson,
         excludedDirectories: testContext.excludedDirectories,
         excludedDirectoriesJson: testContext.excludedDirectoriesJson,
-        design: testContext.design,
-        designContextSourceReferences: testContext.designContextSourceReferences,
-        designContextSourceReferencesJson: testContext.designContextSourceReferencesJson,
-        designContextHasManagedDocs: testContext.designContextHasManagedDocs,
-        migrationHistory: testContext.migrationHistory,
       };
       const prompt = renderTemplate(verifyTemplate, vars);
 
@@ -245,7 +197,6 @@ export function createTestSpecs(
         timeoutMs: workerTimeoutMs,
         env: {
           RUNDOWN_TEST_MODE: testContext.mode,
-          RUNDOWN_TEST_FUTURE_TARGET: testContext.futureTarget,
           RUNDOWN_TEST_INCLUDED_DIRECTORIES: testContext.includedDirectoriesJson,
           RUNDOWN_TEST_EXCLUDED_DIRECTORIES: testContext.excludedDirectoriesJson,
         },
@@ -354,33 +305,7 @@ function buildTestContext(
   fileSystem: FileSystem,
   projectRoot: string,
   invocationRoot: string,
-  predictionDirectoryContext: PredictionDirectoryContext,
-  future: true | number | undefined,
 ): TestContext {
-  const includeExclude = buildIncludedAndExcludedDirectories(
-    projectRoot,
-    invocationRoot,
-    predictionDirectoryContext,
-    future,
-  );
-
-  if (future === undefined) {
-    return {
-      mode: "materialized",
-      includedDirectories: includeExclude.included,
-      includedDirectoriesJson: JSON.stringify(includeExclude.includedList),
-      excludedDirectories: includeExclude.excluded,
-      excludedDirectoriesJson: JSON.stringify(includeExclude.excludedList),
-      futureTarget: "",
-      design: "",
-      designContextSourceReferences: "",
-      designContextSourceReferencesJson: "[]",
-      designContextHasManagedDocs: "false",
-      migrationHistory: "",
-      lowContextGuidance: "",
-    };
-  }
-
   const workspaceDirectories = resolveWorkspaceDirectories({
     fileSystem,
     workspaceRoot: projectRoot,
@@ -389,65 +314,47 @@ function buildTestContext(
     fileSystem,
     workspaceRoot: projectRoot,
   });
-  const migrationsDir = resolveWorkspacePath({
+  const includeExclude = buildIncludedAndExcludedDirectories(
     fileSystem,
-    workspaceRoot: projectRoot,
+    projectRoot,
     invocationRoot,
-    bucket: "migrations",
-    directories: workspaceDirectories,
-    placement: workspacePlacement,
-  });
-
-  const state = readMigrationState(fileSystem, migrationsDir);
-  const futureScope = selectFutureScope(state, future);
-  const designContext = resolveDesignContext(fileSystem, projectRoot, { invocationRoot });
-  const designContextSources = resolveDesignContextSourceReferences(fileSystem, projectRoot, { invocationRoot });
-  const designContextSourceReferences = designContextSources.sourceReferences
-    .map((sourcePath) => "- " + sourcePath)
-    .join("\n");
+    workspaceDirectories,
+    workspacePlacement,
+  );
 
   return {
-    mode: "future",
+    mode: "materialized",
     includedDirectories: includeExclude.included,
     includedDirectoriesJson: JSON.stringify(includeExclude.includedList),
     excludedDirectories: includeExclude.excluded,
     excludedDirectoriesJson: JSON.stringify(includeExclude.excludedList),
-    futureTarget: futureScope.targetLabel,
-    design: designContext.design,
-    designContextSourceReferences,
-    designContextSourceReferencesJson: JSON.stringify(designContextSources.sourceReferences),
-    designContextHasManagedDocs: designContextSources.hasManagedDocs ? "true" : "false",
-    migrationHistory: futureScope.migrationPaths.map((migrationPath) => "- " + path.basename(migrationPath)).join("\n"),
-    lowContextGuidance: designContext.isLowContext ? designContext.lowContextGuidance : "",
   };
 }
 
 function loadTestVerifyTemplate(
   templateLoader: TemplateLoader,
   projectRoot: string,
-  useFutureTemplate: boolean,
 ): string {
   const configDir = path.join(projectRoot, ".rundown");
-  if (useFutureTemplate) {
-    return templateLoader.load(path.join(configDir, "test-future.md"))
-      ?? templateLoader.load(path.join(configDir, "test-verify.md"))
-      ?? DEFAULT_TEST_FUTURE_TEMPLATE;
-  }
-
   return templateLoader.load(path.join(configDir, "test-materialized.md"))
     ?? templateLoader.load(path.join(configDir, "test-verify.md"))
     ?? DEFAULT_TEST_MATERIALIZED_TEMPLATE;
 }
 
-function resolvePredictionDirectoryContext(
+function buildIncludedAndExcludedDirectories(
   fileSystem: FileSystem,
   workspaceRoot: string,
   invocationRoot: string,
   workspaceDirectories: ReturnType<typeof resolveWorkspaceDirectories>,
   workspacePlacement: ReturnType<typeof resolveWorkspacePlacement>,
-): PredictionDirectoryContext {
-  return {
-    designPath: resolveWorkspacePath({
+): {
+  included: string;
+  includedList: string[];
+  excluded: string;
+  excludedList: string[];
+} {
+  const excludedList = [
+    resolveWorkspacePath({
       fileSystem,
       workspaceRoot,
       invocationRoot,
@@ -455,7 +362,7 @@ function resolvePredictionDirectoryContext(
       directories: workspaceDirectories,
       placement: workspacePlacement,
     }),
-    specsPath: resolveWorkspacePath({
+    resolveWorkspacePath({
       fileSystem,
       workspaceRoot,
       invocationRoot,
@@ -463,7 +370,7 @@ function resolvePredictionDirectoryContext(
       directories: workspaceDirectories,
       placement: workspacePlacement,
     }),
-    migrationsPath: resolveWorkspacePath({
+    resolveWorkspacePath({
       fileSystem,
       workspaceRoot,
       invocationRoot,
@@ -471,89 +378,12 @@ function resolvePredictionDirectoryContext(
       directories: workspaceDirectories,
       placement: workspacePlacement,
     }),
-  };
-}
-
-function buildIncludedAndExcludedDirectories(
-  projectRoot: string,
-  invocationRoot: string,
-  predictionDirectoryContext: PredictionDirectoryContext,
-  future: true | number | undefined,
-): {
-  included: string;
-  includedList: string[];
-  excluded: string;
-  excludedList: string[];
-} {
-  if (future === undefined) {
-    const excludedList = [
-      predictionDirectoryContext.designPath,
-      predictionDirectoryContext.specsPath,
-      predictionDirectoryContext.migrationsPath,
-    ];
-    return {
-      included: invocationRoot,
-      includedList: [invocationRoot],
-      excluded: excludedList.join("\n"),
-      excludedList,
-    };
-  }
-
-  const includedList = [
-    predictionDirectoryContext.designPath,
-    predictionDirectoryContext.migrationsPath,
   ];
-  return {
-    included: includedList.join("\n"),
-    includedList,
-    excluded: predictionDirectoryContext.specsPath,
-    excludedList: [predictionDirectoryContext.specsPath],
-  };
-}
-
-function selectFutureScope(
-  state: MigrationState,
-  future: true | number,
-): {
-  targetLabel: string;
-  migrationPaths: string[];
-} {
-  const maxMigrationNumber = state.migrations.length > 0
-    ? state.migrations[state.migrations.length - 1]!.number
-    : 0;
-  const requestedTarget = typeof future === "number" ? future : maxMigrationNumber;
-  const targetNumber = Math.max(0, Math.min(requestedTarget, maxMigrationNumber));
-
-  const targetLabel = typeof future === "number"
-    ? String(targetNumber)
-    : (targetNumber > 0 ? String(targetNumber) : "latest");
-
-  const migrationPaths = state.migrations
-    .filter((migration) => migration.number <= targetNumber)
-    .map((migration) => migration.filePath);
 
   return {
-    targetLabel,
-    migrationPaths,
+    included: invocationRoot,
+    includedList: [invocationRoot],
+    excluded: excludedList.join("\n"),
+    excludedList,
   };
-}
-
-function readMigrationState(fileSystem: FileSystem, migrationsDir: string): MigrationState {
-  if (!fileSystem.exists(migrationsDir)) {
-    return parseMigrationDirectory([], migrationsDir);
-  }
-
-  const migrationFiles = fileSystem.readdir(migrationsDir)
-    .filter((entry) => entry.isFile && isMigrationLikeMarkdown(entry.name))
-    .map((entry) => path.join(migrationsDir, entry.name));
-
-  return parseMigrationDirectory(migrationFiles, migrationsDir);
-}
-
-function isMigrationLikeMarkdown(fileName: string): boolean {
-  if (!fileName.toLowerCase().endsWith(".md")) {
-    return false;
-  }
-
-  return parseMigrationFilename(fileName) !== null;
 }

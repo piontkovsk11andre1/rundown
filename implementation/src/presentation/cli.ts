@@ -354,7 +354,7 @@ program
 
 program
   .command("start")
-  .description("Scaffold a new workspace with design/, prediction/, and migrations/ tracks.")
+  .description("Scaffold a new workspace with design/ and migrations/ tracks.")
   .argument("<description>", "Seed description for design/current/Target.md")
   .option("--dir <path>", "Target project directory (default: current working directory)")
   .option("--design-dir <path>", "Design workspace directory (default: design)", "design")
@@ -408,11 +408,6 @@ const migrateCommand = program
   .option("--dir <path>", "Migrations directory (default: configured workspace, fallback: ./migrations)")
   .option("--workspace <dir>", "Workspace directory to use for linked/multi-workspace resolution")
   .option("--confirm", "Show generated content and confirm before writing files", false)
-  .option(
-    "--run <id|latest>",
-    "[deprecated] Legacy down run target (ignored by revision-boundary rewind); will be removed next release",
-    "latest",
-  )
   .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
   .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
   .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")

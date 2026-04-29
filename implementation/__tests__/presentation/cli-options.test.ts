@@ -721,7 +721,7 @@ describe("CLI run option normalization", () => {
 
     const compactHelpOutput = stripAnsi(result.output).replace(/\s+/g, " ");
     expect(compactHelpOutput).toContain("start [options] <description>");
-    expect(compactHelpOutput).toContain("Scaffold a new workspace with design/, prediction/, and migrations/ tracks.");
+    expect(compactHelpOutput).toContain("Scaffold a new workspace with design/ and migrations/ tracks.");
   });
 
   it("registers migrate in root help with prediction-tree description", async () => {

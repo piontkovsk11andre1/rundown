@@ -45,8 +45,6 @@ import { resolveWorkspaceRootForPathSensitiveCommand } from "./workspace-selecti
 
 export interface MigrateTaskOptions {
   action?: string;
-  downCount?: number;
-  toRevName?: string;
   dir?: string;
   workspace?: string;
   confirm?: boolean;
@@ -54,7 +52,6 @@ export interface MigrateTaskOptions {
   slugWorkerPattern?: ParsedWorkerPattern;
   keepArtifacts?: boolean;
   showAgentOutput?: boolean;
-  runId?: string;
 }
 
 export interface MigrateTaskDependencies {

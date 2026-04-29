@@ -331,7 +331,6 @@ interface MigrateCommandOptions {
   slugWorkerPattern?: ParsedWorkerPattern;
   keepArtifacts: boolean;
   showAgentOutput: boolean;
-  runId?: string;
 }
 
 interface DesignCommandOptions {
@@ -1370,7 +1369,6 @@ export function createMigrateCommandAction({
       ...(slugWorkerPattern ? { slugWorkerPattern } : {}),
       keepArtifacts: Boolean(opts.keepArtifacts as boolean | undefined),
       showAgentOutput: resolveShowAgentOutputOption(opts),
-      runId: normalizeOptionalString(opts.run),
     });
   };
 }

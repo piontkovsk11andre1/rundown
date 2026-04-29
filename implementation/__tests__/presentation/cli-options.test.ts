@@ -708,7 +708,7 @@ describe("CLI run option normalization", () => {
 
     const compactHelpOutput = stripAnsi(result.output).replace(/\s+/g, " ");
     expect(compactHelpOutput).toContain("materialize [options] <source>");
-    expect(compactHelpOutput).toContain("Run all tasks with revertable defaults (equivalent to `run --all --revertable`). Writes implementation/ only; refresh prediction/ with `rundown migrate up`.");
+    expect(compactHelpOutput).toContain("Run all tasks with revertable defaults (equivalent to `run --all --revertable`).");
   });
 
   it("registers start in root help with workspace-track description", async () => {
@@ -734,7 +734,7 @@ describe("CLI run option normalization", () => {
 
     const compactHelpOutput = stripAnsi(result.output).replace(/\s+/g, " ");
     expect(compactHelpOutput).toContain("migrate [options] [action] [count]");
-    expect(compactHelpOutput).toContain("Generate and manage revision-aware prediction migrations. Writes the predicted-implementation tree into prediction/.");
+    expect(compactHelpOutput).toContain("Generate revision-aware migration files and manage migration rewind.");
   });
 
   it("keeps start help text focused on design revision snapshots", async () => {

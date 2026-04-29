@@ -1528,7 +1528,6 @@ describe("createMaterializeCommandAction", () => {
       runAll: true,
       commitAfterComplete: true,
       keepArtifacts: true,
-      writePredictionBucket: false,
     }));
   });
 
@@ -1552,7 +1551,6 @@ describe("createMaterializeCommandAction", () => {
       runAll: true,
       keepArtifacts: true,
       commitAfterComplete: true,
-      writePredictionBucket: false,
     }));
   });
 
@@ -1595,7 +1593,6 @@ describe("createMaterializeCommandAction", () => {
         runAll: true,
         keepArtifacts: true,
         commitAfterComplete: true,
-        writePredictionBucket: false,
       }));
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -1652,7 +1649,6 @@ describe("createMaterializeCommandAction", () => {
         commitAfterComplete: true,
         commitMode: "per-task",
         commitMessageTemplate: "cli: {{task}}",
-        writePredictionBucket: false,
       }));
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -2132,7 +2128,7 @@ describe("createMigrateCommandAction", () => {
       getWorkerFromSeparator: () => undefined,
     });
 
-    const exitCode = await action("up", undefined, {
+    const exitCode = await action(undefined, undefined, {
       dir: "migrations",
       workspace: "../workspace-source",
       worker: "opencode run --model gpt-5.3-codex",
@@ -2142,7 +2138,7 @@ describe("createMigrateCommandAction", () => {
     expect(exitCode).toBe(0);
     expect(migrateTask).toHaveBeenCalledTimes(1);
     expect(migrateTask).toHaveBeenCalledWith(expect.objectContaining({
-      action: "up",
+      action: undefined,
       dir: "migrations",
       workspace: "../workspace-source",
       workerPattern: {
@@ -2195,9 +2191,10 @@ describe("createMigrateCommandAction", () => {
       getWorkerFromSeparator: () => undefined,
     });
 
-    expect(() => action("save", undefined, {})).toThrow("Invalid migrate action: save");
-    expect(() => action("diff", undefined, {})).toThrow("Invalid migrate action: diff");
-    expect(() => action("preview", undefined, {})).toThrow("Invalid migrate action: preview");
+    expect(() => action("up", undefined, {})).toThrow("unknown action: up");
+    expect(() => action("save", undefined, {})).toThrow("unknown action: save");
+    expect(() => action("diff", undefined, {})).toThrow("unknown action: diff");
+    expect(() => action("preview", undefined, {})).toThrow("unknown action: preview");
     expect(migrateTask).not.toHaveBeenCalled();
   });
 

@@ -266,27 +266,11 @@ export function createMigrateTask(
           artifactRunExtra,
         });
       } else if (action === "up") {
-        exitCode = await runMigrateUp({
-          dependencies,
-          migrationsDir,
-          projectRoot,
-          invocationRoot: executionContext.invocationDir,
-          workspaceRoot,
-          workspaceDirectories,
-          workspacePlacement,
-          workspacePaths,
-          workerPattern: resolvedWorker.workerPattern,
-          slugWorkerPattern,
-          workerTimeoutMs,
-          artifactContext,
-          keepArtifacts: Boolean(options.keepArtifacts),
-          showAgentOutput: Boolean(options.showAgentOutput),
-          executionContext,
-          newMigrationsSource: "",
-          skipRunTaskWhenNoMigrations: false,
-          writePredictionBucket: options.writePredictionBucket,
-          artifactRunExtra,
+        emit({
+          kind: "error",
+          message: "Invalid migrate action: up. Allowed: down.",
         });
+        exitCode = EXIT_CODE_FAILURE;
       } else {
         exitCode = await runMigrateDown({
           dependencies,
@@ -797,31 +781,6 @@ async function runMigrateLoop(input: {
           targetRevision.name,
           [],
         );
-        const upCode = await runMigrateUp({
-          dependencies,
-          migrationsDir,
-          projectRoot,
-          invocationRoot,
-          workspaceRoot,
-          workspaceDirectories,
-          workspacePlacement,
-          workspacePaths,
-          workerPattern,
-          slugWorkerPattern,
-          workerTimeoutMs,
-          artifactContext,
-          keepArtifacts,
-          showAgentOutput,
-          executionContext,
-          newMigrationsSource: "",
-          skipRunTaskWhenNoMigrations: false,
-          writePredictionBucket: false,
-          targetRevision: targetRevision.name,
-          artifactRunExtra,
-        });
-        if (upCode !== EXIT_CODE_SUCCESS && upCode !== EXIT_CODE_NO_WORK) {
-          return upCode;
-        }
         continue;
       }
 
@@ -892,204 +851,7 @@ async function runMigrateLoop(input: {
       targetRevision.name,
       createdMigrationFileNames,
     );
-
-    const upCode = await runMigrateUp({
-      dependencies,
-      migrationsDir,
-      projectRoot,
-      invocationRoot,
-      workspaceRoot,
-      workspaceDirectories,
-      workspacePlacement,
-      workspacePaths,
-      workerPattern,
-      slugWorkerPattern,
-      workerTimeoutMs,
-      artifactContext,
-      keepArtifacts,
-      showAgentOutput,
-      executionContext,
-      newMigrationsSource: createdMigrationContents.join("\n\n---\n\n"),
-      skipRunTaskWhenNoMigrations: false,
-      writePredictionBucket: false,
-      targetRevision: targetRevision.name,
-      artifactRunExtra,
-    });
-    if (upCode !== EXIT_CODE_SUCCESS) {
-      return upCode;
-    }
   }
-}
-
-async function runMigrateUp(input: {
-  dependencies: MigrateTaskDependencies;
-  migrationsDir: string;
-  projectRoot: string;
-  invocationRoot: string;
-  workspaceRoot: string;
-  workspaceDirectories: ReturnType<typeof resolveWorkspaceDirectories>;
-  workspacePlacement: ReturnType<typeof resolveWorkspacePlacement>;
-  workspacePaths: ReturnType<typeof resolveWorkspacePaths>;
-  workerPattern: ParsedWorkerPattern;
-  slugWorkerPattern: ParsedWorkerPattern;
-  artifactContext: ReturnType<ArtifactStore["createContext"]>;
-  workerTimeoutMs?: number;
-  keepArtifacts: boolean;
-  showAgentOutput: boolean;
-  executionContext: {
-    invocationDir: string;
-    workspaceDir: string;
-    workspaceLinkPath: string;
-    isLinkedWorkspace: boolean;
-  };
-  newMigrationsSource: string;
-  skipRunTaskWhenNoMigrations: boolean;
-  writePredictionBucket?: boolean;
-  targetRevision?: string;
-  artifactRunExtra: Record<string, unknown>;
-}): Promise<number> {
-  const {
-    dependencies,
-    migrationsDir,
-    projectRoot,
-    invocationRoot,
-    workspaceRoot,
-    workspaceDirectories,
-    workspacePlacement,
-    workspacePaths,
-    workerPattern,
-    slugWorkerPattern,
-    artifactContext,
-    workerTimeoutMs,
-    keepArtifacts,
-    showAgentOutput,
-    executionContext,
-    newMigrationsSource,
-    skipRunTaskWhenNoMigrations,
-    writePredictionBucket = true,
-    targetRevision,
-    artifactRunExtra,
-  } = input;
-
-  if (targetRevision) {
-    artifactRunExtra.targetRevision = targetRevision;
-  }
-
-  if (!dependencies.runTask) {
-    throw new Error("migrate up requires runTask dependency.");
-  }
-
-  await reconcilePendingMigrationPredictions({
-    dependencies,
-    migrationsDir,
-    workspaceRoot,
-    slugWorkerPattern,
-    workerTimeoutMs,
-    artifactContext,
-    showAgentOutput,
-  });
-
-  const stateAfterReconciliation = readMigrationState(dependencies.fileSystem, migrationsDir);
-  const pendingAfterReconciliation = getPendingExecutableMigrationNumbers(
-    dependencies.fileSystem,
-    stateAfterReconciliation,
-  );
-  const migrationByNumber = new Map(
-    stateAfterReconciliation.migrations.map((migration) => [migration.number, migration.filePath]),
-  );
-  const executedMigrationNumbers: number[] = [];
-
-  let runExitCode: number = EXIT_CODE_SUCCESS;
-  if (!skipRunTaskWhenNoMigrations || pendingAfterReconciliation.length > 0) {
-    for (const migrationNumber of pendingAfterReconciliation) {
-      const migrationPath = migrationByNumber.get(migrationNumber);
-      if (!migrationPath) {
-        continue;
-      }
-
-      runExitCode = await dependencies.runTask({
-        source: migrationPath,
-        cwd: workspaceRoot,
-        invocationDir: executionContext.invocationDir,
-        workspaceDir: executionContext.workspaceDir,
-        workspaceLinkPath: executionContext.workspaceLinkPath,
-        isLinkedWorkspace: executionContext.isLinkedWorkspace,
-        mode: "wait",
-        workerPattern,
-        sortMode: "name-sort",
-        verify: true,
-        onlyVerify: false,
-        forceExecute: false,
-        forceAttempts: 2,
-        noRepair: false,
-        repairAttempts: 1,
-        dryRun: false,
-        printPrompt: false,
-        keepArtifacts,
-        varsFileOption: undefined,
-        cliTemplateVarArgs: [],
-        commitAfterComplete: true,
-        commitMode: "per-task",
-        runAll: true,
-        redo: false,
-        resetAfter: false,
-        clean: false,
-        rounds: 1,
-        showAgentOutput,
-        trace: false,
-        traceOnly: false,
-        forceUnlock: false,
-        ignoreCliBlock: false,
-        verbose: false,
-      });
-
-      if (runExitCode === EXIT_CODE_SUCCESS) {
-        executedMigrationNumbers.push(migrationNumber);
-        continue;
-      }
-
-      if (runExitCode !== EXIT_CODE_NO_WORK) {
-        break;
-      }
-    }
-  }
-
-  if (runExitCode !== EXIT_CODE_SUCCESS && runExitCode !== EXIT_CODE_NO_WORK) {
-    return runExitCode;
-  }
-
-  const stateAfterRun = readMigrationState(dependencies.fileSystem, migrationsDir);
-  if (stateAfterRun.currentPosition <= 0) {
-    persistPredictionBaselineSnapshot(dependencies.fileSystem, migrationsDir, workspaceRoot, {
-      writePredictionBucket,
-    });
-    return EXIT_CODE_SUCCESS;
-  }
-
-  const migrationsFromBatchFromRun = buildMigrationBatchSourceFromNumbers({
-      fileSystem: dependencies.fileSystem,
-      state: stateAfterRun,
-      migrationNumbers: executedMigrationNumbers,
-    });
-  const migrationsFromBatch = migrationsFromBatchFromRun.trim().length > 0
-    ? migrationsFromBatchFromRun
-    : newMigrationsSource;
-
-  if (migrationsFromBatch.trim().length === 0) {
-    persistPredictionBaselineSnapshot(dependencies.fileSystem, migrationsDir, workspaceRoot, {
-      writePredictionBucket,
-    });
-    return EXIT_CODE_NO_WORK;
-  }
-
-  if (targetRevision) {
-    markRevisionMigrated(dependencies.fileSystem, projectRoot, targetRevision);
-  }
-
-  persistPredictionBaselineSnapshot(dependencies.fileSystem, migrationsDir, workspaceRoot, {
-    writePredictionBucket,
-  });
-  return EXIT_CODE_SUCCESS;
 }
 
 async function runMigrateDown(input: {

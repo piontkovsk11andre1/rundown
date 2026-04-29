@@ -52,7 +52,6 @@ describe("parseMigrationDirectory", () => {
     expect(state.migrations[0]?.number).toBe(1);
     expect(state.migrations[0]?.reviews.map((review) => review.type)).toEqual(["review"]);
     expect(state.currentPosition).toBe(1);
-    expect(state.backlogPath).toBe(path.join(migrationsDir, "Backlog.md"));
   });
 
   it("ignores malformed migration-like filenames safely", () => {
@@ -78,15 +77,4 @@ describe("parseMigrationDirectory", () => {
     expect(state.migrations[1]?.reviews).toEqual([]);
   });
 
-  it("does not set backlogPath when singleton Backlog.md is absent", () => {
-    const migrationsDir = path.join("/tmp", "project", "migrations");
-    const files = [
-      path.join(migrationsDir, "1. Initialize.md"),
-      path.join(migrationsDir, "1.1 Snapshot.md"),
-      path.join(migrationsDir, "1.2 Backlog.md"),
-    ];
-
-    const state = parseMigrationDirectory(files, migrationsDir);
-    expect(state.backlogPath).toBeNull();
-  });
 });

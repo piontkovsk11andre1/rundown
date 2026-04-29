@@ -3240,97 +3240,6 @@ describe.sequential("CLI integration", () => {
     expect(fs.readFileSync(path.join(forcedWorkspace, "roadmap.md"), "utf-8")).toContain("- [ ] Write docs");
   });
 
-  it("migrate down mirrors undo dirty-worktree safety and --force behavior", async () => {
-    const blockedWorkspace = makeTempWorkspace();
-    setupUndoDirtyWorkspace(blockedWorkspace, {
-      runId: "run-20260411T161022955Z-down-blocked",
-      taskText: "Write docs",
-    });
-
-    const blockedResult = await runCli([
-      "migrate",
-      "down",
-      "--",
-      "node",
-      "-e",
-      "console.log('OK')",
-    ], blockedWorkspace);
-
-    expect(blockedResult.code).toBe(1);
-    expect(blockedResult.errors.some((line) => line.includes("Working directory is not clean"))).toBe(true);
-    expect(fs.readFileSync(path.join(blockedWorkspace, "roadmap.md"), "utf-8")).toContain("- [x] Write docs");
-
-    const forcedWorkspace = makeTempWorkspace();
-    setupUndoDirtyWorkspace(forcedWorkspace, {
-      runId: "run-20260411T161022955Z-down-force",
-      taskText: "Write docs",
-    });
-
-    const forcedResult = await runCli([
-      "migrate",
-      "down",
-      "--force",
-      "--",
-      "node",
-      "-e",
-      "console.log('OK')",
-    ], forcedWorkspace);
-
-    expect(forcedResult.code).toBe(0);
-    expect(forcedResult.logs.some((line) => line.includes("--force enabled: skipping clean-worktree precondition check."))).toBe(true);
-    expect(fs.readFileSync(path.join(forcedWorkspace, "roadmap.md"), "utf-8")).toContain("- [ ] Write docs");
-  });
-
-  it("migrate down [n] routes to undo --last <n> and preserves --force/--commit flags", async () => {
-    const undoWorkspace = makeTempWorkspace();
-    setupUndoLastRunsWorkspace(undoWorkspace);
-
-    const undoResult = await runCli([
-      "undo",
-      "--last",
-      "2",
-      "--force",
-      "--commit",
-      "--",
-      "node",
-      "-e",
-      "console.log('OK')",
-    ], undoWorkspace);
-
-    expect(undoResult.code).toBe(0);
-    expect(undoResult.logs.some((line) => line.includes("--force enabled: skipping clean-worktree precondition check."))).toBe(true);
-    expect(fs.readFileSync(path.join(undoWorkspace, "roadmap.md"), "utf-8")).toBe([
-      "- [x] Oldest task",
-      "- [ ] Middle task",
-      "- [ ] Newest task",
-      "",
-    ].join("\n"));
-
-    const migrateWorkspace = makeTempWorkspace();
-    setupUndoLastRunsWorkspace(migrateWorkspace);
-
-    const migrateResult = await runCli([
-      "migrate",
-      "down",
-      "2",
-      "--force",
-      "--commit",
-      "--",
-      "node",
-      "-e",
-      "console.log('OK')",
-    ], migrateWorkspace);
-
-    expect(migrateResult.code).toBe(0);
-    expect(migrateResult.logs.some((line) => line.includes("--force enabled: skipping clean-worktree precondition check."))).toBe(true);
-    expect(fs.readFileSync(path.join(migrateWorkspace, "roadmap.md"), "utf-8")).toBe([
-      "- [x] Oldest task",
-      "- [ ] Middle task",
-      "- [ ] Newest task",
-      "",
-    ].join("\n"));
-  });
-
   it("revert --dry-run prints planned runs and git commands", async () => {
     const workspace = makeTempWorkspace();
     const roadmapPath = path.join(workspace, "roadmap.md");
@@ -11625,7 +11534,6 @@ describe.sequential("CLI integration", () => {
     expect(compactHelpOutput).toContain("--workspace <dir> Workspace directory to use for linked/multi-workspace resolution");
     expect(compactHelpOutput).toContain("Linked workspace selection:");
     expect(compactHelpOutput).toContain("Required when .rundown/workspace.link has multiple records with no default");
-    expect(compactHelpOutput).toContain("--run <id|latest> [deprecated] Legacy down run target");
   });
 
   it("design diff --help includes --workspace examples", async () => {

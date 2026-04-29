@@ -34,7 +34,7 @@ describe("splitWorkerFromSeparator", () => {
 
 describe("rewriteAllAlias", () => {
   it("returns argv unchanged", () => {
-    expect(rewriteAllAlias(["migrate", "down"]))
-      .toEqual(["migrate", "down"]);
+    expect(rewriteAllAlias(["migrate"]))
+      .toEqual(["migrate"]);
   });
 });

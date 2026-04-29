@@ -2197,17 +2197,6 @@ describe("createMigrateCommandAction", () => {
     expect(migrateTask).not.toHaveBeenCalled();
   });
 
-  it("rejects legacy migrate down action", () => {
-    const migrateTask = vi.fn(async () => 0);
-    const app = { migrateTask } as unknown as CliApp;
-    const action = createMigrateCommandAction({
-      getApp: () => app,
-      getWorkerFromSeparator: () => undefined,
-    });
-
-    expect(() => action("down", undefined, {})).toThrow("unknown action: down");
-    expect(migrateTask).not.toHaveBeenCalled();
-  });
 });
 
 describe("createDesignReleaseCommandAction", () => {

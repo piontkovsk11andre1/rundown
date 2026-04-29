@@ -59,6 +59,5 @@ describe("createMigrationAdapter", () => {
     expect(state.migrations.map((migration) => migration.number)).toEqual([1, 2, 3]);
     expect(state.migrations[1]?.reviews.map((review) => review.type)).toEqual(["review"]);
     expect(state.migrations[2]?.reviews.map((review) => review.type)).toEqual([]);
-    expect(state.backlogPath).toBe(path.join(migrationsDir, "Backlog.md"));
   });
 });

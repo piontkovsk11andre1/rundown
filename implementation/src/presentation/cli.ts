@@ -1159,7 +1159,7 @@ export async function parseCliArgs(argv: string[]): Promise<void> {
     validateUnsupportedDoMode(rundownArgs);
     validateUnsupportedLoopMode(rundownArgs);
     validateRunCommitModeOption(rundownArgs);
-    validateMigrateDownToOptionFormat(rundownArgs);
+    validateUnsupportedMigrateAction(rundownArgs);
   } catch (error) {
     emitCliFatalError(error, runtimeState.invocationLogState, runtimeState.app?.emitOutput);
     terminate(1);
@@ -1178,6 +1178,56 @@ export async function parseCliArgs(argv: string[]): Promise<void> {
   } finally {
     await awaitLockReleaseShutdown();
     cleanupCallCliCacheArtifactAtTeardown(rewrittenArgv, runtimeState.invocationLogState);
+  }
+}
+
+/**
+ * Rejects removed positional migrate actions before commander parsing.
+ */
+function validateUnsupportedMigrateAction(argv: string[]): void {
+  if (resolveInvocationCommand(argv) !== "migrate") {
+    return;
+  }
+
+  const optionsWithValue = new Set([
+    "--dir",
+    "--workspace",
+    "--run",
+    "--worker",
+    "--slug-worker",
+    "--to",
+  ]);
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+
+    if (token === "--") {
+      break;
+    }
+
+    if (token === "migrate") {
+      continue;
+    }
+
+    if (token === "--config-dir") {
+      index += 1;
+      continue;
+    }
+
+    if (token.startsWith("--config-dir=")) {
+      continue;
+    }
+
+    if (optionsWithValue.has(token)) {
+      index += 1;
+      continue;
+    }
+
+    if (token.startsWith("--")) {
+      continue;
+    }
+
+    throw new Error(`unknown action: ${token}`);
   }
 }
 
@@ -1416,28 +1466,6 @@ function validateRunCommitModeOption(argv: string[]): void {
 }
 
 /**
- * Validates legacy migrate target option format before commander parsing.
- */
-function validateMigrateDownToOptionFormat(argv: string[]): void {
-  if (resolveInvocationCommand(argv) !== "migrate") {
-    return;
-  }
-
-  const toRevisionName = resolveMigrateDownToOptionValue(argv);
-  if (toRevisionName === undefined) {
-    return;
-  }
-
-  if (!/^rev\.[0-9]+$/.test(toRevisionName)) {
-    throw new Error(
-      "Invalid --to value: "
-        + toRevisionName
-        + ". Allowed: rev.<n> (for example: rev.0).",
-    );
-  }
-}
-
-/**
  * Resolves the effective --mode option value from argv tokens.
  */
 function resolveModeOptionValue(argv: string[]): string | undefined {
@@ -1495,36 +1523,6 @@ function resolveCommitModeOptionValue(argv: string[]): string | undefined {
   }
 
   return commitMode;
-}
-
-/**
- * Resolves the effective --to option value from argv tokens.
- */
-function resolveMigrateDownToOptionValue(argv: string[]): string | undefined {
-  let toRevisionName: string | undefined;
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-
-    if (token === "--") {
-      break;
-    }
-
-    if (token === "--to") {
-      const nextToken = argv[index + 1];
-      if (nextToken !== undefined && nextToken !== "--") {
-        toRevisionName = nextToken;
-      }
-      index += 1;
-      continue;
-    }
-
-    if (token.startsWith("--to=")) {
-      toRevisionName = token.slice("--to=".length);
-    }
-  }
-
-  return toRevisionName;
 }
 
 /**

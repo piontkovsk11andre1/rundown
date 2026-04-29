@@ -424,9 +424,68 @@ describeIfMigrateAvailable("migrate revision-action removals", () => {
     const diffOutput = stripAnsi([...diffResult.logs, ...diffResult.errors, ...diffResult.stdoutWrites, ...diffResult.stderrWrites].join("\n"));
     const previewOutput = stripAnsi([...previewResult.logs, ...previewResult.errors, ...previewResult.stdoutWrites, ...previewResult.stderrWrites].join("\n"));
 
-    expect(saveOutput).toContain("too many arguments for 'migrate'");
-    expect(diffOutput).toContain("too many arguments for 'migrate'");
-    expect(previewOutput).toContain("too many arguments for 'migrate'");
+    expect(saveOutput.toLowerCase()).toContain("unknown action");
+    expect(saveOutput).toContain("save");
+    expect(diffOutput.toLowerCase()).toContain("unknown action");
+    expect(diffOutput).toContain("diff");
+    expect(previewOutput.toLowerCase()).toContain("unknown action");
+    expect(previewOutput).toContain("preview");
+  });
+
+  it("rejects migrate down with an unknown action error", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictionProject(workspace);
+
+    const result = await runCli(["migrate", "down", "1", "--dir", "migrations"], workspace);
+
+    expect(result.code).toBe(1);
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n")).toLowerCase();
+    expect(combinedOutput).toContain("unknown action");
+    expect(combinedOutput).toContain("down");
+  });
+
+  it("rejects --to for migrate with an unknown option error", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldPredictionProject(workspace);
+
+    const result = await runCli(["migrate", "--to", "rev.1", "--dir", "migrations"], workspace);
+
+    expect(result.code).toBe(1);
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n")).toLowerCase();
+    expect(combinedOutput).toContain("unknown option");
+    expect(combinedOutput).toContain("--to");
+  });
+
+  it("still runs migrate planner loop when no action is provided", async () => {
+    const workspace = makeTempWorkspace();
+    scaffoldLoopMigrateProject(workspace);
+
+    const result = await runCli([
+      "migrate",
+      "--dir",
+      "migrations",
+      "--",
+      "node",
+      "-e",
+      buildConvergentMigrateWorkerScript([
+        "planner-loop-still-active",
+        "planner-loop-still-active",
+        "DONE",
+      ]),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(fs.existsSync(path.join(workspace, "migrations", formatMigrationFilename(2, "planner-loop-still-active")))).toBe(true);
   });
 });
 

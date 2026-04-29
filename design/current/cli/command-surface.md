@@ -33,11 +33,9 @@ This list is the authoritative inventory of every `program.command(...)` registr
 |---|---|
 | `start "<description>"` | Scaffold a prediction-oriented project |
 | `migrate` | Convergence loop: planner → migration files |
-| `migrate up` | Execute pending migrations, write `N.1 Snapshot.md` |
-| `migrate down [n]` | Remove last `n`, prune snapshots, regenerate |
 | `design release` | Snapshot `design/current/` → `design/rev.N/` |
 | `design diff [target]` | Compare revisions |
-| `test [action] [prompt]` | Verify specs (materialized or `--future`); `test new "<prompt>"` creates a new spec assertion |
+| `test [action] [prompt]` | Verify specs in the current materialized workspace; `test new "<prompt>"` creates a new spec assertion |
 
 ## Review
 

@@ -42,11 +42,7 @@ import {
   findLowestUnplannedRevision,
   formatDesignRevisionUnifiedDiff,
   formatRevisionDesignContext,
-  markRevisionMigrated,
   markRevisionPlanned,
-  markRevisionUnplanned,
-  markRevisionUnmigrated,
-  parseDesignRevisionDirectoryName,
   prepareDesignRevisionDiffContext,
   type DesignRevisionDiffContext,
 } from "./design-context.js";
@@ -57,8 +53,6 @@ import {
   resolveWorkspacePath,
 } from "./workspace-paths.js";
 import { resolveWorkspaceRootForPathSensitiveCommand } from "./workspace-selection.js";
-
-type MigrateAction = "down";
 
 export interface MigrateTaskOptions {
   action?: string;
@@ -188,11 +182,10 @@ export function createMigrateTask(
     }
 
     const rawAction = options.action;
-    const action = getMigrationActionFromArg(rawAction);
-    if (rawAction !== undefined && rawAction.trim().length > 0 && !action) {
+    if (rawAction !== undefined && rawAction.trim().length > 0) {
       emit({
         kind: "error",
-        message: "Invalid migrate action: " + rawAction + ". Allowed: down.",
+        message: "Invalid migrate action: " + rawAction + ".",
       });
       return EXIT_CODE_FAILURE;
     }
@@ -241,50 +234,25 @@ export function createMigrateTask(
     const artifactRunExtra: Record<string, unknown> = {};
 
     try {
-      let exitCode: number = EXIT_CODE_SUCCESS;
-      if (!action) {
-        exitCode = await runMigrateLoop({
-          dependencies,
-          migrationsDir,
-          projectRoot,
-          invocationRoot: executionContext.invocationDir,
-          workspaceRoot,
-          workspaceDirectories,
-          workspacePlacement,
-          workspacePaths,
-          workerPattern: resolvedWorker.workerPattern,
-          slugWorkerPattern,
-          workerTimeoutMs,
-          artifactContext,
-          keepArtifacts: Boolean(options.keepArtifacts),
-          showAgentOutput: Boolean(options.showAgentOutput),
-          executionContext,
-          confirm: Boolean(options.confirm),
-          artifactRunExtra,
-        });
-      } else {
-        exitCode = await runMigrateDown({
-          dependencies,
-          migrationsDir,
-          projectRoot,
-          invocationRoot: executionContext.invocationDir,
-          workspaceRoot,
-          workspaceDirectories,
-          workspacePlacement,
-          workspacePaths,
-          workerPattern: resolvedWorker.workerPattern,
-          slugWorkerPattern,
-          workerTimeoutMs,
-          artifactContext,
-          keepArtifacts: Boolean(options.keepArtifacts),
-          showAgentOutput: Boolean(options.showAgentOutput),
-          executionContext,
-          downCount: options.downCount,
-          toRevName: options.toRevName,
-          noBacklog: Boolean(options.noBacklog),
-          artifactRunExtra,
-        });
-      }
+      const exitCode = await runMigrateLoop({
+        dependencies,
+        migrationsDir,
+        projectRoot,
+        invocationRoot: executionContext.invocationDir,
+        workspaceRoot,
+        workspaceDirectories,
+        workspacePlacement,
+        workspacePaths,
+        workerPattern: resolvedWorker.workerPattern,
+        slugWorkerPattern,
+        workerTimeoutMs,
+        artifactContext,
+        keepArtifacts: Boolean(options.keepArtifacts),
+        showAgentOutput: Boolean(options.showAgentOutput),
+        executionContext,
+        confirm: Boolean(options.confirm),
+        artifactRunExtra,
+      });
 
       const finalizeExtra = Object.keys(artifactRunExtra).length > 0
         ? artifactRunExtra
@@ -703,7 +671,6 @@ async function runMigrateLoop(input: {
     });
 
     const stateBeforeCreate = readMigrationState(dependencies.fileSystem, migrationsDir);
-    const createdMigrationContents: string[] = [];
     const createdMigrationFileNames: string[] = [];
     for (const [index, migrationName] of plannedNames.entries()) {
       const number = stateBeforeCreate.currentPosition + index + 1;
@@ -711,7 +678,6 @@ async function runMigrateLoop(input: {
       const migrationPath = path.join(migrationsDir, migrationFileName);
       const migrationContent = createMigrationDocument(number, migrationName);
       dependencies.fileSystem.writeText(migrationPath, migrationContent);
-      createdMigrationContents.push(migrationContent.trim());
       createdMigrationFileNames.push(migrationFileName);
 
       await runExploreForMigration({
@@ -721,13 +687,6 @@ async function runMigrateLoop(input: {
         emit,
       });
     }
-
-    removePromotedBacklogItems({
-      fileSystem: dependencies.fileSystem,
-      backlogPath: stateBeforeCreate.backlogPath ?? path.join(migrationsDir, "Backlog.md"),
-      promotedNames: plannedNames,
-      promotedContents: createdMigrationContents,
-    });
 
     if (confirm) {
       if (dependencies.interactiveInput.prepareForPrompt) {
@@ -756,292 +715,6 @@ async function runMigrateLoop(input: {
   }
 }
 
-async function runMigrateDown(input: {
-  dependencies: MigrateTaskDependencies;
-  migrationsDir: string;
-  projectRoot: string;
-  invocationRoot: string;
-  workspaceRoot: string;
-  workspaceDirectories: ReturnType<typeof resolveWorkspaceDirectories>;
-  workspacePlacement: ReturnType<typeof resolveWorkspacePlacement>;
-  workspacePaths: ReturnType<typeof resolveWorkspacePaths>;
-  workerPattern: ParsedWorkerPattern;
-  slugWorkerPattern: ParsedWorkerPattern;
-  artifactContext: ReturnType<ArtifactStore["createContext"]>;
-  workerTimeoutMs?: number;
-  keepArtifacts: boolean;
-  showAgentOutput: boolean;
-  executionContext: {
-    invocationDir: string;
-    workspaceDir: string;
-    workspaceLinkPath: string;
-    isLinkedWorkspace: boolean;
-  };
-  downCount?: number;
-  toRevName?: string;
-  noBacklog: boolean;
-  artifactRunExtra: Record<string, unknown>;
-}): Promise<number> {
-  const {
-    dependencies,
-    migrationsDir,
-    invocationRoot,
-    workspaceRoot,
-    artifactContext,
-    keepArtifacts,
-    downCount,
-    toRevName,
-    noBacklog,
-  } = input;
-
-  const emit = dependencies.output.emit.bind(dependencies.output);
-  const revisions = discoverDesignRevisionDirectories(
-    dependencies.fileSystem,
-    workspaceRoot,
-    { invocationRoot },
-  );
-  const plannedRevisions = revisions
-    .slice()
-    .sort((left, right) => left.index - right.index)
-    .filter((revision) => revision.metadata.plannedAt !== null);
-  const lastPlannedRevision = plannedRevisions[plannedRevisions.length - 1];
-  if (!lastPlannedRevision || lastPlannedRevision.index === 0) {
-    emit({ kind: "info", message: "Already at baseline (rev.0). Nothing to rewind." });
-    return EXIT_CODE_SUCCESS;
-  }
-
-  const { stopAfter } = resolveRewindTarget(revisions, downCount, toRevName);
-  const parsedStopAfter = parseDesignRevisionDirectoryName(stopAfter);
-  if (!parsedStopAfter) {
-    throw new Error("Failed to resolve rewind boundary: " + stopAfter + ".");
-  }
-
-  const revisionsToRewind = plannedRevisions
-    .filter((revision) => revision.index > parsedStopAfter.index)
-    .sort((left, right) => right.index - left.index);
-  if (revisionsToRewind.length === 0) {
-    emit({ kind: "info", message: "Already at " + stopAfter + ". Nothing to rewind." });
-    return EXIT_CODE_SUCCESS;
-  }
-
-  if (!dependencies.revertTask) {
-    throw new Error("migrate down requires revertTask dependency.");
-  }
-
-  const completedRunBySource = new Map<string, { runId: string }>();
-  for (const run of dependencies.artifactStore
-    .listSaved(artifactContext.configDir)
-    .filter((savedRun) => savedRun.commandName === "run" && savedRun.status === "completed")) {
-    const normalizedSource = typeof run.source === "string"
-      ? run.source.trim().replace(/\\/g, "/")
-      : "";
-    if (normalizedSource.length === 0 || completedRunBySource.has(normalizedSource)) {
-      continue;
-    }
-    completedRunBySource.set(normalizedSource, { runId: run.runId });
-  }
-
-  for (const revision of revisionsToRewind) {
-    const revisionMigrations = (revision.metadata.migrations ?? [])
-      .map((migrationFileName) => migrationFileName.trim())
-      .filter((migrationFileName) => migrationFileName.length > 0);
-    const rewoundMigrationRecords: Array<{ name: string; source: string }> = [];
-
-    for (const migrationFileName of revisionMigrations) {
-      const migrationPath = path.join(migrationsDir, migrationFileName);
-      const migrationSource = dependencies.fileSystem.exists(migrationPath)
-        ? dependencies.fileSystem.readText(migrationPath)
-        : "";
-
-      const normalizedMigrationPath = migrationPath.replace(/\\/g, "/");
-      const normalizedMigrationFileName = migrationFileName.replace(/\\/g, "/");
-      const matchingRun = completedRunBySource.get(normalizedMigrationPath)
-        ?? completedRunBySource.get(normalizedMigrationFileName)
-        ?? [...completedRunBySource.entries()]
-          .find(([sourcePath]) => {
-            return sourcePath.endsWith("/" + normalizedMigrationFileName)
-              || sourcePath === normalizedMigrationFileName;
-          })?.[1];
-
-      if (matchingRun) {
-        const revertCode = await dependencies.revertTask({
-          runId: matchingRun.runId,
-          method: "revert",
-          dryRun: false,
-          keepArtifacts,
-          force: false,
-        });
-        if (revertCode !== EXIT_CODE_SUCCESS) {
-          emit({
-            kind: "error",
-            message:
-              "Failed to rewind revision "
-              + revision.name
-              + " while reverting "
-              + migrationFileName
-              + ".",
-          });
-          return revertCode;
-        }
-      } else {
-        emit({
-          kind: "warn",
-          message:
-            "No artifact run found for "
-            + migrationFileName
-            + "; treating it as already reverted.",
-        });
-      }
-
-      rewoundMigrationRecords.push({
-        name: parseMigrationFilename(migrationFileName)?.name ?? migrationFileName,
-        source: migrationSource,
-      });
-
-      if (dependencies.fileSystem.exists(migrationPath)) {
-        dependencies.fileSystem.unlink(migrationPath);
-      }
-    }
-
-    markRevisionUnplanned(dependencies.fileSystem, workspaceRoot, revision.name);
-    markRevisionUnmigrated(dependencies.fileSystem, workspaceRoot, revision.name);
-    if (!noBacklog && rewoundMigrationRecords.length > 0) {
-      const stateBeforeBacklogUpdate = readMigrationState(dependencies.fileSystem, migrationsDir);
-      const backlogPath = stateBeforeBacklogUpdate.backlogPath ?? path.join(migrationsDir, "Backlog.md");
-      appendMigrationsToBacklog({
-        fileSystem: dependencies.fileSystem,
-        backlogPath,
-        migrations: rewoundMigrationRecords,
-      });
-    }
-    emit({
-      kind: "info",
-      message:
-        "Rewound "
-        + revision.name
-        + " ("
-        + String(revisionMigrations.length)
-        + " migrations reverted).",
-    });
-  }
-
-  if (revisionsToRewind.length > 1) {
-    const newestRewoundRevision = revisionsToRewind[0];
-    const oldestRewoundRevision = revisionsToRewind[revisionsToRewind.length - 1];
-    if (newestRewoundRevision && oldestRewoundRevision) {
-      emit({
-        kind: "info",
-        message:
-          "Migrations rewound from "
-          + oldestRewoundRevision.name
-          + " to "
-          + newestRewoundRevision.name
-          + ".",
-      });
-    }
-  }
-
-  const predictionInputs = readPredictionInputs(dependencies.fileSystem, migrationsDir, workspaceRoot);
-  savePredictionBaseline(dependencies.fileSystem, migrationsDir, createPredictionBaseline(predictionInputs));
-
-  return EXIT_CODE_SUCCESS;
-}
-
-function appendMigrationsToBacklog(input: {
-  fileSystem: FileSystem;
-  backlogPath: string;
-  migrations: ReadonlyArray<{ name: string; source: string }>;
-}): void {
-  const { fileSystem, backlogPath, migrations } = input;
-  if (migrations.length === 0) {
-    return;
-  }
-
-  const existingBacklog = fileSystem.exists(backlogPath)
-    ? fileSystem.readText(backlogPath)
-    : "";
-  const removedSection = migrations
-    .map((migration) => {
-      return [
-        `- ${migration.name}`,
-        "",
-        "```md",
-        migration.source.trim(),
-        "```",
-      ].join("\n");
-    })
-    .join("\n\n");
-
-  const normalizedExisting = existingBacklog.trim();
-  const nextBacklog = normalizedExisting.length > 0
-    ? normalizedExisting + "\n\n" + removedSection + "\n"
-    : ["# Backlog", "", removedSection, ""].join("\n");
-  fileSystem.writeText(backlogPath, nextBacklog);
-}
-
-function resolveRewindTarget(
-  metas: ReadonlyArray<{
-    index: number;
-    name: string;
-    metadata: {
-      plannedAt: string | null;
-    };
-  }>,
-  downCount?: number,
-  toRevName?: string,
-): { stopAfter: string } {
-  const sortedMetas = metas
-    .slice()
-    .sort((left, right) => left.index - right.index);
-  const plannedRevisions = sortedMetas
-    .filter((revision) => revision.metadata.plannedAt !== null);
-
-  if (toRevName !== undefined) {
-    if (downCount !== undefined) {
-      throw new Error("Cannot combine `migrate down [n]` with `--to <revName>`. Choose one rewind target mode.");
-    }
-
-    const normalizedToRevisionName = toRevName.trim();
-    const parsedTargetRevision = parseDesignRevisionDirectoryName(normalizedToRevisionName);
-    if (!parsedTargetRevision) {
-      throw new Error(
-        "Invalid --to value: "
-          + toRevName
-          + ". Allowed: rev.<n> (for example: rev.0).",
-      );
-    }
-
-    if (parsedTargetRevision.index === 0) {
-      return { stopAfter: "rev.0" };
-    }
-
-    const matchedPlannedRevision = plannedRevisions.find((revision) => revision.index === parsedTargetRevision.index);
-    if (!matchedPlannedRevision) {
-      throw new Error(
-        "Invalid --to value: "
-          + normalizedToRevisionName
-          + ". Target revision must be currently planned (or rev.0).",
-      );
-    }
-
-    return { stopAfter: matchedPlannedRevision.name };
-  }
-
-  const highestPlannedRevision = plannedRevisions[plannedRevisions.length - 1];
-  if (!highestPlannedRevision) {
-    return { stopAfter: "rev.0" };
-  }
-
-  const requestedDownCount = Number.isFinite(downCount)
-    ? Math.max(1, Math.floor(downCount ?? 1))
-    : 1;
-  const stopAfterIndex = Math.max(0, highestPlannedRevision.index - requestedDownCount);
-  const matchedStopAfterRevision = sortedMetas.find((revision) => revision.index === stopAfterIndex);
-
-  return {
-    stopAfter: matchedStopAfterRevision?.name ?? `rev.${String(stopAfterIndex)}`,
-  };
-}
 
 function parseProposedMigrationNames(stdout: string): string[] | null {
   const trimmed = stdout.trim();
@@ -1076,129 +749,6 @@ function createMigrationDocument(number: number, migrationName: string): string 
   ].join("\n");
 }
 
-function removePromotedBacklogItems(input: {
-  fileSystem: FileSystem;
-  backlogPath: string;
-  promotedNames: readonly string[];
-  promotedContents: readonly string[];
-}): void {
-  const { fileSystem, backlogPath, promotedNames, promotedContents } = input;
-  if (!fileSystem.exists(backlogPath)) {
-    return;
-  }
-
-  const source = fileSystem.readText(backlogPath);
-  const next = stripBacklogEntries(source, promotedNames, promotedContents);
-  if (next !== source) {
-    fileSystem.writeText(backlogPath, next);
-  }
-}
-
-function stripBacklogEntries(
-  source: string,
-  promotedNames: readonly string[],
-  promotedContents: readonly string[],
-): string {
-  if (source.length === 0) {
-    return source;
-  }
-
-  const normalizedPromotedNames = new Set(promotedNames.map((name) => name.trim().toLowerCase()).filter(Boolean));
-  const normalizedPromotedContents = new Set(promotedContents.map((content) => normalizeBacklogEntryContent(content)).filter(Boolean));
-  if (normalizedPromotedNames.size === 0 && normalizedPromotedContents.size === 0) {
-    return source;
-  }
-
-  const lines = source.split(/\r?\n/);
-  const entryRanges: Array<{ start: number; end: number }> = [];
-  let inFence = false;
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    if (/^```/.test(line.trim())) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) {
-      continue;
-    }
-    if (!/^\s*[-*]\s+/.test(line)) {
-      continue;
-    }
-
-    entryRanges.push({ start: index, end: lines.length });
-    if (entryRanges.length > 1) {
-      entryRanges[entryRanges.length - 2]!.end = index;
-    }
-  }
-
-  if (entryRanges.length === 0) {
-    return source;
-  }
-
-  const removeIndexes = new Set<number>();
-  for (const range of entryRanges) {
-    const entryLines = lines.slice(range.start, range.end);
-    const firstLine = entryLines[0] ?? "";
-    const entryName = parseBacklogEntryName(firstLine);
-    const entryContent = extractBacklogEntryFencedContent(entryLines);
-    const byName = entryName.length > 0 && normalizedPromotedNames.has(entryName);
-    const byContent = entryContent.length > 0 && normalizedPromotedContents.has(entryContent);
-    if (!byName && !byContent) {
-      continue;
-    }
-
-    for (let index = range.start; index < range.end; index += 1) {
-      removeIndexes.add(index);
-    }
-  }
-
-  if (removeIndexes.size === 0) {
-    return source;
-  }
-
-  const nextLines = lines.filter((_line, index) => !removeIndexes.has(index));
-  let next = nextLines.join("\n");
-  if (/\r\n/.test(source)) {
-    next = next.replace(/\n/g, "\r\n");
-  }
-  if (source.endsWith("\n") && !next.endsWith("\n")) {
-    next += /\r\n/.test(source) ? "\r\n" : "\n";
-  }
-  return next;
-}
-
-function parseBacklogEntryName(line: string): string {
-  const match = line.match(/^\s*[-*]\s+`?([a-z0-9]+(?:-[a-z0-9]+)*)`?\s*$/i);
-  return (match?.[1] ?? "").trim().toLowerCase();
-}
-
-function extractBacklogEntryFencedContent(entryLines: readonly string[]): string {
-  let start = -1;
-  for (let index = 0; index < entryLines.length; index += 1) {
-    if (/^```/.test((entryLines[index] ?? "").trim())) {
-      start = index + 1;
-      break;
-    }
-  }
-
-  if (start < 0) {
-    return "";
-  }
-
-  const contentLines: string[] = [];
-  for (let index = start; index < entryLines.length; index += 1) {
-    if (/^```/.test((entryLines[index] ?? "").trim())) {
-      break;
-    }
-    contentLines.push(entryLines[index] ?? "");
-  }
-
-  return normalizeBacklogEntryContent(contentLines.join("\n"));
-}
-
-function normalizeBacklogEntryContent(content: string): string {
-  return content.trim().replace(/\r\n/g, "\n");
-}
 
 function buildMigrationBatchSourceFromNumbers(input: {
   fileSystem: FileSystem;
@@ -1423,19 +973,6 @@ export async function confirmBeforeWrite(
   }
 
   return approved;
-}
-
-export function isMigrationAction(value: string | undefined): value is MigrateAction {
-  return value === "down";
-}
-
-
-export function getMigrationActionFromArg(value: string | undefined): MigrateAction | undefined {
-  if (value === undefined || value.trim() === "") {
-    return undefined;
-  }
-
-  return isMigrationAction(value) ? value : undefined;
 }
 
 export function isMigrationLikeFileName(fileName: string): boolean {

@@ -1,11 +1,11 @@
 # `rundown`
 
-> A test-driven future-prediction framework.
+> A test-driven planning and execution framework.
 > Use it to create art, run a business, do research, and write code.
 
-## Prediction
+## Planning model
 
-The plan of any work is a prediction of the future. If the work is planned correctly, then for distant predictions it doesn't need to be executed — it's enough to ask the AI to imagine that the plan has already been carried out and to plan further from there.
+The plan of any work is a model of a future result. If the work is planned correctly, we can decompose it into deterministic steps, materialize those steps in the workspace, and verify the outcome with tests.
 
 Imagine work shaped like this:
 
@@ -13,7 +13,7 @@ Imagine work shaped like this:
 A -> B -> C
 ```
 
-From this shape we can isolate two tasks that best model the real situations in which predictions are useful.
+From this shape we can isolate two tasks that model real planning situations.
 
 ### Planning
 

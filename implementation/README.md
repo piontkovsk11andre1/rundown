@@ -1,11 +1,11 @@
 # `rundown`
 
-> A test-driven future-prediction framework.
+> A test-driven planning and execution framework.
 > Use it to create art, run a business, do research, and write code.
 
-## Prediction
+## Planning model
 
-The plan of any work is a prediction of the future. If the work is planned correctly, then for distant predictions it doesn't need to be executed — it's enough to ask the AI to imagine that the plan has already been carried out and to plan further from there.
+The plan of any work is a model of a future result. If the work is planned correctly, we can decompose it into deterministic steps, materialize those steps in the workspace, and verify the outcome with tests.
 
 Imagine work shaped like this:
 
@@ -13,7 +13,7 @@ Imagine work shaped like this:
 A -> B -> C
 ```
 
-From this shape we can isolate two tasks that best model the real situations in which predictions are useful.
+From this shape we can isolate two tasks that model real planning situations.
 
 ### Planning
 
@@ -191,11 +191,11 @@ These files don't have to live in the same directory where you work on the mater
 
 ### What it does
 
-You can work on a document and predict migrations, or create migrations that drift the target. `rundown` will:
+You can work on a design document and evolve it through migrations. `rundown` will:
 
-- Predict the materialized target from the migrations.
-- Propose the next migrations.
-- Run automated tests based on the prediction — how many features are already predicted, whether scenarios work, whether the document conforms to the format, and any other **quality gate** you define.
+- Propose the next migrations through the planner convergence loop.
+- Materialize pending migrations into workspace files.
+- Run automated tests against the materialized workspace — whether scenarios work, whether the document conforms to the format, and any other **quality gate** you define.
 
 ### As a harness
 
@@ -255,12 +255,12 @@ bun add -g @p10i/rundown
 - [CLI: `next`](docs/cli-next.md) — surface the next executable task in a workflow
 - [CLI: `make`](docs/cli-make.md) — create migration/design/spec documents from templates
 - [CLI: `migrate`](docs/cli-migrate.md) — create and manage migration documents
-- [CLI: `materialize`](docs/cli-materialize.md) — materialize predicted state into workspace files
+- [CLI: `materialize`](docs/cli-materialize.md) — materialize pending migrations into workspace files
 - [CLI: `plan`](docs/cli-plan.md) — produce implementation plans from prompts and context
 - [CLI: `research`](docs/cli-research.md) — gather structured research artifacts for tasks
 - [CLI: `run`](docs/cli-run.md) — execute full rundown phases with verification and repair loops
 - [CLI: `start`](docs/cli-start.md) — bootstrap and launch a guided rundown session
-- [CLI: `test`](docs/cli-test.md) — run verification/test workflows against predicted or real state
+- [CLI: `test`](docs/cli-test.md) — run verification/test workflows against materialized workspace state
 - [CLI: `reverify`](docs/cli-reverify.md) — re-run verification on prior runs and artifacts
 - [CLI: `revert`](docs/cli-revert.md) — revert selected rundown-generated changes safely
 - [CLI: `undo`](docs/cli-undo.md) — undo recent rundown operations and restore prior state

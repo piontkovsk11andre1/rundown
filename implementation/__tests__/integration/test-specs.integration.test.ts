@@ -25,6 +25,54 @@ const hasTestSpecsUseCase = fs.existsSync(TEST_SPECS_FILE_PATH);
 const describeIfTestSpecsAvailable = hasTestCommand && hasTestSpecsUseCase ? describe : describe.skip;
 
 describeIfTestSpecsAvailable("test-specs integration", () => {
+  it("rundown test --future fails as unknown option", async () => {
+    const workspace = makeTempWorkspace();
+
+    const result = await runCli(["test", "--future"], workspace);
+
+    expect(result.code).not.toBe(0);
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n"));
+    expect(combinedOutput).toMatch(/unknown option.*--future/i);
+  });
+
+  it("rundown test specs/ evaluates assertions against live workspace", async () => {
+    const workspace = makeTempWorkspace();
+    fs.writeFileSync(path.join(workspace, "Design.md"), "# Design\n\nSHOULD_NOT_APPEAR_DESIGN\n", "utf-8");
+    fs.mkdirSync(path.join(workspace, "specs"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, "specs", "live-workspace.md"), "assert live workspace", "utf-8");
+
+    const result = await runCli([
+      "test",
+      "specs/",
+      "--",
+      "node",
+      "-e",
+      [
+        "const fs=require('node:fs');",
+        "const p=process.argv[process.argv.length-1];",
+        "const prompt=fs.readFileSync(p,'utf-8');",
+        "const hasPredictedSection=prompt.includes('## Predicted context');",
+        "const hasDesignToken=prompt.includes('SHOULD_NOT_APPEAR_DESIGN');",
+        "if(!hasPredictedSection&&!hasDesignToken){console.log('OK');process.exit(0);}",
+        "console.log('NOT_OK: expected test specs/ to verify only against live workspace');process.exit(0);",
+      ].join(""),
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    const combinedOutput = stripAnsi([
+      ...result.logs,
+      ...result.errors,
+      ...result.stdoutWrites,
+      ...result.stderrWrites,
+    ].join("\n"));
+    expect(combinedOutput).toContain("PASS live-workspace.md");
+  });
+
   it("rundown test resolves linked workspace and configured specs directory", async () => {
     const sandbox = makeTempWorkspace();
     const sourceWorkspace = path.join(sandbox, "source-workspace");

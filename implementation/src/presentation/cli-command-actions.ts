@@ -1489,19 +1489,24 @@ export function createTestCommandAction({
 ) => CliActionResult {
   return (action: string | undefined, prompt: string | undefined, opts: CliOpts) => {
     const normalizedAction = normalizeOptionalString(action);
-    if (normalizedAction !== undefined && !isTestAction(normalizedAction)) {
-      throw new Error("Invalid test action: " + normalizedAction + ". Allowed: new.");
+    const isNewAction = normalizedAction === "new";
+    const sourceDirFromPositional = normalizedAction !== undefined && !isNewAction
+      ? normalizedAction
+      : undefined;
+
+    if (sourceDirFromPositional?.startsWith("-")) {
+      throw new Error("error: unknown option '" + sourceDirFromPositional + "'");
     }
 
-    if (prompt !== undefined && normalizedAction !== "new") {
+    if (prompt !== undefined && !isNewAction) {
       throw new Error("The optional [prompt] argument is only supported for `test new <prompt>`.");
     }
 
     return resolveTestCommandHandler(getApp())({
-      action: normalizedAction,
+      action: isNewAction ? "new" : undefined,
       prompt: normalizeOptionalString(prompt),
       run: Boolean(opts.run as boolean | undefined),
-      dir: normalizeOptionalString(opts.dir),
+      dir: normalizeOptionalString(opts.dir) ?? sourceDirFromPositional,
       workerPattern: resolveWorkerPattern(opts.worker, getWorkerFromSeparator),
       showAgentOutput: resolveShowAgentOutputOption(opts),
     });
@@ -2807,10 +2812,6 @@ function formatWithConfiguredKeyLine(configuredKey: WithTaskConfiguredKeyResult)
   }
 
   return `- ${configuredKey.keyPath} (preserved)`;
-}
-
-function isTestAction(value: string): value is TestAction {
-  return value === "new";
 }
 
 function parseConfigMutationScope(value: string | undefined): ConfigMutationScope {

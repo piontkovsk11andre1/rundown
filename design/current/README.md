@@ -16,7 +16,7 @@ This directory is the living design specification of the [implementation/](../..
 | [overview/](overview/README.md) | What `rundown` is, why it exists, and the prediction model that frames everything |
 | [architecture/](architecture/README.md) | Hexagonal layering, ports/adapters, composition root, module map |
 | [execution/](execution/README.md) | The workload protocol: parse → select → execute → verify → repair → complete |
-| [prediction/](prediction/README.md) | Design revisions, migrations, snapshots, materialization, predicted-state tests |
+| [lifecycle/](lifecycle/README.md) | Design release, migrate (planner loop), materialize, undo/revert, test |
 | [workers/](workers/README.md) | Worker configuration, resolution order, patterns, execution modes, routing, health |
 | [builtin-tools/](builtin-tools/README.md) | Built-in prefix tools (`verify:`, `for:`, `parallel:`, `include:`, `memory:`, …) |
 | [cli/](cli/README.md) | Full command surface, options, and CLI behavior contracts |

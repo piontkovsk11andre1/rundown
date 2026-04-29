@@ -73,7 +73,6 @@ export interface MigrateTaskOptions {
   keepArtifacts?: boolean;
   showAgentOutput?: boolean;
   runId?: string;
-  writePredictionBucket?: boolean;
 }
 
 export interface MigrateTaskDependencies {

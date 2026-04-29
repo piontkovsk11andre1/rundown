@@ -469,7 +469,6 @@ For this repository's own work tracking, treat \`migrations/\` as the canonical 
 - Do not manually toggle checkboxes in migration files as a completion shortcut; completion should follow successful rundown execute/verify flow.
 - Keep migration edits scoped to the selected task. Avoid rewriting unrelated checklist items, renumbering files, or reformatting migration history unless explicitly requested.
 - Treat \`migrations/.rundown/\` memory files and run metadata as managed artifacts: read them when relevant, but do not invent replacement structures.
-- Distinguish repository migration-task files from prediction-mode workspace artifacts (for example \`7. Add Feature.md\` plus files under \`{{workspacePredictionPath}}\`) used by \`rundown start\`/\`rundown migrate\` project scaffolds.
 
 ## Repository docs
 
@@ -725,8 +724,6 @@ You are planning migration names for a prediction-driven project.
 
 {{designContextSourceReferences}}
 
-Read the current prediction tree at \`{{workspacePredictionPath}}\` directly.
-
 ## Migration history
 
 {{migrationHistory}}
@@ -764,7 +761,6 @@ Verify whether the selected test assertion is true.
 ## Test mode
 
 - Mode: {{testMode}}
-- Future target: {{futureTarget}}
 
 ## Included directories
 
@@ -790,8 +786,6 @@ Verify whether the selected test assertion is true.
 
 {{designContextSourceReferences}}
 
-Read the current prediction tree at \`{{workspacePredictionPath}}\` directly.
-
 ### Migration history
 
 {{migrationHistory}}
@@ -813,8 +807,7 @@ ${DEFAULT_TEST_VERIFY_TEMPLATE}
 
 Interpretation rules:
 
-- This run is in \`future\` mode. Evaluate only predicted state context (design + migration + prediction-tree inputs).
-- Do not rely on the current materialized source implementation for verdict decisions.
+- This run uses standard test verification semantics.
 `;
 
 /**

@@ -257,7 +257,8 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     expect(capturedPrompt).toContain("+line added in rev.2");
     expect(capturedPrompt).toContain("#### added.md (added)");
     expect(capturedPrompt).toContain("+added file from rev.2");
-    expect(capturedPrompt).toMatch(/Read the current prediction tree at `.+` directly\./);
+    expect(capturedPrompt).toContain("Inventory design changes not yet reflected in the current prediction tree.");
+    expect(capturedPrompt).not.toContain("Read the current prediction tree at");
     expect(capturedPrompt).not.toContain("satellite");
   });
 

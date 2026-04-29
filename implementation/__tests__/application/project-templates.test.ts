@@ -37,10 +37,11 @@ import type { TemplateLoader } from "../../src/domain/ports/index.js";
 import { loadProjectTemplatesFromPorts } from "../../src/application/project-templates.js";
 
 describe("project-templates", () => {
-  it("keeps migrate planner prompt on prediction-tree wording", () => {
+  it("drops direct prediction-path guidance from migrate planner prompt", () => {
     const renderedPlannerPrompt = DEFAULT_MIGRATE_TEMPLATE.replaceAll("{{workspacePredictionPath}}", "prediction/");
 
-    expect(renderedPlannerPrompt).toContain("prediction/");
+    expect(renderedPlannerPrompt).toContain("current prediction tree");
+    expect(renderedPlannerPrompt).not.toContain("prediction/");
     expect(renderedPlannerPrompt).not.toContain("satellite");
   });
 

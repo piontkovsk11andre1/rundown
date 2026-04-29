@@ -58,9 +58,7 @@ import {
 } from "./workspace-paths.js";
 import { resolveWorkspaceRootForPathSensitiveCommand } from "./workspace-selection.js";
 
-type MigrateAction =
-  | "up"
-  | "down";
+type MigrateAction = "down";
 
 export interface MigrateTaskOptions {
   action?: string;
@@ -195,7 +193,7 @@ export function createMigrateTask(
     if (rawAction !== undefined && rawAction.trim().length > 0 && !action) {
       emit({
         kind: "error",
-        message: "Invalid migrate action: " + rawAction + ". Allowed: up, down.",
+        message: "Invalid migrate action: " + rawAction + ". Allowed: down.",
       });
       return EXIT_CODE_FAILURE;
     }
@@ -265,12 +263,6 @@ export function createMigrateTask(
           confirm: Boolean(options.confirm),
           artifactRunExtra,
         });
-      } else if (action === "up") {
-        emit({
-          kind: "error",
-          message: "Invalid migrate action: up. Allowed: down.",
-        });
-        exitCode = EXIT_CODE_FAILURE;
       } else {
         exitCode = await runMigrateDown({
           dependencies,
@@ -1435,8 +1427,7 @@ export async function confirmBeforeWrite(
 }
 
 export function isMigrationAction(value: string | undefined): value is MigrateAction {
-  return value === "up"
-    || value === "down";
+  return value === "down";
 }
 
 

@@ -776,8 +776,8 @@ describe("CLI run option normalization", () => {
 
     expect(call.source).toBe("tasks.md");
     expect(call.runAll).toBe(true);
-    expect(call.commitAfterComplete).toBe(true);
-    expect(call.keepArtifacts).toBe(true);
+    expect(call.commitAfterComplete).toBe(false);
+    expect(call.keepArtifacts).toBe(false);
   });
 
   it("parses run-like options for materialize while forwarding separator worker command", async () => {
@@ -813,8 +813,8 @@ describe("CLI run option normalization", () => {
     expect(call.showAgentOutput).toBe(true);
     expect(call.workerCommand).toEqual(["opencode", "run", "--model", "gpt-5.3-codex"]);
     expect(call.runAll).toBe(true);
-    expect(call.commitAfterComplete).toBe(true);
-    expect(call.keepArtifacts).toBe(true);
+    expect(call.commitAfterComplete).toBe(false);
+    expect(call.keepArtifacts).toBe(false);
   });
 
   it("accepts separator-passed worker commands for materialize", async () => {
@@ -832,8 +832,8 @@ describe("CLI run option normalization", () => {
     expect(call.source).toBe("tasks.md");
     expect(call.workerCommand).toEqual(["opencode", "run", "--model", "gpt-5.3-codex"]);
     expect(call.runAll).toBe(true);
-    expect(call.commitAfterComplete).toBe(true);
-    expect(call.keepArtifacts).toBe(true);
+    expect(call.commitAfterComplete).toBe(false);
+    expect(call.keepArtifacts).toBe(false);
   });
 
   it("keeps materialize revertable defaults with --config-dir and separator worker args", async () => {
@@ -863,8 +863,8 @@ describe("CLI run option normalization", () => {
       expect(call.source).toBe("tasks.md");
       expect(call.workerCommand).toEqual(["opencode", "run"]);
       expect(call.runAll).toBe(true);
-      expect(call.commitAfterComplete).toBe(true);
-      expect(call.keepArtifacts).toBe(true);
+      expect(call.commitAfterComplete).toBe(false);
+      expect(call.keepArtifacts).toBe(false);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
@@ -902,8 +902,8 @@ describe("CLI run option normalization", () => {
 
       expect(call.source).toBe("tasks.md");
       expect(call.runAll).toBe(true);
-      expect(call.keepArtifacts).toBe(true);
-      expect(call.commitAfterComplete).toBe(true);
+      expect(call.keepArtifacts).toBe(false);
+      expect(call.commitAfterComplete).toBe(false);
       expect(call.commitMode).toBe("per-task");
       expect(call.commitMessageTemplate).toBe("cli: {{task}}");
     } finally {
@@ -4980,6 +4980,7 @@ async function invokeRunAndCaptureCall(args: string[], runTask: ReturnType<typeo
   vi.doMock("../../src/create-app.js", () => ({
     createApp: () => ({
       runTask,
+      snapshotTask: vi.fn(async () => 0),
       reverifyTask: vi.fn(async () => 0),
       nextTask: vi.fn(async () => 0),
       listTasks: vi.fn(async () => 0),

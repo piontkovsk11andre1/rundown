@@ -1680,9 +1680,10 @@ describe("run/do auto-compact options", () => {
 describe("createMaterializeCommandAction", () => {
   it("keeps materialize on the runTask path and separate from migrate/predict", async () => {
     const runTask = vi.fn(async () => 0);
+    const snapshotTask = vi.fn(async () => 0);
     const migrateTask = vi.fn(async () => 0);
     const predictTask = vi.fn(async () => 0);
-    const app = { runTask, migrateTask, predictTask } as unknown as CliApp;
+    const app = { runTask, snapshotTask, migrateTask, predictTask } as unknown as CliApp;
     const action = createMaterializeCommandAction({
       getApp: () => app,
       getWorkerFromSeparator: () => undefined,
@@ -1695,6 +1696,7 @@ describe("createMaterializeCommandAction", () => {
 
     expect(exitCode).toBe(0);
     expect(runTask).toHaveBeenCalledTimes(1);
+    expect(snapshotTask).toHaveBeenCalledTimes(1);
     expect(migrateTask).not.toHaveBeenCalled();
     expect(predictTask).not.toHaveBeenCalled();
   });
@@ -1702,8 +1704,12 @@ describe("createMaterializeCommandAction", () => {
   it("matches run --all --revertable core action fields", async () => {
     const runViaRunTask = vi.fn(async (_request: Record<string, unknown>) => 0);
     const runViaMaterializeTask = vi.fn(async (_request: Record<string, unknown>) => 0);
+    const snapshotViaMaterializeTask = vi.fn(async (_request: Record<string, unknown>) => 0);
     const runApp = { runTask: runViaRunTask } as unknown as CliApp;
-    const materializeApp = { runTask: runViaMaterializeTask } as unknown as CliApp;
+    const materializeApp = {
+      runTask: runViaMaterializeTask,
+      snapshotTask: snapshotViaMaterializeTask,
+    } as unknown as CliApp;
 
     const runAction = createRunCommandAction({
       getApp: () => runApp,
@@ -1736,19 +1742,17 @@ describe("createMaterializeCommandAction", () => {
     expect(materializeRequest).toEqual(expect.objectContaining({
       commandName: "materialize",
       runAll: runRequest.runAll,
-      commitAfterComplete: runRequest.commitAfterComplete,
-      keepArtifacts: runRequest.keepArtifacts,
+      commitAfterComplete: false,
+      keepArtifacts: false,
     }));
-    expect(materializeRequest).toEqual(expect.objectContaining({
-      runAll: true,
-      commitAfterComplete: true,
-      keepArtifacts: true,
-    }));
+    expect(materializeRequest).toEqual(expect.objectContaining({ runAll: true }));
+    expect(snapshotViaMaterializeTask).toHaveBeenCalledWith({ workspace: undefined });
   });
 
   it("enforces run --all --revertable semantics", async () => {
     const runTask = vi.fn(async () => 0);
-    const app = { runTask } as unknown as CliApp;
+    const snapshotTask = vi.fn(async () => 0);
+    const app = { runTask, snapshotTask } as unknown as CliApp;
     const action = createMaterializeCommandAction({
       getApp: () => app,
       getWorkerFromSeparator: () => undefined,
@@ -1765,14 +1769,16 @@ describe("createMaterializeCommandAction", () => {
       commandName: "materialize",
       source: "tasks.md",
       runAll: true,
-      keepArtifacts: true,
-      commitAfterComplete: true,
+      keepArtifacts: false,
+      commitAfterComplete: false,
     }));
+    expect(snapshotTask).toHaveBeenCalledWith({ workspace: undefined });
   });
 
   it("injects --revertable before worker separator for config-aware defaults", async () => {
     const runTask = vi.fn(async () => 0);
-    const app = { runTask } as unknown as CliApp;
+    const snapshotTask = vi.fn(async () => 0);
+    const app = { runTask, snapshotTask } as unknown as CliApp;
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-materialize-argv-"));
     const configDir = path.join(tempRoot, ".rundown");
 
@@ -1808,9 +1814,10 @@ describe("createMaterializeCommandAction", () => {
         commandName: "materialize",
         source: "tasks.md",
         runAll: true,
-        keepArtifacts: true,
-        commitAfterComplete: true,
+        keepArtifacts: false,
+        commitAfterComplete: false,
       }));
+      expect(snapshotTask).toHaveBeenCalledWith({ workspace: undefined });
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
@@ -1818,7 +1825,8 @@ describe("createMaterializeCommandAction", () => {
 
   it("preserves explicit commit CLI overrides while forcing materialize defaults", async () => {
     const runTask = vi.fn(async () => 0);
-    const app = { runTask } as unknown as CliApp;
+    const snapshotTask = vi.fn(async () => 0);
+    const app = { runTask, snapshotTask } as unknown as CliApp;
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-materialize-precedence-"));
     const configDir = path.join(tempRoot, ".rundown");
 
@@ -1863,11 +1871,12 @@ describe("createMaterializeCommandAction", () => {
         commandName: "materialize",
         source: "tasks.md",
         runAll: true,
-        keepArtifacts: true,
-        commitAfterComplete: true,
+        keepArtifacts: false,
+        commitAfterComplete: false,
         commitMode: "per-task",
         commitMessageTemplate: "cli: {{task}}",
       }));
+      expect(snapshotTask).toHaveBeenCalledWith({ workspace: undefined });
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }

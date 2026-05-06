@@ -115,15 +115,15 @@ function withGroupPrefixMultiline(message: string): string {
  * Applies lightweight styling to dry-run revert output while preserving message text.
  */
 function styleInfoMessage(message: string): string {
-  if (message.startsWith("Dry run - would revert ")) {
-    return pc.yellow(message);
-  }
-
-  if (message.startsWith("- git revert ") || message.startsWith("- git reset ")) {
+  if (message.startsWith("Dry run - would restore ")) {
     return pc.yellow(message);
   }
 
   if (message.startsWith("- run=")) {
+    return pc.yellow(message);
+  }
+
+  if (message.startsWith("- source=") || message.startsWith("- snapshot=")) {
     return pc.dim(message);
   }
 

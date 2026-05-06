@@ -231,7 +231,7 @@ configureRunLikeCommandOptions(callCommand)
 
 const materializeCommand = program
   .command("materialize")
-  .description("Run all tasks with revertable defaults (equivalent to `run --all --revertable`).")
+  .description("Run all tasks, then record implementation snapshot history for snapshot-based restore.")
   .argument("<source>", "File, directory, or glob to scan for Markdown tasks")
   .configureHelp({ showGlobalOptions: true });
 
@@ -330,13 +330,13 @@ program
 
 program
   .command("revert")
-  .description("Undo completed task runs by reverting their git commits.")
+  .description("Restore implementation state from snapshot-backed completed runs.")
   .option("--run <id|latest>", "Target artifact run id or 'latest'", "latest")
-  .option("--last <n>", "Revert the last N completed+committed runs")
-  .option("--all", "Revert all completed+committed runs", false)
-  .option("--method <revert|reset>", "Git undo strategy", "revert")
-  .option("--dry-run", "Show what would be reverted without changing git state", false)
-  .option("--force", "Bypass clean-worktree and reset contiguous-HEAD checks", false)
+  .option("--last <n>", "Restore the last N snapshot-revertable completed runs")
+  .option("--all", "Restore all snapshot-revertable completed runs", false)
+  .option("--method <revert|reset>", "Compatibility option; both methods perform snapshot restore", "revert")
+  .option("--dry-run", "Show what would be restored without changing implementation state", false)
+  .option("--force", "Compatibility no-op for snapshot restore behavior", false)
   .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
   .allowUnknownOption(false)
   .action(withCliAction(createRevertCommandAction({ getApp })));

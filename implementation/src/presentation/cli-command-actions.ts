@@ -668,8 +668,8 @@ export function createCallCommandAction({
 /**
  * Creates the `materialize` command action handler.
  *
- * The returned action mirrors `run` options while forcing full-run and
- * revertable semantics (`run --all --revertable`).
+ * The returned action mirrors `run` options while forcing a full run, then
+ * records implementation snapshot history for restore workflows.
  */
 export function createMaterializeCommandAction({
   getApp,

@@ -1,13 +1,13 @@
 # CLI: `materialize`
 
-Run a full task pass with revertable defaults.
+Run a full task pass and record snapshot-backed implementation history.
 
-`materialize` is a convenience wrapper over `run` that forces these options per invocation:
+`materialize` is a convenience wrapper over `run` that forces a full execution pass and then records implementation snapshots at completed migration boundaries.
 
 - `--all`
-- `--revertable` (equivalent to `--commit --keep-artifacts`)
+- snapshot recording via the same boundary contract used by `snapshot`
 
-Use `materialize` when you want to execute all tasks while keeping artifact state and commit metadata aligned for reversal flows.
+Use `materialize` when you want to execute all tasks and keep durable, snapshot-backed implementation restore history.
 
 ## Global option: `--config-dir <path>`
 
@@ -33,7 +33,7 @@ Arguments:
 Options:
 
 - `materialize` accepts the same run-like options as `run` (`--verify`, `--repair-attempts`, `--sort`, `--trace`, `--vars-file`, `--worker`, and related flags).
-- Explicit user-supplied values for `--all` and `--revertable` are ignored because `materialize` enforces them.
+- Explicit user-supplied values for `--all` are ignored because `materialize` enforces full-run behavior.
 
 Auto-compact defaults:
 
@@ -43,7 +43,7 @@ Auto-compact defaults:
 Examples:
 
 ```bash
-# Execute all tasks with revertable behavior
+# Execute all tasks and record implementation snapshot history
 rundown materialize roadmap.md
 
 # Materialize a directory source

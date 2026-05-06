@@ -249,9 +249,9 @@ If historical metadata no longer maps to a unique task after major edits, `rever
 rundown revert --run latest
 ```
 
-`revert` requires the original run to have been executed with both `--commit` and `--keep-artifacts`; otherwise no revertable run metadata is available.
+`revert` requires the original run to be completed with implementation snapshot metadata and a snapshot payload still present on disk.
 
-If the original run used `--commit-mode file-done` in run-all mode, revert applies to the single final run-level commit (not each intermediate task).
+Revert restores the live `implementation/` tree from the selected snapshot target rather than replaying git commit history.
 
 ## 15. Concurrent run protection on one source file
 

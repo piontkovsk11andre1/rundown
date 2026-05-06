@@ -447,19 +447,20 @@ If no unique match is found, `reverify` exits with code `3` and leaves Markdown 
 
 ## Revert completed tasks
 
-`rundown revert` undoes previously completed tasks by applying git history changes from commit metadata stored in saved run artifacts.
+`rundown revert` undoes previously completed materialized implementation state by restoring implementation snapshots recorded in saved run artifacts.
 
-This command only works for runs that were completed with both:
+This command only works for runs that:
 
-- `--commit` (so the run lifecycle recorded a commit SHA), and
-- `--keep-artifacts` (so `run.json` and `extra.commitSha` are still available).
+- completed successfully,
+- include snapshot restore metadata (`extra.implementationSnapshotTargets`), and
+- still reference at least one existing snapshot payload on disk.
 
-This same artifact discipline underpins semantic reset retries: reset-based retry requires auditable run metadata and commit context to safely restore pre-cycle git state before retrying.
+Snapshot-based revert history is independent from git commit requirements and does not require clean-worktree checks.
 
-Revert granularity follows commit timing:
+Revert granularity follows snapshot boundaries:
 
-- `--commit-mode per-task` records one commit per successful task, so each completed task run can be reverted independently.
-- `--commit-mode file-done` (effective run-all only) records one commit at full run completion, so revert is available at run-level for that final artifact rather than per intermediate task.
+- snapshot numbering is tied to completed migration boundaries per lane,
+- and revert restores implementation state at those recorded boundaries.
 
 Target selection mirrors the historical-run pattern used by `reverify`:
 
@@ -467,25 +468,20 @@ Target selection mirrors the historical-run pattern used by `reverify`:
 - revert the last `N` runs (`--last <n>`), or
 - revert all revertable runs (`--all`).
 
-Two git strategies are supported:
+Two method values are accepted:
 
-- `revert` (default): creates inverse commits (`git revert <sha> --no-edit`) and is safe for shared branches.
-- `reset`: rewinds history with `git reset --hard <oldest-sha>~1`, but only when targets form a contiguous block at `HEAD`.
-
-When `reset` executes, the revert artifact stores the pre-reset `HEAD` as `extra.preResetRef`. That makes reset-based undos reversible: you can later run `rundown revert --run <revert-run-id> --method reset` to jump back to the saved ref.
+- `revert` (default): performs snapshot restore.
+- `reset`: compatibility alias for the same snapshot restore behavior.
 
 For multi-run revert, processing order is deliberate:
 
-- `revert` runs newest-first to reduce patch conflicts.
-- `reset` validates a contiguous `HEAD` block, then resets once before the oldest target commit.
+- snapshot restores run newest-first to preserve expected rollback ordering.
 
-Reset-based revert runs are restored one at a time (single `--run`) because each one captures its own pre-reset reference.
+`revert` restores the live `implementation/` tree from snapshot payloads and does not rewrite git history.
 
-Markdown checkboxes are restored by git history itself. `rundown` does not directly mutate checkbox state during `revert`.
+Use `--dry-run` to preview selected runs and snapshot targets without changing implementation state.
 
-Use `--dry-run` to preview selected runs, SHAs, and undo method without changing repository state.
-
-Use `--force` to bypass clean-worktree and reset contiguous-HEAD checks. This is intentionally unsafe and should be reserved for advanced recovery workflows.
+`--force` is accepted for compatibility but ignored by snapshot restore.
 
 ## Research before planning
 

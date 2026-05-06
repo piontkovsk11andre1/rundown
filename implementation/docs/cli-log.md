@@ -24,7 +24,7 @@ Default behavior:
 
 - Shows only runs with status `completed`.
 - Orders runs newest-first (same order as saved artifacts metadata).
-- Prints one compact line per run: short run ID, absolute local timestamp (ISO-8601 with numeric offset), relative timestamp, status, task summary, source, command, commit SHA (if present), and revertable indicator.
+- Prints one compact line per run: short run ID, absolute local timestamp (ISO-8601 with numeric offset), relative timestamp, status, task summary, source, command, snapshot boundary token, and revertable indicator.
 - Text-mode absolute timestamps are local display values; persisted run metadata (`startedAt`/`completedAt`) remains UTC ISO-8601.
 - Non-revertable entries are dimmed in terminal output.
 
@@ -32,7 +32,7 @@ Options:
 
 | Option | Description |
 |---|---|
-| `--revertable` | Show only revertable runs (`status=completed` and metadata contains `extra.commitSha`). |
+| `--revertable` | Show only revertable runs (`status=completed`, snapshot metadata is present, and at least one snapshot payload exists on disk). |
 | `--command <name>` | Filter by command name (for example `run`, `plan`, `revert`, `reverify`). |
 | `--limit <n>` | Show only the first `n` matching runs. |
 | `--json` | Print matching runs as JSON for machine consumption. |
@@ -46,6 +46,6 @@ rundown log --command run --limit 5
 rundown log --json
 ```
 
-`--json` outputs an array of run entries with fields such as `runId`, `shortRunId`, `commandName`, `status`, `relativeTime`, `taskSummary`, `source`, `commitSha`, `shortCommitSha`, `revertable`, `startedAt`, and `completedAt`.
+`--json` outputs an array of run entries with fields such as `runId`, `shortRunId`, `commandName`, `status`, `relativeTime`, `taskSummary`, `source`, `snapshot`, `revertable`, `startedAt`, and `completedAt`.
 
 Automation note: prefer `rundown log --json` for scripts. The default text view is optimized for operators and includes additive timestamp rendering for readability.

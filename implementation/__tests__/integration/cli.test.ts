@@ -3028,9 +3028,9 @@ describe.sequential("CLI integration", () => {
     const helpOutput = result.stdoutWrites.join("\n");
     const compactHelpOutput = helpOutput.replace(/\s+/g, " ");
     expect(compactHelpOutput).toContain("--run <id|latest> Target artifact run id or 'latest'");
-    expect(compactHelpOutput).toContain("--last <n> Revert the last N completed+committed runs");
-    expect(compactHelpOutput).toContain("--method <revert|reset> Git undo strategy");
-    expect(compactHelpOutput).toContain("--force Bypass clean-worktree and reset contiguous-HEAD checks");
+    expect(compactHelpOutput).toContain("--last <n> Restore the last N snapshot-revertable completed runs");
+    expect(compactHelpOutput).toContain("--method <revert|reset> Compatibility option; both methods perform snapshot restore");
+    expect(compactHelpOutput).toContain("--force Compatibility no-op for snapshot restore behavior");
     expect(compactHelpOutput).toContain("--keep-artifacts Preserve runtime prompts, logs, and metadata under <config-dir>/runs");
   });
 
@@ -3053,7 +3053,7 @@ describe.sequential("CLI integration", () => {
       runId: "run-20260317T000000000Z-completed-no-sha",
       status: "completed",
       extra: {
-        note: "missing commit SHA",
+        note: "missing snapshot metadata",
       },
     });
 

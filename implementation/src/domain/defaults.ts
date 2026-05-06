@@ -500,7 +500,7 @@ Use \`--deep <n>\` for nested child TODO generation after top-level scans conver
 **reverify** — Re-run verification from saved artifacts for a previously completed task.
 \`rundown reverify [--run <id|latest>] [--last <n>] [--all] [--no-repair] -- <worker>\`
 
-**revert** — Undo completed tasks by reverting their git commits.
+**revert** — Undo completed tasks by restoring implementation snapshots from run metadata.
 \`rundown revert [--run <id|latest>] [--last <n>] [--all] [--method revert|reset] [--dry-run] -- <worker>\`
 
 **list** / **next** — Inspect unchecked tasks. \`list\` shows all; \`next\` shows the next runnable one.

@@ -28,6 +28,8 @@ Revertable run requirements:
 - The original run metadata includes implementation snapshot targets (`extra.implementationSnapshotTargets`).
 - At least one referenced snapshot payload directory still exists on disk.
 
+If no snapshot-backed targets are found, `revert` reports snapshot-based eligibility guidance (for example, run `materialize` or `snapshot` first) instead of commit-SHA guidance.
+
 Snapshot boundaries affect revert granularity:
 
 - Snapshot restore targets map to completed migration boundaries per lane.
@@ -60,6 +62,7 @@ Operational notes:
 - Acquires the same per-source Markdown lock used by `run`/`plan`; if another rundown process holds the lock, `revert` fails fast with holder details.
 - This lock prevents concurrent `run` + `revert` on the same source file, avoiding task-line drift and unintended checkbox/source mutations from overlapping operations.
 - `revert` restores the live `implementation/` tree from snapshot payloads and does not modify git history.
+- `revert` does not require a clean git worktree and does not perform git ancestry validation.
 - Multi-run `revert` processes runs newest-first to preserve expected rollback ordering.
 - `--force` is accepted but ignored because snapshot restores do not use git precondition or ancestry checks.
 

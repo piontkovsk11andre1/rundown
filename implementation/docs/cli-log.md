@@ -1,6 +1,6 @@
 # CLI: `log`
 
-`rundown log` shows completed run history in a compact, one-line-per-run format to help pick revert targets.
+`rundown log` shows completed run history in a compact, one-line-per-run format to help pick snapshot restore targets.
 
 ## Global option: `--config-dir <path>`
 
@@ -27,6 +27,12 @@ Default behavior:
 - Prints one compact line per run: short run ID, absolute local timestamp (ISO-8601 with numeric offset), relative timestamp, status, task summary, source, command, snapshot boundary token, and revertable indicator.
 - Text-mode absolute timestamps are local display values; persisted run metadata (`startedAt`/`completedAt`) remains UTC ISO-8601.
 - Non-revertable entries are dimmed in terminal output.
+
+Revertable in `log` means snapshot-backed eligibility:
+
+- run status is `completed`,
+- snapshot target metadata is present, and
+- at least one referenced snapshot payload still exists on disk.
 
 Options:
 

@@ -53,8 +53,8 @@ Migration authoring loop model:
 4. Discuss and refine predicted state, including updates to `migrations/Backlog.md` as needed.
 5. Optionally revise source-of-truth content and run `rundown migrate ...` again.
 6. Run `rundown predict` to apply migration files into `prediction/latest/` and persist lane snapshots under `prediction/snapshots/`.
-7. Run `rundown materialize` to apply resulting state into `implementation/`.
-8. Run `rundown snapshot` to persist implementation filesystem history at the current completed migration boundaries.
+7. Run `rundown materialize` to apply resulting state into `implementation/` and record/confirm implementation snapshots at completed migration boundaries.
+8. Optionally run `rundown snapshot` when you want an explicit on-demand snapshot pass at the current completed migration boundaries.
 
 Explicit test target semantics:
 
@@ -172,11 +172,11 @@ Multi-round contract (`--rounds > 1`):
 
 - `file-done` produces a single commit after the final successful round, not one commit per round.
 
-Artifact/revert contract for `file-done`:
+Artifact contract for `file-done`:
 
 - the final successful run artifact in that run-all lifecycle records `extra.commitSha`.
 - earlier per-task artifacts from that same lifecycle do not backfill `extra.commitSha`.
-- revert remains deterministic and run-artifact based, but file-done mode is revertable at run-level (final artifact), not at per-task granularity.
+- this commit metadata remains available for commit-oriented workflows, but `revert` eligibility is snapshot-backed (`extra.implementationSnapshotTargets`) rather than commit-SHA-backed.
 
 ## Sources
 

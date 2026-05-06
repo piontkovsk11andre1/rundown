@@ -7,7 +7,14 @@ Run a full task pass and record snapshot-backed implementation history.
 - `--all`
 - snapshot recording via the same boundary contract used by `snapshot`
 
+Unlike historical commit-based behavior, `materialize` does not require git commit metadata to make the result restorable by `revert`.
+
 Use `materialize` when you want to execute all tasks and keep durable, snapshot-backed implementation restore history.
+
+Command role split:
+
+- `materialize`: execute and apply work, then record/confirm boundary snapshots for that completed state.
+- `snapshot`: explicitly persist implementation snapshot history on demand without running tasks.
 
 ## Global option: `--config-dir <path>`
 

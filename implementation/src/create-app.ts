@@ -848,6 +848,7 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
     logRuns: (ports) => createLogRuns({
       artifactStore: ports.artifactStore,
       configDir: ports.configDir,
+      fileSystem: ports.fileSystem,
       clock: ports.clock,
       output: ports.output,
     }),

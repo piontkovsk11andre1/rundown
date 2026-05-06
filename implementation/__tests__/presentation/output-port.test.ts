@@ -829,19 +829,19 @@ describe("cliOutputPort", () => {
 
     cliOutputPort.emit({
       kind: "text",
-      text: "run-20260328T120 | 2026-03-28T11:58:00.000Z (2m ago) | [completed] | Ship release notes | source=TODO.md:22 | command=run | sha=1234567890ab | revertable=yes",
+      text: "run-20260328T120 | 2026-03-28T11:58:00.000Z (2m ago) | [completed] | Ship release notes | source=TODO.md:22 | command=run | snapshot=root:12 | revertable=yes",
     });
     cliOutputPort.emit({
       kind: "text",
-      text: "run-20260328T110 | 2026-03-28T11:30:00.000Z (30m ago) | [completed] | Plan rollout | source=roadmap.md:9 | command=plan | sha=- | revertable=no",
+      text: "run-20260328T110 | 2026-03-28T11:30:00.000Z (30m ago) | [completed] | Plan rollout | source=roadmap.md:9 | command=plan | snapshot=- | revertable=no",
     });
 
     expect(logSpy).toHaveBeenCalledTimes(2);
     expect(stripAnsi(logSpy.mock.calls[0]?.[0] as string)).toBe(
-      "run-20260328T120 | 2026-03-28T11:58:00.000Z (2m ago) | [completed] | Ship release notes | source=TODO.md:22 | command=run | sha=1234567890ab | revertable=yes",
+      "run-20260328T120 | 2026-03-28T11:58:00.000Z (2m ago) | [completed] | Ship release notes | source=TODO.md:22 | command=run | snapshot=root:12 | revertable=yes",
     );
     expect(stripAnsi(logSpy.mock.calls[1]?.[0] as string)).toBe(
-      "run-20260328T110 | 2026-03-28T11:30:00.000Z (30m ago) | [completed] | Plan rollout | source=roadmap.md:9 | command=plan | sha=- | revertable=no",
+      "run-20260328T110 | 2026-03-28T11:30:00.000Z (30m ago) | [completed] | Plan rollout | source=roadmap.md:9 | command=plan | snapshot=- | revertable=no",
     );
   });
 

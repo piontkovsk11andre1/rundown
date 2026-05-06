@@ -22,7 +22,15 @@ describe("log-runs", () => {
           index: 1,
           source: "TODO.md",
         },
-        extra: { commitSha: "1234567890abcdef1234567890abcdef12345678" },
+        extra: {
+          implementationSnapshotTargets: [
+            {
+              laneKind: "root",
+              migrationNumber: 12,
+              snapshotPath: "/snapshots/root/12",
+            },
+          ],
+        },
       }),
       createRun({
         runId: "run-20260328T110000000Z-bbbbbbbb",
@@ -52,11 +60,11 @@ describe("log-runs", () => {
     expect(events).toEqual([
       {
         kind: "text",
-        text: `run-20260328T120 | ${formatExpectedCliTimestamp("2026-03-28T11:58:00.000Z")} (2m ago) | [completed] | Ship release notes | source=TODO.md:22 | command=run | sha=1234567890ab | revertable=yes`,
+        text: `run-20260328T120 | ${formatExpectedCliTimestamp("2026-03-28T11:58:00.000Z")} (2m ago) | [completed] | Ship release notes | source=TODO.md:22 | command=run | snapshot=root:12 | revertable=yes`,
       },
       {
         kind: "text",
-        text: `run-20260328T110 | ${formatExpectedCliTimestamp("2026-03-28T11:30:00.000Z")} (30m ago) | [completed] | Plan rollout | source=roadmap.md:9 | command=plan | sha=- | revertable=no`,
+        text: `run-20260328T110 | ${formatExpectedCliTimestamp("2026-03-28T11:30:00.000Z")} (30m ago) | [completed] | Plan rollout | source=roadmap.md:9 | command=plan | snapshot=- | revertable=no`,
       },
       {
         kind: "info",
@@ -67,9 +75,33 @@ describe("log-runs", () => {
 
   it("filters to revertable runs when --revertable is set", () => {
     const runs: ArtifactRunMetadata[] = [
-      createRun({ runId: "run-a", status: "completed", extra: { commitSha: "aaa111" } }),
+      createRun({
+        runId: "run-a",
+        status: "completed",
+        extra: {
+          implementationSnapshotTargets: [
+            {
+              laneKind: "root",
+              migrationNumber: 4,
+              snapshotPath: "/snapshots/root/4",
+            },
+          ],
+        },
+      }),
       createRun({ runId: "run-b", status: "completed" }),
-      createRun({ runId: "run-c", status: "reverify-completed", extra: { commitSha: "ccc333" } }),
+      createRun({
+        runId: "run-c",
+        status: "reverify-completed",
+        extra: {
+          implementationSnapshotTargets: [
+            {
+              laneKind: "root",
+              migrationNumber: 3,
+              snapshotPath: "/snapshots/root/3",
+            },
+          ],
+        },
+      }),
     ];
     const { logRuns, events } = createDependencies({ runs });
 
@@ -79,7 +111,7 @@ describe("log-runs", () => {
     expect(events).toHaveLength(2);
     expect(events[0]).toEqual({
       kind: "text",
-      text: `run-a | ${formatExpectedCliTimestamp("2026-03-28T11:50:00.000Z")} (10m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | sha=aaa111 | revertable=yes`,
+      text: `run-a | ${formatExpectedCliTimestamp("2026-03-28T11:50:00.000Z")} (10m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | snapshot=root:4 | revertable=yes`,
     });
     expect(events[1]).toEqual({ kind: "info", message: "1 run listed." });
   });
@@ -91,7 +123,15 @@ describe("log-runs", () => {
         status: "completed",
         startedAt: "2026-03-28T11:57:00.000Z",
         completedAt: undefined,
-        extra: { commitSha: "abc123" },
+        extra: {
+          implementationSnapshotTargets: [
+            {
+              laneKind: "root",
+              migrationNumber: 2,
+              snapshotPath: "/snapshots/root/2",
+            },
+          ],
+        },
       }),
     ];
     const { logRuns, events } = createDependencies({ runs });
@@ -101,16 +141,29 @@ describe("log-runs", () => {
     expect(code).toBe(0);
     expect(events[0]).toEqual({
       kind: "text",
-      text: `run-started-at-o | ${formatExpectedCliTimestamp("2026-03-28T11:57:00.000Z")} (3m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | sha=abc123 | revertable=yes`,
+      text: `run-started-at-o | ${formatExpectedCliTimestamp("2026-03-28T11:57:00.000Z")} (3m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | snapshot=root:2 | revertable=yes`,
     });
     expect(events[1]).toEqual({ kind: "info", message: "1 run listed." });
   });
 
   it("applies command filter and limit", () => {
     const runs: ArtifactRunMetadata[] = [
-      createRun({ runId: "run-1", status: "completed", commandName: "run", extra: { commitSha: "sha-1" } }),
-      createRun({ runId: "run-2", status: "completed", commandName: "plan", extra: { commitSha: "sha-2" } }),
-      createRun({ runId: "run-3", status: "completed", commandName: "run", extra: { commitSha: "sha-3" } }),
+      createRun({
+        runId: "run-1",
+        status: "completed",
+        commandName: "run",
+        extra: {
+          implementationSnapshotTargets: [
+            {
+              laneKind: "root",
+              migrationNumber: 1,
+              snapshotPath: "/snapshots/root/1",
+            },
+          ],
+        },
+      }),
+      createRun({ runId: "run-2", status: "completed", commandName: "plan" }),
+      createRun({ runId: "run-3", status: "completed", commandName: "run" }),
     ];
     const { logRuns, events } = createDependencies({ runs });
 
@@ -120,7 +173,7 @@ describe("log-runs", () => {
     expect(events).toHaveLength(2);
     expect(events[0]).toEqual({
       kind: "text",
-      text: `run-1 | ${formatExpectedCliTimestamp("2026-03-28T11:50:00.000Z")} (10m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | sha=sha-1 | revertable=yes`,
+      text: `run-1 | ${formatExpectedCliTimestamp("2026-03-28T11:50:00.000Z")} (10m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | snapshot=root:1 | revertable=yes`,
     });
     expect(events[1]).toEqual({ kind: "info", message: "1 run listed." });
   });
@@ -140,7 +193,15 @@ describe("log-runs", () => {
           source: "TODO.md",
         },
         source: "fallback.md",
-        extra: { commitSha: "abcdefabcdefabcdef" },
+        extra: {
+          implementationSnapshotTargets: [
+            {
+              laneKind: "root",
+              migrationNumber: 8,
+              snapshotPath: "/snapshots/root/8",
+            },
+          ],
+        },
       }),
     ];
     const { logRuns, events } = createDependencies({ runs });
@@ -165,8 +226,7 @@ describe("log-runs", () => {
         relativeTime: "5m ago",
         taskSummary: "A very long task summary that should be truncated because it exceeds the comp...",
         source: "TODO.md:42",
-        commitSha: "abcdefabcdefabcdef",
-        shortCommitSha: "abcdefabcdef",
+        snapshot: "root:8",
         revertable: true,
         startedAt: "2026-03-28T11:50:00.000Z",
         completedAt: "2026-03-28T11:55:00.000Z",
@@ -180,7 +240,15 @@ describe("log-runs", () => {
         runId: "run-future",
         status: "completed",
         completedAt: "2026-03-28T12:00:30.000Z",
-        extra: { commitSha: "future-sha" },
+        extra: {
+          implementationSnapshotTargets: [
+            {
+              laneKind: "root",
+              migrationNumber: 9,
+              snapshotPath: "/snapshots/root/9",
+            },
+          ],
+        },
       }),
       createRun({
         runId: "run-just-now",
@@ -219,7 +287,7 @@ describe("log-runs", () => {
         completedAt: undefined,
       }),
     ];
-    const { logRuns, events } = createDependencies({ runs });
+    const { logRuns, events } = createDependencies({ runs, existingSnapshotPaths: [] });
 
     const code = logRuns({ revertable: false, json: false });
 
@@ -227,7 +295,7 @@ describe("log-runs", () => {
     expect(events).toEqual([
       {
         kind: "text",
-        text: "run-invalid-time | not-a-date | [completed] | Do work | source=roadmap.md:3 | command=run | sha=- | revertable=no",
+        text: "run-invalid-time | not-a-date | [completed] | Do work | source=roadmap.md:3 | command=run | snapshot=- | revertable=no",
       },
       {
         kind: "info",
@@ -245,14 +313,14 @@ describe("log-runs", () => {
       }),
     ];
     vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(-330);
-    const { logRuns, events } = createDependencies({ runs });
+    const { logRuns, events } = createDependencies({ runs, existingSnapshotPaths: [] });
 
     const code = logRuns({ revertable: false, json: false });
 
     expect(code).toBe(0);
     expect(events[0]).toEqual({
       kind: "text",
-      text: `run-half-hour-of | ${formatExpectedCliTimestamp("2026-03-28T11:58:00.000Z")} (2m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | sha=- | revertable=no`,
+      text: `run-half-hour-of | ${formatExpectedCliTimestamp("2026-03-28T11:58:00.000Z")} (2m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | snapshot=- | revertable=no`,
     });
     expect(events[0]?.kind === "text" ? events[0].text : "").toContain("+05:30");
     expect(events[1]).toEqual({ kind: "info", message: "1 run listed." });
@@ -260,9 +328,21 @@ describe("log-runs", () => {
 
   it("generates compact short IDs and preserves run order", () => {
     const runs: ArtifactRunMetadata[] = [
-      createRun({ runId: "run-20260328T130000000Z-zzzzzzzz", status: "completed", extra: { commitSha: "sha-z" } }),
-      createRun({ runId: "run-short", status: "completed", extra: { commitSha: "sha-y" } }),
-      createRun({ runId: "run-20260328T110000000Z-xxxxxxxx", status: "completed", extra: { commitSha: "sha-x" } }),
+      createRun({
+        runId: "run-20260328T130000000Z-zzzzzzzz",
+        status: "completed",
+        extra: {
+          implementationSnapshotTargets: [
+            {
+              laneKind: "root",
+              migrationNumber: 13,
+              snapshotPath: "/snapshots/root/13",
+            },
+          ],
+        },
+      }),
+      createRun({ runId: "run-short", status: "completed" }),
+      createRun({ runId: "run-20260328T110000000Z-xxxxxxxx", status: "completed" }),
     ];
     const { logRuns, events } = createDependencies({ runs });
 
@@ -291,7 +371,19 @@ describe("log-runs", () => {
 
   it("includes only completed entries when statuses are mixed", () => {
     const runs: ArtifactRunMetadata[] = [
-      createRun({ runId: "run-completed", status: "completed", extra: { commitSha: "done-sha" } }),
+      createRun({
+        runId: "run-completed",
+        status: "completed",
+        extra: {
+          implementationSnapshotTargets: [
+            {
+              laneKind: "root",
+              migrationNumber: 5,
+              snapshotPath: "/snapshots/root/5",
+            },
+          ],
+        },
+      }),
       createRun({ runId: "run-failed", status: "failed", commandName: "run" }),
       createRun({ runId: "run-cancelled", status: "revert-failed", commandName: "revert" }),
       createRun({ runId: "run-exec-failed", status: "execution-failed", commandName: "plan" }),
@@ -321,13 +413,43 @@ describe("log-runs", () => {
     const code = logRuns({ revertable: true, commandName: "run", json: false });
 
     expect(code).toBe(3);
-    expect(events).toEqual([{ kind: "info", message: "No matching completed runs found." }]);
+    expect(events).toEqual([{ kind: "info", message: "No revertable runs found. Revertable runs must be completed with implementation snapshot metadata and a snapshot payload that still exists on disk." }]);
+  });
+
+  it("explains when snapshot metadata exists but payloads are missing", () => {
+    const runs: ArtifactRunMetadata[] = [
+      createRun({
+        runId: "run-missing-payload",
+        status: "completed",
+        extra: {
+          implementationSnapshotTargets: [
+            {
+              laneKind: "root",
+              migrationNumber: 7,
+              snapshotPath: "/snapshots/root/7",
+            },
+          ],
+        },
+      }),
+    ];
+    const { logRuns, events } = createDependencies({ runs, existingSnapshotPaths: [] });
+
+    const code = logRuns({ revertable: true, json: false });
+
+    expect(code).toBe(3);
+    expect(events).toEqual([
+      {
+        kind: "info",
+        message: "No revertable runs found. Revertable runs must be completed with implementation snapshot metadata and a snapshot payload that still exists on disk. Completed runs with snapshot metadata were found, but their snapshot payloads are missing on disk. Restore those snapshot directories or record new snapshots before retrying.",
+      },
+    ]);
   });
 });
 
 function createDependencies(options: {
   runs: ArtifactRunMetadata[];
   nowIso?: string;
+  existingSnapshotPaths?: string[];
 }): {
   logRuns: ReturnType<typeof createLogRuns>;
   events: ApplicationOutputEvent[];
@@ -337,6 +459,19 @@ function createDependencies(options: {
   const events: ApplicationOutputEvent[] = [];
   const nowIso = options.nowIso ?? "2026-03-28T12:00:00.000Z";
   const now = new Date(nowIso);
+  const snapshotPaths = new Set(options.existingSnapshotPaths ?? options.runs
+    .flatMap((run) => {
+      const rawTargets = run.extra?.["implementationSnapshotTargets"];
+      return Array.isArray(rawTargets) ? rawTargets : [];
+    })
+    .map((target) => {
+      if (typeof target !== "object" || target === null) {
+        return "";
+      }
+      const snapshotPath = (target as Record<string, unknown>)["snapshotPath"];
+      return typeof snapshotPath === "string" ? snapshotPath : "";
+    })
+    .filter((snapshotPath) => snapshotPath.length > 0));
 
   const artifactStore: ArtifactStore = {
     createContext: vi.fn(),
@@ -362,6 +497,19 @@ function createDependencies(options: {
   const logRuns = createLogRuns({
     artifactStore,
     configDir: undefined,
+    fileSystem: {
+      exists: vi.fn((filePath: string) => snapshotPaths.has(filePath)),
+      readText: vi.fn(),
+      writeText: vi.fn(),
+      mkdir: vi.fn(),
+      readdir: vi.fn(() => []),
+      stat: vi.fn((filePath: string) => snapshotPaths.has(filePath)
+        ? { isDirectory: true, isFile: false }
+        : null),
+      unlink: vi.fn(),
+      rm: vi.fn(),
+      rename: vi.fn(),
+    },
     clock,
     output: {
       emit(event) {

@@ -4,6 +4,7 @@ import type {
   ArtifactStore,
   Clock,
   ConfigDirResult,
+  FileSystem,
 } from "../domain/ports/index.js";
 import { formatRelativeTimestamp } from "../domain/relative-time.js";
 import { toCompactRunId } from "../domain/run-id.js";
@@ -17,6 +18,7 @@ import { formatNoItemsFound, pluralize } from "./run-task-utils.js";
 export interface LogRunsDependencies {
   artifactStore: ArtifactStore;
   configDir: ConfigDirResult | undefined;
+  fileSystem: FileSystem;
   clock: Clock;
   output: ApplicationOutputPort;
 }
@@ -43,12 +45,14 @@ interface LogRunEntry {
   relativeTime: string;
   taskSummary: string;
   source: string;
-  commitSha: string | null;
-  shortCommitSha: string | null;
+  snapshot: string;
   revertable: boolean;
   startedAt: string;
   completedAt?: string;
 }
+
+const NO_REVERTABLE_RUNS_BASE_MESSAGE = "No revertable runs found. Revertable runs must be completed with implementation snapshot metadata and a snapshot payload that still exists on disk.";
+const MISSING_SNAPSHOT_PAYLOAD_MESSAGE = "Completed runs with snapshot metadata were found, but their snapshot payloads are missing on disk. Restore those snapshot directories or record new snapshots before retrying.";
 
 /**
  * Creates the application service for listing completed runs.
@@ -77,16 +81,21 @@ export function createLogRuns(
         }
         return run.commandName.toLowerCase() === normalizedCommandFilter;
       })
-      .filter((run) => options.revertable ? isRevertableRun(run) : true)
+      .filter((run) => options.revertable ? isRevertableRun(run, dependencies.fileSystem) : true)
       .slice(0, options.limit);
 
     if (runs.length === 0) {
+      if (options.revertable) {
+        emit({ kind: "info", message: buildNoSnapshotRevertableRunsMessage(dependencies.artifactStore.listSaved(artifactBaseDir), dependencies.fileSystem) });
+        return EXIT_CODE_NO_WORK;
+      }
+
       // Mirror CLI behavior by reporting a friendly empty-state message.
       emit({ kind: "info", message: formatNoItemsFound("matching completed runs") });
       return EXIT_CODE_NO_WORK;
     }
 
-    const entries = runs.map((run) => toLogRunEntry(run, now));
+    const entries = runs.map((run) => toLogRunEntry(run, now, dependencies.fileSystem));
 
     if (options.json) {
       // Preserve machine-readability for downstream scripting.
@@ -107,9 +116,9 @@ export function createLogRuns(
 /**
  * Converts persisted artifact metadata into a stable display model.
  */
-function toLogRunEntry(run: ArtifactRunMetadata, now: Date): LogRunEntry {
-  const commitSha = getCommitSha(run);
-  const revertable = run.status === "completed" && commitSha !== null;
+function toLogRunEntry(run: ArtifactRunMetadata, now: Date, fileSystem: FileSystem): LogRunEntry {
+  const revertable = isRevertableRun(run, fileSystem);
+  const snapshot = formatSnapshotToken(run, fileSystem);
   // Prefer completion timestamp when present so relative time matches status.
   const timestamp = run.completedAt ?? run.startedAt;
 
@@ -122,8 +131,7 @@ function toLogRunEntry(run: ArtifactRunMetadata, now: Date): LogRunEntry {
     relativeTime: formatRelativeTimestamp(now, timestamp),
     taskSummary: summarizeTask(run.task?.text),
     source: formatSource(run),
-    commitSha,
-    shortCommitSha: commitSha ? shortCommitSha(commitSha) : null,
+    snapshot,
     revertable,
     startedAt: run.startedAt,
     completedAt: run.completedAt,
@@ -141,7 +149,7 @@ function formatLogLine(entry: LogRunEntry): string {
     entry.taskSummary,
     `source=${entry.source}`,
     `command=${entry.commandName}`,
-    `sha=${entry.shortCommitSha ?? "-"}`,
+    `snapshot=${entry.snapshot}`,
     `revertable=${entry.revertable ? "yes" : "no"}`,
   ].join(" | ");
 }
@@ -158,30 +166,22 @@ function formatTimestampToken(absoluteTimestamp: string, relativeTimestamp: stri
 }
 
 /**
- * Returns a short git SHA suitable for table-like command output.
+ * Determines whether a run can be reverted using snapshot-backed metadata.
  */
-function shortCommitSha(sha: string): string {
-  return sha.length <= 12 ? sha : sha.slice(0, 12);
-}
-
-/**
- * Extracts and sanitizes commit SHA metadata stored on a run artifact.
- */
-function getCommitSha(run: ArtifactRunMetadata): string | null {
-  const commitSha = run.extra?.["commitSha"];
-  if (typeof commitSha !== "string") {
-    return null;
+function isRevertableRun(run: ArtifactRunMetadata, fileSystem: FileSystem): boolean {
+  if (run.status !== "completed") {
+    return false;
   }
 
-  const normalized = commitSha.trim();
-  return normalized.length > 0 ? normalized : null;
-}
+  const snapshotTargets = getSnapshotTargets(run);
+  if (snapshotTargets.length === 0) {
+    return false;
+  }
 
-/**
- * Determines whether a run can be reverted using git-backed metadata.
- */
-function isRevertableRun(run: ArtifactRunMetadata): boolean {
-  return run.status === "completed" && getCommitSha(run) !== null;
+  return snapshotTargets.some((target) => {
+    const stat = fileSystem.stat(target.snapshotPath);
+    return Boolean(stat?.isDirectory);
+  });
 }
 
 /**
@@ -243,10 +243,168 @@ function toJsonEntry(entry: LogRunEntry): Omit<LogRunEntry, "timestamp"> {
     relativeTime: entry.relativeTime,
     taskSummary: entry.taskSummary,
     source: entry.source,
-    commitSha: entry.commitSha,
-    shortCommitSha: entry.shortCommitSha,
+    snapshot: entry.snapshot,
     revertable: entry.revertable,
     startedAt: entry.startedAt,
     completedAt: entry.completedAt,
   };
+}
+
+interface SnapshotTarget {
+  laneKind: "root" | "thread";
+  threadSlug?: string;
+  migrationNumber: number;
+  snapshotPath: string;
+}
+
+function buildNoSnapshotRevertableRunsMessage(runs: ArtifactRunMetadata[], fileSystem: FileSystem): string {
+  const completedRuns = runs.filter((run) => run.status === "completed");
+  if (completedRuns.length === 0) {
+    return formatNoItemsFound("matching completed runs");
+  }
+
+  const hasSnapshotMetadata = completedRuns.some((run) => getSnapshotTargets(run).length > 0);
+  const hasExistingSnapshotPayload = completedRuns.some((run) => hasAnyExistingSnapshotPayload(run, fileSystem));
+  if (hasSnapshotMetadata && !hasExistingSnapshotPayload) {
+    return NO_REVERTABLE_RUNS_BASE_MESSAGE + " " + MISSING_SNAPSHOT_PAYLOAD_MESSAGE;
+  }
+
+  return NO_REVERTABLE_RUNS_BASE_MESSAGE;
+}
+
+function formatSnapshotToken(run: ArtifactRunMetadata, fileSystem: FileSystem): string {
+  const snapshotTargets = getSnapshotTargets(run);
+  if (snapshotTargets.length === 0) {
+    return "-";
+  }
+
+  const hasExistingPayload = snapshotTargets.some((target) => {
+    const stat = fileSystem.stat(target.snapshotPath);
+    return Boolean(stat?.isDirectory);
+  });
+
+  if (!hasExistingPayload) {
+    return "missing";
+  }
+
+  const selectedTarget = chooseDeterministicSnapshotTarget(snapshotTargets);
+  if (!selectedTarget) {
+    return "-";
+  }
+
+  return formatSnapshotTarget(selectedTarget);
+}
+
+function hasAnyExistingSnapshotPayload(run: ArtifactRunMetadata, fileSystem: FileSystem): boolean {
+  return getSnapshotTargets(run).some((target) => {
+    const stat = fileSystem.stat(target.snapshotPath);
+    return Boolean(stat?.isDirectory);
+  });
+}
+
+function getSnapshotTargets(run: ArtifactRunMetadata): SnapshotTarget[] {
+  const raw = run.extra?.["implementationSnapshotTargets"];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const targets: SnapshotTarget[] = [];
+  for (const value of raw) {
+    if (!isSnapshotTargetRecord(value)) {
+      continue;
+    }
+
+    const laneKind = normalizeLaneKind(value["laneKind"]);
+    const snapshotPath = normalizeNonEmptyString(value["snapshotPath"]);
+    const migrationNumber = normalizeMigrationNumber(value["migrationNumber"]);
+    if (!laneKind || !snapshotPath || migrationNumber === null) {
+      continue;
+    }
+
+    const threadSlug = normalizeOptionalNonEmptyString(value["threadSlug"]);
+    if (laneKind === "thread" && !threadSlug) {
+      continue;
+    }
+
+    targets.push({
+      laneKind,
+      ...(threadSlug ? { threadSlug } : {}),
+      migrationNumber,
+      snapshotPath,
+    });
+  }
+
+  return targets;
+}
+
+function chooseDeterministicSnapshotTarget(targets: SnapshotTarget[]): SnapshotTarget | null {
+  if (targets.length === 0) {
+    return null;
+  }
+
+  const sorted = [...targets].sort((left, right) => {
+    if (left.laneKind !== right.laneKind) {
+      return left.laneKind === "root" ? -1 : 1;
+    }
+
+    const leftThread = left.threadSlug ?? "";
+    const rightThread = right.threadSlug ?? "";
+    if (leftThread !== rightThread) {
+      return leftThread.localeCompare(rightThread);
+    }
+
+    if (left.migrationNumber !== right.migrationNumber) {
+      return right.migrationNumber - left.migrationNumber;
+    }
+
+    return left.snapshotPath.localeCompare(right.snapshotPath);
+  });
+
+  return sorted[0] ?? null;
+}
+
+function formatSnapshotTarget(target: SnapshotTarget): string {
+  if (target.laneKind === "thread") {
+    return `thread:${target.threadSlug ?? "unknown"}:${target.migrationNumber}`;
+  }
+
+  return `root:${target.migrationNumber}`;
+}
+
+function isSnapshotTargetRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeLaneKind(value: unknown): "root" | "thread" | null {
+  if (value === "root" || value === "thread") {
+    return value;
+  }
+
+  return null;
+}
+
+function normalizeNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeOptionalNonEmptyString(value: unknown): string | undefined {
+  const normalized = normalizeNonEmptyString(value);
+  return normalized ?? undefined;
+}
+
+function normalizeMigrationNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const parsed = Number.parseInt(value.trim(), 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  return null;
 }

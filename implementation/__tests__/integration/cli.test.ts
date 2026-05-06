@@ -3047,6 +3047,7 @@ describe.sequential("CLI integration", () => {
 
   it("revert suggests `rundown log --revertable` when completed runs exist but none are revertable", async () => {
     const workspace = makeTempWorkspace();
+    fs.mkdirSync(path.join(workspace, "implementation"), { recursive: true });
 
     writeSavedRun(workspace, {
       runId: "run-20260317T000000000Z-completed-no-sha",
@@ -13992,11 +13993,18 @@ describe.sequential("CLI integration", () => {
 
   it("log prints compact run history and exits 0", async () => {
     const workspace = makeTempWorkspace();
+    const snapshotPath = createSnapshotPayload(workspace, "root", "12");
     writeSavedRun(workspace, {
       runId: "run-20260317T000000000Z-log-basic",
       status: "completed",
       extra: {
-        commitSha: "1234567890abcdef1234567890abcdef12345678",
+        implementationSnapshotTargets: [
+          {
+            laneKind: "root",
+            migrationNumber: 12,
+            snapshotPath,
+          },
+        ],
       },
     });
 
@@ -14005,17 +14013,24 @@ describe.sequential("CLI integration", () => {
     expect(result.code).toBe(0);
     expect(result.logs.some((line) => line.includes("run-20260317T000"))).toBe(true);
     expect(result.logs.some((line) => line.includes("command=run"))).toBe(true);
-    expect(result.logs.some((line) => line.includes("sha=1234567890ab"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("snapshot=root:12"))).toBe(true);
     expect(result.logs.some((line) => line.includes("revertable=yes"))).toBe(true);
   });
 
   it("log keeps compact history lines unprefixed while timestamping command-level info lines", async () => {
     const workspace = makeTempWorkspace();
+    const snapshotPath = createSnapshotPayload(workspace, "root", "11");
     writeSavedRun(workspace, {
       runId: "run-20260317T000000000Z-log-prefix-split",
       status: "completed",
       extra: {
-        commitSha: "1234567890abcdef1234567890abcdef12345678",
+        implementationSnapshotTargets: [
+          {
+            laneKind: "root",
+            migrationNumber: 11,
+            snapshotPath,
+          },
+        ],
       },
     });
 
@@ -14033,12 +14048,19 @@ describe.sequential("CLI integration", () => {
 
   it("log --json preserves the stable machine-readable contract", async () => {
     const workspace = makeTempWorkspace();
+    const snapshotPath = createSnapshotPayload(workspace, "root", "10");
     writeSavedRun(workspace, {
       runId: "run-20260317T000000000Z-log-json",
       status: "completed",
       startedAt: "2026-03-17T00:00:00.000Z",
       extra: {
-        commitSha: "1234567890abcdef1234567890abcdef12345678",
+        implementationSnapshotTargets: [
+          {
+            laneKind: "root",
+            migrationNumber: 10,
+            snapshotPath,
+          },
+        ],
       },
     });
 
@@ -14054,13 +14076,12 @@ describe.sequential("CLI integration", () => {
     expect(entry).toBeDefined();
     expect(Object.keys(entry ?? {}).sort()).toEqual([
       "commandName",
-      "commitSha",
       "completedAt",
       "relativeTime",
       "revertable",
       "runId",
-      "shortCommitSha",
       "shortRunId",
+      "snapshot",
       "source",
       "startedAt",
       "status",
@@ -14070,8 +14091,7 @@ describe.sequential("CLI integration", () => {
     expect(typeof entry?.["relativeTime"]).toBe("string");
     expect(entry?.["startedAt"]).toBe("2026-03-17T00:00:00.000Z");
     expect(entry?.["completedAt"]).toBe("2026-03-17T00:01:00.000Z");
-    expect(entry?.["commitSha"]).toBe("1234567890abcdef1234567890abcdef12345678");
-    expect(entry?.["shortCommitSha"]).toBe("1234567890ab");
+    expect(entry?.["snapshot"]).toBe("root:10");
     expect(entry?.["revertable"]).toBe(true);
     expect(entry?.["timestamp"]).toBeUndefined();
   });
@@ -14818,6 +14838,15 @@ function writeSavedRun(
     status: options.status,
     extra: options.extra,
   }, null, 2), "utf-8");
+}
+
+function createSnapshotPayload(workspace: string, lane: "root" | "thread", migrationNumber: string, threadSlug?: string): string {
+  const snapshotPath = lane === "thread"
+    ? path.join(workspace, "implementation", "snapshots", "threads", threadSlug ?? "default", migrationNumber)
+    : path.join(workspace, "implementation", "snapshots", "root", migrationNumber);
+  fs.mkdirSync(snapshotPath, { recursive: true });
+  fs.writeFileSync(path.join(snapshotPath, "snapshot-marker.txt"), "snapshot\n", "utf-8");
+  return snapshotPath;
 }
 
 function setupCompactFixture(workspace: string): void {

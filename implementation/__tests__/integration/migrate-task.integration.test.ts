@@ -1024,7 +1024,7 @@ describeIfMigrateAvailable("migrate-task integration", () => {
       path.join(workspace, ".rundown", "config.json"),
       JSON.stringify({
         workers: {
-          default: ["node", "-e", buildConvergentMigrateWorkerScript(["DONE"])],
+          default: ["node", "-e", buildMaterializeImplementationWriteWorkerScript()],
         },
       }, null, 2) + "\n",
       "utf-8",
@@ -1697,7 +1697,6 @@ function scaffoldPredictionProjectForReconciliation(workspace: string): void {
   fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(1, "initialize")), "# 0001 initialize\n\n- [x] bootstrap\n", "utf-8");
   fs.writeFileSync(path.join(workspace, "migrations", "Notes.md"), "# Notes\n\n- baseline\n", "utf-8");
   fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(2, "feature-a")), "# 0002 feature-a\n\n- [ ] implement feature a\n", "utf-8");
-  fs.writeFileSync(path.join(workspace, "migrations", formatMigrationFilename(3, "feature-b")), "# 0003 feature-b\n\n- [ ] implement feature b\n", "utf-8");
   fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
 }
 

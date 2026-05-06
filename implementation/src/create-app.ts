@@ -35,6 +35,7 @@ import { createInitProject, type InitProjectOptions } from "./application/init-p
 import { createLocalizeProject, type LocalizeProjectOptions } from "./application/localize-project.js";
 import { createReverifyTask, type ReverifyTaskOptions } from "./application/reverify-task.js";
 import { createRevertTask, type RevertTaskOptions } from "./application/revert-task.js";
+import { createSnapshotTask, type SnapshotTaskOptions } from "./application/snapshot-task.js";
 import { createUndoTask, type UndoTaskOptions } from "./application/undo-task.js";
 import {
   createMigrateTask,
@@ -181,6 +182,7 @@ export type App = {
   viewWorkerHealthStatus: (options: ViewWorkerHealthOptions) => number;
   resetWorkerHealthEntry: (options: ResetWorkerHealthOptions) => number;
   reverifyTask: (options: ReverifyTaskCommandOptions) => Promise<number>;
+  snapshotTask: (options: SnapshotTaskOptions) => Promise<number>;
   revertTask: (options: RevertTaskOptions) => Promise<number>;
   undoTask: (options: UndoTaskOptions) => Promise<number>;
   migrateTask: (options: MigrateTaskCommandOptions) => Promise<number>;
@@ -681,6 +683,10 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       pathOperations: ports.pathOperations,
       output: ports.output,
     }),
+    snapshotTask: (ports) => createSnapshotTask({
+      fileSystem: ports.fileSystem,
+      output: ports.output,
+    }),
     revertTask: (ports) => createRevertTask({
       artifactStore: ports.artifactStore,
       gitClient: ports.gitClient,
@@ -950,6 +956,7 @@ function createAppFromFactories(
   const viewWorkerHealthStatus = factories.viewWorkerHealthStatus(ports);
   const resetWorkerHealthEntry = factories.resetWorkerHealthEntry(ports);
   const reverifyTask = factories.reverifyTask(ports);
+  const snapshotTask = factories.snapshotTask(ports);
   const revertTask = factories.revertTask(ports);
   const undoTask = factories.undoTask(ports);
   const migrateTask = factories.migrateTask(ports);
@@ -1051,6 +1058,7 @@ function createAppFromFactories(
     viewWorkerHealthStatus,
     resetWorkerHealthEntry,
     reverifyTask,
+    snapshotTask,
     revertTask,
     undoTask,
     migrateTask: executeMigrateTask,

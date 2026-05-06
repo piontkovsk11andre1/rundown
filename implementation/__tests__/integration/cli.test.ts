@@ -243,8 +243,9 @@ async function runCli(args: string[], cwd: string, options?: {
       && "__cliExit" in error
       && (error as { __cliExit?: unknown }).__cliExit === true
     ) {
+      const cliExitError = error as unknown as { exitCode: number };
       return {
-        code: (error as { exitCode: number }).exitCode,
+        code: cliExitError.exitCode,
         logs,
         errors,
         stdoutWrites,
@@ -3066,216 +3067,163 @@ describe.sequential("CLI integration", () => {
     expect(result.errors.some((line) => line.includes("rundown log --revertable"))).toBe(true);
   });
 
-  it("revert explains file-done final-artifact targeting for explicit non-final run ids", async () => {
+  it("revert explains missing snapshot metadata for explicit non-revertable run ids", async () => {
     const workspace = makeTempWorkspace();
 
     writeSavedRun(workspace, {
-      runId: "run-20260317T000000000Z-file-done-nonfinal",
+      runId: "run-20260317T000000000Z-no-snapshot",
       status: "completed",
       startedAt: "2026-03-17T00:00:00.000Z",
       extra: {
-        note: "file-done non-final artifact has no commitSha",
+        note: "missing implementation snapshot metadata",
       },
     });
-    writeSavedRun(workspace, {
-      runId: "run-20260317T000100000Z-file-done-final",
-      status: "completed",
+    writeSnapshotBackedRun(workspace, {
+      runId: "run-20260317T000100000Z-snapshot-backed",
+      migrationNumber: 2,
       startedAt: "2026-03-17T00:01:00.000Z",
-      extra: {
-        commitSha: "abc123",
+      snapshotFiles: {
+        "status.txt": "restored\n",
       },
     });
 
     const result = await runCli([
       "revert",
       "--run",
-      "run-20260317T000000000Z-file-done-nonfinal",
+      "run-20260317T000000000Z-no-snapshot",
     ], workspace);
 
     expect(result.code).toBe(3);
-    expect(result.errors.some((line) => line.includes("is not revertable because it does not include extra.commitSha"))).toBe(true);
-    expect(result.errors.some((line) => line.includes("--commit-mode file-done"))).toBe(true);
-    expect(result.errors.some((line) => line.includes("--run latest"))).toBe(true);
+    expect(result.errors.some((line) => line.includes("extra.implementationSnapshotTargets"))).toBe(true);
   });
 
-  it("revert succeeds for a single committed run created via CLI", async () => {
+  it("revert succeeds for a single snapshot-backed run", async () => {
     const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-
-    fs.writeFileSync(roadmapPath, "- [ ] cli: echo hello\n", "utf-8");
-    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
-
-    const runResult = await runCli([
-      "run",
-      "roadmap.md",
-      "--no-verify",
-      "--commit",
-      "--keep-artifacts",
-    ], workspace);
-
-    expect(runResult.code).toBe(0);
-    expect(runResult.logs.some((line) => line.includes("Task checked: cli: echo hello"))).toBe(true);
-    expect(runResult.logs.some((line) => line.includes("Committed:"))).toBe(true);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] cli: echo hello");
+    const implementationDir = path.join(workspace, "implementation");
+    writeTreeFiles(implementationDir, {
+      "status.txt": "live\n",
+    });
+    writeSnapshotBackedRun(workspace, {
+      runId: "run-20260317T000000000Z-snapshot-single",
+      migrationNumber: 2,
+      snapshotFiles: {
+        "status.txt": "restored\n",
+        "nested/result.json": "{\"source\":\"feature-a\"}\n",
+      },
+    });
 
     const revertResult = await runCli(["revert"], workspace);
 
     expect(revertResult.code).toBe(0);
     expect(revertResult.logs.some((line) => line.includes("Reverted 1 run successfully."))).toBe(true);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: echo hello");
-  }, 15_000);
+    expect(fs.readFileSync(path.join(implementationDir, "status.txt"), "utf-8")).toBe("restored\n");
+    expect(fs.readFileSync(path.join(implementationDir, "nested", "result.json"), "utf-8")).toBe("{\"source\":\"feature-a\"}\n");
+  });
 
-  it("revert succeeds when the markdown file was moved after the original run", async () => {
+  it("revert uses the latest snapshot-revertable run when the newest completed run has no snapshot metadata", async () => {
     const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-    const docsPath = path.join(workspace, "docs", "roadmap.md");
-
-    fs.mkdirSync(path.dirname(docsPath), { recursive: true });
-    fs.writeFileSync(roadmapPath, "- [ ] cli: echo hello\n", "utf-8");
-    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
-
-    const runResult = await runCli([
-      "run",
-      "roadmap.md",
-      "--no-verify",
-      "--commit",
-      "--keep-artifacts",
-    ], workspace);
-
-    expect(runResult.code).toBe(0);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] cli: echo hello");
-
-    execFileSync("git", ["mv", "roadmap.md", "docs/roadmap.md"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "move roadmap"], { cwd: workspace, stdio: "ignore" });
-    expect(fs.existsSync(roadmapPath)).toBe(false);
-    expect(fs.readFileSync(docsPath, "utf-8")).toContain("- [x] cli: echo hello");
+    const implementationDir = path.join(workspace, "implementation");
+    writeTreeFiles(implementationDir, {
+      "status.txt": "live\n",
+    });
+    writeSnapshotBackedRun(workspace, {
+      runId: "run-20260317T000000000Z-revertable",
+      migrationNumber: 2,
+      startedAt: "2026-03-17T00:00:00.000Z",
+      snapshotFiles: {
+        "status.txt": "restored-from-older-run\n",
+      },
+    });
+    writeSavedRun(workspace, {
+      runId: "run-20260317T000100000Z-non-revertable",
+      status: "completed",
+      startedAt: "2026-03-17T00:01:00.000Z",
+      extra: {
+        note: "missing snapshot metadata",
+      },
+    });
 
     const revertResult = await runCli(["revert"], workspace);
 
     expect(revertResult.code).toBe(0);
-    expect(revertResult.logs.some((line) => line.includes("which no longer exists"))).toBe(true);
-    expect(revertResult.logs.some((line) => line.includes("commit-based revert"))).toBe(true);
     expect(revertResult.logs.some((line) => line.includes("Reverted 1 run successfully."))).toBe(true);
-    expect(fs.existsSync(roadmapPath)).toBe(false);
-    expect(fs.readFileSync(docsPath, "utf-8")).toContain("- [ ] cli: echo hello");
-  }, 15_000);
+    expect(revertResult.logs.some((line) => line.includes("run-20260317T000000000Z-revertable"))).toBe(true);
+    expect(revertResult.logs.some((line) => line.includes("run-20260317T000100000Z-non-revertable"))).toBe(false);
+    expect(fs.readFileSync(path.join(implementationDir, "status.txt"), "utf-8")).toBe("restored-from-older-run\n");
+  });
 
-  it("revert --last 3 succeeds with multiple committed runs", async () => {
+  it("revert --last 3 succeeds with multiple snapshot-backed runs", async () => {
     const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-
-    fs.writeFileSync(
-      roadmapPath,
-      "- [ ] cli: echo first\n- [ ] cli: echo second\n- [ ] cli: echo third\n",
-      "utf-8",
-    );
-    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
-
-    for (let i = 0; i < 3; i += 1) {
-      const runResult = await runCli([
-        "run",
-        "roadmap.md",
-        "--no-verify",
-        "--commit",
-        "--keep-artifacts",
-      ], workspace);
-      expect(runResult.code).toBe(0);
-      expect(runResult.logs.some((line) => line.includes("Committed:"))).toBe(true);
-    }
-
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] cli: echo first");
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] cli: echo second");
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] cli: echo third");
+    const implementationDir = path.join(workspace, "implementation");
+    writeTreeFiles(implementationDir, {
+      "status.txt": "live\n",
+    });
+    writeSnapshotBackedRun(workspace, {
+      runId: "run-20260317T000000000Z-oldest",
+      migrationNumber: 1,
+      startedAt: "2026-03-17T00:00:00.000Z",
+      snapshotFiles: {
+        "status.txt": "oldest\n",
+      },
+    });
+    writeSnapshotBackedRun(workspace, {
+      runId: "run-20260317T000100000Z-middle",
+      migrationNumber: 2,
+      startedAt: "2026-03-17T00:01:00.000Z",
+      snapshotFiles: {
+        "status.txt": "middle\n",
+      },
+    });
+    writeSnapshotBackedRun(workspace, {
+      runId: "run-20260317T000200000Z-newest",
+      migrationNumber: 3,
+      startedAt: "2026-03-17T00:02:00.000Z",
+      snapshotFiles: {
+        "status.txt": "newest\n",
+      },
+    });
 
     const revertResult = await runCli(["revert", "--last", "3"], workspace);
 
     expect(revertResult.code).toBe(0);
     expect(revertResult.logs.some((line) => line.includes("Reverted 3 runs successfully."))).toBe(true);
     expect(revertResult.logs.some((line) => line.includes("Revert operation summary: 3 successes, 0 failures."))).toBe(true);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: echo first");
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: echo second");
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: echo third");
-  }, 15_000);
+    expect(fs.readFileSync(path.join(implementationDir, "status.txt"), "utf-8")).toBe("oldest\n");
+  });
 
-  it("revert --method reset succeeds when target commit is at HEAD", async () => {
+  it("revert --method reset behaves as snapshot restore", async () => {
     const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-
-    fs.writeFileSync(roadmapPath, "- [ ] cli: echo hello\n", "utf-8");
-    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
-
-    const runResult = await runCli([
-      "run",
-      "roadmap.md",
-      "--no-verify",
-      "--commit",
-      "--keep-artifacts",
-    ], workspace);
-
-    expect(runResult.code).toBe(0);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] cli: echo hello");
-    expect(
-      Number(execFileSync("git", ["rev-list", "--count", "HEAD"], { cwd: workspace, encoding: "utf-8" }).trim()),
-    ).toBe(2);
+    const implementationDir = path.join(workspace, "implementation");
+    writeTreeFiles(implementationDir, {
+      "status.txt": "live\n",
+    });
+    writeSnapshotBackedRun(workspace, {
+      runId: "run-20260317T000000000Z-reset-alias",
+      migrationNumber: 2,
+      snapshotFiles: {
+        "status.txt": "restored-via-reset\n",
+      },
+    });
 
     const revertResult = await runCli(["revert", "--method", "reset"], workspace);
 
     expect(revertResult.code).toBe(0);
+    expect(revertResult.logs.some((line) => line.includes("--method reset is treated as snapshot restore"))).toBe(true);
     expect(revertResult.logs.some((line) => line.includes("Reverted 1 run successfully."))).toBe(true);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: echo hello");
-    expect(
-      Number(execFileSync("git", ["rev-list", "--count", "HEAD"], { cwd: workspace, encoding: "utf-8" }).trim()),
-    ).toBe(1);
+    expect(fs.readFileSync(path.join(implementationDir, "status.txt"), "utf-8")).toBe("restored-via-reset\n");
   });
 
-  it("revert --method reset returns 1 when target commit is not at HEAD", async () => {
+  it("revert --method reset accepts explicit snapshot-backed run ids without git history", async () => {
     const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-
-    fs.writeFileSync(roadmapPath, "- [ ] cli: echo hello\n", "utf-8");
-    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
-
-    fs.writeFileSync(roadmapPath, "- [x] cli: echo hello\n", "utf-8");
-    execFileSync("git", ["add", "roadmap.md"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "rundown: complete \"cli: echo hello\" in roadmap.md"], {
-      cwd: workspace,
-      stdio: "ignore",
+    const implementationDir = path.join(workspace, "implementation");
+    writeTreeFiles(implementationDir, {
+      "status.txt": "live\n",
     });
-    const committedSha = execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd: workspace,
-      encoding: "utf-8",
-    }).trim();
-
-    fs.writeFileSync(path.join(workspace, "notes.txt"), "follow-up change\n", "utf-8");
-    execFileSync("git", ["add", "notes.txt"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "follow-up"], { cwd: workspace, stdio: "ignore" });
-
-    writeSavedRun(workspace, {
-      runId: "run-20260317T000000000Z-not-head",
-      status: "completed",
-      extra: {
-        commitSha: committedSha,
-        commitMessage: "rundown: complete \"cli: echo hello\" in roadmap.md",
+    writeSnapshotBackedRun(workspace, {
+      runId: "run-20260317T000000000Z-explicit-reset",
+      migrationNumber: 2,
+      snapshotFiles: {
+        "status.txt": "restored-explicit\n",
       },
     });
 
@@ -3284,50 +3232,27 @@ describe.sequential("CLI integration", () => {
       "--method",
       "reset",
       "--run",
-      "run-20260317T000000000Z-not-head",
+      "run-20260317T000000000Z-explicit-reset",
     ], workspace);
 
-    expect(result.code).toBe(1);
-    expect(result.errors.some((line) => line.includes("contiguous block at HEAD"))).toBe(true);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] cli: echo hello");
+    expect(result.code).toBe(0);
+    expect(result.errors).toEqual([]);
+    expect(fs.readFileSync(path.join(implementationDir, "status.txt"), "utf-8")).toBe("restored-explicit\n");
   });
 
-  it("revert --method reset --force bypasses dirty-worktree and contiguous-HEAD checks", async () => {
+  it("revert --method reset --force logs snapshot no-op guidance and still restores", async () => {
     const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-
-    fs.writeFileSync(roadmapPath, "- [ ] cli: echo hello\n", "utf-8");
-    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
-
-    fs.writeFileSync(roadmapPath, "- [x] cli: echo hello\n", "utf-8");
-    execFileSync("git", ["add", "roadmap.md"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "rundown: complete \"cli: echo hello\" in roadmap.md"], {
-      cwd: workspace,
-      stdio: "ignore",
+    const implementationDir = path.join(workspace, "implementation");
+    writeTreeFiles(implementationDir, {
+      "status.txt": "live\n",
     });
-    const committedSha = execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd: workspace,
-      encoding: "utf-8",
-    }).trim();
-
-    fs.writeFileSync(path.join(workspace, "notes.txt"), "follow-up change\n", "utf-8");
-    execFileSync("git", ["add", "notes.txt"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "follow-up"], { cwd: workspace, stdio: "ignore" });
-
-    writeSavedRun(workspace, {
+    writeSnapshotBackedRun(workspace, {
       runId: "run-20260317T000000000Z-force-reset",
-      status: "completed",
-      extra: {
-        commitSha: committedSha,
-        commitMessage: "rundown: complete \"cli: echo hello\" in roadmap.md",
+      migrationNumber: 2,
+      snapshotFiles: {
+        "status.txt": "restored-force\n",
       },
     });
-
-    fs.writeFileSync(path.join(workspace, "dirty.txt"), "uncommitted\n", "utf-8");
 
     const result = await runCli([
       "revert",
@@ -3339,11 +3264,9 @@ describe.sequential("CLI integration", () => {
     ], workspace);
 
     expect(result.code).toBe(0);
-    expect(result.logs.some((line) => line.includes("--force enabled: skipping clean-worktree precondition check."))).toBe(true);
-    expect(result.logs.some((line) => line.includes("--force enabled: skipping contiguous-HEAD validation for reset."))).toBe(true);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] cli: echo hello");
-    expect(fs.existsSync(path.join(workspace, "notes.txt"))).toBe(false);
-    expect(fs.existsSync(path.join(workspace, "dirty.txt"))).toBe(true);
+    expect(result.logs.some((line) => line.includes("--force is ignored for snapshot restores."))).toBe(true);
+    expect(result.logs.some((line) => line.includes("--method reset is treated as snapshot restore"))).toBe(true);
+    expect(fs.readFileSync(path.join(implementationDir, "status.txt"), "utf-8")).toBe("restored-force\n");
   });
 
   it("undo enforces dirty-worktree safety unless --force and keeps task state consistent when blocked", async () => {
@@ -3385,64 +3308,37 @@ describe.sequential("CLI integration", () => {
     expect(fs.readFileSync(path.join(forcedWorkspace, "roadmap.md"), "utf-8")).toContain("- [ ] Write docs");
   });
 
-  it("revert --dry-run prints planned runs and git commands", async () => {
+  it("revert --dry-run prints planned snapshot restore operations", async () => {
     const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-
-    fs.writeFileSync(roadmapPath, "- [ ] Write docs\n", "utf-8");
-    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
-
-    fs.writeFileSync(roadmapPath, "- [x] Write docs\n", "utf-8");
-    execFileSync("git", ["add", "roadmap.md"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "rundown: complete docs"], { cwd: workspace, stdio: "ignore" });
-    const oldestSha = execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd: workspace,
-      encoding: "utf-8",
-    }).trim();
-
-    fs.writeFileSync(roadmapPath, "- [x] Write docs v2\n", "utf-8");
-    execFileSync("git", ["add", "roadmap.md"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "rundown: complete docs again"], { cwd: workspace, stdio: "ignore" });
-    const newestSha = execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd: workspace,
-      encoding: "utf-8",
-    }).trim();
-
-    writeSavedRun(workspace, {
+    const snapshotPathOld = writeSnapshotBackedRun(workspace, {
       runId: "run-20260317T000000000Z-older",
-      status: "completed",
+      migrationNumber: 2,
       startedAt: "2026-03-17T00:00:00.000Z",
       taskText: "Write docs",
-      extra: {
-        commitSha: oldestSha,
-        commitMessage: "rundown: complete docs",
+      snapshotFiles: {
+        "status.txt": "older\n",
       },
     });
-    writeSavedRun(workspace, {
+    const snapshotPathNew = writeSnapshotBackedRun(workspace, {
       runId: "run-20260317T000100000Z-newer",
-      status: "completed",
+      migrationNumber: 3,
       startedAt: "2026-03-17T00:01:00.000Z",
       taskText: "Write docs v2",
-      extra: {
-        commitSha: newestSha,
-        commitMessage: "rundown: complete docs again",
+      snapshotFiles: {
+        "status.txt": "newer\n",
       },
     });
 
     const result = await runCli(["revert", "--all", "--dry-run", "--method", "revert"], workspace);
 
     expect(result.code).toBe(0);
-    expect(result.logs.some((line) => line.includes("Dry run - would revert 2 runs using method=revert."))).toBe(true);
-    expect(result.logs.some((line) => line.includes(`run=run-20260317T000100000Z-newer method=revert commit=${newestSha}`))).toBe(true);
-    expect(result.logs.some((line) => line.includes(`run=run-20260317T000000000Z-older method=revert commit=${oldestSha}`))).toBe(true);
+    expect(result.logs.some((line) => line.includes("Dry run - would restore 2 runs using snapshot-backed history."))).toBe(true);
+    expect(result.logs.some((line) => line.includes(`run=run-20260317T000100000Z-newer lane=root migration=3 snapshot=${snapshotPathNew}`))).toBe(true);
+    expect(result.logs.some((line) => line.includes(`run=run-20260317T000000000Z-older lane=root migration=2 snapshot=${snapshotPathOld}`))).toBe(true);
     expect(result.logs.some((line) => line.includes(`task=roadmap.md:1 [#0] Write docs v2`))).toBe(true);
     expect(result.logs.some((line) => line.includes(`task=roadmap.md:1 [#0] Write docs`))).toBe(true);
-    expect(result.logs.some((line) => line.includes(`- git revert ${newestSha} --no-edit`))).toBe(true);
-    expect(result.logs.some((line) => line.includes(`- git revert ${oldestSha} --no-edit`))).toBe(true);
+    expect(result.logs.some((line) => line.includes(`- restore implementation tree from ${snapshotPathNew}`))).toBe(true);
+    expect(result.logs.some((line) => line.includes(`- restore implementation tree from ${snapshotPathOld}`))).toBe(true);
 
     const plannedRunLines = result.logs.filter((line) => line.includes("run=run-20260317"));
     expect(plannedRunLines[0]).toContain("run=run-20260317T000100000Z-newer");
@@ -3451,37 +3347,23 @@ describe.sequential("CLI integration", () => {
 
   it("revert --keep-artifacts creates a reverted artifact run", async () => {
     const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-
-    fs.writeFileSync(roadmapPath, "- [ ] Write docs\n", "utf-8");
-    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
-
-    fs.writeFileSync(roadmapPath, "- [x] Write docs\n", "utf-8");
-    execFileSync("git", ["add", "roadmap.md"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "rundown: complete \"Write docs\" in roadmap.md"], { cwd: workspace, stdio: "ignore" });
-    const committedSha = execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd: workspace,
-      encoding: "utf-8",
-    }).trim();
-
-    writeSavedRun(workspace, {
-      runId: "run-20260317T000000000Z-committed",
-      status: "completed",
+    const implementationDir = path.join(workspace, "implementation");
+    writeTreeFiles(implementationDir, {
+      "status.txt": "live\n",
+    });
+    writeSnapshotBackedRun(workspace, {
+      runId: "run-20260317T000000000Z-snapshot-keep-artifacts",
+      migrationNumber: 2,
       startedAt: "2026-03-17T00:01:00.000Z",
-      extra: {
-        commitSha: committedSha,
-        commitMessage: "rundown: complete \"Write docs\" in roadmap.md",
+      snapshotFiles: {
+        "status.txt": "restored\n",
       },
     });
 
     const result = await runCli([
       "revert",
       "--run",
-      "run-20260317T000000000Z-committed",
+      "run-20260317T000000000Z-snapshot-keep-artifacts",
       "--keep-artifacts",
     ], workspace);
 
@@ -3489,83 +3371,36 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => line.includes("Reverted 1 run successfully."))).toBe(true);
 
     const savedRuns = readSavedRunMetadata(workspace);
-    expect(savedRuns.some((run) => run.commandName === "revert" && run.status === "reverted")).toBe(true);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] Write docs");
+    expect(savedRuns.some((run) => run.commandName === "revert" && run.status === "reverted" && run.extra?.method === "snapshot-restore")).toBe(true);
+    expect(fs.readFileSync(path.join(implementationDir, "status.txt"), "utf-8")).toBe("restored\n");
   });
 
-  it("revert can restore a prior reset-based revert using saved preResetRef", async () => {
+  it("revert returns 3 when an explicit run references a missing snapshot payload", async () => {
     const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-
-    fs.writeFileSync(roadmapPath, "- [ ] Write docs\n", "utf-8");
-    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
-
-    const initialSha = execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd: workspace,
-      encoding: "utf-8",
-    }).trim();
-
-    fs.writeFileSync(roadmapPath, "- [x] Write docs\n", "utf-8");
-    execFileSync("git", ["add", "roadmap.md"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "rundown: complete \"Write docs\" in roadmap.md"], {
-      cwd: workspace,
-      stdio: "ignore",
-    });
-    const committedSha = execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd: workspace,
-      encoding: "utf-8",
-    }).trim();
-
+    fs.mkdirSync(path.join(workspace, "implementation"), { recursive: true });
     writeSavedRun(workspace, {
-      runId: "run-20260317T000000000Z-committed",
+      runId: "run-20260317T000000000Z-missing-snapshot",
       status: "completed",
       startedAt: "2026-03-17T00:01:00.000Z",
       extra: {
-        commitSha: committedSha,
-        commitMessage: "rundown: complete \"Write docs\" in roadmap.md",
+        implementationSnapshotTargets: [
+          {
+            laneKind: "root",
+            migrationNumber: 2,
+            snapshotPath: path.join(workspace, "implementation", "snapshots", "root", "2-missing"),
+          },
+        ],
       },
     });
 
-    const resetRevertResult = await runCli([
+    const result = await runCli([
       "revert",
       "--run",
-      "run-20260317T000000000Z-committed",
-      "--method",
-      "reset",
-      "--keep-artifacts",
+      "run-20260317T000000000Z-missing-snapshot",
     ], workspace);
 
-    expect(resetRevertResult.code).toBe(0);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [ ] Write docs");
-
-    const resetRun = findSavedRunByCommand(workspace, "revert");
-    expect(resetRun?.status).toBe("reverted");
-    expect(resetRun?.extra?.method).toBe("reset");
-    expect(typeof resetRun?.extra?.preResetRef).toBe("string");
-    expect(resetRun).not.toBeNull();
-    if (!resetRun) {
-      throw new Error("expected reset artifact run to exist");
-    }
-
-    fs.writeFileSync(path.join(workspace, "followup.txt"), "post reset\n", "utf-8");
-    execFileSync("git", ["add", "followup.txt"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "follow-up after reset"], { cwd: workspace, stdio: "ignore" });
-
-    const restoreResult = await runCli([
-      "revert",
-      "--run",
-      resetRun.runId,
-      "--method",
-      "reset",
-    ], workspace);
-
-    expect(restoreResult.code).toBe(0);
-    expect(fs.readFileSync(roadmapPath, "utf-8")).toContain("- [x] Write docs");
-    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: workspace, encoding: "utf-8" }).trim()).toBe(committedSha);
+    expect(result.code).toBe(3);
+    expect(result.errors.some((line) => line.includes("payload is missing on disk"))).toBe(true);
   });
 
   it("reverify returns 3 when selected run is not completed", async () => {
@@ -5132,29 +4967,25 @@ describe.sequential("CLI integration", () => {
 
   it("revert writes paired group-start/group-end entries for each revert operation", async () => {
     const workspace = makeTempWorkspace();
-    const roadmapPath = path.join(workspace, "roadmap.md");
-
-    fs.writeFileSync(
-      roadmapPath,
-      "- [ ] cli: echo first\n- [ ] cli: echo second\n",
-      "utf-8",
-    );
-    execFileSync("git", ["init"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.email", "test@rundown.dev"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["config", "user.name", "rundown test"], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["add", "."], { cwd: workspace, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "initial"], { cwd: workspace, stdio: "ignore" });
-
-    for (let runIndex = 0; runIndex < 2; runIndex += 1) {
-      const runResult = await runCli([
-        "run",
-        "roadmap.md",
-        "--no-verify",
-        "--commit",
-        "--keep-artifacts",
-      ], workspace);
-      expect(runResult.code).toBe(0);
-    }
+    writeTreeFiles(path.join(workspace, "implementation"), {
+      "status.txt": "live\n",
+    });
+    writeSnapshotBackedRun(workspace, {
+      runId: "run-20260317T000000000Z-group-older",
+      migrationNumber: 1,
+      startedAt: "2026-03-17T00:00:00.000Z",
+      snapshotFiles: {
+        "status.txt": "older\n",
+      },
+    });
+    writeSnapshotBackedRun(workspace, {
+      runId: "run-20260317T000100000Z-group-newer",
+      migrationNumber: 2,
+      startedAt: "2026-03-17T00:01:00.000Z",
+      snapshotFiles: {
+        "status.txt": "newer\n",
+      },
+    });
 
     const result = await runCli(["revert", "--last", "2"], workspace);
 
@@ -7734,12 +7565,11 @@ describe.sequential("CLI integration", () => {
     const sourceName = "roadmap.md";
     const sourcePath = path.join(workspace, sourceName);
     fs.writeFileSync(sourcePath, "- [x] Write docs\n", "utf-8");
-    writeSavedRun(workspace, {
-      runId: "run-20260328T000000000Z-committed",
-      status: "completed",
-      extra: {
-        commitSha: "abc123",
-        commitMessage: "rundown: complete \"Write docs\" in roadmap.md",
+    writeSnapshotBackedRun(workspace, {
+      runId: "run-20260328T000000000Z-snapshot-backed",
+      migrationNumber: 2,
+      snapshotFiles: {
+        "status.txt": "restored\n",
       },
     });
 
@@ -14846,6 +14676,48 @@ function createSnapshotPayload(workspace: string, lane: "root" | "thread", migra
     : path.join(workspace, "implementation", "snapshots", "root", migrationNumber);
   fs.mkdirSync(snapshotPath, { recursive: true });
   fs.writeFileSync(path.join(snapshotPath, "snapshot-marker.txt"), "snapshot\n", "utf-8");
+  return snapshotPath;
+}
+
+function writeTreeFiles(root: string, files: Record<string, string>): void {
+  for (const [relativePath, content] of Object.entries(files)) {
+    const targetPath = path.join(root, ...relativePath.split("/"));
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.writeFileSync(targetPath, content, "utf-8");
+  }
+}
+
+function writeSnapshotBackedRun(
+  workspace: string,
+  options: {
+    runId: string;
+    migrationNumber: number;
+    startedAt?: string;
+    taskText?: string;
+    lane?: "root" | "thread";
+    threadSlug?: string;
+    snapshotFiles?: Record<string, string>;
+  },
+): string {
+  const lane = options.lane ?? "root";
+  const snapshotPath = createSnapshotPayload(workspace, lane, String(options.migrationNumber), options.threadSlug);
+  writeTreeFiles(snapshotPath, options.snapshotFiles ?? {});
+  writeSavedRun(workspace, {
+    runId: options.runId,
+    status: "completed",
+    startedAt: options.startedAt,
+    taskText: options.taskText,
+    extra: {
+      implementationSnapshotTargets: [
+        {
+          laneKind: lane,
+          ...(options.threadSlug ? { threadSlug: options.threadSlug } : {}),
+          migrationNumber: options.migrationNumber,
+          snapshotPath,
+        },
+      ],
+    },
+  });
   return snapshotPath;
 }
 

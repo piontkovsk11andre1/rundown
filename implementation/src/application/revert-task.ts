@@ -126,18 +126,6 @@ export function createRevertTask(
       return EXIT_CODE_FAILURE;
     }
 
-    const workspacePaths = resolveWorkspacePaths({
-      fileSystem: dependencies.fileSystem,
-      workspaceRoot: workspaceSelection.workspaceRoot,
-      invocationRoot: workspaceSelection.executionContext.invocationDir,
-    });
-    const implementationRootPath = workspacePaths.implementation;
-    const implementationRootStat = dependencies.fileSystem.stat(implementationRootPath);
-    if (!implementationRootStat?.isDirectory) {
-      emit({ kind: "error", message: "Implementation directory does not exist or is not a directory: " + implementationRootPath });
-      return EXIT_CODE_FAILURE;
-    }
-
     const selectedRuns = resolveTargetRuns(dependencies.artifactStore, artifactBaseDir, dependencies.fileSystem, {
       runId,
       last,
@@ -182,6 +170,18 @@ export function createRevertTask(
 
     const executionOperations = orderOperationsForRestore(revertOperations);
     const executionRuns = executionOperations.map((operation) => operation.run);
+
+    const workspacePaths = resolveWorkspacePaths({
+      fileSystem: dependencies.fileSystem,
+      workspaceRoot: workspaceSelection.workspaceRoot,
+      invocationRoot: workspaceSelection.executionContext.invocationDir,
+    });
+    const implementationRootPath = workspacePaths.implementation;
+    const implementationRootStat = dependencies.fileSystem.stat(implementationRootPath);
+    if (!implementationRootStat?.isDirectory) {
+      emit({ kind: "error", message: "Implementation directory does not exist or is not a directory: " + implementationRootPath });
+      return EXIT_CODE_FAILURE;
+    }
 
     const lockTargets = collectRevertLockTargets(executionRuns, cwd, dependencies.pathOperations, implementationRootPath);
     try {

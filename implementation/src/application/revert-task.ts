@@ -1,11 +1,6 @@
+import path from "node:path";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import { FileLockError } from "../domain/ports/file-lock.js";
-import {
-  isGitRepoWithGitClient,
-  isPathInsideRepo,
-  isWorkingDirectoryClean,
-  resolveGitArtifactAndLockExcludes,
-} from "./git-operations.js";
 import {
   formatNoItemsFound,
   formatNoItemsFoundFor,
@@ -18,6 +13,8 @@ import {
   EXIT_CODE_NO_WORK,
   EXIT_CODE_SUCCESS,
 } from "../domain/exit-codes.js";
+import { resolveWorkspacePaths } from "./workspace-paths.js";
+import { resolveWorkspaceRootForPathSensitiveCommand } from "./workspace-selection.js";
 import type {
   ArtifactRunMetadata,
   ArtifactStore,
@@ -30,7 +27,7 @@ import type {
 } from "../domain/ports/index.js";
 
 /**
- * External services required to resolve saved runs, perform git operations,
+ * External services required to resolve saved runs, restore snapshots,
  * and persist artifacts for the `revert` command.
  */
 export interface RevertTaskDependencies {
@@ -45,7 +42,7 @@ export interface RevertTaskDependencies {
 }
 
 /**
- * User-provided options that control target selection and revert strategy.
+ * User-provided options that control target selection and restore behavior.
  */
 export interface RevertTaskOptions {
   runId: string;
@@ -57,22 +54,19 @@ export interface RevertTaskOptions {
   force: boolean;
 }
 
-// Base explanation shown when no run can be reverted from saved artifacts.
-const NO_REVERTABLE_RUNS_BASE_MESSAGE = "No revertable runs found. The original run must be completed with --commit and --keep-artifacts so run.json contains extra.commitSha.";
-// Extra discovery hint appended when there are runs that can be inspected in logs.
+const NO_REVERTABLE_RUNS_BASE_MESSAGE = "No revertable runs found. The original run must be completed with implementation snapshot metadata and a snapshot payload that still exists on disk.";
 const REVERTABLE_LOG_HINT = "See `rundown log --revertable` for eligible runs.";
-const FILE_DONE_FINAL_RUN_HINT = "If this run came from `--commit --commit-mode file-done` in an effective run-all flow, only the final successful run artifact records extra.commitSha. Use that final run id or `--run latest`.";
 
-/**
- * Normalized git target resolved from a saved run.
- *
- * - `commit`: a completed run with a commit SHA to revert/reset.
- * - `pre-reset-ref`: a prior reset revert run that recorded the original HEAD.
- */
-interface RevertOperation {
+interface SnapshotTarget {
+  laneKind: "root" | "thread";
+  threadSlug?: string;
+  migrationNumber: number;
+  snapshotPath: string;
+}
+
+interface SnapshotRevertOperation {
   run: ArtifactRunMetadata;
-  type: "commit" | "pre-reset-ref";
-  ref: string;
+  target: SnapshotTarget;
 }
 
 interface RevertProgressDescriptor {
@@ -88,13 +82,6 @@ interface RevertOperationGroupDescriptor {
   };
 }
 
-/**
- * Builds the application-level `revert` command handler.
- *
- * The returned function resolves target runs from artifacts, validates git
- * preconditions, performs either `git revert` or `git reset --hard`, and then
- * records the terminal result in a new runtime artifact entry.
- */
 export function createRevertTask(
   dependencies: RevertTaskDependencies,
 ): (options: RevertTaskOptions) => Promise<number> {
@@ -102,41 +89,65 @@ export function createRevertTask(
 
   return async function revertTask(options: RevertTaskOptions): Promise<number> {
     const { runId, last, all, method, dryRun, keepArtifacts, force } = options;
-    // Multi-run mode is enabled when `--all` or `--last` is supplied.
     const hasMultiRunSelection = all === true || last !== undefined;
 
-    // Guard incompatible selectors early to keep behavior predictable.
     if (all && last !== undefined) {
       emit({ kind: "error", message: "Cannot combine --all with --last." });
       return EXIT_CODE_FAILURE;
     }
 
-    // Explicit run ids cannot be mixed with bulk selectors.
     if (hasMultiRunSelection && runId !== "latest") {
       emit({ kind: "error", message: "Cannot combine --run <id> with --all or --last." });
       return EXIT_CODE_FAILURE;
     }
 
-    // `--last` accepts only positive integer counts.
     if (last !== undefined && (!Number.isInteger(last) || last < 1)) {
       emit({ kind: "error", message: "--last must be a positive integer." });
       return EXIT_CODE_FAILURE;
     }
 
+    if (force) {
+      emit({ kind: "info", message: "--force is ignored for snapshot restores." });
+    }
+
+    if (method === "reset") {
+      emit({ kind: "info", message: "--method reset is treated as snapshot restore (same behavior as --method revert)." });
+    }
+
     const cwd = dependencies.workingDirectory.cwd();
     const artifactBaseDir = dependencies.configDir?.configDir;
-    // Selected runs can include non-revertable runs (for example metadata-only entries).
-    const selectedRuns = resolveTargetRuns(dependencies.artifactStore, artifactBaseDir, { runId, last, all });
-    // Completed runs are used only to provide clearer diagnostics.
+
+    const workspaceSelection = resolveWorkspaceRootForPathSensitiveCommand({
+      fileSystem: dependencies.fileSystem,
+      invocationDir: cwd,
+    });
+    if (!workspaceSelection.ok) {
+      emit({ kind: "error", message: workspaceSelection.message });
+      return EXIT_CODE_FAILURE;
+    }
+
+    const workspacePaths = resolveWorkspacePaths({
+      fileSystem: dependencies.fileSystem,
+      workspaceRoot: workspaceSelection.workspaceRoot,
+      invocationRoot: workspaceSelection.executionContext.invocationDir,
+    });
+    const implementationRootPath = workspacePaths.implementation;
+    const implementationRootStat = dependencies.fileSystem.stat(implementationRootPath);
+    if (!implementationRootStat?.isDirectory) {
+      emit({ kind: "error", message: "Implementation directory does not exist or is not a directory: " + implementationRootPath });
+      return EXIT_CODE_FAILURE;
+    }
+
+    const selectedRuns = resolveTargetRuns(dependencies.artifactStore, artifactBaseDir, dependencies.fileSystem, {
+      runId,
+      last,
+      all,
+    });
     const completedRuns = resolveCompletedRuns(dependencies.artifactStore, artifactBaseDir);
 
-    // Report selection failures with context-sensitive guidance.
     if (selectedRuns.length === 0) {
       if (completedRuns.length > 0) {
-        emit({
-          kind: "error",
-          message: buildNoRevertableRunsMessage(true),
-        });
+        emit({ kind: "error", message: buildNoRevertableRunsMessage(true) });
         return EXIT_CODE_NO_WORK;
       }
 
@@ -145,66 +156,34 @@ export function createRevertTask(
         return EXIT_CODE_NO_WORK;
       }
 
-      const target = runId === "latest"
-        ? "latest completed"
-        : runId;
+      const target = runId === "latest" ? "latest completed" : runId;
       emit({ kind: "error", message: formatNoItemsFoundFor("saved runtime artifact run", target) });
       return EXIT_CODE_NO_WORK;
     }
 
-    // Convert saved runs into executable git targets.
     const revertOperations = selectedRuns
-      .map(resolveRevertOperation)
-      .filter((operation): operation is RevertOperation => operation !== null);
+      .map((run) => resolveSnapshotRevertOperation(run, dependencies.fileSystem))
+      .filter((operation): operation is SnapshotRevertOperation => operation !== null);
     if (revertOperations.length === 0) {
       const selectedRun = selectedRuns[0];
-      const selectedRunIsSingleCompletedRunWithoutCommitSha = !hasMultiRunSelection
+      const selectedRunIsSingleCompletedRunWithoutSnapshot = !hasMultiRunSelection
         && runId !== "latest"
         && selectedRun !== undefined
         && selectedRun.status === "completed"
-        && getCommitSha(selectedRun) === null;
-      if (selectedRunIsSingleCompletedRunWithoutCommitSha) {
-        emit({
-          kind: "error",
-          message: "Run " + selectedRun.runId + " is not revertable because it does not include extra.commitSha. "
-            + FILE_DONE_FINAL_RUN_HINT,
-        });
+        && resolveSnapshotRevertOperation(selectedRun, dependencies.fileSystem) === null;
+      if (selectedRunIsSingleCompletedRunWithoutSnapshot && selectedRun) {
+        emit({ kind: "error", message: buildRunNotSnapshotRevertableMessage(selectedRun, dependencies.fileSystem) });
         return EXIT_CODE_NO_WORK;
       }
 
-      emit({
-        kind: "error",
-        message: buildNoRevertableRunsMessage(completedRuns.length > 0),
-      });
+      emit({ kind: "error", message: buildNoRevertableRunsMessage(completedRuns.length > 0) });
       return EXIT_CODE_NO_WORK;
     }
 
-    // `pre-reset-ref` entries represent prior reset reverts and must be replayed one-at-a-time.
-    const hasPreResetRefTargets = revertOperations.some((operation) => operation.type === "pre-reset-ref");
-    if (hasPreResetRefTargets) {
-      if (revertOperations.length > 1) {
-        emit({
-          kind: "error",
-          message: "Runs created by a prior --method reset can only be reverted one at a time (use --run <id> --method reset).",
-        });
-        return EXIT_CODE_FAILURE;
-      }
-
-      if (method !== "reset") {
-        emit({
-          kind: "error",
-          message: "Selected run was created by --method reset. Revert it with --method reset to restore its pre-reset ref.",
-        });
-        return EXIT_CODE_NO_WORK;
-      }
-    }
-
-    // Revert mode processes newest-first to reduce conflict risk.
-    const executionOperations = orderOperationsForMethod(revertOperations, method);
+    const executionOperations = orderOperationsForRestore(revertOperations);
     const executionRuns = executionOperations.map((operation) => operation.run);
 
-    // Lock every referenced task/source file before mutating git state.
-    const lockTargets = collectRevertLockTargets(executionRuns, cwd, dependencies.pathOperations);
+    const lockTargets = collectRevertLockTargets(executionRuns, cwd, dependencies.pathOperations, implementationRootPath);
     try {
       for (const filePath of lockTargets) {
         dependencies.fileLock.acquire(filePath, { command: "revert" });
@@ -228,93 +207,15 @@ export function createRevertTask(
     }
 
     try {
-      // Missing task files are informational only; git history still provides commit references.
-      for (const run of executionRuns) {
-        const taskFile = run.task?.file;
-        const missingTaskFile = isTaskFileMissing(
-          run,
-          cwd,
-          dependencies.fileSystem,
-          dependencies.pathOperations,
-        );
-        if (!missingTaskFile) {
-          continue;
-        }
-
-        emit({
-          kind: "info",
-          message: "Run " + run.runId + " references task file " + taskFile
-            + " which no longer exists. Proceeding with commit-based revert; file renames/moves are handled by git history.",
-        });
-      }
-
-      // Revert/reset requires repository context and optionally a clean worktree.
-      const inGitRepo = await isGitRepoWithGitClient(dependencies.gitClient, cwd);
-      if (!inGitRepo) {
-        emit({ kind: "error", message: "Not inside a git repository." });
-        return EXIT_CODE_FAILURE;
-      }
-
-      if (force) {
-        emit({
-          kind: "info",
-          message: "--force enabled: skipping clean-worktree precondition check.",
-        });
-      } else {
-        const isClean = await isWorkingDirectoryClean(
-          dependencies.gitClient,
-          cwd,
-          dependencies.configDir,
-          dependencies.pathOperations,
-        );
-        if (!isClean) {
-          emit({
-            kind: "error",
-            message: "Working directory is not clean. Commit or stash changes before running revert.",
-          });
-          return EXIT_CODE_FAILURE;
-        }
-      }
-
-      // For reset mode, this tracks the oldest selected commit used to compute `<sha>~1`.
-      let resetOldestSha: string | null = null;
-
-      try {
-        // Validate commit-backed targets first so failures are reported before execution.
-        const commitOperations = executionOperations.filter((operation) => operation.type === "commit");
-        if (commitOperations.length > 0) {
-          await validateTargetCommitsExistInHistory(dependencies.gitClient, cwd, commitOperations);
-        }
-
-        // Reset mode must target a contiguous HEAD block unless force bypasses that safety check.
-        if (method === "reset" && commitOperations.length > 0) {
-          if (force) {
-            emit({
-              kind: "info",
-              message: "--force enabled: skipping contiguous-HEAD validation for reset.",
-            });
-            resetOldestSha = resolveOldestResetTarget(commitOperations);
-          } else {
-            resetOldestSha = await validateResetTargetsAtHead(dependencies.gitClient, cwd, commitOperations);
-          }
-        }
-
-        // Validate pre-reset refs when reverting a prior reset operation.
-        await validatePreResetRefTargetsExistInHistory(dependencies.gitClient, cwd, executionOperations);
-      } catch (error) {
-        emit({ kind: "error", message: String(error) });
-        return EXIT_CODE_FAILURE;
-      }
-
-      // Dry-run prints planned actions without mutating git history.
       if (dryRun) {
-        const dryRunProgress = buildRevertProgressDescriptor(method, true);
+        const dryRunProgress = buildRevertProgressDescriptor(true);
         emit({
           kind: "info",
-          message: "Dry run - would revert " + executionRuns.length + " "
+          message: "Dry run - would restore " + executionRuns.length + " "
             + pluralize(executionRuns.length, "run", "runs")
-            + " using method=" + method + ".",
+            + " using snapshot-backed history.",
         });
+
         for (const [index, operation] of executionOperations.entries()) {
           const run = operation.run;
           const current = index + 1;
@@ -333,42 +234,23 @@ export function createRevertTask(
             message: "[" + current + "/" + executionOperations.length + "] "
               + dryRunProgress.detailPrefix + " " + run.runId + ".",
           });
-          const refField = operation.type === "commit" ? "commit" : "preResetRef";
           emit({
             kind: "info",
             message: "- run=" + run.runId
-              + " method=" + method
-              + " " + refField + "=" + operation.ref
+              + " lane=" + formatSnapshotLane(operation.target)
+              + " migration=" + String(operation.target.migrationNumber)
+              + " snapshot=" + operation.target.snapshotPath
               + " task=" + formatTaskLabel(run),
           });
-
-          if (method === "revert" && operation.type === "commit") {
-            emit({
-              kind: "info",
-              message: "- git revert " + operation.ref + " --no-edit",
-            });
-          }
-        }
-
-        if (method === "reset" && hasPreResetRefTargets) {
-          const preResetRefTarget = executionOperations[0]?.ref;
-          if (preResetRefTarget) {
-            emit({
-              kind: "info",
-              message: "- git reset --hard " + preResetRefTarget,
-            });
-          }
-        } else if (method === "reset" && resetOldestSha) {
           emit({
             kind: "info",
-            message: "- git reset --hard " + resetOldestSha + "~1",
+            message: "- restore implementation tree from " + operation.target.snapshotPath,
           });
         }
 
         return EXIT_CODE_SUCCESS;
       }
 
-      // Create a fresh artifact context for this revert invocation.
       const artifactContext = dependencies.artifactStore.createContext({
         cwd,
         commandName: "revert",
@@ -378,10 +260,10 @@ export function createRevertTask(
         keepArtifacts,
       });
 
-      // Keep detailed progress for robust artifact finalization on success/failure.
       const successfulRunIds: string[] = [];
       const attemptedRunIds: string[] = [];
       let failedRunId: string | null = null;
+      let failedSnapshotPath: string | null = null;
       let runFailureCount = 0;
       const emitRevertSummary = (): void => {
         emit({
@@ -389,132 +271,92 @@ export function createRevertTask(
           message: formatSuccessFailureSummary("Revert operation", successfulRunIds.length, runFailureCount),
         });
       };
-      // Captures HEAD before reset so follow-up operations can be reverted later.
-      let preResetRef: string | null = null;
 
       try {
-        if (method === "revert") {
-          const executionProgress = buildRevertProgressDescriptor(method, false);
-          // Replay `git revert --no-edit` per selected commit.
-          for (const [index, operation] of executionOperations.entries()) {
-            if (operation.type !== "commit") {
-              continue;
-            }
+        const executionProgress = buildRevertProgressDescriptor(false);
+        for (const [index, operation] of executionOperations.entries()) {
+          const run = operation.run;
+          const current = index + 1;
+          const operationGroup = buildRevertOperationGroupDescriptor(run, current, executionOperations.length);
+          attemptedRunIds.push(run.runId);
+          emit({
+            kind: "group-start",
+            label: operationGroup.label,
+            counter: operationGroup.counter,
+          });
+          emit({
+            kind: "progress",
+            progress: {
+              label: executionProgress.phaseLabel,
+              current,
+              total: executionOperations.length,
+              unit: "runs",
+              detail: executionProgress.detailPrefix + " " + run.runId,
+            },
+          });
+          emit({
+            kind: "info",
+            message: "[" + current + "/" + executionOperations.length + "] Restoring snapshot "
+              + operation.target.snapshotPath + " (run " + run.runId + ").",
+          });
 
-            const run = operation.run;
-            const commitSha = operation.ref;
-            const current = index + 1;
-            const operationGroup = buildRevertOperationGroupDescriptor(run, current, executionOperations.length);
-            attemptedRunIds.push(run.runId);
-            emit({
-              kind: "group-start",
-              label: operationGroup.label,
-              counter: operationGroup.counter,
+          try {
+            restoreImplementationTreeFromSnapshot({
+              fileSystem: dependencies.fileSystem,
+              implementationRootPath,
+              snapshotPath: operation.target.snapshotPath,
             });
+            successfulRunIds.push(run.runId);
+            emit({ kind: "group-end", status: "success" });
+          } catch (error) {
+            failedRunId = run.runId;
+            failedSnapshotPath = operation.target.snapshotPath;
+            runFailureCount += 1;
             emit({
-              kind: "progress",
-              progress: {
-                label: executionProgress.phaseLabel,
-                current,
-                total: executionOperations.length,
-                unit: "runs",
-                detail: executionProgress.detailPrefix + " " + run.runId,
-              },
+              kind: "group-end",
+              status: "failure",
+              message: "Snapshot restore failed for " + run.runId + ".",
             });
-            emit({
-              kind: "info",
-              message: "[" + current + "/" + executionOperations.length + "] Reverting commit "
-                + commitSha + " (run " + run.runId + ").",
-            });
-            try {
-              await dependencies.gitClient.run(["revert", commitSha, "--no-edit"], cwd);
-              successfulRunIds.push(run.runId);
-              emit({ kind: "group-end", status: "success" });
-            } catch (error) {
-              failedRunId = run.runId;
-              runFailureCount += 1;
-              const groupFailureMessage = "Revert failed for " + run.runId + ".";
+            if (hasMultiRunSelection) {
               emit({
-                kind: "group-end",
-                status: "failure",
-                message: groupFailureMessage,
+                kind: "error",
+                message: "Revert stopped on " + run.runId + " after " + successfulRunIds.length
+                  + " successful run(s).",
               });
-              if (hasMultiRunSelection) {
-                emit({
-                  kind: "error",
-                  message: "Revert stopped on " + run.runId + " after " + successfulRunIds.length
-                    + " successful run(s).",
-                });
-              }
-
-              emitRevertSummary();
-
-              const failureMessage = error instanceof Error ? error.message : String(error);
-              throw new Error("Failed to revert run " + run.runId + " (" + commitSha + "): " + failureMessage);
             }
-          }
-        } else {
-          const executionProgress = buildRevertProgressDescriptor(method, false);
-          // Record current HEAD before destructive reset to preserve rollback metadata.
-          preResetRef = (await dependencies.gitClient.run(["rev-parse", "HEAD"], cwd)).trim();
-          for (const [index, run] of executionRuns.entries()) {
-            attemptedRunIds.push(run.runId);
-            const current = index + 1;
-            emit({
-              kind: "progress",
-              progress: {
-                label: executionProgress.phaseLabel,
-                current,
-                total: executionRuns.length,
-                unit: "runs",
-                detail: executionProgress.detailPrefix + " " + run.runId,
-              },
-            });
-            emit({
-              kind: "info",
-              message: "[" + current + "/" + executionRuns.length + "] "
-                + executionProgress.detailPrefix + " " + run.runId + ".",
-            });
-          }
 
-          // When reverting a prior reset, use the saved pre-reset ref directly.
-          const preResetRefTarget = executionOperations[0]?.type === "pre-reset-ref"
-            ? executionOperations[0].ref
-            : null;
-          if (preResetRefTarget) {
-            emit({ kind: "info", message: "Resetting to saved pre-reset ref " + preResetRefTarget + "." });
-            await dependencies.gitClient.run(["reset", "--hard", preResetRefTarget], cwd);
-          } else {
-            // Standard reset mode moves HEAD to one commit before the oldest target.
-            const oldestSha = resetOldestSha;
-            if (!oldestSha) {
-              throw new Error("No commit SHAs available for reset.");
-            }
-            emit({ kind: "info", message: "Resetting to " + oldestSha + "~1." });
-            await dependencies.gitClient.run(["reset", "--hard", `${oldestSha}~1`], cwd);
+            emitRevertSummary();
+
+            const failureMessage = error instanceof Error ? error.message : String(error);
+            throw new Error("Failed to restore run " + run.runId + " from snapshot " + operation.target.snapshotPath + ": " + failureMessage);
           }
-          successfulRunIds.push(...executionRuns.map((run) => run.runId));
         }
 
         emitRevertSummary();
-
-        // Persist success metadata so this revert can itself be audited/reverted later.
+        const lastOperation = executionOperations[executionOperations.length - 1];
         dependencies.artifactStore.finalize(artifactContext, {
           status: "reverted",
           preserve: keepArtifacts,
           extra: {
-            method,
+            method: "snapshot-restore",
+            requestedMethod: method,
             runIds: executionRuns.map((run) => run.runId),
-            commitShas: executionRuns
-              .map((run) => getCommitSha(run))
-              .filter((sha): sha is string => sha !== null),
-            ...(method === "reset" && preResetRef ? { preResetRef } : {}),
             revertedRunIds: successfulRunIds,
             revertedCount: successfulRunIds.length,
+            restoredSnapshotPath: lastOperation?.target.snapshotPath,
+            restoredSnapshotMigrationNumber: lastOperation?.target.migrationNumber,
+            restoredSnapshotLaneKind: lastOperation?.target.laneKind,
+            ...(lastOperation?.target.threadSlug ? { restoredSnapshotThreadSlug: lastOperation.target.threadSlug } : {}),
+            implementationSnapshotTargets: executionOperations.map((operation) => ({
+              runId: operation.run.runId,
+              laneKind: operation.target.laneKind,
+              ...(operation.target.threadSlug ? { threadSlug: operation.target.threadSlug } : {}),
+              migrationNumber: operation.target.migrationNumber,
+              snapshotPath: operation.target.snapshotPath,
+            })),
           },
         });
 
-        // Optionally expose artifact location for follow-up inspection.
         if (keepArtifacts) {
           emit({
             kind: "info",
@@ -530,18 +372,18 @@ export function createRevertTask(
         });
         return EXIT_CODE_SUCCESS;
       } catch (error) {
-        // Persist partial progress for debuggability when execution fails mid-stream.
         dependencies.artifactStore.finalize(artifactContext, {
           status: "revert-failed",
           preserve: keepArtifacts,
           extra: {
-            method,
+            method: "snapshot-restore",
+            requestedMethod: method,
             runIds: executionRuns.map((run) => run.runId),
             attemptedRunIds,
             revertedRunIds: successfulRunIds,
             revertedCount: successfulRunIds.length,
-            ...(method === "reset" && preResetRef ? { preResetRef } : {}),
             failedRunId,
+            failedSnapshotPath,
             error: error instanceof Error ? error.message : String(error),
           },
         });
@@ -557,7 +399,6 @@ export function createRevertTask(
         return EXIT_CODE_FAILURE;
       }
     } finally {
-      // Always release locks, even after early returns or thrown errors.
       try {
         dependencies.fileLock.releaseAll();
       } catch (error) {
@@ -567,20 +408,10 @@ export function createRevertTask(
   };
 }
 
-function buildRevertProgressDescriptor(
-  method: RevertTaskOptions["method"],
-  dryRun: boolean,
-): RevertProgressDescriptor {
-  if (method === "reset") {
-    return {
-      phaseLabel: dryRun ? "Dry-run reset plan" : "Reset preparation",
-      detailPrefix: dryRun ? "Previewing reset target" : "Queueing reset target",
-    };
-  }
-
+function buildRevertProgressDescriptor(dryRun: boolean): RevertProgressDescriptor {
   return {
-    phaseLabel: dryRun ? "Dry-run revert plan" : "Reverting runs",
-    detailPrefix: dryRun ? "Previewing run" : "Reverting run",
+    phaseLabel: dryRun ? "Dry-run restore plan" : "Restoring runs",
+    detailPrefix: dryRun ? "Previewing run" : "Restoring run",
   };
 }
 
@@ -598,73 +429,47 @@ function buildRevertOperationGroupDescriptor(
   };
 }
 
-/**
- * Orders operations according to execution method requirements.
- *
- * Revert mode processes newest-first so each inverse commit is applied on top of
- * current HEAD in natural reverse chronological order.
- */
-function orderOperationsForMethod(
-  operations: RevertOperation[],
-  method: RevertTaskOptions["method"],
-): RevertOperation[] {
-  if (method !== "revert") {
-    return operations;
-  }
-
-  return [...operations].sort((a, b) => b.run.startedAt.localeCompare(a.run.startedAt));
-}
-
-/**
- * Resolves a single target run from user selection semantics.
- */
 function resolveTargetRunMetadata(
   artifactStore: ArtifactStore,
   artifactBaseDir: string | undefined,
   runId: string,
+  fileSystem: FileSystem,
 ): ArtifactRunMetadata | null {
   if (runId === "latest") {
-    return resolveRevertableRuns(artifactStore, artifactBaseDir)[0] ?? null;
+    return resolveRevertableRuns(artifactStore, artifactBaseDir, fileSystem)[0] ?? null;
   }
 
   return artifactStore.find(runId, artifactBaseDir);
 }
 
-/**
- * Resolves all runs targeted by `--run`, `--last`, or `--all`.
- */
 function resolveTargetRuns(
   artifactStore: ArtifactStore,
   artifactBaseDir: string | undefined,
+  fileSystem: FileSystem,
   options: Pick<RevertTaskOptions, "runId" | "last" | "all">,
 ): ArtifactRunMetadata[] {
   const { runId, last, all } = options;
 
   if (all) {
-    return resolveRevertableRuns(artifactStore, artifactBaseDir);
+    return resolveRevertableRuns(artifactStore, artifactBaseDir, fileSystem);
   }
 
   if (last !== undefined) {
-    return resolveRevertableRuns(artifactStore, artifactBaseDir).slice(0, last);
+    return resolveRevertableRuns(artifactStore, artifactBaseDir, fileSystem).slice(0, last);
   }
 
-  const selectedRun = resolveTargetRunMetadata(artifactStore, artifactBaseDir, runId);
+  const selectedRun = resolveTargetRunMetadata(artifactStore, artifactBaseDir, runId, fileSystem);
   return selectedRun ? [selectedRun] : [];
 }
 
-/**
- * Returns saved runs that can currently be transformed into revert operations.
- */
 function resolveRevertableRuns(
   artifactStore: ArtifactStore,
   artifactBaseDir: string | undefined,
+  fileSystem: FileSystem,
 ): ArtifactRunMetadata[] {
-  return artifactStore.listSaved(artifactBaseDir).filter((run) => resolveRevertOperation(run) !== null);
+  return artifactStore.listSaved(artifactBaseDir).filter((run) => resolveSnapshotRevertOperation(run, fileSystem) !== null);
 }
 
-/**
- * Returns saved runs with `completed` status for diagnostics and selection UX.
- */
 function resolveCompletedRuns(
   artifactStore: ArtifactStore,
   artifactBaseDir: string | undefined,
@@ -672,235 +477,164 @@ function resolveCompletedRuns(
   return artifactStore.listSaved(artifactBaseDir).filter((run) => run.status === "completed");
 }
 
-/**
- * Reads and normalizes `extra.commitSha` from run metadata.
- */
-function getCommitSha(run: ArtifactRunMetadata): string | null {
-  const commitSha = run.extra?.["commitSha"];
-  if (typeof commitSha !== "string" || commitSha.trim() === "") {
+function resolveSnapshotRevertOperation(
+  run: ArtifactRunMetadata,
+  fileSystem: FileSystem,
+): SnapshotRevertOperation | null {
+  if (run.status !== "completed") {
     return null;
   }
 
-  return commitSha.trim();
-}
-
-/**
- * Reads and normalizes `extra.preResetRef` from run metadata.
- */
-function getPreResetRef(run: ArtifactRunMetadata): string | null {
-  const preResetRef = run.extra?.["preResetRef"];
-  if (typeof preResetRef !== "string" || preResetRef.trim() === "") {
+  const snapshotTargets = getSnapshotTargets(run);
+  if (snapshotTargets.length === 0) {
     return null;
   }
 
-  return preResetRef.trim();
-}
-
-/**
- * Converts saved run metadata into an executable git target.
- *
- * A run is revertable when either:
- * - it is `completed` and recorded `extra.commitSha`, or
- * - it is a prior `revert --method reset` run that recorded `extra.preResetRef`.
- */
-function resolveRevertOperation(run: ArtifactRunMetadata): RevertOperation | null {
-  const commitSha = getCommitSha(run);
-  if (run.status === "completed" && commitSha) {
-    return {
-      run,
-      type: "commit",
-      ref: commitSha,
-    };
+  const existingTargets = snapshotTargets.filter((target) => {
+    const stat = fileSystem.stat(target.snapshotPath);
+    return Boolean(stat?.isDirectory);
+  });
+  if (existingTargets.length === 0) {
+    return null;
   }
 
-  const preResetRef = getPreResetRef(run);
-  const method = run.extra?.["method"];
-  if (
-    run.status === "reverted"
-    && run.commandName === "revert"
-    && method === "reset"
-    && preResetRef
-  ) {
-    return {
-      run,
-      type: "pre-reset-ref",
-      ref: preResetRef,
-    };
+  const selectedTarget = chooseDeterministicSnapshotTarget(existingTargets);
+  if (!selectedTarget) {
+    return null;
+  }
+
+  return {
+    run,
+    target: selectedTarget,
+  };
+}
+
+function getSnapshotTargets(run: ArtifactRunMetadata): SnapshotTarget[] {
+  const raw = run.extra?.["implementationSnapshotTargets"];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const targets: SnapshotTarget[] = [];
+  for (const value of raw) {
+    if (!isSnapshotTargetRecord(value)) {
+      continue;
+    }
+
+    const laneKind = normalizeLaneKind(value["laneKind"]);
+    const snapshotPath = normalizeNonEmptyString(value["snapshotPath"]);
+    const migrationNumber = normalizeMigrationNumber(value["migrationNumber"]);
+    if (!laneKind || !snapshotPath || migrationNumber === null) {
+      continue;
+    }
+
+    const threadSlug = normalizeOptionalNonEmptyString(value["threadSlug"]);
+    if (laneKind === "thread" && !threadSlug) {
+      continue;
+    }
+
+    targets.push({
+      laneKind,
+      ...(threadSlug ? { threadSlug } : {}),
+      migrationNumber,
+      snapshotPath,
+    });
+  }
+
+  return targets;
+}
+
+function chooseDeterministicSnapshotTarget(targets: SnapshotTarget[]): SnapshotTarget | null {
+  if (targets.length === 0) {
+    return null;
+  }
+
+  const sorted = [...targets].sort((left, right) => {
+    if (left.laneKind !== right.laneKind) {
+      return left.laneKind === "root" ? -1 : 1;
+    }
+    const leftThread = left.threadSlug ?? "";
+    const rightThread = right.threadSlug ?? "";
+    if (leftThread !== rightThread) {
+      return leftThread.localeCompare(rightThread);
+    }
+    if (left.migrationNumber !== right.migrationNumber) {
+      return right.migrationNumber - left.migrationNumber;
+    }
+    return left.snapshotPath.localeCompare(right.snapshotPath);
+  });
+
+  return sorted[0] ?? null;
+}
+
+function orderOperationsForRestore(
+  operations: SnapshotRevertOperation[],
+): SnapshotRevertOperation[] {
+  return [...operations].sort((a, b) => b.run.startedAt.localeCompare(a.run.startedAt));
+}
+
+function buildRunNotSnapshotRevertableMessage(run: ArtifactRunMetadata, fileSystem: FileSystem): string {
+  const snapshotTargets = getSnapshotTargets(run);
+  if (snapshotTargets.length === 0) {
+    return "Run " + run.runId + " is not revertable because it does not include implementation snapshot metadata (extra.implementationSnapshotTargets).";
+  }
+
+  const hasExistingTarget = snapshotTargets.some((target) => {
+    const stat = fileSystem.stat(target.snapshotPath);
+    return Boolean(stat?.isDirectory);
+  });
+  if (!hasExistingTarget) {
+    return "Run " + run.runId + " is not revertable because its implementation snapshot payload is missing on disk.";
+  }
+
+  return "Run " + run.runId + " is not revertable because it has invalid implementation snapshot metadata.";
+}
+
+function isSnapshotTargetRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeLaneKind(value: unknown): "root" | "thread" | null {
+  if (value === "root" || value === "thread") {
+    return value;
   }
 
   return null;
 }
 
-/**
- * Ensures every commit target exists and resolves to a commit object.
- */
-async function validateTargetCommitsExistInHistory(
-  gitClient: GitClient,
-  cwd: string,
-  operations: RevertOperation[],
-): Promise<void> {
-  for (const operation of operations) {
-    if (operation.type !== "commit") {
-      continue;
-    }
-
-    const run = operation.run;
-    const commitSha = operation.ref;
-    let objectType: string;
-    try {
-      objectType = await gitClient.run(["cat-file", "-t", commitSha], cwd);
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        "Run " + run.runId + " commit " + commitSha + " was not found in git history: " + reason,
-      );
-    }
-    if (objectType.trim() !== "commit") {
-      throw new Error("Run " + run.runId + " commit " + commitSha + " is not a commit object.");
-    }
+function normalizeNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
   }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
-/**
- * Validates reset safety by ensuring target commits are exactly the top `N`
- * commits at HEAD, then returns the oldest commit in that contiguous block.
- */
-async function validateResetTargetsAtHead(
-  gitClient: GitClient,
-  cwd: string,
-  operations: RevertOperation[],
-): Promise<string> {
-  const shas = operations
-    .filter((operation) => operation.type === "commit")
-    .map((operation) => operation.ref);
-
-  if (shas.length === 0) {
-    throw new Error("No commit SHAs available for reset.");
-  }
-
-  const uniqueShas = new Set(shas);
-  if (uniqueShas.size !== shas.length) {
-    throw new Error("Cannot reset: target runs contain duplicate commit SHAs.");
-  }
-
-  const hasMultipleTargets = shas.length > 1;
-
-  const headCommitsRaw = await gitClient.run(["rev-list", "--max-count", String(shas.length), "HEAD"], cwd);
-  const headCommits = headCommitsRaw
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-  if (headCommits.length < shas.length) {
-    throw new Error(buildResetNotContiguousMessage({ hasMultipleTargets }));
-  }
-
-  for (const headCommit of headCommits) {
-    if (!uniqueShas.has(headCommit)) {
-      throw new Error(buildResetNotContiguousMessage({ hasMultipleTargets }));
-    }
-  }
-
-  const oldest = headCommits[headCommits.length - 1];
-  if (!oldest) {
-    throw new Error("No commit SHAs available for reset.");
-  }
-
-  return oldest;
+function normalizeOptionalNonEmptyString(value: unknown): string | undefined {
+  const normalized = normalizeNonEmptyString(value);
+  return normalized ?? undefined;
 }
 
-/**
- * Builds a reset-contiguity failure message with optional multi-target guidance.
- */
-function buildResetNotContiguousMessage(options: { hasMultipleTargets: boolean }): string {
-  const baseMessage = "Cannot reset: target commits are not a contiguous block at HEAD.";
-  if (!options.hasMultipleTargets) {
-    return baseMessage;
+function normalizeMigrationNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const parsed = Number.parseInt(value.trim(), 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   }
 
-  return baseMessage
-    + " Non-rundown commits may be interleaved with selected runs."
-    + " Use --method revert for bulk revert in this history.";
+  return null;
 }
 
-/**
- * Resolves the oldest commit target by run start time for force-reset fallback.
- */
-function resolveOldestResetTarget(operations: RevertOperation[]): string {
-  const commitOperations = operations.filter((operation) => operation.type === "commit");
-  if (commitOperations.length === 0) {
-    throw new Error("No commit SHAs available for reset.");
-  }
-
-  const oldestOperation = [...commitOperations].sort((a, b) => a.run.startedAt.localeCompare(b.run.startedAt))[0];
-  if (!oldestOperation) {
-    throw new Error("No commit SHAs available for reset.");
-  }
-
-  return oldestOperation.ref;
-}
-
-/**
- * Ensures every `pre-reset-ref` target exists and points to a commit object.
- */
-async function validatePreResetRefTargetsExistInHistory(
-  gitClient: GitClient,
-  cwd: string,
-  operations: RevertOperation[],
-): Promise<void> {
-  for (const operation of operations) {
-    if (operation.type !== "pre-reset-ref") {
-      continue;
-    }
-
-    let objectType: string;
-    try {
-      objectType = await gitClient.run(["cat-file", "-t", operation.ref], cwd);
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        "Run " + operation.run.runId + " preResetRef " + operation.ref + " was not found in git history: " + reason,
-      );
-    }
-
-    if (objectType.trim() !== "commit") {
-      throw new Error("Run " + operation.run.runId + " preResetRef " + operation.ref + " is not a commit object.");
-    }
-  }
-}
-
-/**
- * Detects whether the task file referenced by a run still exists on disk.
- */
-function isTaskFileMissing(
-  run: ArtifactRunMetadata,
-  cwd: string,
-  fileSystem: FileSystem,
-  pathOperations: PathOperationsPort,
-): boolean {
-  if (!run.task?.file) {
-    return false;
-  }
-
-  const resolvedTaskFile = pathOperations.isAbsolute(run.task.file)
-    ? run.task.file
-    : pathOperations.resolve(cwd, run.task.file);
-
-  return !fileSystem.exists(resolvedTaskFile);
-}
-
-/**
- * Collects unique absolute file paths that must be locked for this revert.
- *
- * Task file paths are preferred; source file paths are used as a fallback when
- * task metadata is unavailable.
- */
 function collectRevertLockTargets(
   runs: ArtifactRunMetadata[],
   cwd: string,
   pathOperations: PathOperationsPort,
+  implementationRootPath: string,
 ): string[] {
   const lockTargets = new Set<string>();
+  lockTargets.add(implementationRootPath);
 
   for (const run of runs) {
     const taskFile = run.task?.file;
@@ -924,9 +658,120 @@ function collectRevertLockTargets(
   return Array.from(lockTargets);
 }
 
-/**
- * Builds the user-facing message when no revertable runs are available.
- */
+function restoreImplementationTreeFromSnapshot(input: {
+  fileSystem: FileSystem;
+  implementationRootPath: string;
+  snapshotPath: string;
+}): void {
+  const { fileSystem, implementationRootPath, snapshotPath } = input;
+
+  const snapshotStat = fileSystem.stat(snapshotPath);
+  if (!snapshotStat?.isDirectory) {
+    throw new Error("Snapshot payload is missing or not a directory: " + snapshotPath);
+  }
+
+  const implementationRootStat = fileSystem.stat(implementationRootPath);
+  if (!implementationRootStat?.isDirectory) {
+    throw new Error("Implementation directory does not exist or is not a directory: " + implementationRootPath);
+  }
+
+  clearImplementationTreeWithoutSnapshots({
+    fileSystem,
+    implementationRootPath,
+  });
+
+  copySnapshotPayloadToImplementation({
+    fileSystem,
+    implementationRootPath,
+    snapshotPath,
+  });
+}
+
+function clearImplementationTreeWithoutSnapshots(input: {
+  fileSystem: FileSystem;
+  implementationRootPath: string;
+}): void {
+  const { fileSystem, implementationRootPath } = input;
+  const entries = fileSystem.readdir(implementationRootPath)
+    .slice()
+    .sort((left, right) => left.name.localeCompare(right.name));
+  for (const entry of entries) {
+    if (entry.name === "snapshots") {
+      continue;
+    }
+
+    const entryPath = path.join(implementationRootPath, entry.name);
+    fileSystem.rm(entryPath, { recursive: true, force: true });
+  }
+}
+
+function copySnapshotPayloadToImplementation(input: {
+  fileSystem: FileSystem;
+  implementationRootPath: string;
+  snapshotPath: string;
+}): void {
+  const { fileSystem, implementationRootPath, snapshotPath } = input;
+  const entries = fileSystem.readdir(snapshotPath)
+    .slice()
+    .sort((left, right) => left.name.localeCompare(right.name));
+  for (const entry of entries) {
+    if (entry.name === "snapshots") {
+      continue;
+    }
+
+    const sourcePath = path.join(snapshotPath, entry.name);
+    const destinationPath = path.join(implementationRootPath, entry.name);
+    copyPathRecursively({
+      fileSystem,
+      sourcePath,
+      destinationPath,
+    });
+  }
+}
+
+function copyPathRecursively(input: {
+  fileSystem: FileSystem;
+  sourcePath: string;
+  destinationPath: string;
+}): void {
+  const { fileSystem, sourcePath, destinationPath } = input;
+  const stat = fileSystem.stat(sourcePath);
+  if (!stat) {
+    return;
+  }
+
+  if (stat.isDirectory) {
+    fileSystem.mkdir(destinationPath, { recursive: true });
+    const entries = fileSystem.readdir(sourcePath)
+      .slice()
+      .sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const nestedSourcePath = path.join(sourcePath, entry.name);
+      const nestedDestinationPath = path.join(destinationPath, entry.name);
+      copyPathRecursively({
+        fileSystem,
+        sourcePath: nestedSourcePath,
+        destinationPath: nestedDestinationPath,
+      });
+    }
+    return;
+  }
+
+  if (!stat.isFile) {
+    return;
+  }
+
+  fileSystem.writeText(destinationPath, fileSystem.readText(sourcePath));
+}
+
+function formatSnapshotLane(target: SnapshotTarget): string {
+  if (target.laneKind === "thread") {
+    return "thread:" + (target.threadSlug ?? "unknown");
+  }
+
+  return "root";
+}
+
 function buildNoRevertableRunsMessage(includeLogHint: boolean): string {
   if (!includeLogHint) {
     return NO_REVERTABLE_RUNS_BASE_MESSAGE;

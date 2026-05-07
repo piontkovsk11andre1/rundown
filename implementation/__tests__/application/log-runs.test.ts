@@ -60,11 +60,11 @@ describe("log-runs", () => {
     expect(events).toEqual([
       {
         kind: "text",
-        text: `run-20260328T120 | ${formatExpectedCliTimestamp("2026-03-28T11:58:00.000Z")} (2m ago) | [completed] | Ship release notes | source=TODO.md:22 | command=run | snapshot=root:12 | revertable=yes`,
+        text: "run-20260328T120 | 2026-03-28T11:58:00.000Z (2m ago) | [completed] | Ship release notes | source=TODO.md:22 | command=run | snapshot=root:12 | revertable=yes",
       },
       {
         kind: "text",
-        text: `run-20260328T110 | ${formatExpectedCliTimestamp("2026-03-28T11:30:00.000Z")} (30m ago) | [completed] | Plan rollout | source=roadmap.md:9 | command=plan | snapshot=- | revertable=no`,
+        text: "run-20260328T110 | 2026-03-28T11:30:00.000Z (30m ago) | [completed] | Plan rollout | source=roadmap.md:9 | command=plan | snapshot=- | revertable=no",
       },
       {
         kind: "info",
@@ -111,7 +111,7 @@ describe("log-runs", () => {
     expect(events).toHaveLength(2);
     expect(events[0]).toEqual({
       kind: "text",
-      text: `run-a | ${formatExpectedCliTimestamp("2026-03-28T11:50:00.000Z")} (10m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | snapshot=root:4 | revertable=yes`,
+      text: "run-a | 2026-03-28T11:50:00.000Z (10m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | snapshot=root:4 | revertable=yes",
     });
     expect(events[1]).toEqual({ kind: "info", message: "1 run listed." });
   });
@@ -141,7 +141,7 @@ describe("log-runs", () => {
     expect(code).toBe(0);
     expect(events[0]).toEqual({
       kind: "text",
-      text: `run-started-at-o | ${formatExpectedCliTimestamp("2026-03-28T11:57:00.000Z")} (3m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | snapshot=root:2 | revertable=yes`,
+      text: "run-started-at-o | 2026-03-28T11:57:00.000Z (3m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | snapshot=root:2 | revertable=yes",
     });
     expect(events[1]).toEqual({ kind: "info", message: "1 run listed." });
   });
@@ -173,7 +173,7 @@ describe("log-runs", () => {
     expect(events).toHaveLength(2);
     expect(events[0]).toEqual({
       kind: "text",
-      text: `run-1 | ${formatExpectedCliTimestamp("2026-03-28T11:50:00.000Z")} (10m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | snapshot=root:1 | revertable=yes`,
+      text: "run-1 | 2026-03-28T11:50:00.000Z (10m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | snapshot=root:1 | revertable=yes",
     });
     expect(events[1]).toEqual({ kind: "info", message: "1 run listed." });
   });
@@ -304,7 +304,7 @@ describe("log-runs", () => {
     ]);
   });
 
-  it("renders compact absolute tokens with non-hour offsets deterministically", () => {
+  it("keeps compact absolute tokens in stored ISO form", () => {
     const runs: ArtifactRunMetadata[] = [
       createRun({
         runId: "run-half-hour-offset",
@@ -312,7 +312,6 @@ describe("log-runs", () => {
         completedAt: "2026-03-28T11:58:00.000Z",
       }),
     ];
-    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(-330);
     const { logRuns, events } = createDependencies({ runs, existingSnapshotPaths: [] });
 
     const code = logRuns({ revertable: false, json: false });
@@ -320,9 +319,8 @@ describe("log-runs", () => {
     expect(code).toBe(0);
     expect(events[0]).toEqual({
       kind: "text",
-      text: `run-half-hour-of | ${formatExpectedCliTimestamp("2026-03-28T11:58:00.000Z")} (2m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | snapshot=- | revertable=no`,
+      text: "run-half-hour-of | 2026-03-28T11:58:00.000Z (2m ago) | [completed] | Do work | source=roadmap.md:3 | command=run | snapshot=- | revertable=no",
     });
-    expect(events[0]?.kind === "text" ? events[0].text : "").toContain("+05:30");
     expect(events[1]).toEqual({ kind: "info", message: "1 run listed." });
   });
 
@@ -544,22 +542,4 @@ function createRun(overrides: Partial<ArtifactRunMetadata> = {}): ArtifactRunMet
     status: overrides.status ?? "completed",
     extra: overrides.extra,
   };
-}
-
-function formatExpectedCliTimestamp(value: string): string {
-  const date = new Date(value);
-  const year = String(date.getFullYear()).padStart(4, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  const seconds = String(date.getSeconds()).padStart(2, "0");
-  const milliseconds = String(date.getMilliseconds()).padStart(3, "0");
-  const offsetMinutes = -date.getTimezoneOffset();
-  const sign = offsetMinutes >= 0 ? "+" : "-";
-  const absoluteMinutes = Math.abs(offsetMinutes);
-  const offsetHours = String(Math.floor(absoluteMinutes / 60)).padStart(2, "0");
-  const offsetRemainderMinutes = String(absoluteMinutes % 60).padStart(2, "0");
-
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${milliseconds}${sign}${offsetHours}:${offsetRemainderMinutes}`;
 }

@@ -1,6 +1,6 @@
 import type { ApplicationOutputEvent, ApplicationOutputPort } from "../domain/ports/output-port.js";
 import pc from "picocolors";
-import { formatCliTimestamp } from "../domain/cli-timestamp.js";
+import { formatCliTimestamp } from "./cli-timestamp.js";
 import { formatTaskDetailLines } from "./task-detail-lines.js";
 
 interface ProgressPayload {

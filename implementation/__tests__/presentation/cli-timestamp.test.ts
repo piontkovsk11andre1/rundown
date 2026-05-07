@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CLI_TIMESTAMP_FORMAT, formatCliTimestamp } from "../../src/domain/cli-timestamp.js";
+import { CLI_TIMESTAMP_FORMAT, formatCliTimestamp } from "../../src/presentation/cli-timestamp.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("cli-timestamp", () => {
+describe("presentation cli-timestamp", () => {
   it("documents local ISO-8601 with numeric offset as the canonical CLI format", () => {
     expect(CLI_TIMESTAMP_FORMAT).toBe("Local ISO-8601 with numeric offset");
   });

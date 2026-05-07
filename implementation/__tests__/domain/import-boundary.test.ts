@@ -40,12 +40,33 @@ function collectTypeScriptFiles(dirPath: string): string[] {
   return files;
 }
 
+function extractImportSpecifiers(source: string): string[] {
+  const specifiers = new Set<string>();
+
+  for (const match of source.matchAll(/from\s+["']([^"']+)["']/g)) {
+    if (match[1]) {
+      specifiers.add(match[1]);
+    }
+  }
+
+  for (const match of source.matchAll(/^\s*import\s+["']([^"']+)["']/gm)) {
+    if (match[1]) {
+      specifiers.add(match[1]);
+    }
+  }
+
+  for (const match of source.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)) {
+    if (match[1]) {
+      specifiers.add(match[1]);
+    }
+  }
+
+  return [...specifiers];
+}
+
 function readImportSpecifiers(filePath: string): string[] {
   const source = fs.readFileSync(filePath, "utf-8");
-  return Array
-    .from(source.matchAll(/from\s+["']([^"']+)["']/g))
-    .map((match) => match[1])
-    .filter((specifier): specifier is string => Boolean(specifier));
+  return extractImportSpecifiers(source);
 }
 
 function isDisallowedDomainImport(specifier: string): boolean {
@@ -53,6 +74,21 @@ function isDisallowedDomainImport(specifier: string): boolean {
 }
 
 describe("domain import boundary", () => {
+  it("collects from, side-effect, and dynamic import specifiers", () => {
+    const source = [
+      'import { x } from "../domain/x";',
+      'import "../../infrastructure/y";',
+      'const z = await import("../../../presentation/z");',
+      'import { y } from "../domain/x";',
+    ].join("\n");
+
+    expect(extractImportSpecifiers(source)).toEqual([
+      "../domain/x",
+      "../../infrastructure/y",
+      "../../../presentation/z",
+    ]);
+  });
+
   it("includes trace domain files in boundary scan", () => {
     const files = collectTypeScriptFiles(DOMAIN_DIR);
 

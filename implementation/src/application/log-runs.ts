@@ -9,7 +9,6 @@ import type {
 import { formatRelativeTimestamp } from "../domain/relative-time.js";
 import { toCompactRunId } from "../domain/run-id.js";
 import { EXIT_CODE_NO_WORK, EXIT_CODE_SUCCESS } from "../domain/exit-codes.js";
-import { formatCliTimestamp } from "../domain/cli-timestamp.js";
 import { formatNoItemsFound, pluralize } from "./run-task-utils.js";
 
 /**
@@ -127,7 +126,7 @@ function toLogRunEntry(run: ArtifactRunMetadata, now: Date, fileSystem: FileSyst
     shortRunId: toCompactRunId(run.runId),
     commandName: run.commandName,
     status: run.status ?? "unknown",
-    timestamp: formatCliTimestamp(timestamp),
+    timestamp,
     relativeTime: formatRelativeTimestamp(now, timestamp),
     taskSummary: summarizeTask(run.task?.text),
     source: formatSource(run),

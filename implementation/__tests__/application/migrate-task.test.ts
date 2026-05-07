@@ -300,6 +300,8 @@ describe("migrate-task", () => {
         .map((event) => event.message)
         .join("\n");
       expect(errorMessages).toContain("Drafted migration filenames must be canonical");
+      expect(errorMessages).toContain("Invalid filenames: 2. first-created-migration.md");
+      expect(errorMessages).not.toContain("rev.1: 2. first-created-migration.md");
       expect(errorMessages).toContain("2. first-created-migration.md");
     } finally {
       process.chdir(previousCwd);

@@ -1894,9 +1894,10 @@ function verifyCurrentStagedDraftSet(input: {
   if (stagedDraftResult.invalidFileNames.length > 0) {
     return {
       valid: false,
-      failureReason: "Drafted migration filenames must be canonical (N. Title.md). Invalid files in "
+      failureReason: "Drafted migration filenames must be canonical (N. Title.md)."
+        + " Staging directory: "
         + migrationDraftDir
-        + ": "
+        + ". Invalid filenames: "
         + stagedDraftResult.invalidFileNames.join(", "),
       drafts: [],
     };

@@ -1,6 +1,10 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseMigrationDirectory, parseMigrationFilename } from "../../src/domain/migration-parser.js";
+import {
+  formatMigrationFilename,
+  parseMigrationDirectory,
+  parseMigrationFilename,
+} from "../../src/domain/migration-parser.js";
 
 describe("parseMigrationFilename", () => {
   it("returns null for invalid migration numbering", () => {
@@ -28,6 +32,17 @@ describe("parseMigrationFilename", () => {
     expect(parseMigrationFilename("0007---review.md")).toBeNull();
     expect(parseMigrationFilename("0007--review-extra.md")).toBeNull();
     expect(parseMigrationFilename("0007--review.md.bak")).toBeNull();
+  });
+
+  it("formats TypeScript filenames canonically from normalized names", () => {
+    expect(parseMigrationFilename("1. TypeScript Library Starter.md")).toEqual({
+      number: 1,
+      name: "typescript-library-starter",
+    });
+
+    expect(formatMigrationFilename(1, "typescript-library-starter")).toBe(
+      "1. TypeScript Library Starter.md",
+    );
   });
 });
 

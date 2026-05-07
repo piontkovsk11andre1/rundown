@@ -16,6 +16,11 @@ const DOTTED_AUX_LABEL_BY_TYPE: Record<ReviewFilenameType, string> = {
   review: "Review",
 };
 
+const CANONICAL_TITLE_CASE_SEGMENTS: Record<string, string> = {
+  typescript: "TypeScript",
+  javascript: "JavaScript",
+};
+
 const RECOGNIZED_AUX_TYPES = new Set<ReviewFilenameType>(["review"]);
 
 interface ParsedMigrationEntry {
@@ -213,7 +218,18 @@ function toTitleCaseFromName(value: string): string {
   return normalized
     .split(" ")
     .filter((segment) => segment.length > 0)
-    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
+    .map((segment) => {
+      const canonicalSegment = CANONICAL_TITLE_CASE_SEGMENTS[segment.toLowerCase()];
+      if (canonicalSegment) {
+        return canonicalSegment;
+      }
+
+      if (segment === segment.toUpperCase() || /[A-Z]/.test(segment.slice(1))) {
+        return segment;
+      }
+
+      return segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase();
+    })
     .join(" ");
 }
 

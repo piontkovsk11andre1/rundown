@@ -13,11 +13,7 @@ Imagine work shaped like this:
 A -> B -> C
 ```
 
-From this shape we can isolate two tasks that model real planning situations.
-
 ### Planning
-
-In **task #1** we know `A` and `C`, but `B` is unknown.
 
 At a sufficient scale, AI can predict `A -> C` across all domains present in its training set. But if the *materialization* is complex — potentially millions of steps — we eventually hit a limit: an insufficiently precise step (too large a group) admits too many interpretations. The chance of successfully predicting lower-level steps drops.
 
@@ -27,10 +23,6 @@ And this is the level at which the plan is materialized — where we want to use
 - **Reusability** — steps should group into reusable tools.
 
 When predicting *in depth*, we predict in chunks, searching for the optimal level of description at which sequential materialization and optimization remain effective.
-
-But what if we ask *"what is C?"*, knowing `A`, `A -> B` and `B -> C`? In **task #2** we ask the AI to imagine the state that results from the sum of the predicted steps — provided this is cheaper than *materializing* it (doing the work in the real world and measuring the result). AI handles this quite effectively, which lets us plan further toward `C` with reasonable clarity.
-
-The problem arises when we need to *guarantee* that `C` is reachable by following the plan. To guarantee this, we need a protocol that verifies correspondence between the prediction and something that actually happened in the real world.
 
 ### Execution
 
@@ -45,3 +37,107 @@ Each touch splits the prediction into *before* and *after*. We want to:
 But each action is also part of a session — a group we want to observe on its own. For all of this we need **non-probabilistic, deterministic automation** that guarantees each interaction with the real world happened in the correct order, at the correct time, and that the materialized result matches the prediction.
 
 This is what `rundown` is for.
+
+---
+
+
+### The workload protocol
+
+At the **lowest level**, `rundown` defines a workload protocol:
+
+```markdown
+Context body.
+
+- [x] Finished task
+- [ ] Unfinished task
+- [ ] Another unfinished task
+```
+
+An empty checkbox is interpreted as an **instruction**.
+
+Each instruction is wrapped in a loop, with configurable retries, so imperfect execution predictions can be worked through:
+
+```text
+execute -> verify -> repair -> verify -> repair -> ... -> resolve -> repair -> stop or reset
+```
+
+You can switch models on `verify -> repair` layer, using strongest on the last `repair` or `resolve`.
+
+### Extensible tooling
+
+`rundown` supports a flexible, extensible tool set:
+
+```markdown
+---
+rundown:
+  profiles:
+    local-model: "opencode run $bootstrap --model localhost/gpt"
+---
+Context body.
+
+- profile=thinking
+  - [x] Finished task
+  - [ ] profile=local-model: Unfinished task
+  - [ ] cli: deploy now
+  - [ ] for: Each modified file
+    - [ ] quick: Do this
+    - [ ] quick: Do that
+    - [ ] verify: Tests run ok
+```
+
+### Single-file or multi-file
+
+A single Markdown file can seed an entire project:
+
+```markdown
+# Roadmap
+
+For each task in this file create a numbered migration file
+in current dir with seed produced from the task item.
+Then run explore on the file.
+
+- [ ] Add this feature
+- [ ] Add that feature
+- [ ] Extend something
+```
+
+```bash
+rundown all roadmap.md
+```
+
+This executes the TODO items, producing research and plan output — each with its own TODO items you can then execute:
+
+```bash
+rundown all .
+```
+
+Is something goes wrong:
+```bash
+rundown repair
+```
+
+`rndn` is a first-class executable alias for `rundown`; both names run the same CLI entrypoint with identical behavior.
+
+…and more.
+
+---
+
+## Installation
+
+```bash
+# npm
+npm i -g @p10i/rundown
+
+# yarn
+yarn global add @p10i/rundown
+
+# pnpm
+pnpm add -g @p10i/rundown
+
+# bun
+bun add -g @p10i/rundown
+```
+
+## Documentation
+
+Run `rundown --help` for command and option reference.

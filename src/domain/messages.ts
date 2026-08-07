@@ -39,7 +39,7 @@ export const MESSAGES = {
   "run.rounds-success": "All {{rounds}} rounds completed successfully ({{tasks}} tasks total).",
 
   "task.no-worker-configured": "No worker command available: .rundown/config.json has no configured worker, and no CLI worker was provided. Use --worker <pattern> or -- <command>.",
-  "task.all-workers-blocked": "No worker command available: all configured workers are blocked by health policy. Use `rundown worker-health` to inspect status or delete `.rundown/worker-health.json` to reset.",
+  "task.all-workers-blocked": "No worker command available: all configured workers are blocked by health policy. Use `rundown worker status` to inspect status or `rundown worker reset --all` to retry blocked workers.",
   "task.next-verbose": "Next task: {{label}}",
   "task.memory-missing-payload": "Memory capture task requires payload text after the prefix (memory:, memorize:, remember:, inventory:).",
   "task.tool-missing-payload": "Tool task requires payload text after the prefix (<tool-name>:).",

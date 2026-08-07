@@ -2413,7 +2413,7 @@ describe("run-task-iteration", () => {
     expect(events.some((event) => event.kind === "info" && event.message.includes("All workers cooling down. Waiting"))).toBe(true);
     expect(events).toContainEqual(expect.objectContaining({
       kind: "error",
-      message: "No worker command available: all configured workers are blocked by health policy. Use `rundown worker-health` to inspect status or delete `.rundown/worker-health.json` to reset.",
+      message: "No worker command available: all configured workers are blocked by health policy. Use `rundown worker status` to inspect status or `rundown worker reset --all` to retry blocked workers.",
     }));
   });
 
@@ -2669,7 +2669,7 @@ describe("run-task-iteration", () => {
     expect(dispatchSpy).not.toHaveBeenCalled();
     expect(events).toContainEqual(expect.objectContaining({
       kind: "error",
-      message: "No worker command available: all configured workers are blocked by health policy. Use `rundown worker-health` to inspect status or delete `.rundown/worker-health.json` to reset.",
+      message: "No worker command available: all configured workers are blocked by health policy. Use `rundown worker status` to inspect status or `rundown worker reset --all` to retry blocked workers.",
     }));
   });
 });

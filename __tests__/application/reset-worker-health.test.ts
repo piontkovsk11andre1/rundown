@@ -59,6 +59,7 @@ describe("reset-worker-health", () => {
     expect(payload).toMatchObject({
       removedKey: targetKey,
       removed: true,
+      removedCount: 1,
       filePath: "/workspace/.rundown/worker-health.json",
       configDir: "/workspace/.rundown",
       generatedAt: "2026-04-12T10:00:00.000Z",
@@ -93,7 +94,59 @@ describe("reset-worker-health", () => {
     );
     const payload = JSON.parse(textEvent?.text ?? "{}");
     expect(payload.removed).toBe(false);
+    expect(payload.removedCount).toBe(0);
     expect(payload.removedKey).toBe("worker:[\"missing\"]");
+  });
+
+  it("clears every entry through update and reports removedCount in JSON", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-12T10:00:00.000Z"));
+    const events: ApplicationOutputEvent[] = [];
+    const initial: WorkerHealthSnapshot = {
+      schemaVersion: 1,
+      updatedAt: "2026-04-12T09:59:00.000Z",
+      entries: [
+        {
+          key: buildWorkerHealthWorkerKey(["primary", "worker"]),
+          source: "worker",
+          status: WORKER_HEALTH_STATUS_COOLING_DOWN,
+        },
+        {
+          key: "profile:slow",
+          source: "profile",
+          status: WORKER_HEALTH_STATUS_COOLING_DOWN,
+        },
+      ],
+    };
+    const update = vi.fn((updater: (snapshot: WorkerHealthSnapshot) => WorkerHealthSnapshot) => updater(initial));
+    const store: WorkerHealthStore = {
+      read: vi.fn(() => initial),
+      write: vi.fn(),
+      update,
+      filePath: vi.fn(() => "/workspace/.rundown/worker-health.json"),
+    };
+
+    const resetWorkerHealthEntry = createResetWorkerHealthEntry({
+      workerHealthStore: store,
+      configDir: { configDir: "/workspace/.rundown", isExplicit: false },
+      output: { emit: (event) => events.push(event) },
+    });
+
+    const code = resetWorkerHealthEntry({ all: true, json: true });
+
+    expect(code).toBe(0);
+    expect(update).toHaveBeenCalledTimes(1);
+    const textEvent = events.find(
+      (event): event is Extract<ApplicationOutputEvent, { kind: "text" }> => event.kind === "text",
+    );
+    const payload = JSON.parse(textEvent?.text ?? "{}");
+    expect(payload).toMatchObject({
+      removed: true,
+      removedCount: 2,
+      generatedAt: "2026-04-12T10:00:00.000Z",
+    });
+    expect(payload.removedKey).toBeUndefined();
+    vi.useRealTimers();
   });
 
   it("returns failure when the key is empty", () => {

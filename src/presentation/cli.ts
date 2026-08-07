@@ -52,6 +52,8 @@ import {
   createConfigUnsetCommandAction,
   createWithCommandAction,
   createWorkerHealthCommandAction,
+  createWorkerResetCommandAction,
+  createWorkerStatusCommandAction,
   createNextCommandAction,
   createPlanCommandAction,
   createReverifyCommandAction,
@@ -644,10 +646,33 @@ program
 
 program
   .command("worker-health")
-  .description("Display persisted worker/profile health and fallback eligibility snapshots.")
+  .description("Display or reset persisted worker/profile health and fallback eligibility snapshots. Prefer `worker status` and `worker reset`.")
   .option("--json", "Print worker health status as JSON", false)
+  .option("--reset <key>", "Reset one worker-health entry by persisted key")
+  .option("--reset-all", "Reset all persisted worker/profile health statuses", false)
   .allowUnknownOption(false)
   .action(withCliAction(createWorkerHealthCommandAction({ getApp })));
+
+const workerCommand = program
+  .command("worker")
+  .description("Inspect and reset worker selection state.")
+  .configureHelp({ showGlobalOptions: true });
+
+workerCommand
+  .command("status")
+  .description("Show worker/profile status, eligibility, and fallback selection order.")
+  .option("--json", "Print worker status as JSON", false)
+  .allowUnknownOption(false)
+  .action(withCliAction(createWorkerStatusCommandAction({ getApp })));
+
+workerCommand
+  .command("reset")
+  .description("Reset worker/profile status so blocked workers can be selected again.")
+  .argument("[key]", "Persisted worker-health key to reset")
+  .option("--all", "Reset all persisted worker/profile statuses", false)
+  .option("--json", "Print reset result as JSON", false)
+  .allowUnknownOption(false)
+  .action(withCliAction(createWorkerResetCommandAction({ getApp })));
 
 program
   .command("memory-clean")

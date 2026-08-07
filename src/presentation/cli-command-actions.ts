@@ -2584,7 +2584,43 @@ export function createWorkerHealthCommandAction({
   getApp,
 }: Pick<WorkerActionDependencies, "getApp">): (opts: CliOpts) => CliActionResult {
   return (opts: CliOpts) => {
+    if (opts.resetAll === true) {
+      return getApp().resetWorkerHealthEntry({
+        all: true,
+        json: Boolean(opts.json as boolean | undefined),
+      });
+    }
+
+    if (typeof opts.reset === "string") {
+      return getApp().resetWorkerHealthEntry({
+        key: opts.reset,
+        json: Boolean(opts.json as boolean | undefined),
+      });
+    }
+
     return getApp().viewWorkerHealthStatus({
+      json: Boolean(opts.json as boolean | undefined),
+    });
+  };
+}
+
+export function createWorkerStatusCommandAction({
+  getApp,
+}: Pick<WorkerActionDependencies, "getApp">): (opts: CliOpts) => CliActionResult {
+  return (opts: CliOpts) => {
+    return getApp().viewWorkerHealthStatus({
+      json: Boolean(opts.json as boolean | undefined),
+    });
+  };
+}
+
+export function createWorkerResetCommandAction({
+  getApp,
+}: Pick<WorkerActionDependencies, "getApp">): (key: string | undefined, opts: CliOpts) => CliActionResult {
+  return (key: string | undefined, opts: CliOpts) => {
+    return getApp().resetWorkerHealthEntry({
+      key,
+      all: Boolean(opts.all as boolean | undefined),
       json: Boolean(opts.json as boolean | undefined),
     });
   };

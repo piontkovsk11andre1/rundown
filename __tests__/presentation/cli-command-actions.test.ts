@@ -31,6 +31,8 @@ import {
   createWorkspaceRemoveCommandAction,
   createWorkspaceUnlinkCommandAction,
   createWorkerHealthCommandAction,
+  createWorkerResetCommandAction,
+  createWorkerStatusCommandAction,
 } from "../../src/presentation/cli-command-actions.js";
 import type { CliApp } from "../../src/presentation/cli-app-init.js";
 import * as sleepModule from "../../src/infrastructure/cancellable-sleep.js";
@@ -1830,6 +1832,93 @@ describe("createWorkerHealthCommandAction", () => {
     expect(exitCode).toBe(0);
     expect(viewWorkerHealthStatus).toHaveBeenCalledTimes(1);
     expect(viewWorkerHealthStatus).toHaveBeenCalledWith({ json: true });
+  });
+
+  it("forwards --reset to resetWorkerHealthEntry", () => {
+    const resetWorkerHealthEntry = vi.fn(() => 0);
+    const viewWorkerHealthStatus = vi.fn(() => 0);
+    const app = { resetWorkerHealthEntry, viewWorkerHealthStatus } as unknown as CliApp;
+    const action = createWorkerHealthCommandAction({
+      getApp: () => app,
+    });
+
+    const exitCode = action({ reset: "worker:[\"opencode\"]", json: true });
+
+    expect(exitCode).toBe(0);
+    expect(viewWorkerHealthStatus).not.toHaveBeenCalled();
+    expect(resetWorkerHealthEntry).toHaveBeenCalledWith({
+      key: "worker:[\"opencode\"]",
+      json: true,
+    });
+  });
+
+  it("forwards --reset-all to resetWorkerHealthEntry", () => {
+    const resetWorkerHealthEntry = vi.fn(() => 0);
+    const viewWorkerHealthStatus = vi.fn(() => 0);
+    const app = { resetWorkerHealthEntry, viewWorkerHealthStatus } as unknown as CliApp;
+    const action = createWorkerHealthCommandAction({
+      getApp: () => app,
+    });
+
+    const exitCode = action({ resetAll: true, json: false });
+
+    expect(exitCode).toBe(0);
+    expect(viewWorkerHealthStatus).not.toHaveBeenCalled();
+    expect(resetWorkerHealthEntry).toHaveBeenCalledWith({
+      all: true,
+      json: false,
+    });
+  });
+});
+
+describe("createWorkerStatusCommandAction", () => {
+  it("forwards --json to viewWorkerHealthStatus", () => {
+    const viewWorkerHealthStatus = vi.fn(() => 0);
+    const app = { viewWorkerHealthStatus } as unknown as CliApp;
+    const action = createWorkerStatusCommandAction({
+      getApp: () => app,
+    });
+
+    const exitCode = action({ json: true });
+
+    expect(exitCode).toBe(0);
+    expect(viewWorkerHealthStatus).toHaveBeenCalledWith({ json: true });
+  });
+});
+
+describe("createWorkerResetCommandAction", () => {
+  it("resets one worker-health key", () => {
+    const resetWorkerHealthEntry = vi.fn(() => 0);
+    const app = { resetWorkerHealthEntry } as unknown as CliApp;
+    const action = createWorkerResetCommandAction({
+      getApp: () => app,
+    });
+
+    const exitCode = action("worker:[\"opencode\"]", { json: true });
+
+    expect(exitCode).toBe(0);
+    expect(resetWorkerHealthEntry).toHaveBeenCalledWith({
+      key: "worker:[\"opencode\"]",
+      all: false,
+      json: true,
+    });
+  });
+
+  it("resets all worker-health entries", () => {
+    const resetWorkerHealthEntry = vi.fn(() => 0);
+    const app = { resetWorkerHealthEntry } as unknown as CliApp;
+    const action = createWorkerResetCommandAction({
+      getApp: () => app,
+    });
+
+    const exitCode = action(undefined, { all: true, json: false });
+
+    expect(exitCode).toBe(0);
+    expect(resetWorkerHealthEntry).toHaveBeenCalledWith({
+      key: undefined,
+      all: true,
+      json: false,
+    });
   });
 });
 

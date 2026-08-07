@@ -84,6 +84,8 @@ describe("worker-health-status", () => {
       .find((entry) => entry.commandName === "run");
     expect(runSnapshot).toBeDefined();
     expect(runSnapshot?.["selectedWorkerLabel"]).toBe("fallback two");
+    expect((payload.fallbackOrderSnapshots as Array<Record<string, unknown>>).map((entry) => entry.commandName))
+      .toEqual(expect.arrayContaining(["run", "all", "materialize", "repair", "discuss"]));
   });
 
   it("prints human-readable status output", () => {

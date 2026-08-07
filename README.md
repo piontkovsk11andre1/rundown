@@ -1,6 +1,6 @@
 # `rundown`
 
-> A test-driven planning and execution framework.
+> Markdown-native planning and execution for agentic work.
 > Use it to create art, run a business, do research, and write code.
 
 ## Planning model
@@ -66,6 +66,15 @@ You can switch models on `verify -> repair` layer, using strongest on the last `
 ### Extensible tooling
 
 `rundown` supports a flexible, extensible tool set:
+
+Worker configuration has four concepts:
+
+- `workers.default` is the primary non-interactive worker used by execution commands such as `run`, `all`, `materialize`, `plan`, `make`, `do`, `add`, `reverify`, and `undo`.
+- `workers.interactive` is used by interactive commands such as `repair` and `discuss`, with `workers.default` as the backup when the interactive worker is unavailable.
+- `profiles.<name>` are named worker commands selected deliberately with `profile=<name>` in frontmatter, directives, or task text.
+- `fallbacks.default` and `fallbacks.<profile>` are backup workers used only when health policy blocks or fails over from the selected primary worker.
+
+Use `rundown worker status` to see persisted worker/profile health, selected fallback order, and why a worker is currently eligible or blocked. Use `rundown worker reset <key>` to retry one blocked worker/profile entry, or `rundown worker reset --all` to clear all persisted worker statuses.
 
 ```markdown
 ---

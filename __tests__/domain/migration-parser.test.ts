@@ -1,0 +1,95 @@
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  formatMigrationFilename,
+  parseMigrationDirectory,
+  parseMigrationFilename,
+} from "../../src/domain/migration-parser.js";
+
+describe("parseMigrationFilename", () => {
+  it("returns null for invalid migration numbering", () => {
+    expect(parseMigrationFilename("123-build.md")).toBeNull();
+    expect(parseMigrationFilename("12345-build.md")).toBeNull();
+    expect(parseMigrationFilename("12a4-build.md")).toBeNull();
+  });
+
+  it("returns null for unknown double-dash types", () => {
+    expect(parseMigrationFilename("0007--unknown.md")).toBeNull();
+    expect(parseMigrationFilename("0007--user-session.md")).toBeNull();
+    expect(parseMigrationFilename("0007--context.md")).toBeNull();
+    expect(parseMigrationFilename("0007--backlog.md")).toBeNull();
+    expect(parseMigrationFilename("0007--user-experience.md")).toBeNull();
+    expect(parseMigrationFilename("7.4 Context.md")).toBeNull();
+    expect(parseMigrationFilename("7.2 Notes.md")).toBeNull();
+  });
+
+  it("parses review filenames and rejects malformed variants", () => {
+    expect(parseMigrationFilename("0007--review.md")).toEqual({
+      number: 7,
+      name: "review",
+    });
+
+    expect(parseMigrationFilename("0007---review.md")).toBeNull();
+    expect(parseMigrationFilename("0007--review-extra.md")).toBeNull();
+    expect(parseMigrationFilename("0007--review.md.bak")).toBeNull();
+  });
+
+  it("formats TypeScript filenames canonically from normalized names", () => {
+    expect(parseMigrationFilename("1. TypeScript Library Starter.md")).toEqual({
+      number: 1,
+      name: "typescript-library-starter",
+    });
+
+    expect(formatMigrationFilename(1, "typescript-library-starter")).toBe(
+      "1. TypeScript Library Starter.md",
+    );
+  });
+});
+
+describe("parseMigrationDirectory", () => {
+  it("ignores malformed migration-like filenames safely", () => {
+    const migrationsDir = path.join("/tmp", "project", "migrations");
+    const files = [
+      path.join(migrationsDir, "0001-initialize.md"),
+      path.join(migrationsDir, "0001--review.md"),
+      path.join(migrationsDir, "001-add-auth.md"),
+      path.join(migrationsDir, "0002--unknown.md"),
+      path.join(migrationsDir, "0001---review.md"),
+      path.join(migrationsDir, "0001--review-extra.md"),
+      path.join(migrationsDir, "0001--review.md.bak"),
+      path.join(migrationsDir, "Notes.md"),
+    ];
+
+    expect(() => parseMigrationDirectory(files, migrationsDir)).not.toThrow();
+
+    const state = parseMigrationDirectory(files, migrationsDir);
+    expect(state.migrations).toHaveLength(1);
+    expect(state.migrations[0]?.number).toBe(1);
+    expect(state.migrations[0]?.reviews.map((review) => review.type)).toEqual(["review"]);
+    expect(state.currentPosition).toBe(1);
+  });
+
+  it("ignores malformed migration-like filenames safely", () => {
+    const migrationsDir = path.join("/tmp", "project", "migrations");
+    const files = [
+      path.join(migrationsDir, "1. Initialize.md"),
+      path.join(migrationsDir, "1.3 Review.md"),
+      path.join(migrationsDir, "0002-add-auth.md"),
+      path.join(migrationsDir, "0002--unknown.md"),
+      path.join(migrationsDir, "0002---review.md"),
+      path.join(migrationsDir, "0002--review-extra.md"),
+      path.join(migrationsDir, "Notes.md"),
+    ];
+
+    expect(() => parseMigrationDirectory(files, migrationsDir)).not.toThrow();
+
+    const state = parseMigrationDirectory(files, migrationsDir);
+    expect(state.currentPosition).toBe(2);
+    expect(state.migrations).toHaveLength(2);
+    expect(state.migrations[0]?.number).toBe(1);
+    expect(state.migrations[0]?.reviews.map((review) => review.type)).toEqual(["review"]);
+    expect(state.migrations[1]?.number).toBe(2);
+    expect(state.migrations[1]?.reviews).toEqual([]);
+  });
+
+});

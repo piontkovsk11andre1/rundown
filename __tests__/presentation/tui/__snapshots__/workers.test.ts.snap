@@ -1,0 +1,27 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`tui workers integration > renders pool and health states 1`] = `
+"██████  ██   ██ ███    ██ ██████   ██████  ██     ██ ███    ██
+██   ██ ██   ██ ████   ██ ██   ██ ██    ██ ██     ██ ████   ██
+██████  ██   ██ ██ ██  ██ ██   ██ ██    ██ ██  █  ██ ██ ██  ██
+██   ██ ██   ██ ██  ██ ██ ██   ██ ██    ██ ██ ███ ██ ██  ██ ██
+██   ██  █████  ██   ████ ██████   ██████   ███ ███  ██   ████
+
+
+Status:  READY 
+==========================================================================
+
+Workers
+C:\\Work\\md-todo\\.rundown\\config.json
+
+Pool
+  default           opencode run --model gpt-5  ✓ ready
+  interactive       opencode run --model gpt-5-mini  ⚠ cooling until 07:30:00 (usage_limit)
+  fallbacks         1. opencode run --model gpt-4.1-mini  ✗ unavailable
+  workerTimeoutMs   45000
+
+[e] edit config   [H] health   [T] tools   [r] reload
+[Esc] Back to menu
+
+Press ?/h for help, Esc/Backspace to go back, q or Ctrl+C to quit."
+`;

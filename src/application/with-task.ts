@@ -1,0 +1,444 @@
+import path from "node:path";
+import { EXIT_CODE_SUCCESS } from "../domain/exit-codes.js";
+import {
+  getProviderPresetPayload,
+  resolveProviderPresetKey,
+  normalizeProviderPresetAlias,
+  type ProviderPresetPayload,
+} from "../domain/provider-preset-registry.js";
+import type { ConfigDirResult } from "../domain/ports/config-dir-port.js";
+import type { InteractiveInputPort } from "../domain/ports/interactive-input-port.js";
+import type { WorkerConfigPort } from "../domain/ports/worker-config-port.js";
+
+export interface WithTaskOptions {
+  provider: string;
+}
+
+export interface WithTaskDependencies {
+  workerConfigPort: WorkerConfigPort;
+  configDir: ConfigDirResult | undefined;
+  interactiveInput: InteractiveInputPort;
+}
+
+export interface WithTaskConfiguredKeyResult {
+  keyPath: string;
+  status: "set" | "removed" | "preserved";
+  value?: readonly string[] | readonly string[][];
+}
+
+export interface WithTaskResult {
+  exitCode: number;
+  providerKey: string;
+  source: "preset";
+  cancelled: boolean;
+  changed: boolean;
+  configPath: string;
+  existingLocalWorkerKeys: readonly ExistingLocalWorkerKeyPath[];
+  configuredKeys: readonly WithTaskConfiguredKeyResult[];
+}
+
+type WithTaskMutableKeyPath = WithTaskConfiguredKeyResult["keyPath"];
+type ExistingLocalWorkerKeyPath = "workers.default" | "workers.interactive" | "fallbacks.default";
+
+const LOCAL_WORKER_OVERWRITE_KEYS: readonly ExistingLocalWorkerKeyPath[] = [
+  "workers.default",
+  "workers.interactive",
+  "fallbacks.default",
+];
+
+interface WithTaskMutationPlanItem {
+  keyPath: WithTaskMutableKeyPath;
+  action: "set" | "unset";
+  value?: readonly string[] | readonly string[][];
+}
+
+function resolveConfigDirPath(configDir: ConfigDirResult | undefined): string {
+  return configDir?.configDir ?? process.cwd();
+}
+
+function hasPresetFallbackPolicy(presetPayload: ProviderPresetPayload): boolean {
+  return Object.hasOwn(presetPayload, "fallbacks");
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function areConfigValuesEqual(left: unknown, right: unknown): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (Array.isArray(left) && Array.isArray(right)) {
+    if (left.length !== right.length) {
+      return false;
+    }
+
+    for (let index = 0; index < left.length; index += 1) {
+      if (!areConfigValuesEqual(left[index], right[index])) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  if (isPlainObject(left) && isPlainObject(right)) {
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    if (leftKeys.length !== rightKeys.length) {
+      return false;
+    }
+
+    for (const key of leftKeys) {
+      if (!Object.hasOwn(right, key)) {
+        return false;
+      }
+
+      if (!areConfigValuesEqual(left[key], right[key])) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+function buildPresetMutationPlan(presetPayload: ProviderPresetPayload): WithTaskMutationPlanItem[] {
+  const mutationPlan: WithTaskMutationPlanItem[] = [
+    {
+      keyPath: "workers.default",
+      action: "set",
+      value: presetPayload.workers.default,
+    },
+    presetPayload.workers.interactive
+      ? {
+        keyPath: "workers.interactive",
+        action: "set",
+        value: presetPayload.workers.interactive,
+      }
+      : {
+        keyPath: "workers.interactive",
+        action: "unset",
+      },
+  ];
+
+  for (const [profileName, command] of Object.entries(presetPayload.profiles ?? {})) {
+    mutationPlan.push({
+      keyPath: `profiles.${profileName}`,
+      action: "set",
+      value: command,
+    });
+  }
+
+  if (hasPresetFallbackPolicy(presetPayload)) {
+    const fallbackEntries = Object.entries(presetPayload.fallbacks ?? {});
+    const hasDefaultFallbackPolicy = Object.hasOwn(presetPayload.fallbacks ?? {}, "default");
+    if (!hasDefaultFallbackPolicy) {
+      mutationPlan.push({
+        keyPath: "fallbacks.default",
+        action: "unset",
+      });
+    }
+
+    for (const [fallbackName, commands] of fallbackEntries) {
+      mutationPlan.push(
+        commands && commands.length > 0
+          ? {
+            keyPath: `fallbacks.${fallbackName}`,
+            action: "set",
+            value: commands,
+          }
+          : {
+            keyPath: `fallbacks.${fallbackName}`,
+            action: "unset",
+          },
+      );
+    }
+  }
+
+  return mutationPlan;
+}
+
+function shouldApplyLocalMutation(
+  mutation: WithTaskMutationPlanItem,
+  localValue: unknown,
+  effectiveValue: unknown,
+): boolean {
+  if (mutation.action === "unset") {
+    return localValue !== undefined;
+  }
+
+  if (areConfigValuesEqual(localValue, mutation.value)) {
+    return false;
+  }
+
+  if (localValue === undefined && areConfigValuesEqual(effectiveValue, mutation.value)) {
+    return false;
+  }
+
+  return true;
+}
+
+function resolveLocalConfigPath(dependencies: WithTaskDependencies, configDirPath: string): string {
+  const paths = dependencies.workerConfigPort.getConfigPaths?.(configDirPath);
+  return paths?.localConfigPath ?? path.join(configDirPath, "config.json");
+}
+
+function detectExistingLocalWorkerKeys(
+  workerConfigPort: WorkerConfigPort,
+  configDirPath: string,
+): ExistingLocalWorkerKeyPath[] {
+  if (workerConfigPort.readValue) {
+    return LOCAL_WORKER_OVERWRITE_KEYS.filter((keyPath) => {
+      return workerConfigPort.readValue?.(configDirPath, "local", keyPath) !== undefined;
+    });
+  }
+
+  const localValues = workerConfigPort.listValues?.(configDirPath, "local");
+  const localWorkers = localValues?.workers;
+  if (!localWorkers) {
+    return [];
+  }
+
+  return LOCAL_WORKER_OVERWRITE_KEYS.filter((keyPath) => {
+    if (keyPath === "workers.default") {
+      return localWorkers.default !== undefined;
+    }
+
+    if (keyPath === "workers.interactive") {
+      return localWorkers.interactive !== undefined;
+    }
+
+    return workerConfigPort.readValue?.(configDirPath, "local", "fallbacks.default") !== undefined;
+  });
+}
+
+function isWorkerOverwriteMutation(
+  mutation: WithTaskMutationPlanItem,
+): mutation is WithTaskMutationPlanItem & { keyPath: ExistingLocalWorkerKeyPath } {
+  return LOCAL_WORKER_OVERWRITE_KEYS.includes(mutation.keyPath as ExistingLocalWorkerKeyPath);
+}
+
+function buildConfiguredKeys(presetPayload: ProviderPresetPayload): WithTaskConfiguredKeyResult[] {
+  const configuredKeys: WithTaskConfiguredKeyResult[] = [
+    {
+      keyPath: "workers.default",
+      status: "set",
+      value: [...presetPayload.workers.default],
+    },
+    presetPayload.workers.interactive
+      ? {
+        keyPath: "workers.interactive",
+        status: "set",
+        value: [...presetPayload.workers.interactive],
+      }
+      : {
+        keyPath: "workers.interactive",
+        status: "removed",
+      },
+  ];
+
+  for (const [profileName, command] of Object.entries(presetPayload.profiles ?? {})) {
+    configuredKeys.push({
+      keyPath: `profiles.${profileName}`,
+      status: "set",
+      value: [...command],
+    });
+  }
+
+  if (!hasPresetFallbackPolicy(presetPayload)) {
+    configuredKeys.push({
+      keyPath: "fallbacks.default",
+      status: "preserved",
+    });
+    return configuredKeys;
+  }
+
+  const fallbackEntries = Object.entries(presetPayload.fallbacks ?? {});
+  if (!Object.hasOwn(presetPayload.fallbacks ?? {}, "default")) {
+    configuredKeys.push({
+      keyPath: "fallbacks.default",
+      status: "removed",
+    });
+  }
+
+  for (const [fallbackName, commands] of fallbackEntries) {
+    configuredKeys.push(
+      commands && commands.length > 0
+        ? {
+          keyPath: `fallbacks.${fallbackName}`,
+          status: "set",
+          value: commands.map((command) => [...command]),
+        }
+        : {
+          keyPath: `fallbacks.${fallbackName}`,
+          status: "removed",
+        },
+    );
+  }
+
+  return configuredKeys;
+}
+
+function formatWorkerKeyList(keys: readonly ExistingLocalWorkerKeyPath[]): string {
+  return keys.join(", ");
+}
+
+function isInteractiveCancellationError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.name === "InteractiveInputInterruptedError"
+    || error.name === "AbortError"
+    || /(interrupted|aborted|cancelled|canceled|ctrl\s*\+\s*c|sigint)/i.test(error.message);
+}
+
+async function confirmWorkerOverwriteIfNeeded(
+  dependencies: WithTaskDependencies,
+  providerKey: string | null | undefined,
+  existingLocalWorkerKeys: readonly ExistingLocalWorkerKeyPath[],
+  plannedMutations: readonly WithTaskMutationPlanItem[],
+): Promise<boolean> {
+  if (providerKey !== "opencode") {
+    return true;
+  }
+
+  if (existingLocalWorkerKeys.length === 0) {
+    return true;
+  }
+
+  const hasPlannedWorkerMutations = plannedMutations.some((mutation) => isWorkerOverwriteMutation(mutation));
+  if (!hasPlannedWorkerMutations) {
+    return true;
+  }
+
+  const existingKeyList = formatWorkerKeyList(existingLocalWorkerKeys);
+  if (!dependencies.interactiveInput.isTTY()) {
+    throw new Error(
+      `Cannot apply "with opencode" non-interactively because local worker config already exists (${existingKeyList}). Re-run in an interactive terminal to confirm replacing/updating worker settings.`,
+    );
+  }
+
+  if (dependencies.interactiveInput.prepareForPrompt) {
+    await dependencies.interactiveInput.prepareForPrompt();
+  }
+
+  let confirmation;
+  try {
+    confirmation = await dependencies.interactiveInput.prompt({
+      kind: "confirm",
+      message: `Local worker config already exists (${existingKeyList}). Running "rundown with opencode" will replace or update these worker settings. Continue?`,
+      defaultValue: false,
+    });
+  } catch (error) {
+    if (isInteractiveCancellationError(error)) {
+      return false;
+    }
+
+    throw error;
+  }
+
+  return confirmation.value.trim().toLowerCase() === "true";
+}
+
+/**
+ * Creates the `with` command use case.
+ *
+ * Applies the selected provider preset by mutating only targeted worker keys
+ * in local config, preserving all unrelated settings.
+ */
+export function createWithTask(
+  dependencies: WithTaskDependencies,
+): (options: WithTaskOptions) => Promise<WithTaskResult> {
+  return async (options: WithTaskOptions): Promise<WithTaskResult> => {
+    const providerKey = resolveProviderPresetKey(options.provider);
+    if (!providerKey) {
+      const normalizedProvider = normalizeProviderPresetAlias(options.provider) || options.provider.trim();
+      throw new Error(`Unknown provider preset: ${normalizedProvider}.`);
+    }
+
+    if (!dependencies.workerConfigPort.setValue || !dependencies.workerConfigPort.unsetValue) {
+      throw new Error("The `with` command is not available in this build.");
+    }
+
+    const configDirPath = resolveConfigDirPath(dependencies.configDir);
+    const presetPayload = getProviderPresetPayload(providerKey);
+    const existingLocalWorkerKeys = providerKey === "opencode"
+      ? detectExistingLocalWorkerKeys(dependencies.workerConfigPort, configDirPath)
+      : [];
+
+    const mutationPlan = buildPresetMutationPlan(presetPayload);
+    const plannedMutations = mutationPlan.filter((mutation) => {
+      const localValue = dependencies.workerConfigPort.readValue?.(
+        configDirPath,
+        "local",
+        mutation.keyPath,
+      );
+      const effectiveValue = dependencies.workerConfigPort.readValue?.(
+        configDirPath,
+        "effective",
+        mutation.keyPath,
+      );
+
+      if (localValue === undefined && effectiveValue === undefined) {
+        return true;
+      }
+
+      return shouldApplyLocalMutation(mutation, localValue, effectiveValue);
+    });
+
+    const confirmed = await confirmWorkerOverwriteIfNeeded(
+      dependencies,
+      providerKey,
+      existingLocalWorkerKeys,
+      plannedMutations,
+    );
+
+    if (!confirmed) {
+      return {
+        exitCode: EXIT_CODE_SUCCESS,
+        providerKey,
+        source: "preset",
+        cancelled: true,
+        changed: false,
+        configPath: resolveLocalConfigPath(dependencies, configDirPath),
+        existingLocalWorkerKeys,
+        configuredKeys: [],
+      };
+    }
+
+    let changed = false;
+    let configPath = resolveLocalConfigPath(dependencies, configDirPath);
+
+    for (const mutation of plannedMutations) {
+      const mutationResult = mutation.action === "set"
+        ? dependencies.workerConfigPort.setValue(configDirPath, {
+          scope: "local",
+          keyPath: mutation.keyPath,
+          value: mutation.value,
+        })
+        : dependencies.workerConfigPort.unsetValue(configDirPath, {
+          scope: "local",
+          keyPath: mutation.keyPath,
+        });
+
+      configPath = mutationResult.configPath;
+      changed = changed || mutationResult.changed;
+    }
+
+    return {
+      exitCode: EXIT_CODE_SUCCESS,
+      providerKey,
+      source: "preset",
+      cancelled: false,
+      changed,
+      configPath,
+      existingLocalWorkerKeys,
+      configuredKeys: buildConfiguredKeys(presetPayload),
+    };
+  };
+}

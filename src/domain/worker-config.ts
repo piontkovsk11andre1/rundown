@@ -1,0 +1,342 @@
+import type { SubItem } from "./parser.js";
+import type { ProcessRunMode } from "./ports/process-runner.js";
+
+/**
+ * A flat worker command expressed as a string array of executable tokens.
+ */
+export type WorkerCommand = string[];
+
+/**
+ * Worker entries in the `workers` configuration section.
+ */
+export interface WorkersConfig {
+  // Default worker command used for non-interactive executions.
+  default?: WorkerCommand;
+  // Worker command used when executing interactively.
+  interactive?: WorkerCommand;
+}
+
+export interface FallbacksConfig {
+  // Ordered default fallback worker commands tried when the primary worker
+  // hits a usage-limit or connection error.
+  default?: WorkerCommand[];
+  // Optional profile-specific fallback worker commands, keyed directly as
+  // `fallbacks.<profile>`.
+  [profileName: string]: WorkerCommand[] | undefined;
+}
+
+export const WORKER_HEALTH_POLICY_FALLBACK_STRATEGY_STRICT_ORDER = "strict_order" as const;
+export const WORKER_HEALTH_POLICY_FALLBACK_STRATEGY_PRIORITY = "priority" as const;
+
+export type WorkerHealthPolicyFallbackStrategy =
+  | typeof WORKER_HEALTH_POLICY_FALLBACK_STRATEGY_STRICT_ORDER
+  | typeof WORKER_HEALTH_POLICY_FALLBACK_STRATEGY_PRIORITY;
+
+export const WORKER_HEALTH_POLICY_UNAVAILABLE_REEVALUATION_MANUAL = "manual" as const;
+export const WORKER_HEALTH_POLICY_UNAVAILABLE_REEVALUATION_COOLDOWN = "cooldown" as const;
+
+export type WorkerHealthPolicyUnavailableReevaluationMode =
+  | typeof WORKER_HEALTH_POLICY_UNAVAILABLE_REEVALUATION_MANUAL
+  | typeof WORKER_HEALTH_POLICY_UNAVAILABLE_REEVALUATION_COOLDOWN;
+
+export interface WorkerHealthPolicyConfig {
+  cooldownSecondsByFailureClass?: {
+    usage_limit?: number;
+    transport_unavailable?: number;
+    execution_failure_other?: number;
+  };
+  maxFailoverAttemptsPerTask?: number;
+  maxFailoverAttemptsPerRun?: number;
+  fallbackStrategy?: WorkerHealthPolicyFallbackStrategy;
+  unavailableReevaluation?: {
+    mode?: WorkerHealthPolicyUnavailableReevaluationMode;
+    probeCooldownSeconds?: number;
+  };
+}
+
+export type WorkerConfigCommandName = string;
+
+const DEFAULT_WORKER_COMMAND_NAMES = new Set([
+  "run",
+  "plan",
+  "make",
+  "do",
+  "add",
+  "reverify",
+  "undo",
+]);
+
+const INTERACTIVE_WORKER_COMMAND_NAMES = new Set([
+  "repair",
+  "discuss",
+]);
+
+export const TRACE_STATISTICS_FIELD_REGISTRY = [
+  "total_time",
+  "execution_time",
+  "verify_time",
+  "repair_time",
+  "idle_time",
+  "tokens_estimated",
+  "phases_count",
+  "verify_attempts",
+  "repair_attempts",
+] as const;
+
+export type TraceStatisticsField = typeof TRACE_STATISTICS_FIELD_REGISTRY[number];
+
+export const DEFAULT_TRACE_STATISTICS_FIELDS: string[] = ["total_time", "tokens_estimated"];
+
+/**
+ * Trace statistics configuration for inline markdown output.
+ */
+export interface TraceStatisticsConfig {
+  enabled: boolean;
+  fields: string[];
+}
+
+export const RUN_COMMIT_MODES = ["per-task", "file-done"] as const;
+
+export type RunCommitMode = typeof RUN_COMMIT_MODES[number];
+
+export interface RunDefaultsConfig {
+  revertable?: boolean;
+  commit?: boolean;
+  commitMessage?: string;
+  commitMode?: RunCommitMode;
+}
+
+export interface AutoCompactDefaultsConfig {
+  beforeExit?: boolean;
+}
+
+/**
+ * Worker configuration loaded from user or project settings.
+ */
+export interface WorkerConfig {
+  // Named worker commands: default and interactive.
+  workers?: WorkersConfig;
+  // Backup workers used when primary workers fail in retryable ways.
+  fallbacks?: FallbacksConfig;
+  // Optional worker execution timeout in milliseconds.
+  // Must be a non-negative integer; 0 disables timeout enforcement.
+  workerTimeoutMs?: number;
+  // Named reusable profiles referenced by directive or file metadata.
+  profiles?: Record<string, WorkerCommand>;
+  // Optional trace statistics output configuration.
+  traceStatistics?: TraceStatisticsConfig;
+  // Optional worker failover and health policy configuration.
+  healthPolicy?: WorkerHealthPolicyConfig;
+  // Optional run command defaults.
+  run?: RunDefaultsConfig;
+  // Optional defaults for post-success automatic compaction.
+  autoCompact?: AutoCompactDefaultsConfig;
+}
+
+export const WORKER_CONFIG_VALUE_SOURCES = ["built-in", "global", "local", "mixed"] as const;
+
+export type WorkerConfigValueSource = typeof WORKER_CONFIG_VALUE_SOURCES[number];
+
+export type WorkerConfigValueSourceMap = Record<string, WorkerConfigValueSource>;
+
+export interface WorkerConfigLoadWithSourcesResult {
+  config: WorkerConfig | undefined;
+  valueSources: WorkerConfigValueSourceMap;
+  localConfigPath: string;
+  globalConfigPath: string | undefined;
+}
+
+export type WorkerConfigWritableScope = "local" | "global";
+
+export type WorkerConfigReadableScope = "effective" | "local" | "global";
+
+export interface WorkerConfigSetValueInput {
+  scope: WorkerConfigWritableScope;
+  keyPath: string;
+  value: unknown;
+}
+
+export interface WorkerConfigUnsetValueInput {
+  scope: WorkerConfigWritableScope;
+  keyPath: string;
+}
+
+export interface WorkerConfigMutationResult {
+  configPath: string;
+  changed: boolean;
+}
+
+export interface WorkerConfigPathsResult {
+  localConfigPath: string;
+  globalConfigPath: string | undefined;
+  globalCanonicalPath: string | undefined;
+}
+
+/**
+ * Returns worker config with trace-statistics defaults applied only when
+ * tracing is enabled and traceStatistics config is not provided.
+ */
+export function applyTraceStatisticsDefaults(
+  config: WorkerConfig | undefined,
+  traceEnabled: boolean,
+): WorkerConfig | undefined {
+  if (!traceEnabled || config?.traceStatistics) {
+    return config;
+  }
+
+  return {
+    ...(config ?? {}),
+    traceStatistics: {
+      enabled: true,
+      fields: [...DEFAULT_TRACE_STATISTICS_FIELDS],
+    },
+  };
+}
+
+// Matches a sub-item like "profile=build" and captures the profile name.
+const PROFILE_SUBITEM_PATTERN = /^profile\s*=\s*(.+)$/i;
+
+/**
+ * Normalizes profile names by trimming whitespace and rejecting empty values.
+ *
+ * @param profileName Candidate profile name from configuration or markdown metadata.
+ * @returns Trimmed profile name, or `undefined` when the value is missing or blank.
+ */
+function normalizeProfileName(profileName: string | undefined): string | undefined {
+  if (typeof profileName !== "string") {
+    return undefined;
+  }
+
+  const trimmed = profileName.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/**
+ * Extracts the first valid `profile=` reference from parsed task sub-items.
+ *
+ * @param subItems Parsed sub-items associated with a task.
+ * @returns Normalized profile name when present, otherwise `undefined`.
+ */
+export function extractProfileFromSubItems(subItems: SubItem[]): string | undefined {
+  for (const subItem of subItems) {
+    const match = subItem.text.match(PROFILE_SUBITEM_PATTERN);
+    if (!match) {
+      continue;
+    }
+
+    const profileName = normalizeProfileName(match[1]);
+    if (profileName) {
+      return profileName;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Resolves a named profile from configuration and throws when it is unknown.
+ *
+ * @param config Worker configuration that may include named profiles.
+ * @param profileName Name of the profile to resolve.
+ * @returns The matching worker command.
+ * @throws Error When the requested profile does not exist.
+ */
+function resolveNamedProfile(config: WorkerConfig, profileName: string): WorkerCommand {
+  const profile = config.profiles?.[profileName];
+  if (!profile) {
+    throw new Error(`Unknown worker profile: ${profileName}`);
+  }
+
+  return profile;
+}
+
+/**
+ * Returns the override command when non-empty, otherwise falls back to the base.
+ */
+function pickCommand(base: WorkerCommand, override: WorkerCommand | undefined): WorkerCommand {
+  return override && override.length > 0 ? [...override] : [...base];
+}
+
+export function commandPrefersInteractiveWorker(commandName: WorkerConfigCommandName): boolean {
+  return INTERACTIVE_WORKER_COMMAND_NAMES.has(commandName);
+}
+
+function resolveBaseWorkerCommand(
+  workers: WorkersConfig | undefined,
+  commandName: WorkerConfigCommandName,
+  mode: ProcessRunMode | undefined,
+): WorkerCommand {
+  if (commandPrefersInteractiveWorker(commandName) && workers?.interactive && workers.interactive.length > 0) {
+    return [...workers.interactive];
+  }
+
+  if (DEFAULT_WORKER_COMMAND_NAMES.has(commandName)) {
+    return workers?.default ? [...workers.default] : [];
+  }
+
+  if (mode === "tui" && workers?.interactive && workers.interactive.length > 0) {
+    return [...workers.interactive];
+  }
+
+  return workers?.default ? [...workers.default] : [];
+}
+
+/**
+ * Resolves the effective worker command from CLI, config workers, file profile
+ * metadata, and directive profile metadata.
+ *
+ * Resolution order is deterministic:
+ * 1) CLI worker (if provided) short-circuits all config.
+ * 2) Config workers.default or workers.interactive (based on mode).
+ * 3) File-level named profile.
+ * 4) Directive-level named profile.
+ * 5) Task-level named profile.
+ *
+ * @param config Optional worker configuration source.
+ * @param commandName Command currently being executed.
+ * @param fileProfile Profile name derived from file-level metadata.
+ * @param directiveProfile Profile name derived from task/directive metadata.
+ * @param taskProfile Profile name derived from task-level inline metadata.
+ * @param cliWorker Optional worker executable tokens passed via CLI.
+ * @param mode Optional process run mode; when "tui", prefers workers.interactive over workers.default.
+ * @returns Resolved worker command as a flat string array.
+ */
+export function resolveWorkerConfig(
+  config: WorkerConfig | undefined,
+  commandName: WorkerConfigCommandName,
+  fileProfile: string | undefined,
+  directiveProfile: string | undefined,
+  taskProfile: string | undefined,
+  cliWorker: string[] | undefined,
+  _intentCommandName?: WorkerConfigCommandName,
+  mode?: ProcessRunMode,
+): WorkerCommand {
+  // CLI-provided worker executable takes absolute precedence.
+  if (Array.isArray(cliWorker) && cliWorker.length > 0) {
+    return [...cliWorker];
+  }
+
+  // Select the base worker from explicit command routing, falling back to legacy TUI behavior for non-retained commands.
+  const workers = config?.workers;
+  let resolved: WorkerCommand = resolveBaseWorkerCommand(workers, commandName, mode);
+
+  const normalizedFileProfile = normalizeProfileName(fileProfile);
+  if (normalizedFileProfile) {
+    const profile = resolveNamedProfile(config ?? {}, normalizedFileProfile);
+    resolved = pickCommand(resolved, profile);
+  }
+
+  const normalizedDirectiveProfile = normalizeProfileName(directiveProfile);
+  if (normalizedDirectiveProfile) {
+    const profile = resolveNamedProfile(config ?? {}, normalizedDirectiveProfile);
+    resolved = pickCommand(resolved, profile);
+  }
+
+  const normalizedTaskProfile = normalizeProfileName(taskProfile);
+  if (normalizedTaskProfile) {
+    const profile = resolveNamedProfile(config ?? {}, normalizedTaskProfile);
+    resolved = pickCommand(resolved, profile);
+  }
+
+  return resolved;
+}

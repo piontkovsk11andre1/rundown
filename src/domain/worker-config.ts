@@ -58,6 +58,8 @@ export type WorkerConfigCommandName = string;
 
 const DEFAULT_WORKER_COMMAND_NAMES = new Set([
   "run",
+  "all",
+  "materialize",
   "plan",
   "make",
   "do",

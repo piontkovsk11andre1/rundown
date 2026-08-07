@@ -327,7 +327,7 @@ describe("resolve-worker", () => {
       && event.message === "opencode $bootstrap (from config workers.interactive)")).toBe(true);
   });
 
-  it.each(["run", "plan", "make", "do", "add", "reverify", "undo"])(
+  it.each(["run", "all", "materialize", "plan", "make", "do", "add", "reverify", "undo"])(
     "routes retained command %s to workers.default even in tui mode",
     (commandName) => {
       const command = resolveWorkerForInvocation({

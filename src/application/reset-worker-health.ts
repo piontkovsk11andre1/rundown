@@ -10,24 +10,27 @@ export interface ResetWorkerHealthDependencies {
 
 export interface ResetWorkerHealthOptions {
   /** Health entry key as persisted (e.g. `worker:["opencode"]` or `profile:default`). */
-  key: string;
+  key?: string;
+  /** When true, clear every persisted worker-health entry. */
+  all?: boolean;
   /** When true, emit a JSON payload describing the post-reset snapshot. */
   json?: boolean;
 }
 
 interface ResetWorkerHealthPayload {
-  removedKey: string;
+  removedKey?: string;
   removed: boolean;
+  removedCount: number;
   filePath: string;
   configDir?: string;
   generatedAt: string;
 }
 
 /**
- * Atomically removes a single worker-health entry through the
- * {@link WorkerHealthStore} port, preserving schemaVersion and file-lock
- * semantics. Returns success even when the key is unknown so the caller can
- * treat reset as idempotent.
+ * Atomically removes worker-health entries through the {@link WorkerHealthStore}
+ * port, preserving schemaVersion and file-lock semantics. Single-entry reset
+ * returns success even when the key is unknown so callers can treat reset as
+ * idempotent.
  */
 export function createResetWorkerHealthEntry(
   dependencies: ResetWorkerHealthDependencies,
@@ -36,7 +39,8 @@ export function createResetWorkerHealthEntry(
 
   return (options: ResetWorkerHealthOptions): number => {
     const key = typeof options?.key === "string" ? options.key : "";
-    if (key.length === 0) {
+    const resetAll = options.all === true;
+    if (!resetAll && key.length === 0) {
       emit({ kind: "text", text: "reset-worker-health: missing entry key" });
       return EXIT_CODE_FAILURE;
     }
@@ -44,7 +48,7 @@ export function createResetWorkerHealthEntry(
     const configDirPath = dependencies.configDir?.configDir;
     const baseDir = configDirPath ?? process.cwd();
 
-    if (typeof dependencies.workerHealthStore.removeEntry !== "function") {
+    if (!resetAll && typeof dependencies.workerHealthStore.removeEntry !== "function") {
       emit({ kind: "text", text: "reset-worker-health: store does not support removeEntry" });
       return EXIT_CODE_FAILURE;
     }
@@ -52,11 +56,15 @@ export function createResetWorkerHealthEntry(
     const before = dependencies.workerHealthStore.read(baseDir);
     const existed = before.entries.some((entry) => entry.key === key);
 
-    const snapshot = dependencies.workerHealthStore.removeEntry(key, baseDir);
+    const snapshot = resetAll
+      ? resetAllEntries(dependencies.workerHealthStore, before, baseDir)
+      : dependencies.workerHealthStore.removeEntry!(key, baseDir);
+    const removedCount = resetAll ? before.entries.length : (existed ? 1 : 0);
 
     const payload: ResetWorkerHealthPayload = {
-      removedKey: key,
-      removed: existed,
+      ...(resetAll ? {} : { removedKey: key }),
+      removed: resetAll ? removedCount > 0 : existed,
+      removedCount,
       filePath: dependencies.workerHealthStore.filePath(baseDir),
       generatedAt: snapshot.updatedAt,
       ...(configDirPath ? { configDir: configDirPath } : {}),
@@ -69,9 +77,11 @@ export function createResetWorkerHealthEntry(
 
     emit({
       kind: "text",
-      text: existed
-        ? `Reset worker-health entry: ${key}`
-        : `No worker-health entry found for key: ${key}`,
+      text: resetAll
+        ? `Reset worker-health entries: ${removedCount}`
+        : (existed
+          ? `Reset worker-health entry: ${key}`
+          : `No worker-health entry found for key: ${key}`),
     });
     emit({ kind: "text", text: "  store: " + payload.filePath });
     if (payload.configDir) {
@@ -81,4 +91,28 @@ export function createResetWorkerHealthEntry(
 
     return EXIT_CODE_SUCCESS;
   };
+}
+
+function resetAllEntries(
+  workerHealthStore: WorkerHealthStore,
+  before: ReturnType<WorkerHealthStore["read"]>,
+  baseDir: string,
+): ReturnType<WorkerHealthStore["read"]> {
+  const updatedAt = new Date().toISOString();
+
+  if (typeof workerHealthStore.update === "function") {
+    return workerHealthStore.update((snapshot) => ({
+      schemaVersion: snapshot.schemaVersion,
+      updatedAt,
+      entries: [],
+    }), baseDir);
+  }
+
+  const next = {
+    schemaVersion: before.schemaVersion,
+    updatedAt,
+    entries: [],
+  };
+  workerHealthStore.write(next, baseDir);
+  return next;
 }

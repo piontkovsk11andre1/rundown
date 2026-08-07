@@ -1,5 +1,9 @@
 import type { SubItem } from "./parser.js";
 import type { ProcessRunMode } from "./ports/process-runner.js";
+import {
+  commandUsesDefaultWorker,
+  commandUsesInteractiveWorker,
+} from "./worker-command-routing.js";
 
 /**
  * A flat worker command expressed as a string array of executable tokens.
@@ -55,23 +59,6 @@ export interface WorkerHealthPolicyConfig {
 }
 
 export type WorkerConfigCommandName = string;
-
-const DEFAULT_WORKER_COMMAND_NAMES = new Set([
-  "run",
-  "all",
-  "materialize",
-  "plan",
-  "make",
-  "do",
-  "add",
-  "reverify",
-  "undo",
-]);
-
-const INTERACTIVE_WORKER_COMMAND_NAMES = new Set([
-  "repair",
-  "discuss",
-]);
 
 export const TRACE_STATISTICS_FIELD_REGISTRY = [
   "total_time",
@@ -260,7 +247,7 @@ function pickCommand(base: WorkerCommand, override: WorkerCommand | undefined): 
 }
 
 export function commandPrefersInteractiveWorker(commandName: WorkerConfigCommandName): boolean {
-  return INTERACTIVE_WORKER_COMMAND_NAMES.has(commandName);
+  return commandUsesInteractiveWorker(commandName);
 }
 
 function resolveBaseWorkerCommand(
@@ -272,7 +259,7 @@ function resolveBaseWorkerCommand(
     return [...workers.interactive];
   }
 
-  if (DEFAULT_WORKER_COMMAND_NAMES.has(commandName)) {
+  if (commandUsesDefaultWorker(commandName)) {
     return workers?.default ? [...workers.default] : [];
   }
 

@@ -12,6 +12,10 @@ import {
   type WorkerResolutionCandidateSnapshot,
 } from "./resolve-worker.js";
 import { EXIT_CODE_SUCCESS } from "../domain/exit-codes.js";
+import {
+  ROUTED_WORKER_COMMAND_NAMES,
+  type RoutedWorkerCommandName,
+} from "../domain/worker-command-routing.js";
 
 export interface ViewWorkerHealthDependencies {
   workerHealthStore: WorkerHealthStore;
@@ -63,7 +67,7 @@ interface WorkerFallbackCandidateStatus {
 }
 
 interface WorkerFallbackStatusRecord {
-  commandName: RetainedWorkerCommandName;
+  commandName: RoutedWorkerCommandName;
   profileName?: string;
   selectedCandidateIndex: number;
   selectedWorkerCommand: string[];
@@ -78,20 +82,6 @@ interface WorkerHealthStatusPayload {
   entries: WorkerHealthStatusRecord[];
   fallbackOrderSnapshots: WorkerFallbackStatusRecord[];
 }
-
-type RetainedWorkerCommandName = "run" | "plan" | "make" | "do" | "add" | "reverify" | "undo" | "repair" | "discuss";
-
-const WORKER_COMMAND_NAMES: ReadonlyArray<RetainedWorkerCommandName> = [
-  "run",
-  "plan",
-  "make",
-  "do",
-  "add",
-  "reverify",
-  "undo",
-  "repair",
-  "discuss",
-];
 
 export function createViewWorkerHealthStatus(
   dependencies: ViewWorkerHealthDependencies,
@@ -109,7 +99,7 @@ export function createViewWorkerHealthStatus(
     const workerConfig = configDirPath
       ? dependencies.workerConfigPort.load(configDirPath)
       : undefined;
-    const fallbackOrderSnapshots = WORKER_COMMAND_NAMES
+    const fallbackOrderSnapshots = ROUTED_WORKER_COMMAND_NAMES
       .map((commandName) => buildFallbackSnapshot(commandName, workerConfig, snapshot.entries, nowMs))
       .filter((value): value is WorkerFallbackStatusRecord => value !== null);
 
@@ -274,7 +264,7 @@ function compareHealthRecords(left: WorkerHealthStatusRecord, right: WorkerHealt
 }
 
 function buildFallbackSnapshot(
-  commandName: RetainedWorkerCommandName,
+  commandName: RoutedWorkerCommandName,
   workerConfig: ReturnType<WorkerConfigPort["load"]> | undefined,
   entries: readonly WorkerHealthEntry[],
   nowMs: number,

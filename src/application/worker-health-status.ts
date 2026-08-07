@@ -63,7 +63,7 @@ interface WorkerFallbackCandidateStatus {
 }
 
 interface WorkerFallbackStatusRecord {
-  commandName: "run" | "discuss" | "plan" | "research" | "reverify";
+  commandName: RetainedWorkerCommandName;
   profileName?: string;
   selectedCandidateIndex: number;
   selectedWorkerCommand: string[];
@@ -79,12 +79,18 @@ interface WorkerHealthStatusPayload {
   fallbackOrderSnapshots: WorkerFallbackStatusRecord[];
 }
 
-const WORKER_COMMAND_NAMES: ReadonlyArray<"run" | "discuss" | "plan" | "research" | "reverify"> = [
+type RetainedWorkerCommandName = "run" | "plan" | "make" | "do" | "add" | "reverify" | "undo" | "repair" | "discuss";
+
+const WORKER_COMMAND_NAMES: ReadonlyArray<RetainedWorkerCommandName> = [
   "run",
-  "discuss",
   "plan",
-  "research",
+  "make",
+  "do",
+  "add",
   "reverify",
+  "undo",
+  "repair",
+  "discuss",
 ];
 
 export function createViewWorkerHealthStatus(
@@ -268,7 +274,7 @@ function compareHealthRecords(left: WorkerHealthStatusRecord, right: WorkerHealt
 }
 
 function buildFallbackSnapshot(
-  commandName: "run" | "discuss" | "plan" | "research" | "reverify",
+  commandName: RetainedWorkerCommandName,
   workerConfig: ReturnType<WorkerConfigPort["load"]> | undefined,
   entries: readonly WorkerHealthEntry[],
   nowMs: number,

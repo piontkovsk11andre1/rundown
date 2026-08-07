@@ -46,9 +46,8 @@ describeIfMigrateAvailable("migrate-task integration", () => {
             migrations: "changesets",
           },
         },
-        commands: {
-          research: ["node", "-e", buildMigrateExecutionWorkerScript()],
-          plan: ["node", "-e", buildMigrateExecutionWorkerScript()],
+        workers: {
+          default: ["node", "-e", buildMigrateExecutionWorkerScript()],
         },
       }, null, 2) + "\n",
       "utf-8",
@@ -138,9 +137,8 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     fs.writeFileSync(
       path.join(workspace, ".rundown", "config.json"),
       JSON.stringify({
-        commands: {
-          research: ["node", "-e", workerScript],
-          plan: ["node", "-e", workerScript],
+        workers: {
+          default: ["node", "-e", workerScript],
         },
       }, null, 2) + "\n",
       "utf-8",
@@ -302,9 +300,8 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     fs.writeFileSync(
       path.join(workspace, ".rundown", "config.json"),
       JSON.stringify({
-        commands: {
-          research: ["node", "-e", plannerScript],
-          plan: ["node", "-e", plannerScript],
+        workers: {
+          default: ["node", "-e", plannerScript],
         },
       }, null, 2) + "\n",
       "utf-8",
@@ -694,9 +691,8 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     fs.writeFileSync(
       path.join(workspace, ".rundown", "config.json"),
       JSON.stringify({
-        commands: {
-          research: ["node", "-e", buildMigrateExecutionWorkerScript()],
-          plan: ["node", "-e", buildMigrateExecutionWorkerScript()],
+        workers: {
+          default: ["node", "-e", buildMigrateExecutionWorkerScript()],
         },
       }, null, 2) + "\n",
       "utf-8",
@@ -902,9 +898,8 @@ describeIfMigrateAvailable("migrate-task integration", () => {
     fs.writeFileSync(
       path.join(workspace, ".rundown", "config.json"),
       JSON.stringify({
-        commands: {
-          research: ["node", "-e", buildMigrateExecutionWorkerScript()],
-          plan: ["node", "-e", buildMigrateExecutionWorkerScript()],
+        workers: {
+          default: ["node", "-e", buildMigrateExecutionWorkerScript()],
         },
       }, null, 2) + "\n",
       "utf-8",
@@ -1835,9 +1830,8 @@ function configureMigrateWorkers(workspace: string): void {
   fs.writeFileSync(
     path.join(workspace, ".rundown", "config.json"),
     JSON.stringify({
-      commands: {
-        research: ["node", "-e", buildMigrateExecutionWorkerScript()],
-        plan: ["node", "-e", buildMigrateExecutionWorkerScript()],
+      workers: {
+        default: ["node", "-e", buildMigrateExecutionWorkerScript()],
       },
     }, null, 2) + "\n",
     "utf-8",

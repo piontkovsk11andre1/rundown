@@ -223,7 +223,7 @@ describe("run-task orchestration", () => {
     );
   });
 
-  it("passes intent-resolved verify worker to task verification for verify-only tasks", async () => {
+  it("passes default worker to task verification for verify-only tasks", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");
     const verifyOnlyTaskText = "verify: release docs are consistent";
@@ -233,9 +233,8 @@ describe("run-task orchestration", () => {
       fileSystem: createInMemoryFileSystem({ [taskFile]: `- [ ] ${verifyOnlyTaskText}\n` }),
       gitClient: createGitClientMock(),
       workerConfig: {
-        commands: {
-          run: ["run-worker", "--from-run"],
-          verify: ["verify-worker", "--from-verify"],
+        workers: {
+          default: ["default-worker", "--from-default"],
         },
       },
     });
@@ -256,7 +255,7 @@ describe("run-task orchestration", () => {
     expect(dependencies.taskVerification.verify).toHaveBeenCalledTimes(1);
     expect(vi.mocked(dependencies.taskVerification.verify).mock.calls[0]?.[0]).toEqual(expect.objectContaining({
       workerPattern: expect.objectContaining({
-        command: ["verify-worker", "--from-verify"],
+        command: ["default-worker", "--from-default"],
       }),
     }));
   });
@@ -331,7 +330,7 @@ describe("run-task orchestration", () => {
     },
   );
 
-  it("passes intent-resolved memory worker to execution for memory-capture tasks", async () => {
+  it("passes default worker to execution for memory-capture tasks", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "tasks.md");
     const memoryTaskText = "memory: capture release context";
@@ -341,9 +340,8 @@ describe("run-task orchestration", () => {
       fileSystem: createInMemoryFileSystem({ [taskFile]: `- [ ] ${memoryTaskText}\n` }),
       gitClient: createGitClientMock(),
       workerConfig: {
-        commands: {
-          run: ["run-worker", "--from-run"],
-          memory: ["memory-worker", "--from-memory"],
+        workers: {
+          default: ["default-worker", "--from-default"],
         },
       },
     });
@@ -369,7 +367,7 @@ describe("run-task orchestration", () => {
     expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(1);
     expect(vi.mocked(dependencies.workerExecutor.runWorker).mock.calls[0]?.[0]).toEqual(expect.objectContaining({
       workerPattern: expect.objectContaining({
-        command: ["memory-worker", "--from-memory"],
+        command: ["default-worker", "--from-default"],
       }),
     }));
   });

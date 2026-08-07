@@ -5,7 +5,7 @@ import { handleWorkersInput } from "../../../src/presentation/tui/scenes/workers
 
 const workersMockData = vi.hoisted(() => ({
   defaultWorker: ["opencode", "run", "--model", "gpt-5"],
-  tuiWorker: ["opencode", "run", "--model", "gpt-5-mini"],
+  interactiveWorker: ["opencode", "run", "--model", "gpt-5-mini"],
   fallbackWorker: ["opencode", "run", "--model", "gpt-4.1-mini"],
   toolWorker: ["opencode", "run", "--model", "gpt-5.3-mini", "--no-approval"],
 }));
@@ -19,7 +19,7 @@ describe("tui workers integration", () => {
     vi.clearAllMocks();
   });
 
-  it("renders pool, per-command overrides, routing summary, and health states", async () => {
+  it("renders pool and health states", async () => {
     const harness = await createTuiHarness({
       initialScene: "workers",
     });
@@ -51,7 +51,7 @@ describe("tui workers integration", () => {
 vi.mock("../../../src/create-app.js", () => ({
   createApp: vi.fn((options?: { ports?: { output?: { emit?: (event: unknown) => void } } }) => {
     const emit = options?.ports?.output?.emit;
-    const { defaultWorker, tuiWorker, fallbackWorker, toolWorker } = workersMockData;
+    const { defaultWorker, interactiveWorker, fallbackWorker, toolWorker } = workersMockData;
     return {
       configList: vi.fn(async (args?: { scope?: string; showSource?: boolean }) => {
         if (args?.scope === "effective" && args?.showSource === false) {
@@ -61,25 +61,12 @@ vi.mock("../../../src/create-app.js", () => ({
               config: {
                 workers: {
                   default: defaultWorker,
-                  tui: tuiWorker,
-                  fallbacks: [fallbackWorker],
+                  interactive: interactiveWorker,
+                },
+                fallbacks: {
+                  default: [fallbackWorker],
                 },
                 workerTimeoutMs: 45000,
-                commands: {
-                  run: defaultWorker,
-                  verify: fallbackWorker,
-                  "tools.post-on-gitea": toolWorker,
-                },
-                run: {
-                  workerRouting: {
-                    repair: {
-                      attempts: [{ worker: defaultWorker }, { worker: fallbackWorker }],
-                    },
-                    resolveRepair: {
-                      attempts: [{ worker: tuiWorker }],
-                    },
-                  },
-                },
               },
             }),
           });
@@ -112,8 +99,8 @@ vi.mock("../../../src/create-app.js", () => ({
               },
               {
                 source: "worker",
-                key: workerKey(tuiWorker),
-                identity: tuiWorker.join(" "),
+                key: workerKey(interactiveWorker),
+                identity: interactiveWorker.join(" "),
                 status: "cooling_down",
                 cooldownUntil: "2026-05-03T11:30:00.000Z",
                 lastFailureClass: "usage_limit",

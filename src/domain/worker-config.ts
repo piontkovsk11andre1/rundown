@@ -10,13 +10,19 @@ export type WorkerCommand = string[];
  * Worker entries in the `workers` configuration section.
  */
 export interface WorkersConfig {
-  // Default worker command used for all non-TUI executions.
+  // Default worker command used for non-interactive executions.
   default?: WorkerCommand;
-  // Worker command used when executing in TUI mode.
-  tui?: WorkerCommand;
-  // Ordered list of fallback worker commands tried when the primary worker
+  // Worker command used when executing interactively.
+  interactive?: WorkerCommand;
+}
+
+export interface FallbacksConfig {
+  // Ordered default fallback worker commands tried when the primary worker
   // hits a usage-limit or connection error.
-  fallbacks?: WorkerCommand[];
+  default?: WorkerCommand[];
+  // Optional profile-specific fallback worker commands, keyed directly as
+  // `fallbacks.<profile>`.
+  [profileName: string]: WorkerCommand[] | undefined;
 }
 
 export const WORKER_HEALTH_POLICY_FALLBACK_STRATEGY_STRICT_ORDER = "strict_order" as const;
@@ -48,38 +54,22 @@ export interface WorkerHealthPolicyConfig {
   };
 }
 
-/**
- * Known command names that support worker configuration overrides.
- */
-export const WORKER_CONFIG_COMMAND_NAMES = [
-  "help",
+export type WorkerConfigCommandName = string;
+
+const DEFAULT_WORKER_COMMAND_NAMES = new Set([
   "run",
-  "migrate",
-  "migrate-slug",
-  "undo",
-  "test",
   "plan",
-  "discuss",
-  "research",
-  "translate",
+  "make",
+  "do",
+  "add",
   "reverify",
-  "verify",
-  "memory",
-] as const;
+  "undo",
+]);
 
-/**
- * Supported command names for `config.commands` worker overrides.
- * Includes fixed intent-based keys and a dynamic `tools.{toolName}` pattern
- * for per-tool worker configuration.
- */
-export type WorkerConfigCommandName = typeof WORKER_CONFIG_COMMAND_NAMES[number] | `tools.${string}`;
-
-/**
- * Per-command worker overrides keyed by supported command name.
- */
-export type WorkerCommandProfiles = {
-  [K in WorkerConfigCommandName]?: WorkerCommand;
-};
+const INTERACTIVE_WORKER_COMMAND_NAMES = new Set([
+  "repair",
+  "discuss",
+]);
 
 export const TRACE_STATISTICS_FIELD_REGISTRY = [
   "total_time",
@@ -109,52 +99,11 @@ export const RUN_COMMIT_MODES = ["per-task", "file-done"] as const;
 
 export type RunCommitMode = typeof RUN_COMMIT_MODES[number];
 
-export const RUN_WORKER_ROUTING_PHASES = [
-  "execute",
-  "verify",
-  "repair",
-  "resolve",
-  "resolveRepair",
-  "reset",
-] as const;
-
-export type RunWorkerRoutingPhase = typeof RUN_WORKER_ROUTING_PHASES[number];
-
-export interface RunWorkerRouteConfig {
-  worker?: WorkerCommand;
-  useFallbacks?: boolean;
-}
-
-export interface RunWorkerAttemptSelector {
-  attempt?: number;
-  fromAttempt?: number;
-  toAttempt?: number;
-}
-
-export interface RunWorkerAttemptRouteConfig extends RunWorkerRouteConfig {
-  selector: RunWorkerAttemptSelector;
-}
-
-export interface RunAttemptScopedWorkerRoutingConfig {
-  default?: RunWorkerRouteConfig;
-  attempts?: RunWorkerAttemptRouteConfig[];
-}
-
-export interface RunWorkerRoutingConfig {
-  execute?: RunWorkerRouteConfig;
-  verify?: RunWorkerRouteConfig;
-  repair?: RunAttemptScopedWorkerRoutingConfig;
-  resolve?: RunWorkerRouteConfig;
-  resolveRepair?: RunAttemptScopedWorkerRoutingConfig;
-  reset?: RunWorkerRouteConfig;
-}
-
 export interface RunDefaultsConfig {
   revertable?: boolean;
   commit?: boolean;
   commitMessage?: string;
   commitMode?: RunCommitMode;
-  workerRouting?: RunWorkerRoutingConfig;
 }
 
 export interface AutoCompactDefaultsConfig {
@@ -165,13 +114,13 @@ export interface AutoCompactDefaultsConfig {
  * Worker configuration loaded from user or project settings.
  */
 export interface WorkerConfig {
-  // Named worker commands: default, tui, and fallback list.
+  // Named worker commands: default and interactive.
   workers?: WorkersConfig;
+  // Backup workers used when primary workers fail in retryable ways.
+  fallbacks?: FallbacksConfig;
   // Optional worker execution timeout in milliseconds.
   // Must be a non-negative integer; 0 disables timeout enforcement.
   workerTimeoutMs?: number;
-  // Per-command overrides keyed by command name.
-  commands?: WorkerCommandProfiles;
   // Named reusable profiles referenced by directive or file metadata.
   profiles?: Record<string, WorkerCommand>;
   // Optional trace statistics output configuration.
@@ -308,18 +257,40 @@ function pickCommand(base: WorkerCommand, override: WorkerCommand | undefined): 
   return override && override.length > 0 ? [...override] : [...base];
 }
 
+export function commandPrefersInteractiveWorker(commandName: WorkerConfigCommandName): boolean {
+  return INTERACTIVE_WORKER_COMMAND_NAMES.has(commandName);
+}
+
+function resolveBaseWorkerCommand(
+  workers: WorkersConfig | undefined,
+  commandName: WorkerConfigCommandName,
+  mode: ProcessRunMode | undefined,
+): WorkerCommand {
+  if (commandPrefersInteractiveWorker(commandName) && workers?.interactive && workers.interactive.length > 0) {
+    return [...workers.interactive];
+  }
+
+  if (DEFAULT_WORKER_COMMAND_NAMES.has(commandName)) {
+    return workers?.default ? [...workers.default] : [];
+  }
+
+  if (mode === "tui" && workers?.interactive && workers.interactive.length > 0) {
+    return [...workers.interactive];
+  }
+
+  return workers?.default ? [...workers.default] : [];
+}
+
 /**
- * Resolves the effective worker command from CLI, config workers, command overrides,
- * file profile metadata, and directive profile metadata.
+ * Resolves the effective worker command from CLI, config workers, file profile
+ * metadata, and directive profile metadata.
  *
  * Resolution order is deterministic:
  * 1) CLI worker (if provided) short-circuits all config.
- * 2) Config workers.default or workers.tui (based on mode).
- * 3) Per-command override.
- * 4) Per-intent override (e.g. "verify" for verify-only tasks), when provided.
- * 5) File-level named profile.
- * 6) Directive-level named profile.
- * 7) Task-level named profile.
+ * 2) Config workers.default or workers.interactive (based on mode).
+ * 3) File-level named profile.
+ * 4) Directive-level named profile.
+ * 5) Task-level named profile.
  *
  * @param config Optional worker configuration source.
  * @param commandName Command currently being executed.
@@ -327,8 +298,7 @@ function pickCommand(base: WorkerCommand, override: WorkerCommand | undefined): 
  * @param directiveProfile Profile name derived from task/directive metadata.
  * @param taskProfile Profile name derived from task-level inline metadata.
  * @param cliWorker Optional worker executable tokens passed via CLI.
- * @param intentCommandName Optional intent-based command key (e.g. "verify") applied after the per-command override.
- * @param mode Optional process run mode; when "tui", prefers workers.tui over workers.default.
+ * @param mode Optional process run mode; when "tui", prefers workers.interactive over workers.default.
  * @returns Resolved worker command as a flat string array.
  */
 export function resolveWorkerConfig(
@@ -338,7 +308,7 @@ export function resolveWorkerConfig(
   directiveProfile: string | undefined,
   taskProfile: string | undefined,
   cliWorker: string[] | undefined,
-  intentCommandName?: WorkerConfigCommandName,
+  _intentCommandName?: WorkerConfigCommandName,
   mode?: ProcessRunMode,
 ): WorkerCommand {
   // CLI-provided worker executable takes absolute precedence.
@@ -346,19 +316,9 @@ export function resolveWorkerConfig(
     return [...cliWorker];
   }
 
-  // Select the base worker from config: prefer tui variant when in TUI mode.
+  // Select the base worker from explicit command routing, falling back to legacy TUI behavior for non-retained commands.
   const workers = config?.workers;
-  let resolved: WorkerCommand = mode === "tui" && workers?.tui && workers.tui.length > 0
-    ? [...workers.tui]
-    : workers?.default ? [...workers.default] : [];
-
-  const commandOverride = config?.commands?.[commandName];
-  resolved = pickCommand(resolved, commandOverride);
-
-  if (intentCommandName && intentCommandName !== commandName) {
-    const intentOverride = config?.commands?.[intentCommandName];
-    resolved = pickCommand(resolved, intentOverride);
-  }
+  let resolved: WorkerCommand = resolveBaseWorkerCommand(workers, commandName, mode);
 
   const normalizedFileProfile = normalizeProfileName(fileProfile);
   if (normalizedFileProfile) {

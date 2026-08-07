@@ -1,18 +1,17 @@
 import path from "node:path";
 import { EXIT_CODE_SUCCESS } from "../domain/exit-codes.js";
 import {
-  getHarnessPresetPayload,
-  resolveHarnessPresetKey,
-  normalizeHarnessPresetAlias,
-  type HarnessPresetPayload,
-} from "../domain/harness-preset-registry.js";
+  getProviderPresetPayload,
+  resolveProviderPresetKey,
+  normalizeProviderPresetAlias,
+  type ProviderPresetPayload,
+} from "../domain/provider-preset-registry.js";
 import type { ConfigDirResult } from "../domain/ports/config-dir-port.js";
 import type { InteractiveInputPort } from "../domain/ports/interactive-input-port.js";
 import type { WorkerConfigPort } from "../domain/ports/worker-config-port.js";
-import { parseWorkerPattern } from "../domain/worker-pattern.js";
 
 export interface WithTaskOptions {
-  harness: string;
+  provider: string;
 }
 
 export interface WithTaskDependencies {
@@ -22,15 +21,15 @@ export interface WithTaskDependencies {
 }
 
 export interface WithTaskConfiguredKeyResult {
-  keyPath: "workers.default" | "workers.tui" | "commands.discuss" | "workers.fallbacks";
+  keyPath: string;
   status: "set" | "removed" | "preserved";
   value?: readonly string[] | readonly string[][];
 }
 
 export interface WithTaskResult {
   exitCode: number;
-  harnessKey: string;
-  source: "preset" | "custom";
+  providerKey: string;
+  source: "preset";
   cancelled: boolean;
   changed: boolean;
   configPath: string;
@@ -38,17 +37,13 @@ export interface WithTaskResult {
   configuredKeys: readonly WithTaskConfiguredKeyResult[];
 }
 
-export function hasWithTaskInteractiveWorker(result: WithTaskResult): boolean {
-  return result.configuredKeys.some((entry) => entry.keyPath === "workers.tui" && entry.status === "set");
-}
-
-type WithTaskMutableKeyPath = Exclude<WithTaskConfiguredKeyResult["keyPath"], "workers.fallbacks"> | "workers.fallbacks";
-type ExistingLocalWorkerKeyPath = "workers.default" | "workers.tui" | "workers.fallbacks";
+type WithTaskMutableKeyPath = WithTaskConfiguredKeyResult["keyPath"];
+type ExistingLocalWorkerKeyPath = "workers.default" | "workers.interactive" | "fallbacks.default";
 
 const LOCAL_WORKER_OVERWRITE_KEYS: readonly ExistingLocalWorkerKeyPath[] = [
   "workers.default",
-  "workers.tui",
-  "workers.fallbacks",
+  "workers.interactive",
+  "fallbacks.default",
 ];
 
 interface WithTaskMutationPlanItem {
@@ -61,8 +56,8 @@ function resolveConfigDirPath(configDir: ConfigDirResult | undefined): string {
   return configDir?.configDir ?? process.cwd();
 }
 
-function hasPresetFallbackPolicy(presetPayload: { workers: { fallbacks?: string[][] } }): boolean {
-  return Object.hasOwn(presetPayload.workers, "fallbacks");
+function hasPresetFallbackPolicy(presetPayload: ProviderPresetPayload): boolean {
+  return Object.hasOwn(presetPayload, "fallbacks");
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -111,48 +106,57 @@ function areConfigValuesEqual(left: unknown, right: unknown): boolean {
   return false;
 }
 
-function buildPresetMutationPlan(presetPayload: HarnessPresetPayload): WithTaskMutationPlanItem[] {
+function buildPresetMutationPlan(presetPayload: ProviderPresetPayload): WithTaskMutationPlanItem[] {
   const mutationPlan: WithTaskMutationPlanItem[] = [
     {
       keyPath: "workers.default",
       action: "set",
       value: presetPayload.workers.default,
     },
-    presetPayload.workers.tui
+    presetPayload.workers.interactive
       ? {
-        keyPath: "workers.tui",
+        keyPath: "workers.interactive",
         action: "set",
-        value: presetPayload.workers.tui,
+        value: presetPayload.workers.interactive,
       }
       : {
-        keyPath: "workers.tui",
-        action: "unset",
-      },
-    presetPayload.commands?.discuss
-      ? {
-        keyPath: "commands.discuss",
-        action: "set",
-        value: presetPayload.commands.discuss,
-      }
-      : {
-        keyPath: "commands.discuss",
+        keyPath: "workers.interactive",
         action: "unset",
       },
   ];
 
+  for (const [profileName, command] of Object.entries(presetPayload.profiles ?? {})) {
+    mutationPlan.push({
+      keyPath: `profiles.${profileName}`,
+      action: "set",
+      value: command,
+    });
+  }
+
   if (hasPresetFallbackPolicy(presetPayload)) {
-    mutationPlan.push(
-      presetPayload.workers.fallbacks && presetPayload.workers.fallbacks.length > 0
-        ? {
-          keyPath: "workers.fallbacks",
-          action: "set",
-          value: presetPayload.workers.fallbacks,
-        }
-        : {
-          keyPath: "workers.fallbacks",
-          action: "unset",
-        },
-    );
+    const fallbackEntries = Object.entries(presetPayload.fallbacks ?? {});
+    const hasDefaultFallbackPolicy = Object.hasOwn(presetPayload.fallbacks ?? {}, "default");
+    if (!hasDefaultFallbackPolicy) {
+      mutationPlan.push({
+        keyPath: "fallbacks.default",
+        action: "unset",
+      });
+    }
+
+    for (const [fallbackName, commands] of fallbackEntries) {
+      mutationPlan.push(
+        commands && commands.length > 0
+          ? {
+            keyPath: `fallbacks.${fallbackName}`,
+            action: "set",
+            value: commands,
+          }
+          : {
+            keyPath: `fallbacks.${fallbackName}`,
+            action: "unset",
+          },
+      );
+    }
   }
 
   return mutationPlan;
@@ -204,11 +208,11 @@ function detectExistingLocalWorkerKeys(
       return localWorkers.default !== undefined;
     }
 
-    if (keyPath === "workers.tui") {
-      return localWorkers.tui !== undefined;
+    if (keyPath === "workers.interactive") {
+      return localWorkers.interactive !== undefined;
     }
 
-    return localWorkers.fallbacks !== undefined;
+    return workerConfigPort.readValue?.(configDirPath, "local", "fallbacks.default") !== undefined;
   });
 }
 
@@ -216,6 +220,67 @@ function isWorkerOverwriteMutation(
   mutation: WithTaskMutationPlanItem,
 ): mutation is WithTaskMutationPlanItem & { keyPath: ExistingLocalWorkerKeyPath } {
   return LOCAL_WORKER_OVERWRITE_KEYS.includes(mutation.keyPath as ExistingLocalWorkerKeyPath);
+}
+
+function buildConfiguredKeys(presetPayload: ProviderPresetPayload): WithTaskConfiguredKeyResult[] {
+  const configuredKeys: WithTaskConfiguredKeyResult[] = [
+    {
+      keyPath: "workers.default",
+      status: "set",
+      value: [...presetPayload.workers.default],
+    },
+    presetPayload.workers.interactive
+      ? {
+        keyPath: "workers.interactive",
+        status: "set",
+        value: [...presetPayload.workers.interactive],
+      }
+      : {
+        keyPath: "workers.interactive",
+        status: "removed",
+      },
+  ];
+
+  for (const [profileName, command] of Object.entries(presetPayload.profiles ?? {})) {
+    configuredKeys.push({
+      keyPath: `profiles.${profileName}`,
+      status: "set",
+      value: [...command],
+    });
+  }
+
+  if (!hasPresetFallbackPolicy(presetPayload)) {
+    configuredKeys.push({
+      keyPath: "fallbacks.default",
+      status: "preserved",
+    });
+    return configuredKeys;
+  }
+
+  const fallbackEntries = Object.entries(presetPayload.fallbacks ?? {});
+  if (!Object.hasOwn(presetPayload.fallbacks ?? {}, "default")) {
+    configuredKeys.push({
+      keyPath: "fallbacks.default",
+      status: "removed",
+    });
+  }
+
+  for (const [fallbackName, commands] of fallbackEntries) {
+    configuredKeys.push(
+      commands && commands.length > 0
+        ? {
+          keyPath: `fallbacks.${fallbackName}`,
+          status: "set",
+          value: commands.map((command) => [...command]),
+        }
+        : {
+          keyPath: `fallbacks.${fallbackName}`,
+          status: "removed",
+        },
+    );
+  }
+
+  return configuredKeys;
 }
 
 function formatWorkerKeyList(keys: readonly ExistingLocalWorkerKeyPath[]): string {
@@ -234,11 +299,11 @@ function isInteractiveCancellationError(error: unknown): boolean {
 
 async function confirmWorkerOverwriteIfNeeded(
   dependencies: WithTaskDependencies,
-  harnessKey: string | null | undefined,
+  providerKey: string | null | undefined,
   existingLocalWorkerKeys: readonly ExistingLocalWorkerKeyPath[],
   plannedMutations: readonly WithTaskMutationPlanItem[],
 ): Promise<boolean> {
-  if (harnessKey !== "opencode") {
+  if (providerKey !== "opencode") {
     return true;
   }
 
@@ -283,28 +348,26 @@ async function confirmWorkerOverwriteIfNeeded(
 /**
  * Creates the `with` command use case.
  *
- * Applies the selected harness preset by mutating only targeted worker and
- * command keys in local config, preserving all unrelated settings.
+ * Applies the selected provider preset by mutating only targeted worker keys
+ * in local config, preserving all unrelated settings.
  */
 export function createWithTask(
   dependencies: WithTaskDependencies,
 ): (options: WithTaskOptions) => Promise<WithTaskResult> {
   return async (options: WithTaskOptions): Promise<WithTaskResult> => {
-    const harnessKey = resolveHarnessPresetKey(options.harness);
+    const providerKey = resolveProviderPresetKey(options.provider);
+    if (!providerKey) {
+      const normalizedProvider = normalizeProviderPresetAlias(options.provider) || options.provider.trim();
+      throw new Error(`Unknown provider preset: ${normalizedProvider}.`);
+    }
 
     if (!dependencies.workerConfigPort.setValue || !dependencies.workerConfigPort.unsetValue) {
       throw new Error("The `with` command is not available in this build.");
     }
 
     const configDirPath = resolveConfigDirPath(dependencies.configDir);
-    const resultSource = harnessKey ? "preset" : "custom";
-    const resolvedHarnessKey = (harnessKey
-      ?? normalizeHarnessPresetAlias(options.harness))
-      || options.harness.trim();
-    const presetPayload = harnessKey
-      ? getHarnessPresetPayload(harnessKey)
-      : await promptUnknownHarnessPreset(options.harness, dependencies.interactiveInput);
-    const existingLocalWorkerKeys = harnessKey === "opencode"
+    const presetPayload = getProviderPresetPayload(providerKey);
+    const existingLocalWorkerKeys = providerKey === "opencode"
       ? detectExistingLocalWorkerKeys(dependencies.workerConfigPort, configDirPath)
       : [];
 
@@ -330,7 +393,7 @@ export function createWithTask(
 
     const confirmed = await confirmWorkerOverwriteIfNeeded(
       dependencies,
-      harnessKey,
+      providerKey,
       existingLocalWorkerKeys,
       plannedMutations,
     );
@@ -338,8 +401,8 @@ export function createWithTask(
     if (!confirmed) {
       return {
         exitCode: EXIT_CODE_SUCCESS,
-        harnessKey: resolvedHarnessKey,
-        source: resultSource,
+        providerKey,
+        source: "preset",
         cancelled: true,
         changed: false,
         configPath: resolveLocalConfigPath(dependencies, configDirPath),
@@ -369,109 +432,13 @@ export function createWithTask(
 
     return {
       exitCode: EXIT_CODE_SUCCESS,
-      harnessKey: resolvedHarnessKey,
-      source: resultSource,
+      providerKey,
+      source: "preset",
       cancelled: false,
       changed,
       configPath,
       existingLocalWorkerKeys,
-      configuredKeys: [
-        {
-          keyPath: "workers.default",
-          status: "set",
-          value: [...presetPayload.workers.default],
-        },
-        presetPayload.workers.tui
-          ? {
-            keyPath: "workers.tui",
-            status: "set",
-            value: [...presetPayload.workers.tui],
-          }
-          : {
-            keyPath: "workers.tui",
-            status: "removed",
-          },
-        presetPayload.commands?.discuss
-          ? {
-            keyPath: "commands.discuss",
-            status: "set",
-            value: [...presetPayload.commands.discuss],
-          }
-          : {
-            keyPath: "commands.discuss",
-            status: "removed",
-          },
-        hasPresetFallbackPolicy(presetPayload)
-          ? (presetPayload.workers.fallbacks && presetPayload.workers.fallbacks.length > 0
-            ? {
-              keyPath: "workers.fallbacks",
-              status: "set",
-              value: presetPayload.workers.fallbacks.map((command) => [...command]),
-            }
-            : {
-              keyPath: "workers.fallbacks",
-              status: "removed",
-            })
-          : {
-            keyPath: "workers.fallbacks",
-            status: "preserved",
-          },
-      ],
+      configuredKeys: buildConfiguredKeys(presetPayload),
     };
-  };
-}
-
-async function promptUnknownHarnessPreset(
-  harness: string,
-  interactiveInput: InteractiveInputPort,
-): Promise<HarnessPresetPayload> {
-  const suggestedBaseCommand = normalizeHarnessPresetAlias(harness) || "worker";
-  const defaultWorkerPrompt = `${suggestedBaseCommand} run --file $file $bootstrap`;
-  const tuiWorkerPrompt = suggestedBaseCommand;
-
-  if (interactiveInput.prepareForPrompt) {
-    await interactiveInput.prepareForPrompt();
-  }
-
-  const defaultWorkerResult = await interactiveInput.prompt({
-    kind: "text",
-    message: `Unknown harness \"${harness}\". Enter deterministic CLI invocation (workers.default)`,
-    defaultValue: defaultWorkerPrompt,
-    required: true,
-  });
-
-  const configureTuiResult = await interactiveInput.prompt({
-    kind: "confirm",
-    message: "Configure a separate interactive invocation for workers.tui and commands.discuss?",
-    defaultValue: true,
-  });
-  const shouldConfigureTui = configureTuiResult.value.trim().toLowerCase() === "true";
-
-  const defaultWorker = parseWorkerPattern(defaultWorkerResult.value).command;
-
-  if (!shouldConfigureTui) {
-    return {
-      workers: {
-        default: defaultWorker,
-      },
-    };
-  }
-
-  const tuiWorkerResult = await interactiveInput.prompt({
-    kind: "text",
-    message: "Enter interactive invocation (workers.tui / commands.discuss)",
-    defaultValue: tuiWorkerPrompt,
-    required: true,
-  });
-  const tuiWorker = parseWorkerPattern(tuiWorkerResult.value).command;
-
-  return {
-    workers: {
-      default: defaultWorker,
-      tui: tuiWorker,
-    },
-    commands: {
-      discuss: tuiWorker,
-    },
   };
 }

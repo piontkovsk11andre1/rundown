@@ -9,12 +9,6 @@ import {
   DEFAULT_MIGRATE_TEMPLATE,
   DEFAULT_PLAN_LOOP_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
-  DEFAULT_QUERY_AGGREGATION_TEMPLATE,
-  DEFAULT_QUERY_EXECUTION_TEMPLATE,
-  DEFAULT_QUERY_SEED_TEMPLATE,
-  DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
-  DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
-  DEFAULT_QUERY_YN_SEED_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
   DEFAULT_RESEARCH_OUTPUT_CONTRACT_TEMPLATE,
   DEFAULT_RESEARCH_REPAIR_TEMPLATE,
@@ -68,12 +62,6 @@ const LOCALIZABLE_TEMPLATES: ReadonlyArray<{ fileName: string; fallback: string 
   { fileName: "test-future.md", fallback: DEFAULT_TEST_FUTURE_TEMPLATE },
   { fileName: "test-materialized.md", fallback: DEFAULT_TEST_MATERIALIZED_TEMPLATE },
   { fileName: "migrate.md", fallback: DEFAULT_MIGRATE_TEMPLATE },
-  { fileName: "query-seed.md", fallback: DEFAULT_QUERY_SEED_TEMPLATE },
-  { fileName: "query-seed-yn.md", fallback: DEFAULT_QUERY_YN_SEED_TEMPLATE },
-  { fileName: "query-seed-success-error.md", fallback: DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE },
-  { fileName: "query-execute.md", fallback: DEFAULT_QUERY_EXECUTION_TEMPLATE },
-  { fileName: "query-stream-execute.md", fallback: DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE },
-  { fileName: "query-aggregate.md", fallback: DEFAULT_QUERY_AGGREGATION_TEMPLATE },
 ];
 
 export interface LocalizeProjectOptions {

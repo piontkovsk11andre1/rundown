@@ -26,7 +26,7 @@ describe("help-task", () => {
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
         default: ["opencode", "run"],
-        tui: ["opencode", "run", "--tui"],
+        interactive: ["opencode", "run", "--tui"],
       },
     });
 
@@ -72,7 +72,7 @@ describe("help-task", () => {
     const { dependencies, workerExecutor } = createDependencies({ cwd });
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
-        tui: ["opencode", "run"],
+        interactive: ["opencode", "run"],
       },
     });
 
@@ -113,7 +113,7 @@ describe("help-task", () => {
     const { dependencies, workerExecutor } = createDependencies({ cwd });
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
-        tui: ["opencode", "run", "--profile", "safe"],
+        interactive: ["opencode", "run", "--profile", "safe"],
         default: ["opencode", "run", "--profile", "default"],
       },
     });
@@ -137,7 +137,7 @@ describe("help-task", () => {
     const { dependencies, workerExecutor } = createDependencies({ cwd });
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
-        tui: ["opencode", "run", "--profile", "safe"],
+        interactive: ["opencode", "run", "--profile", "safe"],
       },
     });
 
@@ -184,7 +184,7 @@ describe("help-task", () => {
     const { dependencies, workerExecutor, fileSystem } = createDependencies({ cwd });
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
-        tui: ["opencode", "run", "--tui"],
+        interactive: ["opencode", "run", "--tui"],
       },
     });
     vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
@@ -235,7 +235,7 @@ describe("help-task", () => {
     const { dependencies, workerExecutor } = createDependencies({ cwd });
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
-        tui: ["opencode", "run", "--tui"],
+        interactive: ["opencode", "run", "--tui"],
       },
     });
     vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
@@ -264,7 +264,7 @@ describe("help-task", () => {
     const { dependencies, workerExecutor } = createDependencies({ cwd });
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
-        tui: ["opencode", "run", "--tui"],
+        interactive: ["opencode", "run", "--tui"],
       },
     });
     vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
@@ -301,7 +301,7 @@ describe("help-task", () => {
     const { dependencies, workerExecutor } = createDependencies({ cwd });
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
-        tui: ["opencode", "run", "--tui"],
+        interactive: ["opencode", "run", "--tui"],
       },
     });
     vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
@@ -333,7 +333,7 @@ describe("help-task", () => {
     const { dependencies, workerExecutor } = createDependencies({ cwd, configDirPath: configDir });
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
-        tui: ["opencode", "run", "--tui"],
+        interactive: ["opencode", "run", "--tui"],
       },
     });
     vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
@@ -364,7 +364,7 @@ describe("help-task", () => {
     const { dependencies, workerExecutor } = createDependencies({ cwd, configDirPath: null });
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
-        tui: ["opencode", "run", "--tui"],
+        interactive: ["opencode", "run", "--tui"],
       },
     });
 
@@ -383,7 +383,7 @@ describe("help-task", () => {
     const { dependencies, workerExecutor, cliBlockExecutor } = createDependencies({ cwd });
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
-        tui: ["opencode", "run", "--tui"],
+        interactive: ["opencode", "run", "--tui"],
       },
     });
     vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
@@ -427,7 +427,7 @@ describe("help-task", () => {
     const { dependencies, workerExecutor, cliBlockExecutor } = createDependencies({ cwd });
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
-        tui: ["opencode", "run", "--tui"],
+        interactive: ["opencode", "run", "--tui"],
       },
     });
     vi.mocked(dependencies.templateLoader.load).mockImplementation((templatePath: string) => {
@@ -532,7 +532,7 @@ describe("help-task", () => {
     const { dependencies, artifactStore, workerExecutor } = createDependencies({ cwd });
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
-        tui: ["opencode", "run", "--tui"],
+        interactive: ["opencode", "run", "--tui"],
       },
     });
     vi.mocked(workerExecutor.runWorker).mockRejectedValueOnce(new Error("worker crashed"));
@@ -555,7 +555,7 @@ describe("help-task", () => {
     const { dependencies, artifactStore, workerExecutor, events } = createDependencies({ cwd });
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
-        tui: ["opencode", "run", "--tui"],
+        interactive: ["opencode", "run", "--tui"],
       },
     });
     vi.mocked(workerExecutor.runWorker).mockResolvedValueOnce({
@@ -586,7 +586,7 @@ describe("help-task", () => {
     const { dependencies, artifactStore, workerExecutor, events } = createDependencies({ cwd });
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
-        tui: ["opencode", "run", "--tui"],
+        interactive: ["opencode", "run", "--tui"],
       },
     });
     vi.mocked(workerExecutor.runWorker).mockResolvedValueOnce({
@@ -617,7 +617,7 @@ describe("help-task", () => {
     const { dependencies, traceWriter } = createDependencies({ cwd });
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
-        tui: ["opencode", "run", "--tui"],
+        interactive: ["opencode", "run", "--tui"],
       },
     });
 
@@ -668,7 +668,7 @@ describe("help-task", () => {
       const { dependencies, workerExecutor } = createDependencies({ cwd });
       vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
         workers: {
-          tui: ["opencode", "run", "--tui"],
+          interactive: ["opencode", "run", "--tui"],
         },
       });
 
@@ -697,7 +697,7 @@ describe("help-task", () => {
     const { dependencies, artifactStore, workerExecutor, traceWriter } = createDependencies({ cwd });
     vi.mocked(dependencies.workerConfigPort.load).mockReturnValue({
       workers: {
-        tui: ["opencode", "run", "--tui"],
+        interactive: ["opencode", "run", "--tui"],
       },
     });
     const abortError = Object.assign(new Error("cancelled by user"), {

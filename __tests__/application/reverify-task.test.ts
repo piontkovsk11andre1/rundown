@@ -378,54 +378,7 @@ describe("reverify-task", () => {
     }));
   });
 
-  it("uses commands.reverify config over defaults when no CLI worker is provided", async () => {
-    const cwd = "/workspace";
-    const taskFile = path.join(cwd, "roadmap.md");
-    const fileSystem = createInMemoryFileSystem({
-      [taskFile]: "- [x] Build release\n",
-    });
-
-    const completedRun = {
-      ...createRunMetadata({
-        runId: "run-reverify-command-worker",
-        status: "completed",
-        task: {
-          text: "Build release",
-          file: taskFile,
-          line: 1,
-          index: 0,
-          source: "roadmap.md",
-        },
-      }),
-      workerCommand: undefined,
-    } as ArtifactRunMetadata;
-
-    const { dependencies, taskVerification, workerConfigPort } = createDependencies({
-      cwd,
-      fileSystem,
-      runs: [completedRun],
-    });
-    vi.mocked(workerConfigPort.load).mockReturnValue({
-      workers: {
-        default: ["default", "worker", "--speed", "slow"],
-      },
-      commands: {
-        reverify: ["reverify", "worker", "--speed", "fast"],
-      },
-    });
-
-    const reverifyTask = createReverifyTask(dependencies);
-    const code = await reverifyTask(createOptions({ runId: "run-reverify-command-worker" }));
-
-    expect(code).toBe(0);
-    expect(vi.mocked(taskVerification.verify)).toHaveBeenCalledWith(expect.objectContaining({
-      workerPattern: expect.objectContaining({
-        command: ["reverify", "worker", "--speed", "fast"],
-      }),
-    }));
-  });
-
-  it("prefers CLI worker over config defaults and commands.reverify", async () => {
+  it("prefers CLI worker over config defaults", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "roadmap.md");
     const fileSystem = createInMemoryFileSystem({
@@ -455,9 +408,6 @@ describe("reverify-task", () => {
     vi.mocked(workerConfigPort.load).mockReturnValue({
       workers: {
         default: ["default", "worker"],
-      },
-      commands: {
-        reverify: ["reverify", "worker"],
       },
     });
 
@@ -505,9 +455,6 @@ describe("reverify-task", () => {
     vi.mocked(workerConfigPort.load).mockReturnValue({
       workers: {
         default: ["opencode", "run"],
-      },
-      commands: {
-        reverify: ["opencode", "run", "--base", "1"],
       },
       profiles: {
         complex: ["opencode", "run", "--model", "opus-4.6"],
@@ -1693,127 +1640,7 @@ describe("reverify-task", () => {
     }));
   });
 
-  it("applies phase-aware worker routing and attempt escalation during reverify", async () => {
-    const cwd = "/workspace";
-    const taskFile = path.join(cwd, "roadmap.md");
-    const fileSystem = createInMemoryFileSystem({
-      [taskFile]: "- [x] Build release\n",
-    });
-    const completedRun = {
-      ...createRunMetadata({
-        runId: "run-phase-routing",
-        status: "completed",
-        task: {
-          text: "Build release",
-          file: taskFile,
-          line: 1,
-          index: 0,
-          source: "roadmap.md",
-        },
-      }),
-      workerCommand: undefined,
-    } as ArtifactRunMetadata;
-
-    const { dependencies, taskVerification, taskRepair, workerConfigPort } = createDependencies({
-      cwd,
-      fileSystem,
-      runs: [completedRun],
-    });
-    vi.mocked(workerConfigPort.load).mockReturnValue({
-      workers: {
-        default: ["default", "worker"],
-        fallbacks: [["fallback", "worker"]],
-      },
-      commands: {
-        reverify: ["legacy", "reverify"],
-      },
-      run: {
-        workerRouting: {
-          verify: {
-            worker: ["verify", "worker"],
-          },
-          repair: {
-            default: {
-              worker: ["repair", "default"],
-            },
-            attempts: [
-              {
-                selector: {
-                  attempt: 2,
-                },
-                worker: ["repair", "strong"],
-              },
-            ],
-          },
-          resolve: {
-            worker: ["resolve", "worker"],
-          },
-          resolveRepair: {
-            default: {
-              worker: ["resolve-repair", "default"],
-            },
-            attempts: [
-              {
-                selector: {
-                  fromAttempt: 2,
-                },
-                worker: ["resolve-repair", "strong"],
-              },
-            ],
-          },
-        },
-      },
-    });
-    vi.mocked(taskVerification.verify).mockResolvedValueOnce({ valid: false });
-    vi.mocked(taskRepair.repair)
-      .mockResolvedValueOnce({ valid: false, attempts: 1 })
-      .mockResolvedValueOnce({ valid: false, attempts: 1 })
-      .mockResolvedValueOnce({ valid: true, attempts: 1 });
-    const resolveMock = vi.fn(async () => ({
-      resolved: true,
-      diagnosis: "Root cause identified",
-    }));
-    dependencies.taskRepair = {
-      ...dependencies.taskRepair,
-      resolve: resolveMock,
-    };
-
-    const reverifyTask = createReverifyTask(dependencies);
-    const code = await reverifyTask(createOptions({
-      runId: "run-phase-routing",
-      repairAttempts: 2,
-      resolveRepairAttempts: 2,
-    }));
-
-    expect(code).toBe(0);
-    expect(vi.mocked(taskVerification.verify)).toHaveBeenCalledWith(expect.objectContaining({
-      workerPattern: expect.objectContaining({
-        command: ["verify", "worker"],
-      }),
-    }));
-    expect(vi.mocked(taskRepair.repair)).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      workerPattern: expect.objectContaining({
-        command: ["repair", "default"],
-      }),
-    }));
-    expect(vi.mocked(taskRepair.repair)).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      workerPattern: expect.objectContaining({
-        command: ["repair", "strong"],
-      }),
-    }));
-    expect(resolveMock).toHaveBeenCalledWith(expect.objectContaining({
-      workerPattern: expect.objectContaining({
-        command: ["resolve", "worker"],
-      }),
-    }));
-    expect(vi.mocked(taskRepair.repair)).toHaveBeenNthCalledWith(3, expect.objectContaining({
-      workerPattern: expect.objectContaining({
-        command: ["resolve-repair", "default"],
-      }),
-    }));
-  });
-
-  it("keeps legacy reverify worker selection behavior when phase routing is absent", async () => {
+  it("uses default reverify worker selection when phase routing is absent", async () => {
     const cwd = "/workspace";
     const taskFile = path.join(cwd, "roadmap.md");
     const fileSystem = createInMemoryFileSystem({
@@ -1843,9 +1670,6 @@ describe("reverify-task", () => {
       workers: {
         default: ["default", "worker"],
       },
-      commands: {
-        reverify: ["legacy", "reverify"],
-      },
     });
     vi.mocked(taskVerification.verify).mockResolvedValueOnce({ valid: false });
     vi.mocked(taskRepair.repair).mockResolvedValueOnce({ valid: true, attempts: 1 });
@@ -1859,12 +1683,12 @@ describe("reverify-task", () => {
     expect(code).toBe(0);
     expect(vi.mocked(taskVerification.verify)).toHaveBeenCalledWith(expect.objectContaining({
       workerPattern: expect.objectContaining({
-        command: ["legacy", "reverify"],
+        command: ["default", "worker"],
       }),
     }));
     expect(vi.mocked(taskRepair.repair)).toHaveBeenCalledWith(expect.objectContaining({
       workerPattern: expect.objectContaining({
-        command: ["legacy", "reverify"],
+        command: ["default", "worker"],
       }),
     }));
   });

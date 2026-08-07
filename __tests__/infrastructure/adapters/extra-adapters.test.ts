@@ -76,11 +76,9 @@ describe("extra infrastructure adapters", () => {
     try {
       const config = {
         workers: { default: ["opencode", "run"] },
-        commands: {
+        profiles: {
           plan: ["opencode", "run", "--model", "opus-4.6"],
           research: ["opencode", "run", "--model", "opus-4.6"],
-        },
-        profiles: {
           fast: ["opencode", "run", "--model", "gpt-5.3-codex"],
         },
         traceStatistics: {

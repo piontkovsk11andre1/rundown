@@ -3,21 +3,13 @@ import {
   resolveWorkerForInvocation,
   resolveWorkerPatternForInvocation,
 } from "../../src/application/resolve-worker.js";
-import { listBuiltinToolNames, resolveBuiltinTool } from "../../src/domain/builtin-tools/index.js";
-import { classifyTaskIntent } from "../../src/domain/task-intent.js";
 import type { ApplicationOutputEvent } from "../../src/domain/ports/output-port.js";
-import type { ToolResolverPort } from "../../src/domain/ports/tool-resolver-port.js";
 import {
   WORKER_HEALTH_STATUS_COOLING_DOWN,
   WORKER_HEALTH_STATUS_UNAVAILABLE,
   buildWorkerHealthProfileKey,
   buildWorkerHealthWorkerKey,
 } from "../../src/domain/worker-health.js";
-
-const builtinToolResolver: ToolResolverPort = {
-  resolve: (toolName) => resolveBuiltinTool(toolName),
-  listKnownToolNames: () => listBuiltinToolNames(),
-};
 
 describe("resolve-worker", () => {
   it("resolves worker from config layers and warns on ignored profile sub-item", () => {
@@ -28,9 +20,6 @@ describe("resolve-worker", () => {
       workerConfig: {
         workers: {
           default: ["opencode", "run"],
-        },
-        commands: {
-          discuss: ["opencode", "discuss", "--base", "1"],
         },
         profiles: {
           complex: ["opencode", "run", "--model", "opus-4.6"],
@@ -107,113 +96,12 @@ describe("resolve-worker", () => {
     expect(command).toEqual(["opencode", "run", "--model", "gpt-5.3-codex"]);
   });
 
-  it("uses commands.tools.{toolName} override for tool-expansion tasks", () => {
-    const command = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["opencode", "run", "--model", "gpt-5.3-codex"],
-        },
-        commands: {
-          run: ["opencode", "run", "--effort", "medium"],
-          "tools.post-on-gitea": ["opencode", "run", "--model", "gpt-5.3-mini", "--no-approval"],
-        },
-      },
-      source: "- [ ] post-on-gitea: payload\n",
-      cliWorkerCommand: [],
-      taskIntent: "tool-expansion",
-      toolName: "post-on-gitea",
-    });
-
-    expect(command).toEqual([
-      "opencode",
-      "run",
-      "--model",
-      "gpt-5.3-mini",
-      "--no-approval",
-    ]);
-  });
-
-  it("derives commands.verify override key from verify alias prefixes", () => {
-    const intent = classifyTaskIntent("check: release checklist", builtinToolResolver);
-    const command = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["opencode", "run", "--from-defaults", "1"],
-        },
-        commands: {
-          run: ["opencode", "run", "--from-commands-run", "1"],
-          verify: ["opencode", "run", "--from-commands-verify", "1"],
-        },
-      },
-      source: "- [ ] check: release checklist\n",
-      cliWorkerCommand: [],
-      taskIntent: intent.intent,
-      toolName: intent.toolName,
-    });
-
-    expect(intent.intent).toBe("verify-only");
-    expect(command).toEqual(["opencode", "run", "--from-commands-verify", "1"]);
-  });
-
-  it("derives commands.memory override key from memory alias prefixes", () => {
-    const intent = classifyTaskIntent("remember: capture release context", builtinToolResolver);
-    const command = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["opencode", "run", "--from-defaults", "1"],
-        },
-        commands: {
-          run: ["opencode", "run", "--from-commands-run", "1"],
-          memory: ["opencode", "run", "--from-commands-memory", "1"],
-        },
-      },
-      source: "- [ ] remember: capture release context\n",
-      cliWorkerCommand: [],
-      taskIntent: intent.intent,
-      toolName: intent.toolName,
-    });
-
-    expect(intent.intent).toBe("memory-capture");
-    expect(command).toEqual(["opencode", "run", "--from-commands-memory", "1"]);
-  });
-
-  it("derives commands.tools.<canonicalName> override key from tool aliases", () => {
-    const intent = classifyTaskIntent("each: item in releaseFiles => verify: item", builtinToolResolver);
-    const command = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["opencode", "run", "--from-defaults", "1"],
-        },
-        commands: {
-          run: ["opencode", "run", "--from-commands-run", "1"],
-          "tools.for": ["opencode", "run", "--from-commands-tools-for", "1"],
-        },
-      },
-      source: "- [ ] each: item in releaseFiles => verify: item\n",
-      cliWorkerCommand: [],
-      taskIntent: intent.intent,
-      toolName: intent.toolName,
-    });
-
-    expect(intent.intent).toBe("tool-expansion");
-    expect(intent.toolName).toBe("for");
-    expect(command).toEqual(["opencode", "run", "--from-commands-tools-for", "1"]);
-  });
-
   it("applies tool-expansion profile precedence — last override wins", () => {
     const command = resolveWorkerForInvocation({
       commandName: "run",
       workerConfig: {
         workers: {
           default: ["opencode", "run", "--from-defaults", "1"],
-        },
-        commands: {
-          run: ["opencode", "run", "--from-commands-run", "1"],
-          "tools.post-on-gitea": ["opencode", "run", "--from-commands-tools", "1"],
         },
         profiles: {
           fileProfile: ["opencode", "run", "--from-frontmatter", "1"],
@@ -246,9 +134,6 @@ describe("resolve-worker", () => {
       workerConfig: {
         workers: {
           default: ["opencode", "run"],
-        },
-        commands: {
-          "tools.post-on-gitea": ["opencode", "run", "--from-commands-tools", "1"],
         },
       },
       source: "- [ ] post-on-gitea: payload\n",
@@ -302,9 +187,6 @@ describe("resolve-worker", () => {
         workers: {
           default: ["opencode", "run", "--from-defaults", "1"],
         },
-        commands: {
-          verify: ["opencode", "run", "--from-commands-verify", "1"],
-        },
         profiles: {
           fileProfile: ["opencode", "run", "--from-frontmatter", "1"],
           directiveProfile: ["opencode", "run", "--from-directive", "1"],
@@ -336,9 +218,6 @@ describe("resolve-worker", () => {
         workers: {
           default: ["opencode", "run"],
         },
-        commands: {
-          verify: ["opencode", "run", "--from-commands-verify", "1"],
-        },
       },
       source: "- [ ] verify: release checklist\n",
       task: {
@@ -359,9 +238,6 @@ describe("resolve-worker", () => {
       workerConfig: {
         workers: {
           default: ["opencode", "run", "--from-defaults", "1"],
-        },
-        commands: {
-          memory: ["opencode", "run", "--from-commands-memory", "1"],
         },
         profiles: {
           fileProfile: ["opencode", "run", "--from-frontmatter", "1"],
@@ -394,9 +270,6 @@ describe("resolve-worker", () => {
         workers: {
           default: ["opencode", "run"],
         },
-        commands: {
-          memory: ["opencode", "run", "--from-commands-memory", "1"],
-        },
       },
       source: "- [ ] memory: capture release context\n",
       task: {
@@ -409,161 +282,6 @@ describe("resolve-worker", () => {
     });
 
     expect(command).toEqual(["custom", "worker", "--model", "gpt-5.3-codex"]);
-  });
-
-  it("keeps verify-only tasks on run command override when commands.verify is not configured", () => {
-    const command = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["opencode", "run", "--from-defaults", "1"],
-        },
-        commands: {
-          run: ["opencode", "run", "--from-commands-run", "1"],
-        },
-      },
-      source: "- [ ] verify: release checklist\n",
-      task: {
-        directiveProfile: undefined,
-        taskProfile: undefined,
-        subItems: [],
-      },
-      cliWorkerCommand: [],
-      taskIntent: "verify-only",
-    });
-
-    expect(command).toEqual([
-      "opencode",
-      "run",
-      "--from-commands-run",
-      "1",
-    ]);
-  });
-
-  it("keeps memory-capture tasks on run command override when commands.memory is not configured", () => {
-    const command = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["opencode", "run", "--from-defaults", "1"],
-        },
-        commands: {
-          run: ["opencode", "run", "--from-commands-run", "1"],
-        },
-      },
-      source: "- [ ] memory: capture release context\n",
-      task: {
-        directiveProfile: undefined,
-        taskProfile: undefined,
-        subItems: [],
-      },
-      cliWorkerCommand: [],
-      taskIntent: "memory-capture",
-    });
-
-    expect(command).toEqual([
-      "opencode",
-      "run",
-      "--from-commands-run",
-      "1",
-    ]);
-  });
-
-  it("keeps tool-expansion tasks on run command override when commands.tools.{toolName} is not configured", () => {
-    const command = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["opencode", "run", "--from-defaults", "1"],
-        },
-        commands: {
-          run: ["opencode", "run", "--from-commands-run", "1"],
-        },
-      },
-      source: "- [ ] post-on-gitea: payload\n",
-      task: {
-        directiveProfile: undefined,
-        taskProfile: undefined,
-        subItems: [],
-      },
-      cliWorkerCommand: [],
-      taskIntent: "tool-expansion",
-      toolName: "post-on-gitea",
-    });
-
-    expect(command).toEqual([
-      "opencode",
-      "run",
-      "--from-commands-run",
-      "1",
-    ]);
-  });
-
-  it("keeps verify alias tasks on commands.run override when commands.verify is not configured", () => {
-    const intent = classifyTaskIntent("confirm: release checklist", builtinToolResolver);
-    const command = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["opencode", "run", "--from-defaults", "1"],
-        },
-        commands: {
-          run: ["opencode", "run", "--from-commands-run", "1"],
-        },
-      },
-      source: "- [ ] confirm: release checklist\n",
-      cliWorkerCommand: [],
-      taskIntent: intent.intent,
-      toolName: intent.toolName,
-    });
-
-    expect(intent.intent).toBe("verify-only");
-    expect(command).toEqual(["opencode", "run", "--from-commands-run", "1"]);
-  });
-
-  it("keeps memory alias tasks on commands.run override when commands.memory is not configured", () => {
-    const intent = classifyTaskIntent("inventory: capture release context", builtinToolResolver);
-    const command = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["opencode", "run", "--from-defaults", "1"],
-        },
-        commands: {
-          run: ["opencode", "run", "--from-commands-run", "1"],
-        },
-      },
-      source: "- [ ] inventory: capture release context\n",
-      cliWorkerCommand: [],
-      taskIntent: intent.intent,
-      toolName: intent.toolName,
-    });
-
-    expect(intent.intent).toBe("memory-capture");
-    expect(command).toEqual(["opencode", "run", "--from-commands-run", "1"]);
-  });
-
-  it("keeps tool alias tasks on commands.run override when commands.tools.<toolName> is not configured", () => {
-    const intent = classifyTaskIntent("foreach: item in releaseFiles => verify: item", builtinToolResolver);
-    const command = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["opencode", "run", "--from-defaults", "1"],
-        },
-        commands: {
-          run: ["opencode", "run", "--from-commands-run", "1"],
-        },
-      },
-      source: "- [ ] foreach: item in releaseFiles => verify: item\n",
-      cliWorkerCommand: [],
-      taskIntent: intent.intent,
-      toolName: intent.toolName,
-    });
-
-    expect(intent.intent).toBe("tool-expansion");
-    expect(intent.toolName).toBe("for");
-    expect(command).toEqual(["opencode", "run", "--from-commands-run", "1"]);
   });
 
   it("does not warn on profile sub-item for supported prefix intents", () => {
@@ -588,26 +306,95 @@ describe("resolve-worker", () => {
     expect(events.some((event) => event.kind === "warn")).toBe(false);
   });
 
-  it("emits workers.tui source when mode is tui and verbose", () => {
+  it("emits workers.interactive source for interactive commands when verbose", () => {
     const events: ApplicationOutputEvent[] = [];
 
     resolveWorkerForInvocation({
-      commandName: "run",
+      commandName: "discuss",
       workerConfig: {
         workers: {
           default: ["opencode", "run", "$bootstrap"],
-          tui: ["opencode", "$bootstrap"],
+          interactive: ["opencode", "$bootstrap"],
         },
       },
       source: "- [ ] some task\n",
       cliWorkerCommand: [],
       emit: (event) => events.push(event),
       verbose: true,
-      mode: "tui",
     });
 
     expect(events.some((event) => event.kind === "info"
-      && event.message === "opencode $bootstrap (from config workers.tui)")).toBe(true);
+      && event.message === "opencode $bootstrap (from config workers.interactive)")).toBe(true);
+  });
+
+  it.each(["run", "plan", "make", "do", "add", "reverify", "undo"])(
+    "routes retained command %s to workers.default even in tui mode",
+    (commandName) => {
+      const command = resolveWorkerForInvocation({
+        commandName,
+        workerConfig: {
+          workers: {
+            default: ["default", "worker"],
+            interactive: ["interactive", "worker"],
+          },
+        },
+        source: "- [ ] task\n",
+        cliWorkerCommand: [],
+        mode: "tui",
+      });
+
+      expect(command).toEqual(["default", "worker"]);
+    },
+  );
+
+  it.each(["repair", "discuss"])(
+    "routes %s to workers.interactive and falls back to workers.default when interactive is ineligible",
+    (commandName) => {
+      const command = resolveWorkerForInvocation({
+        commandName,
+        workerConfig: {
+          workers: {
+            default: ["default", "worker"],
+            interactive: ["interactive", "worker"],
+          },
+          fallbacks: {
+            default: [["configured", "fallback"]],
+          },
+        },
+        source: "- [ ] task\n",
+        cliWorkerCommand: [],
+        workerHealthEntries: [
+          {
+            key: buildWorkerHealthWorkerKey(["interactive", "worker"]),
+            source: "worker",
+            status: WORKER_HEALTH_STATUS_UNAVAILABLE,
+          },
+        ],
+      });
+
+      expect(command).toEqual(["default", "worker"]);
+    },
+  );
+
+  it("routes profile modifiers through profiles instead of command defaults", () => {
+    const command = resolveWorkerForInvocation({
+      commandName: "discuss",
+      workerConfig: {
+        workers: {
+          default: ["default", "worker"],
+          interactive: ["interactive", "worker"],
+        },
+        profiles: {
+          fast: ["profile", "worker"],
+        },
+      },
+      source: "- [ ] task\n",
+      modifierProfile: "fast",
+      cliWorkerCommand: [],
+      mode: "tui",
+    });
+
+    expect(command).toEqual(["profile", "worker"]);
   });
 
   it("resolves help worker pattern with no source or task", () => {
@@ -616,7 +403,7 @@ describe("resolve-worker", () => {
       workerConfig: {
         workers: {
           default: ["opencode", "run"],
-          tui: ["opencode", "$bootstrap"],
+          interactive: ["opencode", "$bootstrap"],
         },
       },
       mode: "tui",
@@ -631,24 +418,6 @@ describe("resolve-worker", () => {
     });
   });
 
-  it("resolves commands.migrate-slug override for migration slug generation", () => {
-    const resolved = resolveWorkerPatternForInvocation({
-      commandName: "migrate-slug",
-      workerConfig: {
-        workers: {
-          default: ["opencode", "run", "--model", "gpt-5.3-codex"],
-        },
-        commands: {
-          "migrate-slug": ["opencode", "run", "--model", "gpt-5.3-mini"],
-        },
-      },
-      mode: "wait",
-    });
-
-    expect(resolved.workerCommand).toEqual(["opencode", "run", "--model", "gpt-5.3-mini"]);
-    expect(resolved.workerPattern.command).toEqual(["opencode", "run", "--model", "gpt-5.3-mini"]);
-  });
-
   it("selects first eligible configured fallback when primary is cooling down", () => {
     const nowIso = "2026-04-12T09:32:38.339Z";
     const command = resolveWorkerForInvocation({
@@ -656,7 +425,9 @@ describe("resolve-worker", () => {
       workerConfig: {
         workers: {
           default: ["primary", "worker"],
-          fallbacks: [
+        },
+        fallbacks: {
+          default: [
             ["fallback", "one"],
             ["fallback", "two"],
           ],
@@ -685,7 +456,9 @@ describe("resolve-worker", () => {
       workerConfig: {
         workers: {
           default: ["primary", "worker"],
-          fallbacks: [
+        },
+        fallbacks: {
+          default: [
             ["fallback", "one"],
             ["fallback", "two"],
             ["fallback", "three"],
@@ -726,7 +499,9 @@ describe("resolve-worker", () => {
       workerConfig: {
         workers: {
           default: ["primary", "worker"],
-          fallbacks: [
+        },
+        fallbacks: {
+          default: [
             ["fallback", "one"],
           ],
         },
@@ -762,7 +537,9 @@ describe("resolve-worker", () => {
       workerConfig: {
         workers: {
           default: ["primary", "worker"],
-          fallbacks: [
+        },
+        fallbacks: {
+          default: [
             ["fallback", "one"],
           ],
         },
@@ -786,182 +563,20 @@ describe("resolve-worker", () => {
     expect(command).toEqual([]);
   });
 
-  it("resolves explicit verify phase worker from run.workerRouting", () => {
-    const command = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["default", "worker"],
-          fallbacks: [["fallback", "worker"]],
-        },
-        run: {
-          workerRouting: {
-            verify: {
-              worker: ["verify", "worker"],
-            },
-          },
-        },
-      },
-      source: "- [ ] task\n",
-      cliWorkerCommand: [],
-      runWorkerPhase: "verify",
-    });
-
-    expect(command).toEqual(["verify", "worker"]);
-  });
-
-  it("resolves attempt-scoped repair route before default route", () => {
-    const secondAttemptCommand = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["default", "worker"],
-        },
-        run: {
-          workerRouting: {
-            repair: {
-              default: {
-                worker: ["repair", "default"],
-              },
-              attempts: [
-                {
-                  selector: {
-                    attempt: 2,
-                  },
-                  worker: ["repair", "attempt-2"],
-                },
-              ],
-            },
-          },
-        },
-      },
-      source: "- [ ] task\n",
-      cliWorkerCommand: [],
-      runWorkerPhase: "repair",
-      runWorkerAttempt: 2,
-    });
-    const firstAttemptCommand = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["default", "worker"],
-        },
-        run: {
-          workerRouting: {
-            repair: {
-              default: {
-                worker: ["repair", "default"],
-              },
-              attempts: [
-                {
-                  selector: {
-                    attempt: 2,
-                  },
-                  worker: ["repair", "attempt-2"],
-                },
-              ],
-            },
-          },
-        },
-      },
-      source: "- [ ] task\n",
-      cliWorkerCommand: [],
-      runWorkerPhase: "repair",
-      runWorkerAttempt: 1,
-    });
-
-    expect(secondAttemptCommand).toEqual(["repair", "attempt-2"]);
-    expect(firstAttemptCommand).toEqual(["repair", "default"]);
-  });
-
-  it("does not use configured fallbacks for explicit phase route by default", () => {
+  it("uses configured fallbacks for default worker resolution", () => {
     const nowIso = "2026-04-12T09:32:38.339Z";
     const command = resolveWorkerForInvocation({
       commandName: "run",
       workerConfig: {
         workers: {
           default: ["default", "worker"],
-          fallbacks: [["fallback", "one"]],
         },
-        run: {
-          workerRouting: {
-            resolve: {
-              worker: ["phase", "explicit"],
-            },
-          },
+        fallbacks: {
+          default: [["fallback", "one"]],
         },
       },
       source: "- [ ] task\n",
       cliWorkerCommand: [],
-      runWorkerPhase: "resolve",
-      workerHealthEntries: [
-        {
-          key: buildWorkerHealthWorkerKey(["phase", "explicit"]),
-          source: "worker",
-          status: WORKER_HEALTH_STATUS_UNAVAILABLE,
-        },
-      ],
-      evaluateWorkerHealthAtMs: Date.parse(nowIso),
-    });
-
-    expect(command).toEqual(["phase", "explicit"]);
-  });
-
-  it("uses configured fallbacks for explicit phase route when useFallbacks is true", () => {
-    const nowIso = "2026-04-12T09:32:38.339Z";
-    const command = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["default", "worker"],
-          fallbacks: [["fallback", "one"]],
-        },
-        run: {
-          workerRouting: {
-            resolve: {
-              worker: ["phase", "explicit"],
-              useFallbacks: true,
-            },
-          },
-        },
-      },
-      source: "- [ ] task\n",
-      cliWorkerCommand: [],
-      runWorkerPhase: "resolve",
-      workerHealthEntries: [
-        {
-          key: buildWorkerHealthWorkerKey(["phase", "explicit"]),
-          source: "worker",
-          status: WORKER_HEALTH_STATUS_UNAVAILABLE,
-        },
-      ],
-      evaluateWorkerHealthAtMs: Date.parse(nowIso),
-    });
-
-    expect(command).toEqual(["fallback", "one"]);
-  });
-
-  it("keeps health failover for inherited phase routing when no explicit phase worker is configured", () => {
-    const nowIso = "2026-04-12T09:32:38.339Z";
-    const command = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["default", "worker"],
-          fallbacks: [["fallback", "one"]],
-        },
-        run: {
-          workerRouting: {
-            verify: {
-              useFallbacks: false,
-              worker: ["verify", "explicit"],
-            },
-          },
-        },
-      },
-      source: "- [ ] task\n",
-      cliWorkerCommand: [],
-      runWorkerPhase: "repair",
       workerHealthEntries: [
         {
           key: buildWorkerHealthWorkerKey(["default", "worker"]),
@@ -975,29 +590,27 @@ describe("resolve-worker", () => {
     expect(command).toEqual(["fallback", "one"]);
   });
 
-  it("treats CLI worker as inherited routing even when phase has explicit worker configured", () => {
+  it("uses profile-specific configured fallbacks when a profile is active", () => {
     const nowIso = "2026-04-12T09:32:38.339Z";
     const command = resolveWorkerForInvocation({
       commandName: "run",
       workerConfig: {
         workers: {
           default: ["default", "worker"],
-          fallbacks: [["fallback", "one"]],
         },
-        run: {
-          workerRouting: {
-            resolve: {
-              worker: ["phase", "explicit"],
-            },
-          },
+        profiles: {
+          fast: ["fast", "worker"],
+        },
+        fallbacks: {
+          default: [["default", "fallback"]],
+          fast: [["fast", "fallback"]],
         },
       },
-      source: "- [ ] task\n",
-      cliWorkerCommand: ["cli", "worker"],
-      runWorkerPhase: "resolve",
+      source: "---\nprofile: fast\n---\n\n- [ ] task\n",
+      cliWorkerCommand: [],
       workerHealthEntries: [
         {
-          key: buildWorkerHealthWorkerKey(["cli", "worker"]),
+          key: buildWorkerHealthWorkerKey(["fast", "worker"]),
           source: "worker",
           status: WORKER_HEALTH_STATUS_UNAVAILABLE,
         },
@@ -1005,130 +618,6 @@ describe("resolve-worker", () => {
       evaluateWorkerHealthAtMs: Date.parse(nowIso),
     });
 
-    expect(command).toEqual(["fallback", "one"]);
-  });
-
-  it("keeps legacy fallback behavior when run.workerRouting is absent", () => {
-    const nowIso = "2026-04-12T09:32:38.339Z";
-    const command = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["default", "worker"],
-          fallbacks: [["fallback", "one"]],
-        },
-      },
-      source: "- [ ] task\n",
-      cliWorkerCommand: [],
-      runWorkerPhase: "resolveRepair",
-      runWorkerAttempt: 2,
-      workerHealthEntries: [
-        {
-          key: buildWorkerHealthWorkerKey(["default", "worker"]),
-          source: "worker",
-          status: WORKER_HEALTH_STATUS_UNAVAILABLE,
-        },
-      ],
-      evaluateWorkerHealthAtMs: Date.parse(nowIso),
-    });
-
-    expect(command).toEqual(["fallback", "one"]);
-  });
-
-  it("matches attempt-range selectors for resolveRepair escalation", () => {
-    const firstAttemptCommand = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["default", "worker"],
-        },
-        run: {
-          workerRouting: {
-            resolveRepair: {
-              default: {
-                worker: ["resolve-repair", "default"],
-              },
-              attempts: [
-                {
-                  selector: {
-                    fromAttempt: 2,
-                    toAttempt: 3,
-                  },
-                  worker: ["resolve-repair", "strong"],
-                },
-              ],
-            },
-          },
-        },
-      },
-      source: "- [ ] task\n",
-      cliWorkerCommand: [],
-      runWorkerPhase: "resolveRepair",
-      runWorkerAttempt: 1,
-    });
-    const secondAttemptCommand = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["default", "worker"],
-        },
-        run: {
-          workerRouting: {
-            resolveRepair: {
-              default: {
-                worker: ["resolve-repair", "default"],
-              },
-              attempts: [
-                {
-                  selector: {
-                    fromAttempt: 2,
-                    toAttempt: 3,
-                  },
-                  worker: ["resolve-repair", "strong"],
-                },
-              ],
-            },
-          },
-        },
-      },
-      source: "- [ ] task\n",
-      cliWorkerCommand: [],
-      runWorkerPhase: "resolveRepair",
-      runWorkerAttempt: 2,
-    });
-    const fourthAttemptCommand = resolveWorkerForInvocation({
-      commandName: "run",
-      workerConfig: {
-        workers: {
-          default: ["default", "worker"],
-        },
-        run: {
-          workerRouting: {
-            resolveRepair: {
-              default: {
-                worker: ["resolve-repair", "default"],
-              },
-              attempts: [
-                {
-                  selector: {
-                    fromAttempt: 2,
-                    toAttempt: 3,
-                  },
-                  worker: ["resolve-repair", "strong"],
-                },
-              ],
-            },
-          },
-        },
-      },
-      source: "- [ ] task\n",
-      cliWorkerCommand: [],
-      runWorkerPhase: "resolveRepair",
-      runWorkerAttempt: 4,
-    });
-
-    expect(firstAttemptCommand).toEqual(["resolve-repair", "default"]);
-    expect(secondAttemptCommand).toEqual(["resolve-repair", "strong"]);
-    expect(fourthAttemptCommand).toEqual(["resolve-repair", "default"]);
+    expect(command).toEqual(["fast", "fallback"]);
   });
 });

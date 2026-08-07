@@ -7,7 +7,6 @@ import { resolveConfigDirForInvocation } from "./cli-app-init.js";
 import {
   normalizeOptionalString,
   parseCliBlockTimeout,
-  parseQueryOutputFormat,
   parseForceAttempts,
   parseLastCount,
   parseLimitCount,
@@ -32,7 +31,6 @@ import {
   resolveAddMarkdownFile,
   resolveDiscussMarkdownFile,
   resolvePlanMarkdownFile,
-  resolveResearchMarkdownFile,
   resolveMakeMarkdownFile,
   resolveTranslateMarkdownFiles,
   resolveVerifyFlag,
@@ -50,8 +48,6 @@ import { renderTemplate, type TemplateVars } from "../domain/template.js";
 import type { CliApp } from "./cli-app-init.js";
 import type {
   PlanCommandInvocationOptions,
-  QueryCommandInvocationOptions,
-  ResearchCommandInvocationOptions,
   TranslateCommandInvocationOptions,
 } from "./cli-invocation-types.js";
 import { resolveInvocationWorkspaceContext } from "./invocation-workspace-context.js";
@@ -64,7 +60,6 @@ import type {
   WithTaskConfiguredKeyResult,
   WithTaskResult,
 } from "../application/with-task.js";
-import { hasWithTaskInteractiveWorker } from "../application/with-task.js";
 import { runRootTui } from "./tui/index.js";
 
 type CliActionResult = number | Promise<number>;
@@ -378,6 +373,7 @@ interface RunActionDependencies extends WorkerActionDependencies {
 }
 
 type CallActionDependencies = RunActionDependencies;
+type AllActionDependencies = RunActionDependencies;
 type MaterializeActionDependencies = RunActionDependencies;
 
 interface LoopActionDependencies extends WorkerActionDependencies {
@@ -391,10 +387,6 @@ interface DiscussActionDependencies extends WorkerActionDependencies {
 
 interface PlanActionDependencies extends WorkerActionDependencies {
   plannerModes: readonly ProcessRunMode[];
-}
-
-interface ResearchActionDependencies extends WorkerActionDependencies {
-  researchModes: readonly ProcessRunMode[];
 }
 
 interface MakeActionDependencies extends WorkerActionDependencies {
@@ -415,10 +407,6 @@ interface ExploreActionDependencies extends WorkerActionDependencies {
 
 interface DoActionDependencies extends WorkerActionDependencies {
   makeModes: readonly ProcessRunMode[];
-}
-
-interface QueryActionDependencies extends WorkerActionDependencies {
-  queryModes: readonly ProcessRunMode[];
 }
 
 type TestAction = "now" | "future" | "new";
@@ -471,7 +459,7 @@ interface TestCommandOptions {
 
 type TestCommandHandler = (options: TestCommandOptions) => CliActionResult;
 type TranslateCommandHandler = (options: TranslateCommandInvocationOptions) => CliActionResult;
-type WithCommandHandler = (options: { harness: string }) => Promise<WithTaskResult>;
+type WithCommandHandler = (options: { provider: string }) => Promise<WithTaskResult>;
 
 type ConfigMutationScope = "local" | "global";
 type ConfigReadScope = "effective" | "local" | "global";
@@ -636,6 +624,30 @@ export function createRunCommandAction({
       verbose,
     });
   };
+}
+
+/**
+ * Creates the `all` command action handler.
+ *
+ * The returned action mirrors `run` options while forcing all-task execution.
+ */
+export function createAllCommandAction({
+  getApp,
+  getWorkerFromSeparator,
+  runnerModes,
+  getInvocationArgv,
+}: AllActionDependencies): (source: string, opts: CliOpts) => CliActionResult {
+  const runAction = createRunCommandAction({
+    getApp,
+    getWorkerFromSeparator,
+    runnerModes,
+    getInvocationArgv,
+  });
+
+  return (source: string, opts: CliOpts) => runAction(source, {
+    ...opts,
+    all: true,
+  });
 }
 
 /**
@@ -1254,58 +1266,6 @@ export function createPlanCommandAction({
 }
 
 /**
- * Creates the `research` command action handler.
- *
- * The returned action resolves the target markdown source and option set before invoking the application
- * `researchTask` workflow.
- */
-export function createResearchCommandAction({
-  getApp,
-  getWorkerFromSeparator,
-  researchModes,
-  getInvocationArgv,
-}: ResearchActionDependencies): (markdownFiles: string[], opts: CliOpts) => CliActionResult {
-  return (markdownFiles: string[], opts: CliOpts) => {
-    const workerWorkspaceRuntimeOptions = resolveWorkerWorkspaceRuntimeOptions();
-    const markdownFile = resolveResearchMarkdownFile(markdownFiles);
-    const mode = parseRunnerMode(opts.mode as string | undefined, researchModes);
-    const dryRun = opts.dryRun as boolean;
-    const printPrompt = opts.printPrompt as boolean;
-    const keepArtifacts = opts.keepArtifacts as boolean;
-    const trace = resolveTraceFlag(opts, getInvocationArgv);
-    const showAgentOutput = resolveShowAgentOutputOption(opts);
-    const forceUnlock = Boolean(opts.forceUnlock as boolean | undefined);
-    const ignoreCliBlock = resolveIgnoreCliBlockFlag(opts);
-    const cliBlockTimeoutMs = parseCliBlockTimeout(opts.cliBlockTimeout as string | undefined);
-    const varsFileOption = opts.varsFile as string | boolean | undefined;
-    const cliTemplateVarArgs = (opts.var as string[] | undefined) ?? [];
-    const workerPattern = resolveWorkerPattern(opts.worker, getWorkerFromSeparator);
-
-    const verbose = resolveVerboseOption(opts);
-    const request: ResearchCommandInvocationOptions = {
-      source: markdownFile,
-      ...workerWorkspaceRuntimeOptions,
-      mode,
-      workerPattern,
-      showAgentOutput,
-      dryRun,
-      printPrompt,
-      keepArtifacts,
-      trace,
-      forceUnlock,
-      ignoreCliBlock,
-      cliBlockTimeoutMs,
-      configDirOption: normalizeOptionalString(opts.configDir),
-      varsFileOption,
-      cliTemplateVarArgs,
-      verbose,
-    };
-
-    return getApp().researchTask(request);
-  };
-}
-
-/**
  * Creates the `translate` command action handler.
  *
  * The returned action resolves `<what>`, `<how>`, and `<output>` markdown paths
@@ -1366,8 +1326,8 @@ export function createTranslateCommandAction({
 /**
  * Creates the `explore` command action handler.
  *
- * The returned action composes `research` and `plan` over the same Markdown source,
- * forwarding shared runtime options to both phases and plan-specific options to planning.
+ * The returned action runs planning over the resolved Markdown source while forwarding
+ * shared runtime and plan-specific options.
  */
 export function createExploreCommandAction({
   getApp,
@@ -1377,7 +1337,7 @@ export function createExploreCommandAction({
 }: ExploreActionDependencies): (markdownFiles: string[], opts: CliOpts) => CliActionResult {
   return async (markdownFiles: string[], opts: CliOpts) => {
     const app = getApp();
-    const targetMarkdownFile = resolveResearchMarkdownFile(markdownFiles);
+    const targetMarkdownFile = resolvePlanMarkdownFile(markdownFiles);
     const {
       workspaceRuntimeOptions,
       mode,
@@ -1761,52 +1721,6 @@ function parseTestAction(value: string | undefined): TestAction {
   );
 }
 
-/**
- * Creates the `query` command action handler.
- */
-export function createQueryCommandAction({
-  getApp,
-  getWorkerFromSeparator,
-  queryModes,
-}: QueryActionDependencies): (queryText: string, opts: CliOpts) => CliActionResult {
-  return (queryText: string, opts: CliOpts) => {
-    const workspaceRuntimeOptions = resolveWorkerWorkspaceRuntimeOptions();
-    const mode = parseRunnerMode(opts.mode as string | undefined, queryModes);
-    const sharedRuntimeOptions = resolveSharedRuntimeOptionsWithTrace(opts, getWorkerFromSeparator);
-    const format = parseQueryOutputFormat(opts.format as string | undefined);
-    const output = normalizeOptionalString(opts.output);
-    const dir = path.resolve(normalizeOptionalString(opts.dir) ?? process.cwd());
-
-    const request: QueryCommandInvocationOptions = {
-      queryText,
-      dir,
-      ...workspaceRuntimeOptions,
-      format,
-      output,
-      skipResearch: Boolean(opts.skipResearch as boolean | undefined),
-      mode,
-      workerPattern: sharedRuntimeOptions.workerPattern,
-      showAgentOutput: sharedRuntimeOptions.showAgentOutput,
-      dryRun: Boolean(opts.dryRun as boolean | undefined),
-      printPrompt: Boolean(opts.printPrompt as boolean | undefined),
-      keepArtifacts: sharedRuntimeOptions.keepArtifacts,
-      varsFileOption: sharedRuntimeOptions.varsFileOption,
-      cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,
-      trace: sharedRuntimeOptions.trace,
-      forceUnlock: sharedRuntimeOptions.forceUnlock,
-      ignoreCliBlock: sharedRuntimeOptions.ignoreCliBlock,
-      cliBlockTimeoutMs: sharedRuntimeOptions.cliBlockTimeoutMs,
-      scanCount: parseScanCount(opts.scanCount as string | undefined),
-      maxItems: parseMaxItems(opts.maxItems as string | undefined),
-      deep: parsePlanDeep(opts.deep as string | undefined),
-      verbose: resolveVerboseOption(opts),
-      configDirOption: sharedRuntimeOptions.configDirOption,
-    };
-
-    return getApp().queryTask(request);
-  };
-}
-
 interface ParsedExploreCliOptions {
   workspaceRuntimeOptions: WorkerWorkspaceRuntimeOptions;
   mode: ProcessRunMode;
@@ -1841,8 +1755,8 @@ function parseExploreCliOptions(
 /**
  * Creates the `make` command action handler.
  *
- * The returned action creates a new Markdown file from seed text, then runs `research` and `plan`
- * in strict sequence against that same file.
+ * The returned action creates a new Markdown file from seed text, then runs `plan`
+ * against that same file.
  */
 export function createMakeCommandAction({
   getApp,
@@ -1856,7 +1770,6 @@ export function createMakeCommandAction({
     const {
       workspaceRuntimeOptions,
       mode,
-      skipResearch,
       sharedRuntimeOptions,
       dryRun,
       printPrompt,
@@ -1871,7 +1784,6 @@ export function createMakeCommandAction({
       targetMarkdownFile,
       workspaceRuntimeOptions,
       mode,
-      skipResearch,
       sharedRuntimeOptions,
       dryRun,
       printPrompt,
@@ -1940,7 +1852,6 @@ interface RunMakeBootstrapPhasesOptions {
   targetMarkdownFile: string;
   workspaceRuntimeOptions: WorkerWorkspaceRuntimeOptions;
   mode: ProcessRunMode;
-  skipResearch: boolean;
   sharedRuntimeOptions: ReturnType<typeof resolveSharedWorkerRuntimeOptions>;
   dryRun: boolean;
   printPrompt: boolean;
@@ -1952,7 +1863,6 @@ interface RunMakeBootstrapPhasesOptions {
 interface ParsedMakeBootstrapCliOptions {
   workspaceRuntimeOptions: WorkerWorkspaceRuntimeOptions;
   mode: ProcessRunMode;
-  skipResearch: boolean;
   sharedRuntimeOptions: ReturnType<typeof resolveSharedWorkerRuntimeOptions>;
   dryRun: boolean;
   printPrompt: boolean;
@@ -1970,7 +1880,6 @@ function parseMakeBootstrapCliOptions(
   return {
     workspaceRuntimeOptions: resolveWorkerWorkspaceRuntimeOptions(),
     mode: parseRunnerMode(opts.mode as string | undefined, makeModes),
-    skipResearch: Boolean((opts.skipResearch as boolean | undefined) || (opts.raw as boolean | undefined)),
     sharedRuntimeOptions: resolveSharedRuntimeOptionsWithTrace(opts, getWorkerFromSeparator, getInvocationArgv),
     dryRun: Boolean(opts.dryRun as boolean | undefined),
     printPrompt: Boolean(opts.printPrompt as boolean | undefined),
@@ -1986,7 +1895,6 @@ async function runMakeBootstrapPhases({
   targetMarkdownFile,
   workspaceRuntimeOptions,
   mode,
-  skipResearch,
   sharedRuntimeOptions,
   dryRun,
   printPrompt,
@@ -1999,59 +1907,7 @@ async function runMakeBootstrapPhases({
 
   createSeedMarkdownFile(targetMarkdownFile, resolvedSeedText);
 
-  if (skipResearch) {
-    emitCliInfo(app, "Make phase 1/2 skipped: research");
-    emitCliInfo(app, "Make transition: start from planning (--skip-research/--raw)");
-    emitCliInfo(app, "Make phase 2/2: plan");
-
-    return normalizeMakePhaseExitCode(await app.planTask({
-      source: targetMarkdownFile,
-      ...workspaceRuntimeOptions,
-      scanCount,
-      maxItems,
-      mode,
-      workerPattern: sharedWorkerPattern,
-      showAgentOutput: sharedRuntimeOptions.showAgentOutput,
-      dryRun,
-      printPrompt,
-      keepArtifacts: sharedRuntimeOptions.keepArtifacts,
-      trace: sharedRuntimeOptions.trace,
-      forceUnlock: sharedRuntimeOptions.forceUnlock,
-      ignoreCliBlock: sharedRuntimeOptions.ignoreCliBlock,
-      cliBlockTimeoutMs: sharedRuntimeOptions.cliBlockTimeoutMs,
-      varsFileOption: sharedRuntimeOptions.varsFileOption,
-      cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,
-      verbose,
-    }));
-  }
-
-  emitCliInfo(app, "Make phase 1/2: research");
-
-  const researchCode = normalizeMakePhaseExitCode(await app.researchTask({
-    source: targetMarkdownFile,
-    ...workspaceRuntimeOptions,
-    mode,
-    workerPattern: sharedWorkerPattern,
-    showAgentOutput: sharedRuntimeOptions.showAgentOutput,
-    dryRun,
-    printPrompt,
-    keepArtifacts: sharedRuntimeOptions.keepArtifacts,
-    trace: sharedRuntimeOptions.trace,
-    forceUnlock: sharedRuntimeOptions.forceUnlock,
-    ignoreCliBlock: sharedRuntimeOptions.ignoreCliBlock,
-    cliBlockTimeoutMs: sharedRuntimeOptions.cliBlockTimeoutMs,
-    configDirOption: sharedRuntimeOptions.configDirOption,
-    varsFileOption: sharedRuntimeOptions.varsFileOption,
-    cliTemplateVarArgs: sharedRuntimeOptions.cliTemplateVarArgs,
-    verbose,
-  }));
-
-  if (researchCode !== 0) {
-    return researchCode;
-  }
-
-  emitCliInfo(app, "Make transition: research -> plan");
-  emitCliInfo(app, "Make phase 2/2: plan");
+  emitCliInfo(app, "Make phase 1/1: plan");
 
   return normalizeMakePhaseExitCode(await app.planTask({
     source: targetMarkdownFile,
@@ -2099,7 +1955,6 @@ export function createDoCommandAction({
     const {
       workspaceRuntimeOptions,
       mode,
-      skipResearch,
       sharedRuntimeOptions,
       dryRun,
       printPrompt,
@@ -2152,7 +2007,6 @@ export function createDoCommandAction({
       targetMarkdownFile,
       workspaceRuntimeOptions,
       mode,
-      skipResearch,
       sharedRuntimeOptions,
       dryRun,
       printPrompt,
@@ -2565,7 +2419,7 @@ export function createInitCommandAction({
   options: {
     language?: string;
     defaultWorker?: string;
-    tuiWorker?: string;
+    interactiveWorker?: string;
     gitignore?: boolean;
     overwriteConfig?: boolean;
   },
@@ -2575,7 +2429,7 @@ export function createInitCommandAction({
     const language = normalizeOptionalString(options.language);
     const initExitCode = await app.initProject({
       defaultWorker: options.defaultWorker,
-      tuiWorker: options.tuiWorker,
+      interactiveWorker: options.interactiveWorker,
       gitignore: options.gitignore,
       overwriteConfig: options.overwriteConfig,
       silent: Boolean(language),
@@ -2596,7 +2450,7 @@ export function createInitCommandAction({
 
     return app.initProject({
       defaultWorker: options.defaultWorker,
-      tuiWorker: options.tuiWorker,
+      interactiveWorker: options.interactiveWorker,
       gitignore: options.gitignore,
       overwriteConfig: options.overwriteConfig,
     });
@@ -2625,65 +2479,38 @@ export function createLocalizeCommandAction({
 /**
  * Creates the `with` command action handler.
  *
- * The returned action forwards the selected harness to the dedicated
+ * The returned action forwards the selected provider to the dedicated
  * application `withTask` use case.
  */
 export function createWithCommandAction({
   getApp,
-  getWorkerFromSeparator,
-  getInvocationArgv,
-  isInteractiveTerminal: isInteractiveTerminalOverride,
 }: Pick<WorkerActionDependencies, "getApp" | "getWorkerFromSeparator" | "getInvocationArgv"> & {
   isInteractiveTerminal?: () => boolean;
-}): (harness: string) => CliActionResult {
-  return async (harness: string) => {
+}): (provider: string) => CliActionResult {
+  return async (provider: string) => {
     const app = getApp();
-    const result = await resolveWithCommandHandler(app)({ harness });
+    const result = await resolveWithCommandHandler(app)({ provider });
     const emit = app.emitOutput;
-
-    if (result.source === "custom") {
-      emit?.({
-        kind: "warn",
-        message: `Harness \"${harness}\" is not in the preset registry. Saved custom invocation mapping.`,
-      });
-    }
 
     if (result.cancelled) {
       emit?.({
         kind: "info",
-        message: `Cancelled: kept existing worker config unchanged for harness ${result.harnessKey}.`,
+        message: `Cancelled: kept existing worker config unchanged for provider ${result.providerKey}.`,
       });
       return result.exitCode;
     }
 
     emit?.({
       kind: result.changed ? "success" : "info",
-      message: result.source === "preset"
-        ? (result.changed
-          ? `Applied harness preset: ${result.harnessKey}`
-          : `No change: harness preset ${result.harnessKey} is already configured.`)
-        : (result.changed
-          ? `Applied custom harness mapping: ${result.harnessKey}`
-          : `No change: custom harness mapping ${result.harnessKey} is already configured.`),
+      message: result.changed
+        ? `Applied provider preset: ${result.providerKey}`
+        : `No change: provider preset ${result.providerKey} is already configured.`,
     });
     emit?.({ kind: "info", message: `Path: ${result.configPath}` });
     emit?.({ kind: "info", message: "Configured keys:" });
 
     for (const configuredKey of result.configuredKeys) {
       emit?.({ kind: "info", message: formatWithConfiguredKeyLine(configuredKey) });
-    }
-
-    if (
-      result.exitCode === EXIT_CODE_SUCCESS
-      && hasWithTaskInteractiveWorker(result)
-      && (isInteractiveTerminalOverride ?? isInteractiveTerminal)()
-    ) {
-      emit?.({ kind: "info", message: "Opening Rundown root TUI..." });
-      return runRootTui({
-        app,
-        workerPattern: resolveWorkerPattern(undefined, getWorkerFromSeparator),
-        argv: resolveInvocationArgv(getInvocationArgv),
-      });
     }
 
     return result.exitCode;

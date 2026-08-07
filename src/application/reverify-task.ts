@@ -409,8 +409,6 @@ export function createReverifyTask(
         fallbackWorkerCommand: selectedRun.workerCommand,
         emit,
         mode: "wait",
-        runWorkerPhase: resolveInput.phase,
-        runWorkerAttempt: resolveInput.attempt,
       });
       // Reverify runs verification first, so resolve the baseline command from verify phase routing.
       const verifyPhaseWorker = resolveReverifyPhaseWorker({ phase: "verify", attempt: 1 });

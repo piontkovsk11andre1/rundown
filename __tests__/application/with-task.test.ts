@@ -34,11 +34,11 @@ describe("with-task", () => {
       interactiveInput: createInteractiveInputStub(),
     });
 
-    const result = await withTask({ harness: "opencode" });
+    const result = await withTask({ provider: "opencode" });
 
     expect(result).toEqual({
       exitCode: 0,
-      harnessKey: "opencode",
+      providerKey: "opencode",
       source: "preset",
       cancelled: false,
       changed: true,
@@ -51,17 +51,12 @@ describe("with-task", () => {
           value: ["opencode", "run", "$bootstrap"],
         },
         {
-          keyPath: "workers.tui",
+          keyPath: "workers.interactive",
           status: "set",
           value: ["opencode", "--prompt", "$bootstrap"],
         },
         {
-          keyPath: "commands.discuss",
-          status: "set",
-          value: ["opencode"],
-        },
-        {
-          keyPath: "workers.fallbacks",
+          keyPath: "fallbacks.default",
           status: "preserved",
         },
       ],
@@ -73,10 +68,7 @@ describe("with-task", () => {
     expect(parsed).toEqual({
       workers: {
         default: ["opencode", "run", "$bootstrap"],
-        tui: ["opencode", "--prompt", "$bootstrap"],
-      },
-      commands: {
-        discuss: ["opencode"],
+        interactive: ["opencode", "--prompt", "$bootstrap"],
       },
     });
   });
@@ -89,12 +81,10 @@ describe("with-task", () => {
     fs.writeFileSync(configPath, JSON.stringify({
       workers: {
         default: ["legacy", "run"],
-        tui: ["legacy"],
-        fallbacks: [["fallback", "run"]],
+        interactive: ["legacy"],
       },
-      commands: {
-        discuss: ["legacy"],
-        run: ["custom", "run"],
+      fallbacks: {
+        default: [["fallback", "run"]],
       },
       run: {
         commit: true,
@@ -125,37 +115,33 @@ describe("with-task", () => {
       interactiveInput,
     });
 
-    const result = await withTask({ harness: "opencode" });
+    const result = await withTask({ provider: "opencode" });
 
     expect(result.exitCode).toBe(0);
-    expect(result.harnessKey).toBe("opencode");
+    expect(result.providerKey).toBe("opencode");
     expect(result.source).toBe("preset");
     expect(result.changed).toBe(true);
     expect(result.existingLocalWorkerKeys).toEqual([
       "workers.default",
-      "workers.tui",
-      "workers.fallbacks",
+      "workers.interactive",
+      "fallbacks.default",
     ]);
 
     const parsed = JSON.parse(fs.readFileSync(configPath, "utf8")) as {
       workers?: {
         default?: string[];
-        tui?: string[];
-        fallbacks?: string[][];
+        interactive?: string[];
       };
-      commands?: {
-        discuss?: string[];
-        run?: string[];
+      fallbacks?: {
+        default?: string[][];
       };
       run?: { commit?: boolean };
       workspace?: unknown;
     };
 
     expect(parsed.workers?.default).toEqual(["opencode", "run", "$bootstrap"]);
-    expect(parsed.workers?.tui).toEqual(["opencode", "--prompt", "$bootstrap"]);
-    expect(parsed.workers?.fallbacks).toEqual([["fallback", "run"]]);
-    expect(parsed.commands?.discuss).toEqual(["opencode"]);
-    expect(parsed.commands?.run).toEqual(["custom", "run"]);
+    expect(parsed.workers?.interactive).toEqual(["opencode", "--prompt", "$bootstrap"]);
+    expect(parsed.fallbacks?.default).toEqual([["fallback", "run"]]);
     expect(parsed.run?.commit).toBe(true);
     expect(parsed.workspace).toEqual({
       directories: {
@@ -180,12 +166,12 @@ describe("with-task", () => {
       interactiveInput,
     });
 
-    const first = await withTask({ harness: "opencode" });
+    const first = await withTask({ provider: "opencode" });
     expect(first.exitCode).toBe(0);
     const configPath = path.join(configDir, "config.json");
     const before = fs.readFileSync(configPath, "utf8");
 
-    const second = await withTask({ harness: "opencode" });
+    const second = await withTask({ provider: "opencode" });
     expect(second.exitCode).toBe(0);
     const after = fs.readFileSync(configPath, "utf8");
 
@@ -193,7 +179,7 @@ describe("with-task", () => {
     expect(second.source).toBe("preset");
     expect(second.changed).toBe(false);
     expect(second.cancelled).toBe(false);
-    expect(second.existingLocalWorkerKeys).toEqual(["workers.default", "workers.tui"]);
+    expect(second.existingLocalWorkerKeys).toEqual(["workers.default", "workers.interactive"]);
     expect(vi.mocked(interactiveInput.prompt)).not.toHaveBeenCalled();
   });
 
@@ -205,7 +191,7 @@ describe("with-task", () => {
     fs.writeFileSync(configPath, JSON.stringify({
       workers: {
         default: ["legacy", "run"],
-        tui: ["legacy"],
+        interactive: ["legacy"],
       },
     }, null, 2) + "\n");
 
@@ -226,32 +212,28 @@ describe("with-task", () => {
       interactiveInput,
     });
 
-    const result = await withTask({ harness: "opencode" });
+    const result = await withTask({ provider: "opencode" });
 
     expect(result.exitCode).toBe(0);
     expect(result.cancelled).toBe(false);
     expect(result.changed).toBe(true);
-    expect(result.existingLocalWorkerKeys).toEqual(["workers.default", "workers.tui"]);
+    expect(result.existingLocalWorkerKeys).toEqual(["workers.default", "workers.interactive"]);
     expect(vi.mocked(interactiveInput.prepareForPrompt)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(interactiveInput.prompt)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(1, {
       kind: "confirm",
-      message: "Local worker config already exists (workers.default, workers.tui). Running \"rundown with opencode\" will replace or update these worker settings. Continue?",
+      message: "Local worker config already exists (workers.default, workers.interactive). Running \"rundown with opencode\" will replace or update these worker settings. Continue?",
       defaultValue: false,
     });
 
     const parsed = JSON.parse(fs.readFileSync(configPath, "utf8")) as {
       workers?: {
         default?: string[];
-        tui?: string[];
-      };
-      commands?: {
-        discuss?: string[];
+        interactive?: string[];
       };
     };
     expect(parsed.workers?.default).toEqual(["opencode", "run", "$bootstrap"]);
-    expect(parsed.workers?.tui).toEqual(["opencode", "--prompt", "$bootstrap"]);
-    expect(parsed.commands?.discuss).toEqual(["opencode"]);
+    expect(parsed.workers?.interactive).toEqual(["opencode", "--prompt", "$bootstrap"]);
   });
 
   it("cancels opencode overwrite when user declines confirmation", async () => {
@@ -262,9 +244,7 @@ describe("with-task", () => {
     fs.writeFileSync(configPath, JSON.stringify({
       workers: {
         default: ["legacy", "run"],
-      },
-      commands: {
-        discuss: ["legacy"],
+        interactive: ["legacy"],
       },
     }, null, 2) + "\n");
     const before = fs.readFileSync(configPath, "utf8");
@@ -286,13 +266,13 @@ describe("with-task", () => {
       interactiveInput,
     });
 
-    const result = await withTask({ harness: "opencode" });
+    const result = await withTask({ provider: "opencode" });
     const after = fs.readFileSync(configPath, "utf8");
 
     expect(result.exitCode).toBe(0);
     expect(result.cancelled).toBe(true);
     expect(result.changed).toBe(false);
-    expect(result.existingLocalWorkerKeys).toEqual(["workers.default"]);
+    expect(result.existingLocalWorkerKeys).toEqual(["workers.default", "workers.interactive"]);
     expect(result.configuredKeys).toEqual([]);
     expect(after).toBe(before);
     expect(vi.mocked(interactiveInput.prompt)).toHaveBeenCalledTimes(1);
@@ -306,9 +286,7 @@ describe("with-task", () => {
     fs.writeFileSync(configPath, JSON.stringify({
       workers: {
         default: ["legacy", "run"],
-      },
-      commands: {
-        discuss: ["legacy"],
+        interactive: ["legacy"],
       },
     }, null, 2) + "\n");
     const before = fs.readFileSync(configPath, "utf8");
@@ -332,13 +310,13 @@ describe("with-task", () => {
       interactiveInput,
     });
 
-    const result = await withTask({ harness: "opencode" });
+    const result = await withTask({ provider: "opencode" });
     const after = fs.readFileSync(configPath, "utf8");
 
     expect(result.exitCode).toBe(0);
     expect(result.cancelled).toBe(true);
     expect(result.changed).toBe(false);
-    expect(result.existingLocalWorkerKeys).toEqual(["workers.default"]);
+    expect(result.existingLocalWorkerKeys).toEqual(["workers.default", "workers.interactive"]);
     expect(result.configuredKeys).toEqual([]);
     expect(after).toBe(before);
     expect(vi.mocked(interactiveInput.prompt)).toHaveBeenCalledTimes(1);
@@ -369,7 +347,7 @@ describe("with-task", () => {
       },
     });
 
-    await expect(withTask({ harness: "opencode" })).rejects.toThrow(
+    await expect(withTask({ provider: "opencode" })).rejects.toThrow(
       "Cannot apply \"with opencode\" non-interactively because local worker config already exists (workers.default). Re-run in an interactive terminal to confirm replacing/updating worker settings.",
     );
   });
@@ -383,10 +361,7 @@ describe("with-task", () => {
     fs.writeFileSync(globalConfigPath, JSON.stringify({
       workers: {
         default: ["legacy", "run"],
-        tui: ["legacy"],
-      },
-      commands: {
-        discuss: ["legacy"],
+        interactive: ["legacy"],
       },
     }, null, 2) + "\n");
 
@@ -406,7 +381,7 @@ describe("with-task", () => {
       interactiveInput,
     });
 
-    const result = await withTask({ harness: "opencode" });
+    const result = await withTask({ provider: "opencode" });
 
     expect(result.exitCode).toBe(0);
     expect(result.changed).toBe(true);
@@ -418,19 +393,15 @@ describe("with-task", () => {
     const parsed = JSON.parse(fs.readFileSync(path.join(configDir, "config.json"), "utf8")) as {
       workers?: {
         default?: string[];
-        tui?: string[];
-      };
-      commands?: {
-        discuss?: string[];
+        interactive?: string[];
       };
     };
 
     expect(parsed.workers?.default).toEqual(["opencode", "run", "$bootstrap"]);
-    expect(parsed.workers?.tui).toEqual(["opencode", "--prompt", "$bootstrap"]);
-    expect(parsed.commands?.discuss).toEqual(["opencode"]);
+    expect(parsed.workers?.interactive).toEqual(["opencode", "--prompt", "$bootstrap"]);
   });
 
-  it("accepts case-insensitive aliases and writes canonical harness commands", async () => {
+  it("accepts case-insensitive aliases and writes canonical provider commands", async () => {
     const workspaceDir = makeTempWorkspace();
     const configDir = path.join(workspaceDir, ".rundown");
 
@@ -443,25 +414,21 @@ describe("with-task", () => {
       interactiveInput: createInteractiveInputStub(),
     });
 
-    const result = await withTask({ harness: "OpenAI-Codex" });
+    const result = await withTask({ provider: "OpenAI-Codex" });
     expect(result.exitCode).toBe(0);
-    expect(result.harnessKey).toBe("codex");
+    expect(result.providerKey).toBe("codex");
     expect(result.source).toBe("preset");
 
     const configPath = path.join(configDir, "config.json");
     const parsed = JSON.parse(fs.readFileSync(configPath, "utf8")) as {
       workers?: {
         default?: string[];
-        tui?: string[];
-      };
-      commands?: {
-        discuss?: string[];
+        interactive?: string[];
       };
     };
 
     expect(parsed.workers?.default).toEqual(["codex", "run", "--file", "$file", "$bootstrap"]);
-    expect(parsed.workers?.tui).toEqual(["codex"]);
-    expect(parsed.commands?.discuss).toEqual(["codex"]);
+    expect(parsed.workers?.interactive).toEqual(["codex"]);
   });
 
   it("keeps persisted config stable across equivalent alias inputs", async () => {
@@ -477,17 +444,17 @@ describe("with-task", () => {
       interactiveInput: createInteractiveInputStub(),
     });
 
-    const first = await withTask({ harness: "OpenCode" });
+    const first = await withTask({ provider: "OpenCode" });
     expect(first.exitCode).toBe(0);
-    expect(first.harnessKey).toBe("opencode");
+    expect(first.providerKey).toBe("opencode");
     expect(first.source).toBe("preset");
 
     const configPath = path.join(configDir, "config.json");
     const before = fs.readFileSync(configPath, "utf8");
 
-    const second = await withTask({ harness: "open-code" });
+    const second = await withTask({ provider: "open-code" });
     expect(second.exitCode).toBe(0);
-    expect(second.harnessKey).toBe("opencode");
+    expect(second.providerKey).toBe("opencode");
     expect(second.source).toBe("preset");
 
     const after = fs.readFileSync(configPath, "utf8");
@@ -516,10 +483,8 @@ describe("with-task", () => {
           switch (keyPath) {
             case "workers.default":
               return ["opencode", "run", "$bootstrap"];
-            case "workers.tui":
+            case "workers.interactive":
               return ["opencode", "--prompt", "$bootstrap"];
-            case "commands.discuss":
-              return ["opencode"];
             default:
               return undefined;
           }
@@ -544,11 +509,11 @@ describe("with-task", () => {
       interactiveInput: createInteractiveInputStub(),
     });
 
-    const result = await withTask({ harness: "OpenCode" });
+    const result = await withTask({ provider: "OpenCode" });
 
     expect(result.exitCode).toBe(0);
     expect(result.source).toBe("preset");
-    expect(result.harnessKey).toBe("opencode");
+    expect(result.providerKey).toBe("opencode");
     expect(result.changed).toBe(false);
     expect(result.configPath).toBe(configPath);
     expect(result.existingLocalWorkerKeys).toEqual([]);
@@ -559,17 +524,12 @@ describe("with-task", () => {
         value: ["opencode", "run", "$bootstrap"],
       },
       {
-        keyPath: "workers.tui",
+        keyPath: "workers.interactive",
         status: "set",
         value: ["opencode", "--prompt", "$bootstrap"],
       },
       {
-        keyPath: "commands.discuss",
-        status: "set",
-        value: ["opencode"],
-      },
-      {
-        keyPath: "workers.fallbacks",
+        keyPath: "fallbacks.default",
         status: "preserved",
       },
     ]);
@@ -585,10 +545,7 @@ describe("with-task", () => {
     const configPath = path.join(configDir, "config.json");
     fs.writeFileSync(configPath, JSON.stringify({
       workers: {
-        tui: ["legacy", "--prompt", "$bootstrap"],
-      },
-      commands: {
-        discuss: ["legacy"],
+        interactive: ["legacy", "--prompt", "$bootstrap"],
       },
     }, null, 2) + "\n");
 
@@ -601,33 +558,16 @@ describe("with-task", () => {
       interactiveInput: createInteractiveInputStub(),
     });
 
-    const result = await withTask({ harness: "opencode" });
+    const result = await withTask({ provider: "opencode" });
 
     expect(result.exitCode).toBe(0);
-    expect(result.existingLocalWorkerKeys).toEqual(["workers.tui"]);
+    expect(result.existingLocalWorkerKeys).toEqual(["workers.interactive"]);
   });
 
-  it("keeps opencode-like unknown harness names on interactive custom mapping flow", async () => {
+  it("rejects unknown providers without prompting or writing config", async () => {
     const workspaceDir = makeTempWorkspace();
     const configDir = path.join(workspaceDir, ".rundown");
-
-    const interactiveInput = createInteractiveInputStub([
-      {
-        value: "opencode-pro run --file $file $bootstrap",
-        usedDefault: false,
-        interactive: true,
-      },
-      {
-        value: "true",
-        usedDefault: false,
-        interactive: true,
-      },
-      {
-        value: "opencode-pro",
-        usedDefault: false,
-        interactive: true,
-      },
-    ]);
+    const interactiveInput = createInteractiveInputStub();
 
     const withTask = createWithTask({
       workerConfigPort: createWorkerConfigAdapter(),
@@ -638,184 +578,12 @@ describe("with-task", () => {
       interactiveInput,
     });
 
-    const result = await withTask({ harness: "OpenCode-Pro" });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.source).toBe("custom");
-    expect(result.harnessKey).toBe("opencode-pro");
-    expect(vi.mocked(interactiveInput.prepareForPrompt)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenCalledTimes(3);
-    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(1, {
-      kind: "text",
-      message: "Unknown harness \"OpenCode-Pro\". Enter deterministic CLI invocation (workers.default)",
-      defaultValue: "opencode-pro run --file $file $bootstrap",
-      required: true,
-    });
-    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(2, {
-      kind: "confirm",
-      message: "Configure a separate interactive invocation for workers.tui and commands.discuss?",
-      defaultValue: true,
-    });
-    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(3, {
-      kind: "text",
-      message: "Enter interactive invocation (workers.tui / commands.discuss)",
-      defaultValue: "opencode-pro",
-      required: true,
-    });
-
-    const configPath = path.join(configDir, "config.json");
-    const parsed = JSON.parse(fs.readFileSync(configPath, "utf8")) as {
-      workers?: {
-        default?: string[];
-        tui?: string[];
-      };
-      commands?: {
-        discuss?: string[];
-      };
-    };
-
-    expect(parsed.workers?.default).toEqual(["opencode-pro", "run", "--file", "$file", "$bootstrap"]);
-    expect(parsed.workers?.tui).toEqual(["opencode-pro"]);
-    expect(parsed.commands?.discuss).toEqual(["opencode-pro"]);
-    expect(parsed.workers?.default).not.toEqual(["opencode", "run", "$bootstrap"]);
-  });
-
-  it("prompts and saves custom worker mappings for unknown harness names", async () => {
-    const workspaceDir = makeTempWorkspace();
-    const configDir = path.join(workspaceDir, ".rundown");
-
-    const interactiveInput = createInteractiveInputStub([
-      {
-        value: "mytool exec --prompt-file $file --bootstrap $bootstrap",
-        usedDefault: false,
-        interactive: true,
-      },
-      {
-        value: "true",
-        usedDefault: false,
-        interactive: true,
-      },
-      {
-        value: "mytool chat",
-        usedDefault: false,
-        interactive: true,
-      },
-    ]);
-
-    const withTask = createWithTask({
-      workerConfigPort: createWorkerConfigAdapter(),
-      configDir: {
-        configDir,
-        isExplicit: true,
-      },
-      interactiveInput,
-    });
-
-    const result = await withTask({ harness: "MyTool" });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.source).toBe("custom");
-    expect(result.harnessKey).toBe("mytool");
-    expect(result.changed).toBe(true);
-    expect(vi.mocked(interactiveInput.prepareForPrompt)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenCalledTimes(3);
-    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(1, {
-      kind: "text",
-      message: "Unknown harness \"MyTool\". Enter deterministic CLI invocation (workers.default)",
-      defaultValue: "mytool run --file $file $bootstrap",
-      required: true,
-    });
-    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(2, {
-      kind: "confirm",
-      message: "Configure a separate interactive invocation for workers.tui and commands.discuss?",
-      defaultValue: true,
-    });
-    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(3, {
-      kind: "text",
-      message: "Enter interactive invocation (workers.tui / commands.discuss)",
-      defaultValue: "mytool",
-      required: true,
-    });
-
-    const configPath = path.join(configDir, "config.json");
-    const parsed = JSON.parse(fs.readFileSync(configPath, "utf8")) as {
-      workers?: {
-        default?: string[];
-        tui?: string[];
-      };
-      commands?: {
-        discuss?: string[];
-      };
-    };
-
-    expect(parsed.workers?.default).toEqual(["mytool", "exec", "--prompt-file", "$file", "--bootstrap", "$bootstrap"]);
-    expect(parsed.workers?.tui).toEqual(["mytool", "chat"]);
-    expect(parsed.commands?.discuss).toEqual(["mytool", "chat"]);
-  });
-
-  it("supports unknown-harness setup without a distinct interactive command", async () => {
-    const workspaceDir = makeTempWorkspace();
-    const configDir = path.join(workspaceDir, ".rundown");
-
-    const interactiveInput = createInteractiveInputStub([
-      {
-        value: "pi run --file $file $bootstrap",
-        usedDefault: false,
-        interactive: true,
-      },
-      {
-        value: "false",
-        usedDefault: false,
-        interactive: true,
-      },
-    ]);
-
-    const withTask = createWithTask({
-      workerConfigPort: createWorkerConfigAdapter(),
-      configDir: {
-        configDir,
-        isExplicit: true,
-      },
-      interactiveInput,
-    });
-
-    const result = await withTask({ harness: "something-new" });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.source).toBe("custom");
-    expect(result.harnessKey).toBe("something-new");
-    expect(vi.mocked(interactiveInput.prepareForPrompt)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(1, {
-      kind: "text",
-      message: "Unknown harness \"something-new\". Enter deterministic CLI invocation (workers.default)",
-      defaultValue: "something-new run --file $file $bootstrap",
-      required: true,
-    });
-    expect(vi.mocked(interactiveInput.prompt)).toHaveBeenNthCalledWith(2, {
-      kind: "confirm",
-      message: "Configure a separate interactive invocation for workers.tui and commands.discuss?",
-      defaultValue: true,
-    });
-    const configuredTui = result.configuredKeys.find((entry) => entry.keyPath === "workers.tui");
-    const configuredDiscuss = result.configuredKeys.find((entry) => entry.keyPath === "commands.discuss");
-    expect(configuredTui?.status).toBe("removed");
-    expect(configuredDiscuss?.status).toBe("removed");
-
-    const configPath = path.join(configDir, "config.json");
-    const parsed = JSON.parse(fs.readFileSync(configPath, "utf8")) as {
-      workers?: {
-        default?: string[];
-        tui?: string[];
-      };
-      commands?: {
-        discuss?: string[];
-      };
-    };
-
-    expect(parsed.workers?.default).toEqual(["pi", "run", "--file", "$file", "$bootstrap"]);
-    expect(parsed.workers?.tui).toBeUndefined();
-    expect(parsed.commands?.discuss).toBeUndefined();
+    await expect(withTask({ provider: "OpenCode-Pro" })).rejects.toThrow(
+      "Unknown provider preset: opencode-pro.",
+    );
+    expect(vi.mocked(interactiveInput.prepareForPrompt)).not.toHaveBeenCalled();
+    expect(vi.mocked(interactiveInput.prompt)).not.toHaveBeenCalled();
+    expect(fs.existsSync(path.join(configDir, "config.json"))).toBe(false);
   });
 
   it("uses explicit --config-dir over discovered .rundown paths in with flow", async () => {
@@ -847,7 +615,7 @@ describe("with-task", () => {
       interactiveInput: createInteractiveInputStub(),
     });
 
-    const result = await withTask({ harness: "opencode" });
+    const result = await withTask({ provider: "opencode" });
 
     expect(result.exitCode).toBe(0);
     expect(result.changed).toBe(true);
@@ -858,10 +626,7 @@ describe("with-task", () => {
     expect(JSON.parse(fs.readFileSync(explicitConfigPath, "utf8"))).toEqual({
       workers: {
         default: ["opencode", "run", "$bootstrap"],
-        tui: ["opencode", "--prompt", "$bootstrap"],
-      },
-      commands: {
-        discuss: ["opencode"],
+        interactive: ["opencode", "--prompt", "$bootstrap"],
       },
     });
 
@@ -882,8 +647,8 @@ describe("with-task", () => {
       run: {
         commit: true,
       },
-      workers: {
-        fallbacks: [["fallback", "run"]],
+      fallbacks: {
+        default: [["fallback", "run"]],
       },
     }, null, 2) + "\n");
 
@@ -907,7 +672,7 @@ describe("with-task", () => {
       interactiveInput,
     });
 
-    const result = await withTask({ harness: "opencode" });
+    const result = await withTask({ provider: "opencode" });
 
     expect(result.exitCode).toBe(0);
     expect(result.changed).toBe(true);
@@ -917,18 +682,16 @@ describe("with-task", () => {
       run?: { commit?: boolean };
       workers?: {
         default?: string[];
-        tui?: string[];
-        fallbacks?: string[][];
+        interactive?: string[];
       };
-      commands?: {
-        discuss?: string[];
+      fallbacks?: {
+        default?: string[][];
       };
     };
 
     expect(parsed.workers?.default).toEqual(["opencode", "run", "$bootstrap"]);
-    expect(parsed.workers?.tui).toEqual(["opencode", "--prompt", "$bootstrap"]);
-    expect(parsed.workers?.fallbacks).toEqual([["fallback", "run"]]);
-    expect(parsed.commands?.discuss).toEqual(["opencode"]);
+    expect(parsed.workers?.interactive).toEqual(["opencode", "--prompt", "$bootstrap"]);
+    expect(parsed.fallbacks?.default).toEqual([["fallback", "run"]]);
     expect(parsed.run?.commit).toBe(true);
   });
 
@@ -941,10 +704,7 @@ describe("with-task", () => {
     fs.writeFileSync(globalConfigPath, JSON.stringify({
       workers: {
         default: ["codex", "run", "--file", "$file", "$bootstrap"],
-        tui: ["codex"],
-      },
-      commands: {
-        discuss: ["codex"],
+        interactive: ["codex"],
       },
     }, null, 2) + "\n");
     const globalBefore = fs.readFileSync(globalConfigPath, "utf8");
@@ -979,7 +739,7 @@ describe("with-task", () => {
       interactiveInput: createInteractiveInputStub(),
     });
 
-    const result = await withTask({ harness: "opencode" });
+    const result = await withTask({ provider: "opencode" });
 
     expect(result.exitCode).toBe(0);
     expect(result.changed).toBe(true);

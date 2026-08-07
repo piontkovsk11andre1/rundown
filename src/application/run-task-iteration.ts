@@ -221,7 +221,6 @@ interface IterationWorkerConfig {
   loadedWorkerConfig: ReturnType<RunTaskDependencies["workerConfigPort"]["load"]> | undefined;
   workerHealthEntries?: readonly WorkerHealthEntry[];
   evaluateWorkerHealthAtMs?: number;
-  runWorkerPhaseOverride?: "reset";
 }
 
 interface IterationVerifyConfig {
@@ -483,7 +482,6 @@ export async function runTaskIteration(params: {
       mode: execution.mode,
       workerHealthEntries: worker.workerHealthEntries,
       evaluateWorkerHealthAtMs,
-      runWorkerPhase: worker.runWorkerPhaseOverride,
     });
 
     const workerSelectionSnapshot = resolveWorkerSelectionSnapshotForInvocation({
@@ -499,13 +497,12 @@ export async function runTaskIteration(params: {
       mode: execution.mode,
       workerHealthEntries: worker.workerHealthEntries,
       evaluateWorkerHealthAtMs,
-      runWorkerPhase: worker.runWorkerPhaseOverride,
     });
 
     // Build the automation command variant used for verification-only execution.
     // Verification always runs in "wait" mode, so when the execution mode is "tui"
     // the worker must be re-resolved with mode "wait" to pick workers.default
-    // instead of workers.tui.
+    // instead of workers.interactive.
     const verificationWorker = execution.mode === "tui"
       ? resolveWorkerPatternForInvocation({
         commandName: "run",
@@ -556,8 +553,6 @@ export async function runTaskIteration(params: {
       mode: "wait",
       workerHealthEntries: worker.workerHealthEntries,
       evaluateWorkerHealthAtMs: workerEvaluationTimeMs,
-      runWorkerPhase: resolveInput.phase,
-      runWorkerAttempt: resolveInput.attempt,
     });
 
     return resolvedPhaseWorker.workerPattern;

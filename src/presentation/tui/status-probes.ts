@@ -284,7 +284,8 @@ export function createWorkersProbe({
 
       const workerConfig = parseConfigListPayload(workerConfigPayload);
       const workers = safeObject(workerConfig.workers);
-      const fallbackCount = Array.isArray(workers.fallbacks) ? workers.fallbacks.length : 0;
+      const fallbackConfig = safeObject(workerConfig.fallbacks);
+      const fallbackCount = Array.isArray(fallbackConfig.default) ? fallbackConfig.default.length : 0;
 
       const { entries } = parseHealthPayload(workerHealthPayload);
       let coolingCount = 0;
@@ -301,7 +302,7 @@ export function createWorkersProbe({
 
       const segments = [
         `default ${Array.isArray(workers.default) && workers.default.length > 0 ? "✓" : "✗"}`,
-        `tui ${Array.isArray(workers.tui) && workers.tui.length > 0 ? "✓" : "✗"}`,
+        `interactive ${Array.isArray(workers.interactive) && workers.interactive.length > 0 ? "✓" : "✗"}`,
         `${fallbackCount} fallbacks`,
       ];
       if (coolingCount > 0) {
@@ -387,9 +388,8 @@ export function createSettingsProbe({ appFactory = createApp }: { appFactory?: A
       ]);
 
       const localConfig = parseConfigListPayload(localConfigPayload);
-      const commandCount = Object.keys(safeObject(localConfig.commands)).length;
       const profileCount = Object.keys(safeObject(localConfig.profiles)).length;
-      const overrideCount = commandCount + profileCount;
+      const overrideCount = profileCount;
 
       const globalPath = safeObject(globalPathPayload).path;
       const hasGlobalConfig = typeof globalPath === "string"

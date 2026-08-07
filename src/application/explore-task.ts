@@ -2,11 +2,9 @@ import type { ProcessRunMode } from "../domain/ports/index.js";
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import type { PlanTaskOptions } from "./plan-task.js";
-import type { ResearchTaskOptions } from "./research-task.js";
 
 export interface ExploreTaskDependencies {
   output: ApplicationOutputPort;
-  researchTask: (options: ResearchTaskOptions) => Promise<number>;
   planTask: (options: PlanTaskOptions) => Promise<number>;
 }
 
@@ -71,38 +69,7 @@ export function createExploreTask(
     } = options;
 
     if (emitPhaseMessages) {
-      emit({ kind: "info", message: "Explore phase 1/2: research" });
-    }
-
-    const researchCode = normalizeExplorePhaseExitCode(await dependencies.researchTask({
-      source,
-      cwd,
-      invocationDir,
-      workspaceDir,
-      workspaceLinkPath,
-      isLinkedWorkspace,
-      mode,
-      workerPattern,
-      showAgentOutput,
-      dryRun,
-      printPrompt,
-      keepArtifacts,
-      varsFileOption,
-      cliTemplateVarArgs,
-      trace,
-      forceUnlock,
-      ignoreCliBlock,
-      cliBlockTimeoutMs,
-      configDirOption,
-      verbose,
-    }));
-    if (researchCode !== 0) {
-      return researchCode;
-    }
-
-    if (emitPhaseMessages) {
-      emit({ kind: "info", message: "Explore transition: research -> plan" });
-      emit({ kind: "info", message: "Explore phase 2/2: plan" });
+      emit({ kind: "info", message: "Explore phase 1/1: plan" });
     }
 
     return normalizeExplorePhaseExitCode(await dependencies.planTask({

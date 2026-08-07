@@ -571,16 +571,15 @@ Treat alias prefixes (\`check:\`, \`confirm:\`, \`quick:\`, \`raw:\`, \`memorize
 ### Configuration (\`.rundown/config.json\`)
 
 Layered worker resolution (lowest to highest priority):
-1. \`defaults\` in config
-2. \`commands.<command>\` in config
-3. Markdown frontmatter \`profile: <name>\`
-4. Parent directive \`- profile=<name>\`
-5. Task prefix \`profile=<name>\`
-6. CLI \`--worker\` or \`-- <command>\`
+1. \`workers.default\` in config, or \`workers.interactive\` for interactive runs
+2. Markdown frontmatter \`profile: <name>\`
+3. Parent directive \`- profile=<name>\`
+4. Task prefix \`profile=<name>\`
+5. CLI \`--worker\` or \`-- <command>\`
 
 ### Templates (\`.rundown/*.md\`)
 
-Customizable templates: \`agent.md\`, \`execute.md\`, \`verify.md\`, \`repair.md\`, \`resolve.md\`, \`plan.md\`, \`plan-loop.md\`, \`deep-plan.md\`, \`discuss.md\`, \`research.md\`, \`research-verify.md\`, \`research-repair.md\`, \`research-resolve.md\`, \`research-output-contract.md\`, \`trace.md\`, \`undo.md\`, \`test-verify.md\`, \`test-future.md\`, \`test-materialized.md\`, \`help.md\`, \`migrate*.md\`, \`query-*.md\`. Built-in defaults are used when files are absent.
+Customizable templates: \`agent.md\`, \`execute.md\`, \`verify.md\`, \`repair.md\`, \`resolve.md\`, \`plan.md\`, \`plan-loop.md\`, \`deep-plan.md\`, \`discuss.md\`, \`research.md\`, \`research-verify.md\`, \`research-repair.md\`, \`research-resolve.md\`, \`research-output-contract.md\`, \`trace.md\`, \`undo.md\`, \`test-verify.md\`, \`test-future.md\`, \`test-materialized.md\`, \`help.md\`, \`migrate*.md\`. Built-in defaults are used when files are absent.
 
 ### Fallback mode for non-rundown questions
 
@@ -1441,170 +1440,6 @@ Return exactly one verdict line on stdout:
 
 Output only the verdict line and nothing else.
 {{traceInstructions}}
-`;
-
-/**
- * Default query seed template used to frame natural-language investigations.
- */
-export const DEFAULT_QUERY_SEED_TEMPLATE = `\
-# Query: {{query}}
-
-## Objective
-
-Research and produce a comprehensive answer to the query above.
-This document describes what to investigate, not what to build.
-
-## Analysis directory
-
-\`{{dir}}\`
-
-## Output directory
-
-Each investigation step writes findings to \`{{workdir}}\` when file output mode is enabled.
-
-## Exclusions
-
-Ignore files inside \`.rundown\` directories. They contain runtime artifacts and are not part of the source.
-`;
-
-/**
- * Query seed template for yes/no verdict-oriented checks.
- */
-export const DEFAULT_QUERY_YN_SEED_TEMPLATE = `\
-# Query: {{query}}
-
-## Objective
-
-Investigate the codebase and answer the query as a strict yes/no check.
-Conclude with a single verdict token: \`Y\` or \`N\`.
-
-## Analysis directory
-
-\`{{dir}}\`
-
-## Output directory
-
-Each investigation step writes findings to \`{{workdir}}\` when file output mode is enabled.
-
-## Exclusions
-
-Ignore files inside \`.rundown\` directories. They contain runtime artifacts and are not part of the source.
-`;
-
-/**
- * Query seed template for success/failure verification-style checks.
- */
-export const DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE = `\
-# Query: {{query}}
-
-## Objective
-
-Investigate the codebase and evaluate whether the query condition passes.
-Conclude with exactly one verdict line: \`success\` or \`failure: <reason>\`.
-
-## Analysis directory
-
-\`{{dir}}\`
-
-## Output directory
-
-Each investigation step writes findings to \`{{workdir}}\` when file output mode is enabled.
-
-## Exclusions
-
-Ignore files inside \`.rundown\` directories. They contain runtime artifacts and are not part of the source.
-`;
-
-/**
- * Default file-mode query execution template.
- */
-export const DEFAULT_QUERY_EXECUTION_TEMPLATE = `\
-You are executing one step of a query investigation plan.
-
-## Step
-
-- Index: {{taskIndex}}
-- Task: {{task}}
-
-## Directories
-
-- Analysis root: \`{{dir}}\`
-- Workdir: \`{{workdir}}\`
-
-## Instructions
-
-Investigate the task using the analysis root as the codebase context.
-Write your findings to this file and do not print the findings to stdout:
-
-\`{{workdir}}/step-{{taskIndex}}.md\`
-
-## Output contract (strict)
-
-- Output extracted items only.
-- Emit exactly one extracted item per line.
-- Preserve discovery order.
-- Do not add commentary, headings, labels, code fences, or JSON.
-- If no items are found, write an empty file.
-`;
-
-/**
- * Default stream-mode query execution template.
- */
-export const DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE = `\
-You are executing one step of a query investigation plan.
-
-## Step
-
-- Index: {{taskIndex}}
-- Task: {{task}}
-
-## Directory
-
-- Analysis root: \`{{dir}}\`
-
-## Instructions
-
-Investigate the task and print findings directly to stdout in Markdown.
-Do not write step output files in this mode.
-
-## Output contract (strict)
-
-- Output extracted items only.
-- Emit exactly one extracted item per line.
-- Preserve discovery order.
-- Do not add commentary, headings, labels, code fences, or JSON.
-- If no items are found, return an exactly empty stdout response (no lines, no blank lines, no whitespace-only output).
-`;
-
-/**
- * Default query aggregation template used to combine step findings.
- */
-export const DEFAULT_QUERY_AGGREGATION_TEMPLATE = `\
-You are aggregating completed query investigation results.
-
-## Query
-
-{{query}}
-
-## Analysis directory
-
-\`{{dir}}\`
-
-## Workdir
-
-\`{{workdir}}\`
-
-## Instructions
-
-Read all step output files in the workdir (for example, \`step-01.md\`, \`step-02.md\`, ...)
-and produce one coherent final response in Markdown.
-
-The final response should:
-
-1. Directly answer the query
-2. Synthesize evidence across steps
-3. Call out ambiguities or gaps explicitly
-4. End with a concise conclusion
 `;
 
 /**

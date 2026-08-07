@@ -50,10 +50,6 @@ describe("prefix behavior cross-layer integration", () => {
         workers: {
           default: ["opencode", "run", "--from-default", "1"],
         },
-        commands: {
-          run: ["opencode", "run", "--from-run", "1"],
-          verify: ["opencode", "run", "--from-verify", "1"],
-        },
       },
       source,
       task,
@@ -62,7 +58,7 @@ describe("prefix behavior cross-layer integration", () => {
       toolName: mode.taskIntentDecision.toolName ?? mode.prefixChain.handler?.tool.name,
     });
 
-    expect(workerCommand).toEqual(["opencode", "run", "--from-verify", "1"]);
+    expect(workerCommand).toEqual(["opencode", "run", "--from-default", "1"]);
     expect(emit).toHaveBeenCalledWith({
       kind: "info",
       message: "Task classified as verify-only (explicit marker); skipping execution.",
@@ -101,10 +97,6 @@ describe("prefix behavior cross-layer integration", () => {
         workers: {
           default: ["opencode", "run", "--from-default", "1"],
         },
-        commands: {
-          run: ["opencode", "run", "--from-run", "1"],
-          verify: ["opencode", "run", "--from-verify", "1"],
-        },
       },
       source,
       task,
@@ -113,7 +105,7 @@ describe("prefix behavior cross-layer integration", () => {
       toolName: mode.taskIntentDecision.toolName ?? mode.prefixChain.handler?.tool.name,
     });
 
-    expect(workerCommand).toEqual(["opencode", "run", "--from-run", "1"]);
+    expect(workerCommand).toEqual(["opencode", "run", "--from-default", "1"]);
     expect(emit).toHaveBeenCalledWith({
       kind: "info",
       message: "Task uses fast/raw/quick intent (explicit fast marker); skipping verification.",
@@ -152,10 +144,6 @@ describe("prefix behavior cross-layer integration", () => {
         workers: {
           default: ["opencode", "run", "--from-default", "1"],
         },
-        commands: {
-          run: ["opencode", "run", "--from-run", "1"],
-          "tools.for": ["opencode", "run", "--from-tools-for", "1"],
-        },
       },
       source,
       task,
@@ -164,10 +152,10 @@ describe("prefix behavior cross-layer integration", () => {
       toolName: mode.taskIntentDecision.toolName ?? mode.prefixChain.handler?.tool.name,
     });
 
-    expect(workerCommand).toEqual(["opencode", "run", "--from-tools-for", "1"]);
+    expect(workerCommand).toEqual(["opencode", "run", "--from-default", "1"]);
   });
 
-  it("applies inherited quick directive intent through iteration mode and keeps commands.run routing", () => {
+  it("applies inherited quick directive intent through iteration mode and keeps default worker routing", () => {
     const source = [
       "- quick:",
       "  - [ ] Publish changelog",
@@ -207,10 +195,6 @@ describe("prefix behavior cross-layer integration", () => {
         workers: {
           default: ["opencode", "run", "--from-default", "1"],
         },
-        commands: {
-          run: ["opencode", "run", "--from-run", "1"],
-          verify: ["opencode", "run", "--from-verify", "1"],
-        },
       },
       source,
       task,
@@ -219,7 +203,7 @@ describe("prefix behavior cross-layer integration", () => {
       toolName: mode.taskIntentDecision.toolName ?? mode.prefixChain.handler?.tool.name,
     });
 
-    expect(workerCommand).toEqual(["opencode", "run", "--from-run", "1"]);
+    expect(workerCommand).toEqual(["opencode", "run", "--from-default", "1"]);
   });
 
   it("keeps unknown prefix text on execute-and-verify path across all layers", () => {
@@ -253,10 +237,6 @@ describe("prefix behavior cross-layer integration", () => {
         workers: {
           default: ["opencode", "run", "--from-default", "1"],
         },
-        commands: {
-          run: ["opencode", "run", "--from-run", "1"],
-          "tools.unknown-prefix": ["opencode", "run", "--from-tools-unknown", "1"],
-        },
       },
       source,
       task,
@@ -265,6 +245,6 @@ describe("prefix behavior cross-layer integration", () => {
       toolName: mode.taskIntentDecision.toolName ?? mode.prefixChain.handler?.tool.name,
     });
 
-    expect(workerCommand).toEqual(["opencode", "run", "--from-run", "1"]);
+    expect(workerCommand).toEqual(["opencode", "run", "--from-default", "1"]);
   });
 });

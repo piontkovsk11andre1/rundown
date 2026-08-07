@@ -24,7 +24,6 @@ import {
   isCliExitSignal,
   readCliVersion,
   resolveInvocationCommand,
-  rewriteAllAlias,
   splitWorkerFromSeparator,
   terminate,
 } from "./cli-argv.js";
@@ -32,21 +31,17 @@ import { normalizeExitCode } from "../domain/exit-codes.js";
 import {
   createArtifactsCommandAction,
   createAddCommandAction,
+  createAllCommandAction,
   createCallCommandAction,
-  createMaterializeCommandAction,
   createLoopCommandAction,
   createDiscussCommandAction,
   createDoCommandAction,
-  createExploreCommandAction,
   createHelpCommandAction,
   createRootTuiAction,
   createInitCommandAction,
   createListCommandAction,
   createLogCommandAction,
   createMakeCommandAction,
-  createMigrateCommandAction,
-  createPredictCommandAction,
-  createSnapshotCommandAction,
   createMemoryViewCommandAction,
   createMemoryCleanCommandAction,
   createMemoryValidateCommandAction,
@@ -55,22 +50,14 @@ import {
   createConfigPathCommandAction,
   createConfigSetCommandAction,
   createConfigUnsetCommandAction,
-  createCompactCommandAction,
-  createWorkspaceRemoveCommandAction,
-  createWorkspaceUnlinkCommandAction,
   createWithCommandAction,
   createWorkerHealthCommandAction,
   createNextCommandAction,
   createPlanCommandAction,
-  createQueryCommandAction,
-  createResearchCommandAction,
   createReverifyCommandAction,
-  createRevertCommandAction,
   createUndoCommandAction,
   createRunCommandAction,
-  createStartCommandAction,
-  createTestCommandAction,
-  createTranslateCommandAction,
+  createMaterializeCommandAction,
   createLocalizeCommandAction,
   createUnlockCommandAction,
 } from "./cli-command-actions.js";
@@ -78,13 +65,9 @@ import {
 const RUNNER_MODES: readonly ProcessRunMode[] = ["wait", "tui", "detached"];
 const PLANNER_MODES: readonly ProcessRunMode[] = ["wait"];
 const DISCUSS_MODES: readonly ProcessRunMode[] = ["wait", "tui"];
-const RESEARCH_MODES: readonly ProcessRunMode[] = ["wait", "tui"];
-const EXPLORE_MODES: readonly ProcessRunMode[] = ["wait"];
-const QUERY_MODES: readonly ProcessRunMode[] = ["wait"];
 const MAKE_MODES: readonly ProcessRunMode[] = ["wait"];
 const ADD_MODES: readonly ProcessRunMode[] = ["wait"];
 const DO_MODES: readonly ProcessRunMode[] = ["wait"];
-const TRANSLATE_MODES: readonly ProcessRunMode[] = ["wait"];
 const LOOP_MODES: readonly ProcessRunMode[] = ["wait"];
 const COMMIT_MODES = ["per-task", "file-done"] as const;
 const DEFAULT_PLAN_DEEP = 0;
@@ -163,15 +146,18 @@ program
   })));
 
 program
-  .command("agent")
-  .description("Open the interactive rundown agent.")
-  .option("-c, --continue", "Resume the previous interactive root help/agent session")
+  .command("repair")
+  .description("Open the interactive rundown repair agent.")
+  .option("-c, --continue", "Resume the previous interactive repair agent session")
   .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
   .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
   .action(withCliAction(createHelpCommandAction({
     getApp,
     getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
-    getInvocationArgv: () => runtimeState.invocationArgv ?? process.argv.slice(2),
+    getInvocationArgv: () => {
+      const argv = runtimeState.invocationArgv ?? process.argv.slice(2);
+      return resolveInvocationCommand(argv) === "repair" ? ["agent", ...argv.slice(1)] : argv;
+    },
     outputHelp: () => {
       program.outputHelp();
     },
@@ -197,32 +183,13 @@ configureRunLikeCommandOptions(runCommand)
 
 const allCommand = program
   .command("all")
-  .description("Run all tasks sequentially (equivalent to `run --all`).")
+  .description("Run all unchecked TODOs sequentially.")
   .argument("<source>", "File, directory, or glob to scan for Markdown tasks")
   .configureHelp({ showGlobalOptions: true });
 
 configureRunLikeCommandOptions(allCommand)
   .allowUnknownOption(false)
-  .action(withCliAction(async (source: string, opts: Record<string, unknown>) => {
-    const runAction = createRunCommandAction({
-      getApp,
-      getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
-      runnerModes: RUNNER_MODES,
-      getInvocationArgv: () => runtimeState.invocationArgv ?? process.argv.slice(2),
-    });
-
-    return runAction(source, { ...opts, all: true });
-  }));
-
-const callCommand = program
-  .command("call")
-  .description("Run a full clean pass across all tasks with CLI block caching enabled.")
-  .argument("<source>", "File, directory, or glob to scan for Markdown tasks")
-  .configureHelp({ showGlobalOptions: true });
-
-configureRunLikeCommandOptions(callCommand)
-  .allowUnknownOption(false)
-  .action(withCliAction(createCallCommandAction({
+  .action(withCliAction(createAllCommandAction({
     getApp,
     getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
     runnerModes: RUNNER_MODES,
@@ -233,11 +200,27 @@ const materializeCommand = program
   .command("materialize")
   .description("Run all tasks, then record implementation snapshot history for snapshot-based restore.")
   .argument("<source>", "File, directory, or glob to scan for Markdown tasks")
+  .option("--workspace <path>", "Workspace path to snapshot after successful materialization")
   .configureHelp({ showGlobalOptions: true });
 
 configureRunLikeCommandOptions(materializeCommand)
   .allowUnknownOption(false)
   .action(withCliAction(createMaterializeCommandAction({
+    getApp,
+    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
+    runnerModes: RUNNER_MODES,
+    getInvocationArgv: () => runtimeState.invocationArgv ?? process.argv.slice(2),
+  })));
+
+const callCommand = program
+  .command("call")
+  .description("Run a full clean pass across all tasks with CLI block caching enabled.")
+  .argument("<source>", "File, directory, or glob to scan for Markdown tasks")
+  .configureHelp({ showGlobalOptions: true });
+
+configureRunLikeCommandOptions(callCommand)
+  .allowUnknownOption(false)
+  .action(withCliAction(createCallCommandAction({
     getApp,
     getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
     runnerModes: RUNNER_MODES,
@@ -329,19 +312,6 @@ program
   })));
 
 program
-  .command("revert")
-  .description("Restore implementation state from snapshot-backed completed runs.")
-  .option("--run <id|latest>", "Target artifact run id or 'latest'", "latest")
-  .option("--last <n>", "Restore the last N snapshot-revertable completed runs")
-  .option("--all", "Restore all snapshot-revertable completed runs", false)
-  .option("--method <revert|reset>", "Compatibility option; both methods perform snapshot restore", "revert")
-  .option("--dry-run", "Show what would be restored without changing implementation state", false)
-  .option("--force", "Compatibility no-op for snapshot restore behavior", false)
-  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
-  .allowUnknownOption(false)
-  .action(withCliAction(createRevertCommandAction({ getApp })));
-
-program
   .command("undo")
   .description("Undo completed task runs using AI-generated reversal steps.")
   .option("--run <id|latest>", "Choose artifact run id or 'latest'", "latest")
@@ -354,186 +324,6 @@ program
   .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
   .allowUnknownOption(false)
   .action(withCliAction(createUndoCommandAction({
-    getApp,
-    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
-  })));
-
-program
-  .command("start")
-  .description("Bootstrap or adopt a workspace from directory paths.")
-  .argument("[design-dir]", "Design directory to adopt (default: current working directory)")
-  .argument("[workdir]", "Outer/control rundown workspace directory")
-  .option("--dir <path>", "Control workspace directory (overrides positional [workdir])")
-  .option(
-    "--mount <logical-path=target-path>",
-    "Mount logical workspace path to a target directory (repeatable). Relative targets resolve from invocation directory.",
-    collectOption,
-    [],
-  )
-  .option("--design-dir <path>", "Design workspace directory (default: design)")
-  .option("--design-placement <mode>", "Design placement root: sourcedir or workdir (default: sourcedir)")
-  .option("--specs-dir <path>", "Specs workspace directory (default: specs)")
-  .option("--specs-placement <mode>", "Specs placement root: sourcedir or workdir (default: sourcedir)")
-  .option("--migrations-dir <path>", "Migrations workspace directory (default: migrations)")
-  .option("--migrations-placement <mode>", "Migrations placement root: sourcedir or workdir (default: sourcedir)")
-  .option("--from-design <path>", "Compatibility override for adopted design directory (preferred: positional [design-dir]). Persisted as workspace.design.currentPath in .rundown/config.json. The directory itself acts as design/current; revisions still live under <design>/revisions/rev.N.")
-  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
-  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
-  .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
-  .option("--force-unlock", "Break stale source lockfiles before acquiring phase locks", false)
-  .option("--vars-file [path]", DEFAULT_VARS_FILE_HELP)
-  .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
-  .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
-  .option("--ignore-cli-block", "Disable execution of `cli` fenced blocks during prompt expansion")
-  .option(
-    "--cli-block-timeout <ms>",
-    "Timeout in milliseconds for executing `cli` fenced blocks (0 disables timeout)",
-    String(DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS),
-  )
-  .allowUnknownOption(false)
-  .action(withCliAction((
-    designDir: string | undefined,
-    workdir: string | undefined,
-    opts: Record<string, string | string[] | boolean>,
-  ) => {
-    const startAction = createStartCommandAction({
-      getApp,
-      getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
-    });
-    return startAction(designDir, workdir, opts);
-  }))
-  .addHelpText(
-    "after",
-    [
-      "",
-      "Design workflow:",
-      "  - Active draft edits live in design/current/ (default primary file: design/current/Target.md)",
-      "  - Historical snapshots are stored under design/revisions/rev.N/ as immutable revisions",
-      "  - Legacy docs/current/Design.md and root Design.md remain supported only as compatibility-only fallbacks",
-      "",
-      "Mounted bootstrap:",
-      "  - Use --mount <logical-path=target-path> to attach existing directories during start",
-      "  - --mount is repeatable and is the authoritative surface for mounted workspace onboarding",
-      "  - Logical roots include design, implementation, specs, migrations, and prediction",
-      "  - Use --dir to place the satellite rundown workspace while mounting current directories into logical paths",
-      "  - Relative mount targets are resolved from the invocation directory",
-      "  - Nested overrides are supported (for example: --mount implementation/generated=./generated)",
-      "  - Bare control workspaces are supported: keep .rundown in control dir and mount major content elsewhere",
-      "  - Legacy --design-dir/--specs-dir/--migrations-dir and placement flags remain supported as compatibility shorthands; resolved workspace context remains implementation-aware via --mount and mount summary metadata",
-      "",
-      "Linked workspace behavior:",
-      "  - When started from a linked directory, start writes link metadata in both target and source workspaces",
-      "  - Source .rundown/workspace.link supports multiple records for multiple started targets",
-      "  - New target workspace receives a single legacy-compatible link to the source workspace",
-      "",
-      "Examples:",
-      "  - rundown start",
-      "  - rundown start ./design-input",
-      "  - rundown start . ../control -- opencode run",
-      "  - rundown start ../my-notes ./audit -- opencode run",
-      "  - rundown start ./design-input --dir ../control --mount implementation=. -- opencode run",
-      "  - rundown start ./design-input --mount implementation=./implementation --mount specs=./specs --mount migrations=./migrations -- opencode run",
-      "  - rundown start ./design-input --design-placement sourcedir --specs-placement workdir --migrations-placement sourcedir --mount implementation=./implementation -- opencode run",
-      "  - rundown start --from-design ../my-notes --dir ./audit -- opencode run",
-    ].join("\n"),
-  );
-
-const migrateCommand = program
-  .command("migrate")
-  .description("Sync design revisions and generate migration files.")
-  .argument("[action]", "Optional migrate action (for example: new)")
-  .argument("[title]", "Optional action title used by `migrate new <title>`")
-  .option("--dir <path>", "Migrations directory (default: configured workspace, fallback: ./migrations)")
-  .option("--workspace <dir>", "Workspace directory to use for linked/multi-workspace resolution")
-  .option("--from <source>", "Source reconciliation mode: implementation|prediction (omit for default design-diff mode)")
-  .option("--from-file <path>", "Use a single design file as migrate planning input (mutually exclusive with --from)")
-  .option(COMPACT_BEFORE_EXIT_FLAG, COMPACT_BEFORE_EXIT_OPTION_HELP, false)
-  .option("--confirm", "Show generated content and confirm before writing files", false)
-  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
-  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
-  .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
-  .option("--slug-worker <pattern>", "Optional migration slug worker override (for naming/reconciliation only)")
-  .allowUnknownOption(false)
-  .action(withCliAction(createMigrateCommandAction({
-    getApp,
-    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
-    getInvocationArgv: () => runtimeState.invocationArgv ?? process.argv.slice(2),
-  })));
-
-program
-  .command("predict")
-  .description("Apply migrations into prediction/.")
-  .option("--dir <path>", "Migrations directory (default: configured workspace, fallback: ./migrations)")
-  .option("--workspace <dir>", "Workspace directory to use for linked/multi-workspace resolution")
-  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
-  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
-  .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
-  .allowUnknownOption(false)
-  .action(withCliAction(createPredictCommandAction({
-    getApp,
-    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
-  })));
-
-program
-  .command("snapshot")
-  .description("Save implementation snapshots at completed migration boundaries.")
-  .option("--workspace <dir>", "Workspace directory to use for linked/multi-workspace resolution")
-  .allowUnknownOption(false)
-  .action(withCliAction(createSnapshotCommandAction({ getApp })));
-
-program
-  .command("compact")
-  .description("Archive older design revision and migration payloads while keeping history reads transparent.")
-  .option("--workspace <dir>", "Workspace directory to use for linked/multi-workspace resolution")
-  .option("--target <revisions|migrations|all>", "Compaction scope", "all")
-  .option("--dry-run", "Show what would be moved without modifying files", false)
-  .option("--keep <n>", "Default count of newest payloads to keep hot per lane", "5")
-  .option("--keep-revisions <n>", "Keep newest N planned revision payload directories hot")
-  .option("--keep-migrations-root <n>", "Keep newest N root-lane migration payloads hot")
-  .option("--keep-migrations-threads <n>", "Keep newest N migration payloads hot per thread lane")
-  .allowUnknownOption(false)
-  .action(withCliAction(createCompactCommandAction({ getApp })));
-
-migrateCommand.addHelpText(
-  "after",
-  [
-    "",
-    "Revision-aware behavior:",
-    "  - Runs a preflight revision sync before planning",
-    "  - If design/current/** changed, snapshots the next immutable design/revisions/rev.N/ automatically",
-    "  - If no released revisions exist yet, bootstraps rev.0 from design/current/**",
-    "  - Plans against the lowest unplanned released revision (plannedAt/migrations metadata remain authoritative)",
-    "  - Legacy docs/current/** and root Design.md are compatibility-only fallbacks",
-    "",
-    "Linked workspace selection:",
-    "  - Use --workspace <dir> to choose the effective workspace explicitly",
-    "  - Required when .rundown/workspace.link has multiple records with no default",
-    "  - Without --workspace, ambiguous multi-record links fail with candidate guidance",
-    "",
-    "Workspace routing context:",
-    "  - Runtime workspace paths are resolved absolute targets and should be treated as authoritative",
-    "  - Do not reconstruct layout from workspaceDir + logical directory names",
-    "  - workspaceMountSummary (when present) is the canonical logical-path routing map",
-    "",
-    "Source reconciliation modes:",
-    "  - Omit --from to use the default design-diff workflow",
-    "  - --from implementation reconciles current design from implementation changes before drafting migrations",
-    "  - --from prediction reconciles current design from prediction changes before drafting migrations",
-    "  - --from-file <path> uses one explicit planning source file (mutually exclusive with --from)",
-  ].join("\n"),
-);
-
-program
-  .command("test")
-  .description("Verify specs against now/future state and create new assertions.")
-  .argument("[action]", "Test action: now | future | new")
-  .argument("[prompt]", "Assertion text for `test new`")
-  .option("--dir <path>", "Specs directory (default: configured workspace, fallback: ./specs)")
-  .option("--run", "Immediately verify the created spec after `test new`", false)
-  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
-  .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
-  .allowUnknownOption(false)
-  .action(withCliAction(createTestCommandAction({
     getApp,
     getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
   })));
@@ -692,59 +482,18 @@ program
   })));
 
 program
-  .command("explore")
-  .description("Enrich a document with research context, then synthesize actionable TODOs.")
-  .argument("[markdown-file...]", "Markdown document to enrich and plan")
-  .option("--mode <mode>", "Explore mode: wait", "wait")
-  .option(
-    "--scan-count <n>",
-    "Max clean-session TODO coverage scans for the plan phase (omit for convergence-driven unlimited mode)",
-  )
-  .option("--max-items <n>", "Cap the total number of TODO items added across all scans (default: no limit)")
-  .option(
-    "--deep <n>",
-    "Additional nested planning depth passes after top-level scans for the plan phase (default: 0)",
-    String(DEFAULT_PLAN_DEEP),
-  )
-  .option("--dry-run", "Show what would run for research and plan without executing workers", false)
-  .option("--print-prompt", "Print rendered research/plan prompts and exit", false)
-  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
-  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
-  .option("-v, --verbose", "Show detailed per-task run diagnostics (within grouped output)", false)
-  .option("-q, --quiet", "Suppress info-level output (info, success, progress, grouped status)", false)
-  .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
-  .option("--force-unlock", "Break stale source lockfiles before acquiring phase locks", false)
-  .option("--vars-file [path]", DEFAULT_VARS_FILE_HELP)
-  .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
-  .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
-  .option("--ignore-cli-block", "Disable execution of `cli` fenced blocks during prompt expansion")
-  .option(
-    "--cli-block-timeout <ms>",
-    "Timeout in milliseconds for executing `cli` fenced blocks (0 disables timeout)",
-    String(DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS),
-  )
-  .allowUnknownOption(false)
-  .action(withCliAction(createExploreCommandAction({
-    getApp,
-    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
-    exploreModes: EXPLORE_MODES,
-    getInvocationArgv: () => runtimeState.invocationArgv ?? process.argv.slice(2),
-  })));
-
-program
   .command("make")
-  .description("Create a Markdown task doc from seed text, then run research and plan.")
+  .description("Create a Markdown task doc from seed text, then run plan.")
   .argument("<seed-text>", "Initial text content to write into the Markdown file")
   .argument("<markdown-file>", "Markdown file path to create")
-  .option("--skip-research, --raw", "Skip phase 1 research and start from planning (alias: --raw)", false)
   .option("--mode <mode>", "Make mode: wait", "wait")
   .option(
     "--scan-count <n>",
     "Max clean-session TODO coverage scans for the plan phase (omit for convergence-driven unlimited mode)",
   )
   .option("--max-items <n>", "Cap the total number of TODO items added across all scans (default: no limit)")
-  .option("--dry-run", "Show what would run for research and plan without executing workers", false)
-  .option("--print-prompt", "Print rendered research/plan prompts and exit", false)
+  .option("--dry-run", "Show what would run for plan without executing workers", false)
+  .option("--print-prompt", "Print rendered plan prompts and exit", false)
   .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
   .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
   .option("-v, --verbose", "Show detailed per-task run diagnostics (within grouped output)", false)
@@ -765,38 +514,6 @@ program
     getApp,
     getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
     makeModes: MAKE_MODES,
-    getInvocationArgv: () => runtimeState.invocationArgv ?? process.argv.slice(2),
-  })));
-
-program
-  .command("translate")
-  .description("Re-express one Markdown document using the vocabulary defined by another.")
-  .argument("<what>", "Source Markdown document to translate")
-  .argument("<how>", "Know-how Markdown reference document")
-  .argument("<output>", "Target Markdown file path for translated output")
-  .option("--mode <mode>", "Translate mode: wait", "wait")
-  .option("--dry-run", "Show what would run for translation without executing workers", false)
-  .option("--print-prompt", "Print rendered translation prompt and exit", false)
-  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
-  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
-  .option("-v, --verbose", "Show detailed per-task run diagnostics (within grouped output)", false)
-  .option("-q, --quiet", "Suppress info-level output (info, success, progress, grouped status)", false)
-  .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
-  .option("--force-unlock", "Break stale source lockfiles before acquiring translate lock", false)
-  .option("--vars-file [path]", DEFAULT_VARS_FILE_HELP)
-  .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
-  .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
-  .option("--ignore-cli-block", "Disable execution of `cli` fenced blocks during prompt expansion")
-  .option(
-    "--cli-block-timeout <ms>",
-    "Timeout in milliseconds for executing `cli` fenced blocks (0 disables timeout)",
-    String(DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS),
-  )
-  .allowUnknownOption(false)
-  .action(withCliAction(createTranslateCommandAction({
-    getApp,
-    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
-    translateModes: TRANSLATE_MODES,
     getInvocationArgv: () => runtimeState.invocationArgv ?? process.argv.slice(2),
   })));
 
@@ -841,49 +558,6 @@ program
   })));
 
 program
-  .command("query")
-  .description("Research the codebase, plan investigation steps, and execute a query workflow.")
-  .argument("<text>", "Natural-language query text")
-  .option("--dir <path>", "Target directory to analyze", process.cwd())
-  .option("--format <format>", "Output format: markdown, json, yn, success-error", "markdown")
-  .option("--output <file>", "Write final query output to file instead of stdout")
-  .option("--skip-research", "Skip research phase and start from planning", false)
-  .option("--mode <mode>", "Query mode: wait", "wait")
-  .option(
-    "--scan-count <n>",
-    "Max clean-session TODO coverage scans for the plan phase (omit for convergence-driven unlimited mode)",
-  )
-  .option("--max-items <n>", "Cap the total number of TODO items added across all scans (default: no limit)")
-  .option(
-    "--deep <n>",
-    "Additional nested planning depth passes after top-level scans for the plan phase (default: 0)",
-    String(DEFAULT_PLAN_DEEP),
-  )
-  .option("--dry-run", "Show what would run for query orchestration without executing workers", false)
-  .option("--print-prompt", "Print rendered query prompts and exit", false)
-  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
-  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
-  .option("-v, --verbose", "Show detailed per-task run diagnostics (within grouped output)", false)
-  .option("-q, --quiet", "Suppress info-level output (info, success, progress, grouped status)", false)
-  .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
-  .option("--force-unlock", "Break stale source lockfiles before acquiring phase locks", false)
-  .option("--vars-file [path]", DEFAULT_VARS_FILE_HELP)
-  .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
-  .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
-  .option("--ignore-cli-block", "Disable execution of `cli` fenced blocks during prompt expansion")
-  .option(
-    "--cli-block-timeout <ms>",
-    "Timeout in milliseconds for executing `cli` fenced blocks (0 disables timeout)",
-    String(DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS),
-  )
-  .allowUnknownOption(false)
-  .action(withCliAction(createQueryCommandAction({
-    getApp,
-    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
-    queryModes: QUERY_MODES,
-  })));
-
-program
   .command("do")
   .description("Bootstrap with make, then execute all tasks against the same Markdown file.")
   .argument("<seed-text>", "Initial text content to write into the Markdown file")
@@ -922,7 +596,7 @@ program
   .option("--commit-message <template>", "Commit message template (supports {{task}} and {{file}})")
   .option(
     "--commit-mode <mode>",
-    "Commit timing for --commit: per-task (default) or file-done (effective run-all via --all/all/--redo/--clean)",
+    "Commit timing for --commit: per-task (default) or file-done (effective run-all via --all/--redo/--clean)",
     "per-task",
   )
   .option("--revertable", "Shorthand for --commit --keep-artifacts", false)
@@ -946,36 +620,6 @@ program
     getApp,
     getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
     makeModes: DO_MODES,
-    getInvocationArgv: () => runtimeState.invocationArgv ?? process.argv.slice(2),
-  })));
-
-program
-  .command("research")
-  .description("Enrich a Markdown document with implementation context and planning scaffolding.")
-  .argument("[markdown-file...]", "Markdown document to enrich")
-  .option("--mode <mode>", "Research mode: wait, tui", "wait")
-  .option("--dry-run", "Show what would be researched without executing", false)
-  .option("--print-prompt", "Print the rendered research prompt and exit", false)
-  .option("--keep-artifacts", "Preserve runtime prompts, logs, and metadata under <config-dir>/runs", false)
-  .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
-  .option("-v, --verbose", "Show detailed per-task run diagnostics (within grouped output)", false)
-  .option("-q, --quiet", "Suppress info-level output (info, success, progress, grouped status)", false)
-  .option("--trace", "Enable structured trace output at <config-dir>/runs/<id>/trace.jsonl", false)
-  .option("--force-unlock", "Break stale source lockfiles before acquiring research lock", false)
-  .option("--vars-file [path]", DEFAULT_VARS_FILE_HELP)
-  .option("--var <key=value>", "Template variable to inject into prompts (repeatable)", collectOption, [])
-  .option("--worker <pattern>", "Optional worker pattern override (alternative to -- <command>)")
-  .option("--ignore-cli-block", "Disable execution of `cli` fenced blocks during prompt expansion")
-  .option(
-    "--cli-block-timeout <ms>",
-    "Timeout in milliseconds for executing `cli` fenced blocks (0 disables timeout)",
-    String(DEFAULT_CLI_BLOCK_EXEC_TIMEOUT_MS),
-  )
-  .allowUnknownOption(false)
-  .action(withCliAction(createResearchCommandAction({
-    getApp,
-    getWorkerFromSeparator: () => runtimeState.workerFromSeparator,
-    researchModes: RESEARCH_MODES,
     getInvocationArgv: () => runtimeState.invocationArgv ?? process.argv.slice(2),
   })));
 
@@ -1025,31 +669,6 @@ program
   .allowUnknownOption(false)
   .action(withCliAction(createUnlockCommandAction({ getApp })));
 
-const workspaceCommand = program
-  .command("workspace")
-  .description("Manage linked workspace records and cleanup flows.")
-  .configureHelp({ showGlobalOptions: true });
-
-workspaceCommand
-  .command("unlink")
-  .description("Remove workspace link record(s) from the current directory without deleting files.")
-  .option("--workspace <dir|id>", "Select a workspace record by relative path or record id")
-  .option("--all", "Unlink all workspace records in the current workspace link file", false)
-  .option("--dry-run", "Show which workspace records would be unlinked without writing changes", false)
-  .allowUnknownOption(false)
-  .action(withCliAction(createWorkspaceUnlinkCommandAction({ getApp })));
-
-workspaceCommand
-  .command("remove")
-  .description("Remove workspace link record(s) and optionally delete linked workspace files.")
-  .option("--workspace <dir|id>", "Select a workspace record by relative path or record id")
-  .option("--all", "Remove all workspace records in the current workspace link file", false)
-  .option("--delete-files", "Delete selected linked workspace files/directories after confirmation", false)
-  .option("--dry-run", "Preview records/files that would be removed without changing disk", false)
-  .option("--force", "Skip confirmation prompts for destructive cleanup operations", false)
-  .allowUnknownOption(false)
-  .action(withCliAction(createWorkspaceRemoveCommandAction({ getApp })));
-
 program
   .command("localize")
   .description("Localize .rundown templates and locale intent aliases.")
@@ -1062,15 +681,15 @@ program
   .description("Create a .rundown/ directory with default templates (plan, execute, verify, repair, trace), scaffold tools/, and initialize vars.json/config.json when missing. Existing vars.json/config.json are preserved unless --overwrite-config is set. Use --config-dir to control where it is created.")
   .option("--language <lang>", "Localize templates and aliases after initialization")
   .option("--default-worker <command>", "Set default worker CLI command in config.json")
-  .option("--tui-worker <command>", "Set TUI worker CLI command in config.json")
+  .option("--interactive-worker <command>", "Set interactive worker CLI command in config.json")
   .option("--overwrite-config", "Overwrite existing vars.json/config.json during init", false)
   .option("--gitignore", "Add .rundown to .gitignore", false)
   .action(withCliAction(createInitCommandAction({ getApp })));
 
 program
   .command("with")
-  .description("Configure .rundown worker settings for a known harness preset (opencode asks before overwriting existing local worker keys).")
-  .argument("<harness>", "Harness preset name (for example: opencode)")
+  .description("Configure .rundown worker settings for a known provider preset (opencode asks before overwriting existing local worker keys).")
+  .argument("<provider>", "Provider preset name (for example: opencode)")
   .allowUnknownOption(false)
   .action(withCliAction(createWithCommandAction({
     getApp,
@@ -1143,8 +762,7 @@ function consumeLoopSignalExitCode(signal: NodeJS.Signals): number | undefined {
  */
 export async function parseCliArgs(argv: string[]): Promise<void> {
   resetCliOutputPortState();
-  // Normalize supported compatibility aliases before any option parsing occurs.
-  const rewrittenArgv = rewriteAllAlias(argv);
+  const rewrittenArgv = argv;
   // Split rundown-owned arguments from downstream worker arguments after `--`.
   const { rundownArgs, workerFromSeparator: workerCommandArgs } = splitWorkerFromSeparator(rewrittenArgv);
 
@@ -1182,14 +800,11 @@ export async function parseCliArgs(argv: string[]): Promise<void> {
   runtimeState.workerFromSeparator = workerCommandArgs;
 
   try {
-    // Keep research as a strict single-pass workflow for this iteration.
-    validateUnsupportedResearchScanCount(rundownArgs);
     validateUnsupportedAddMode(rundownArgs);
     validateUnsupportedMakeMode(rundownArgs);
     validateUnsupportedDoMode(rundownArgs);
     validateUnsupportedLoopMode(rundownArgs);
     validateRunCommitModeOption(rundownArgs);
-    validateUnsupportedMigrateAction(rundownArgs);
   } catch (error) {
     emitCliFatalError(error, runtimeState.invocationLogState, runtimeState.app?.emitOutput);
     terminate(1);
@@ -1202,69 +817,6 @@ export async function parseCliArgs(argv: string[]): Promise<void> {
   } finally {
     await awaitLockReleaseShutdown();
     cleanupCallCliCacheArtifactAtTeardown(rewrittenArgv, runtimeState.invocationLogState);
-  }
-}
-
-/**
- * Rejects removed positional migrate actions before commander parsing.
- */
-function validateUnsupportedMigrateAction(argv: string[]): void {
-  if (resolveInvocationCommand(argv) !== "migrate") {
-    return;
-  }
-
-  const optionsWithValue = new Set([
-    "--dir",
-    "--workspace",
-    "--from",
-    "--from-file",
-    "--run",
-    "--worker",
-    "--slug-worker",
-    "--to",
-  ]);
-  let positionalIndex = 0;
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-
-    if (token === "--") {
-      break;
-    }
-
-    if (token === "migrate") {
-      continue;
-    }
-
-    if (token === "--config-dir") {
-      index += 1;
-      continue;
-    }
-
-    if (token.startsWith("--config-dir=")) {
-      continue;
-    }
-
-    if (optionsWithValue.has(token)) {
-      index += 1;
-      continue;
-    }
-
-    if (token.startsWith("--")) {
-      continue;
-    }
-
-    if (positionalIndex === 0 && token === "new") {
-      positionalIndex = 1;
-      continue;
-    }
-
-    if (positionalIndex === 1) {
-      positionalIndex = 2;
-      continue;
-    }
-
-    throw new Error(`unknown action: ${token}`);
   }
 }
 
@@ -1321,22 +873,6 @@ function cleanupCallCliCacheArtifactAtTeardown(
         runtimeState.app?.emitOutput,
       );
   }
-}
-
-/**
- * Rejects plan-style scan/convergence options for `research`.
- */
-function validateUnsupportedResearchScanCount(argv: string[]): void {
-  if (resolveInvocationCommand(argv) !== "research") {
-    return;
-  }
-
-  const hasScanCountOption = argv.some((token) => token === "--scan-count" || token.startsWith("--scan-count="));
-  if (!hasScanCountOption) {
-    return;
-  }
-
-  throw new Error("Unsupported option for `research`: --scan-count. Research currently runs as a single-pass flow and does not support scan/convergence loops.");
 }
 
 /**
@@ -1402,7 +938,7 @@ function configureRunLikeCommandOptions(command: Command): Command {
     .option("--commit-message <template>", "Commit message template (supports {{task}} and {{file}})")
     .option(
       "--commit-mode <mode>",
-      "Commit timing for --commit: per-task (default) or file-done (effective run-all via --all/all/--redo/--clean)",
+      "Commit timing for --commit: per-task (default) or file-done (effective run-all via --all/--redo/--clean)",
       "per-task",
     )
     .option("--revertable", "Shorthand for --commit --keep-artifacts", false)
@@ -1411,7 +947,7 @@ function configureRunLikeCommandOptions(command: Command): Command {
     .option("--show-agent-output", "Show worker stdout/stderr during execution (hidden by default).", false)
     .option("-v, --verbose", "Show detailed per-phase run diagnostics (within grouped output)", false)
     .option("-q, --quiet", "Suppress info-level output (info, success, progress, grouped status)", false)
-    .option("--all", "Run all tasks sequentially instead of stopping after one (equivalent command: all)", false)
+    .option("--all", "Run all tasks sequentially instead of stopping after one", false)
     .option("--redo", "Reset all checkboxes in the source file before running", false)
     .option("--reset-after", "Reset all checkboxes in the source file after the run completes", false)
     .option("--clean", "Shorthand for --redo --reset-after", false)
@@ -1464,7 +1000,8 @@ function validateUnsupportedLoopMode(argv: string[]): void {
  * Validates --commit-mode values and run-all-only usage for `run`.
  */
 function validateRunCommitModeOption(argv: string[]): void {
-  if (resolveInvocationCommand(argv) !== "run") {
+  const command = resolveInvocationCommand(argv);
+  if (command !== "run" && command !== "all") {
     return;
   }
 
@@ -1477,7 +1014,7 @@ function validateRunCommitModeOption(argv: string[]): void {
     throw new Error(`Invalid --commit-mode value: ${commitMode}. Allowed: ${COMMIT_MODES.join(", ")}.`);
   }
 
-  if (commitMode === "file-done" && !hasEffectiveRunAllOption(argv)) {
+  if (command === "run" && commitMode === "file-done" && !hasEffectiveRunAllOption(argv)) {
     throw new Error(
       "Invalid --commit-mode usage: file-done is only supported with effective run-all (`run --all`, `all`, or implicit `--redo`/`--clean`).",
     );

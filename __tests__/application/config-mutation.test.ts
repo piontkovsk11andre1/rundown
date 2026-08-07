@@ -71,15 +71,15 @@ describe("config-mutation", () => {
 
     const code = unsetConfig({
       scope: "global",
-      key: "commands.plan",
+      key: "profiles.plan",
     });
 
     expect(code).toBe(0);
     expect(dependencies.workerConfigPort.unsetValue).toHaveBeenCalledWith("/workspace/.rundown", {
       scope: "global",
-      keyPath: "commands.plan",
+      keyPath: "profiles.plan",
     });
-    expect(events).toContainEqual({ kind: "success", message: "Removed global config key: commands.plan" });
+    expect(events).toContainEqual({ kind: "success", message: "Removed global config key: profiles.plan" });
   });
 
   it("rejects invalid boolean values", () => {

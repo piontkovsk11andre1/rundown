@@ -22,12 +22,7 @@ import {
   type ResetWorkerHealthOptions,
 } from "./application/reset-worker-health.js";
 import { createPlanTask, type PlanTaskOptions as PlanTaskUseCaseOptions } from "./application/plan-task.js";
-import { createResearchTask, type ResearchTaskOptions as ResearchTaskUseCaseOptions } from "./application/research-task.js";
 import { createTranslateTask, type TranslateTaskOptions as TranslateTaskUseCaseOptions } from "./application/translate-task.js";
-import {
-  createQueryTask,
-  type QueryTaskOptions as QueryTaskUseCaseOptions,
-} from "./application/query-task.js";
 import { createListTasks, type ListTasksOptions } from "./application/list-tasks.js";
 import { createNextTask, type NextTaskOptions } from "./application/next-task.js";
 import { createUnlockTask, type UnlockTaskOptions } from "./application/unlock-task.js";
@@ -189,10 +184,8 @@ export type App = {
   predictTask: (options: PredictTaskCommandOptions) => Promise<number>;
   testSpecs: (options: TestSpecsOptions) => Promise<number>;
   planTask: (options: PlanTaskCommandOptions) => Promise<number>;
-  researchTask: (options: ResearchTaskCommandOptions) => Promise<number>;
   translateTask: (options: TranslateTaskCommandOptions) => Promise<number>;
   exploreTask: (options: ExploreTaskCommandOptions) => Promise<number>;
-  queryTask: (options: QueryTaskCommandOptions) => Promise<number>;
   unlockTask: (options: UnlockTaskOptions) => Promise<number>;
   listTasks: (options: ListTasksOptions) => Promise<number>;
   nextTask: (options: NextTaskOptions) => Promise<number>;
@@ -234,49 +227,6 @@ export interface PlanTaskCommandOptions {
   forceUnlock: boolean;
   ignoreCliBlock: boolean;
   cliBlockTimeoutMs?: number;
-  verbose?: boolean;
-}
-
-export interface ResearchTaskCommandOptions {
-  source: string;
-  cwd?: string;
-  mode: ResearchTaskUseCaseOptions["mode"];
-  workerPattern: ResearchTaskUseCaseOptions["workerPattern"];
-  showAgentOutput: boolean;
-  dryRun: boolean;
-  printPrompt: boolean;
-  keepArtifacts: boolean;
-  varsFileOption: string | boolean | undefined;
-  cliTemplateVarArgs: string[];
-  trace: boolean;
-  forceUnlock: boolean;
-  ignoreCliBlock: boolean;
-  cliBlockTimeoutMs?: number;
-  configDirOption?: string;
-  verbose?: boolean;
-}
-
-export interface QueryTaskCommandOptions {
-  queryText: string;
-  dir: string;
-  format: QueryTaskUseCaseOptions["format"];
-  output?: string;
-  skipResearch: boolean;
-  mode: QueryTaskUseCaseOptions["mode"];
-  workerPattern: QueryTaskUseCaseOptions["workerPattern"];
-  showAgentOutput: boolean;
-  dryRun: boolean;
-  printPrompt: boolean;
-  keepArtifacts: boolean;
-  varsFileOption: string | boolean | undefined;
-  cliTemplateVarArgs: string[];
-  trace: boolean;
-  forceUnlock: boolean;
-  ignoreCliBlock: boolean;
-  cliBlockTimeoutMs?: number;
-  scanCount?: number;
-  maxItems?: number;
-  deep?: number;
   verbose?: boolean;
 }
 
@@ -558,25 +508,6 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
 
   const exploreTaskUseCase = (ports: AppPorts) => createExploreTask({
     output: ports.output,
-    researchTask: createResearchTask({
-      workerExecutor: ports.workerExecutor,
-      taskVerification: ports.taskVerification,
-      taskRepair: ports.taskRepair,
-      verificationStore: ports.verificationStore,
-      traceWriter: ports.traceWriter,
-      cliBlockExecutor: ports.cliBlockExecutor,
-      artifactStore: ports.artifactStore,
-      fileSystem: ports.fileSystem,
-      fileLock: ports.fileLock,
-      workingDirectory: ports.workingDirectory,
-      pathOperations: ports.pathOperations,
-      memoryResolver: ports.memoryResolver,
-      templateLoader: ports.templateLoader,
-      templateVarsLoader: ports.templateVarsLoader,
-      workerConfigPort: ports.workerConfigPort,
-      configDir: ports.configDir,
-      output: ports.output,
-    }),
     planTask: planTaskUseCase(ports),
   });
 
@@ -738,25 +669,6 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
         maxItems: options.maxItems,
       });
     },
-    researchTask: (ports) => createResearchTask({
-      workerExecutor: ports.workerExecutor,
-      taskVerification: ports.taskVerification,
-      taskRepair: ports.taskRepair,
-      verificationStore: ports.verificationStore,
-      traceWriter: ports.traceWriter,
-      cliBlockExecutor: ports.cliBlockExecutor,
-      artifactStore: ports.artifactStore,
-      fileSystem: ports.fileSystem,
-      fileLock: ports.fileLock,
-      workingDirectory: ports.workingDirectory,
-      pathOperations: ports.pathOperations,
-      memoryResolver: ports.memoryResolver,
-      templateLoader: ports.templateLoader,
-      templateVarsLoader: ports.templateVarsLoader,
-      workerConfigPort: ports.workerConfigPort,
-      configDir: ports.configDir,
-      output: ports.output,
-    }),
     translateTask: (ports) => createTranslateTask({
       workerExecutor: ports.workerExecutor,
       cliBlockExecutor: ports.cliBlockExecutor,
@@ -777,36 +689,6 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
         return createArtifactTraceWriter(ports, artifactContext);
       },
       output: ports.output,
-    }),
-    queryTask: (ports) => createQueryTask({
-      runTask: runTaskUseCase(ports),
-      researchTask: createResearchTask({
-        workerExecutor: ports.workerExecutor,
-        taskVerification: ports.taskVerification,
-        taskRepair: ports.taskRepair,
-        verificationStore: ports.verificationStore,
-        traceWriter: ports.traceWriter,
-        cliBlockExecutor: ports.cliBlockExecutor,
-        artifactStore: ports.artifactStore,
-        fileSystem: ports.fileSystem,
-        fileLock: ports.fileLock,
-        workingDirectory: ports.workingDirectory,
-        pathOperations: ports.pathOperations,
-        memoryResolver: ports.memoryResolver,
-        templateLoader: ports.templateLoader,
-        templateVarsLoader: ports.templateVarsLoader,
-        workerConfigPort: ports.workerConfigPort,
-        configDir: ports.configDir,
-        output: ports.output,
-      }),
-      planTask: planTaskUseCase(ports),
-      artifactStore: ports.artifactStore,
-      fileSystem: ports.fileSystem,
-      pathOperations: ports.pathOperations,
-      workingDirectory: ports.workingDirectory,
-      output: ports.output,
-      templateLoader: ports.templateLoader,
-      configDir: ports.configDir,
     }),
     exploreTask: (ports) => exploreTaskUseCase(ports),
     unlockTask: (ports) => createUnlockTask({
@@ -963,9 +845,7 @@ function createAppFromFactories(
   const predictTask = factories.predictTask(ports);
   const testSpecs = factories.testSpecs(ports);
   const planTask = factories.planTask(ports);
-  const researchTask = factories.researchTask(ports);
   const translateTask = factories.translateTask(ports);
-  const queryTask = factories.queryTask(ports);
   const exploreTask = factories.exploreTask(ports);
   const unlockTask = factories.unlockTask(ports);
   const listTasks = factories.listTasks(ports);
@@ -1065,10 +945,8 @@ function createAppFromFactories(
     predictTask,
     testSpecs,
     planTask,
-    researchTask,
     translateTask,
     exploreTask,
-    queryTask,
     unlockTask,
     listTasks,
     nextTask,

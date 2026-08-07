@@ -8,17 +8,11 @@ import {
   DEFAULT_HELP_TEMPLATE,
   DEFAULT_MIGRATE_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
-  DEFAULT_QUERY_AGGREGATION_TEMPLATE,
-  DEFAULT_QUERY_EXECUTION_TEMPLATE,
-  DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
-  DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
-  DEFAULT_QUERY_YN_SEED_TEMPLATE,
   DEFAULT_TRANSLATE_TEMPLATE,
   DEFAULT_RESEARCH_REPAIR_TEMPLATE,
   DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
   DEFAULT_RESEARCH_OUTPUT_CONTRACT_TEMPLATE,
   DEFAULT_RESEARCH_VERIFY_TEMPLATE,
-  DEFAULT_QUERY_SEED_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
   DEFAULT_RESOLVE_TEMPLATE,
@@ -66,12 +60,6 @@ export interface ProjectTemplates {
   testFuture: string;
   testMaterialized: string;
   migrate: string;
-  querySeed: string;
-  querySeedYn: string;
-  querySeedSuccessError: string;
-  queryExecute: string;
-  queryStreamExecute: string;
-  queryAggregate: string;
   translate: string;
 }
 
@@ -114,12 +102,6 @@ export function loadProjectTemplatesFromPorts(
       testFuture: DEFAULT_TEST_FUTURE_TEMPLATE,
       testMaterialized: DEFAULT_TEST_MATERIALIZED_TEMPLATE,
       migrate: DEFAULT_MIGRATE_TEMPLATE,
-      querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
-      querySeedYn: DEFAULT_QUERY_YN_SEED_TEMPLATE,
-      querySeedSuccessError: DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
-      queryExecute: DEFAULT_QUERY_EXECUTION_TEMPLATE,
-      queryStreamExecute: DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
-      queryAggregate: DEFAULT_QUERY_AGGREGATION_TEMPLATE,
       translate: DEFAULT_TRANSLATE_TEMPLATE,
     };
   }
@@ -165,18 +147,6 @@ export function loadProjectTemplatesFromPorts(
     testFuture: loadTemplateWithFallback("test-future.md", DEFAULT_TEST_FUTURE_TEMPLATE),
     testMaterialized: loadTemplateWithFallback("test-materialized.md", DEFAULT_TEST_MATERIALIZED_TEMPLATE),
     migrate: loadTemplateWithFallback("migrate.md", DEFAULT_MIGRATE_TEMPLATE),
-    querySeed: loadTemplateWithFallback("query-seed.md", DEFAULT_QUERY_SEED_TEMPLATE),
-    querySeedYn: loadTemplateWithFallback("query-seed-yn.md", DEFAULT_QUERY_YN_SEED_TEMPLATE),
-    querySeedSuccessError: loadTemplateWithFallback(
-      "query-seed-success-error.md",
-      DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
-    ),
-    queryExecute: loadTemplateWithFallback("query-execute.md", DEFAULT_QUERY_EXECUTION_TEMPLATE),
-    queryStreamExecute: loadTemplateWithFallback(
-      "query-stream-execute.md",
-      DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
-    ),
-    queryAggregate: loadTemplateWithFallback("query-aggregate.md", DEFAULT_QUERY_AGGREGATION_TEMPLATE),
     translate: loadTemplateWithFallback("translate.md", DEFAULT_TRANSLATE_TEMPLATE),
   };
 }

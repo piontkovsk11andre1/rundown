@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_DEEP_PLAN_TEMPLATE,
   DEFAULT_HELP_TEMPLATE,
-  DEFAULT_QUERY_EXECUTION_TEMPLATE,
-  DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
   DEFAULT_RESEARCH_VERIFY_TEMPLATE,
   DEFAULT_RESOLVE_TEMPLATE,
@@ -271,22 +269,6 @@ describe("default prompt templates", () => {
     expect(DEFAULT_DEEP_PLAN_TEMPLATE).toContain("decompose it with child `get:`, child `for:`, child `memory:`, optional child `fast:`");
   });
 
-  it("enforces deterministic query execution output contracts", () => {
-    expect(DEFAULT_QUERY_EXECUTION_TEMPLATE).toContain("## Output contract (strict)");
-    expect(DEFAULT_QUERY_EXECUTION_TEMPLATE).toContain("Output extracted items only.");
-    expect(DEFAULT_QUERY_EXECUTION_TEMPLATE).toContain("Emit exactly one extracted item per line.");
-    expect(DEFAULT_QUERY_EXECUTION_TEMPLATE).toContain("Preserve discovery order.");
-    expect(DEFAULT_QUERY_EXECUTION_TEMPLATE).toContain("Do not add commentary, headings, labels, code fences, or JSON.");
-    expect(DEFAULT_QUERY_EXECUTION_TEMPLATE).toContain("If no items are found, write an empty file.");
-
-    expect(DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE).toContain("## Output contract (strict)");
-    expect(DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE).toContain("Output extracted items only.");
-    expect(DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE).toContain("Emit exactly one extracted item per line.");
-    expect(DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE).toContain("Preserve discovery order.");
-    expect(DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE).toContain("Do not add commentary, headings, labels, code fences, or JSON.");
-    expect(DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE).toContain("If no items are found, return an exactly empty stdout response (no lines, no blank lines, no whitespace-only output).");
-  });
-
   it("keeps memory-vs-write classification fixtures consistent in plan and deep-plan templates", () => {
     const classificationFixtures = [
       {
@@ -425,7 +407,7 @@ describe("default prompt templates", () => {
     expect(DEFAULT_HELP_TEMPLATE).toContain("`test-future.md`");
     expect(DEFAULT_HELP_TEMPLATE).toContain("`test-materialized.md`");
     expect(DEFAULT_HELP_TEMPLATE).toContain("`migrate*.md`");
-    expect(DEFAULT_HELP_TEMPLATE).toContain("`query-*.md`");
+    expect(DEFAULT_HELP_TEMPLATE).not.toContain("`query-*.md`");
   });
 
   it("keeps research verification template deterministic and outcome-oriented", () => {

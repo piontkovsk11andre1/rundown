@@ -22,7 +22,6 @@ import {
   createPlanCommandAction,
   createPredictCommandAction,
   createSnapshotCommandAction,
-  createQueryCommandAction,
   createRootTuiAction,
   createTranslateCommandAction,
   createReverifyCommandAction,
@@ -779,51 +778,6 @@ describe("createRootTuiAction", () => {
   });
 });
 
-describe("createQueryCommandAction", () => {
-  it("forwards --skip-research and normalized options to queryTask", async () => {
-    const queryTask = vi.fn(async () => 0);
-    const app = { queryTask } as unknown as CliApp;
-    const action = createQueryCommandAction({
-      getApp: () => app,
-      getWorkerFromSeparator: () => undefined,
-      queryModes: ["wait"],
-    });
-
-    const exitCode = await action("check auth flow", {
-      dir: "./src",
-      format: "markdown",
-      output: "./result.md",
-      skipResearch: true,
-      mode: "wait",
-      dryRun: false,
-      printPrompt: false,
-      keepArtifacts: false,
-      trace: false,
-      forceUnlock: false,
-      ignoreCliBlock: false,
-      worker: "opencode run",
-      var: ["custom=value"],
-    });
-
-    expect(exitCode).toBe(0);
-    expect(queryTask).toHaveBeenCalledTimes(1);
-    expect(queryTask).toHaveBeenCalledWith(expect.objectContaining({
-      queryText: "check auth flow",
-      dir: path.resolve("./src"),
-      cwd: expect.any(String),
-      invocationDir: expect.any(String),
-      workspaceDir: expect.any(String),
-      workspaceLinkPath: expect.any(String),
-      isLinkedWorkspace: expect.any(Boolean),
-      format: "markdown",
-      output: "./result.md",
-      skipResearch: true,
-      mode: "wait",
-      cliTemplateVarArgs: ["custom=value"],
-    }));
-  });
-});
-
 describe("createPlanCommandAction", () => {
   it("forwards --loop and normalized options to planTask", async () => {
     const planTask = vi.fn(async () => 0);
@@ -972,7 +926,7 @@ describe("createMakeCommandAction", () => {
     });
 
     try {
-      await expect(action("seed", targetFile, { skipResearch: true }))
+      await expect(action("seed", targetFile, {}))
         .rejects
         .toThrow("Parent directory does not exist");
       expect(researchTask).not.toHaveBeenCalled();
@@ -982,7 +936,7 @@ describe("createMakeCommandAction", () => {
     }
   });
 
-  it("returns non-zero when plan fails in default make flow", async () => {
+  it("returns non-zero when plan fails in make flow", async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-plan-fail-default-"));
     const targetFile = path.join(tempRoot, "migrations", "seed.md");
     fs.mkdirSync(path.dirname(targetFile), { recursive: true });
@@ -1000,31 +954,6 @@ describe("createMakeCommandAction", () => {
       const exitCode = await action("seed", targetFile, {});
 
       expect(exitCode).toBe(2);
-      expect(researchTask).toHaveBeenCalledTimes(1);
-      expect(planTask).toHaveBeenCalledTimes(1);
-    } finally {
-      fs.rmSync(tempRoot, { recursive: true, force: true });
-    }
-  });
-
-  it("returns non-zero when plan fails in skip-research make flow", async () => {
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-plan-fail-skip-"));
-    const targetFile = path.join(tempRoot, "migrations", "seed.md");
-    fs.mkdirSync(path.dirname(targetFile), { recursive: true });
-
-    const researchTask = vi.fn(async () => 0);
-    const planTask = vi.fn(async () => 2);
-    const app = { researchTask, planTask } as unknown as CliApp;
-    const action = createMakeCommandAction({
-      getApp: () => app,
-      getWorkerFromSeparator: () => undefined,
-      makeModes: ["wait"],
-    });
-
-    try {
-      const exitCode = await action("seed", targetFile, { skipResearch: true });
-
-      expect(exitCode).toBe(2);
       expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
     } finally {
@@ -1032,44 +961,8 @@ describe("createMakeCommandAction", () => {
     }
   });
 
-  it("normalizes skip flags and bypasses research for make bootstrap", async () => {
-    const scenarios: Array<{ label: string; opts: CliOpts }> = [
-      { label: "--skip-research", opts: { skipResearch: true } },
-      { label: "--raw alias", opts: { raw: true } },
-      { label: "both skip flags", opts: { skipResearch: true, raw: true } },
-    ];
-
-    for (const scenario of scenarios) {
-      const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), `rundown-make-skip-normalized-${scenario.label.replace(/\s+/g, "-")}-`));
-      const targetFile = path.join(tempRoot, "migrations", "seed.md");
-      fs.mkdirSync(path.dirname(targetFile), { recursive: true });
-
-      const researchTask = vi.fn(async () => 0);
-      const planTask = vi.fn(async () => 0);
-      const app = { researchTask, planTask } as unknown as CliApp;
-      const action = createMakeCommandAction({
-        getApp: () => app,
-        getWorkerFromSeparator: () => undefined,
-        makeModes: ["wait"],
-      });
-
-      try {
-        const exitCode = await action("seed", targetFile, scenario.opts);
-
-        expect(exitCode).toBe(0);
-        expect(researchTask).not.toHaveBeenCalled();
-        expect(planTask).toHaveBeenCalledTimes(1);
-        expect(planTask).toHaveBeenCalledWith(expect.objectContaining({
-          source: targetFile,
-        }));
-      } finally {
-        fs.rmSync(tempRoot, { recursive: true, force: true });
-      }
-    }
-  });
-
-  it("emits skip-research phase messaging and starts from planning", async () => {
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-skip-message-"));
+  it("emits plan-only phase messaging", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-plan-message-"));
     const targetFile = path.join(tempRoot, "migrations", "seed.md");
     fs.mkdirSync(path.dirname(targetFile), { recursive: true });
 
@@ -1084,43 +977,12 @@ describe("createMakeCommandAction", () => {
     });
 
     try {
-      const exitCode = await action("seed", targetFile, { skipResearch: true });
+      const exitCode = await action("seed", targetFile, {});
 
       expect(exitCode).toBe(0);
       expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
-      expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Make phase 1/2 skipped: research" });
-      expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Make transition: start from planning (--skip-research/--raw)" });
-      expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Make phase 2/2: plan" });
-    } finally {
-      fs.rmSync(tempRoot, { recursive: true, force: true });
-    }
-  });
-
-  it("treats --raw as skip-research alias with the same phase messaging", async () => {
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-raw-message-"));
-    const targetFile = path.join(tempRoot, "migrations", "seed.md");
-    fs.mkdirSync(path.dirname(targetFile), { recursive: true });
-
-    const researchTask = vi.fn(async () => 0);
-    const planTask = vi.fn(async () => 0);
-    const emitOutput = vi.fn<(event: ApplicationOutputEvent) => void>();
-    const app = { researchTask, planTask, emitOutput } as unknown as CliApp;
-    const action = createMakeCommandAction({
-      getApp: () => app,
-      getWorkerFromSeparator: () => undefined,
-      makeModes: ["wait"],
-    });
-
-    try {
-      const exitCode = await action("seed", targetFile, { raw: true });
-
-      expect(exitCode).toBe(0);
-      expect(researchTask).not.toHaveBeenCalled();
-      expect(planTask).toHaveBeenCalledTimes(1);
-      expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Make phase 1/2 skipped: research" });
-      expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Make transition: start from planning (--skip-research/--raw)" });
-      expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Make phase 2/2: plan" });
+      expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Make phase 1/1: plan" });
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
@@ -1231,7 +1093,7 @@ describe("bootstrap seed prefix resolution", () => {
 
       expect(exitCode).toBe(0);
       expect(fs.readFileSync(targetFile, "utf8")).toBe(seedText);
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -1264,7 +1126,7 @@ describe("bootstrap seed prefix resolution", () => {
 
       expect(exitCode).toBe(0);
       expect(fs.readFileSync(targetFile, "utf8")).toBe("# Brief\n\nCapture migration scope\n");
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -1291,7 +1153,7 @@ describe("bootstrap seed prefix resolution", () => {
 
       expect(exitCode).toBe(0);
       expect(fs.readFileSync(targetFile, "utf8")).toBe(seedText);
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -1318,7 +1180,7 @@ describe("bootstrap seed prefix resolution", () => {
 
       expect(exitCode).toBe(0);
       expect(fs.readFileSync(targetFile, "utf8")).toBe(seedText);
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -1345,7 +1207,7 @@ describe("bootstrap seed prefix resolution", () => {
 
       expect(exitCode).toBe(0);
       expect(fs.readFileSync(targetFile, "utf8")).toBe(seedText);
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -1378,7 +1240,7 @@ describe("bootstrap seed prefix resolution", () => {
 
       expect(exitCode).toBe(0);
       expect(fs.readFileSync(targetFile, "utf8")).toBe("fast|Build release checklist");
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -1412,7 +1274,7 @@ describe("bootstrap seed prefix resolution", () => {
 
       expect(exitCode).toBe(0);
       expect(fs.readFileSync(targetFile, "utf8")).toBe(seedText);
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -1439,7 +1301,7 @@ describe("bootstrap seed prefix resolution", () => {
 
       expect(exitCode).toBe(0);
       expect(fs.readFileSync(targetFile, "utf8")).toBe(seedText);
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -1474,7 +1336,7 @@ describe("bootstrap seed prefix resolution", () => {
 
       expect(exitCode).toBe(0);
       expect(fs.readFileSync(targetFile, "utf8")).toBe("# Do\n\nExecute release rollout\n");
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
       expect(runTask).toHaveBeenCalledTimes(1);
     } finally {
@@ -1504,7 +1366,7 @@ describe("bootstrap seed prefix resolution", () => {
 
       expect(exitCode).toBe(0);
       expect(fs.readFileSync(targetFile, "utf8")).toBe(seedText);
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
       expect(runTask).toHaveBeenCalledTimes(1);
     } finally {
@@ -1900,7 +1762,7 @@ describe("createInitCommandAction", () => {
     expect(initProject).toHaveBeenCalledTimes(1);
     expect(initProject).toHaveBeenCalledWith({
       defaultWorker: "opencode run",
-      tuiWorker: undefined,
+      interactiveWorker: undefined,
       gitignore: true,
       overwriteConfig: true,
       silent: false,
@@ -1917,7 +1779,7 @@ describe("createInitCommandAction", () => {
     const exitCode = await action({
       language: "Japanese",
       defaultWorker: "opencode run",
-      tuiWorker: "opencode",
+      interactiveWorker: "opencode",
       overwriteConfig: true,
       gitignore: true,
     });
@@ -1926,7 +1788,7 @@ describe("createInitCommandAction", () => {
     expect(initProject).toHaveBeenCalledTimes(2);
     expect(initProject).toHaveBeenNthCalledWith(1, {
       defaultWorker: "opencode run",
-      tuiWorker: "opencode",
+      interactiveWorker: "opencode",
       gitignore: true,
       overwriteConfig: true,
       silent: true,
@@ -1935,7 +1797,7 @@ describe("createInitCommandAction", () => {
     expect(localizeProject).toHaveBeenCalledWith({ language: "Japanese" });
     expect(initProject).toHaveBeenNthCalledWith(2, {
       defaultWorker: "opencode run",
-      tuiWorker: "opencode",
+      interactiveWorker: "opencode",
       gitignore: true,
       overwriteConfig: true,
     });
@@ -1972,12 +1834,12 @@ describe("createWorkerHealthCommandAction", () => {
 });
 
 describe("createWithCommandAction", () => {
-  it("forwards harness argument to withTask, renders output, then opens root TUI", async () => {
+  it("forwards provider argument to withTask and renders output without opening root TUI", async () => {
     const emitOutput = vi.fn<(event: ApplicationOutputEvent) => void>();
     const runRootTuiSpy = vi.spyOn(tuiModule, "runRootTui").mockResolvedValue(0);
     const withTask = vi.fn(async () => ({
       exitCode: 0,
-      harnessKey: "opencode",
+      providerKey: "opencode",
       source: "preset" as const,
       cancelled: false,
       changed: true,
@@ -1989,17 +1851,12 @@ describe("createWithCommandAction", () => {
           value: ["opencode", "run", "$bootstrap"],
         },
         {
-          keyPath: "workers.tui",
+          keyPath: "workers.interactive",
           status: "set",
           value: ["opencode", "--prompt", "$bootstrap"],
         },
         {
-          keyPath: "commands.discuss",
-          status: "set",
-          value: ["opencode"],
-        },
-        {
-          keyPath: "workers.fallbacks",
+          keyPath: "fallbacks.default",
           status: "preserved",
         },
       ] as const,
@@ -2018,19 +1875,12 @@ describe("createWithCommandAction", () => {
 
       expect(exitCode).toBe(0);
       expect(withTask).toHaveBeenCalledTimes(1);
-      expect(withTask).toHaveBeenCalledWith({ harness: "opencode" });
-      expect(runRootTuiSpy).toHaveBeenCalledTimes(1);
-      expect(runRootTuiSpy).toHaveBeenCalledWith(expect.objectContaining({
-        app,
-        argv: ["with", "opencode"],
-        workerPattern: expect.objectContaining({
-          command: [],
-        }),
-      }));
-      expect(emitOutput).toHaveBeenCalledWith({ kind: "success", message: "Applied harness preset: opencode" });
+      expect(withTask).toHaveBeenCalledWith({ provider: "opencode" });
+      expect(runRootTuiSpy).not.toHaveBeenCalled();
+      expect(emitOutput).toHaveBeenCalledWith({ kind: "success", message: "Applied provider preset: opencode" });
       expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Path: /workspace/.rundown/config.json" });
       expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Configured keys:" });
-      expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Opening Rundown root TUI..." });
+      expect(emitOutput).not.toHaveBeenCalledWith({ kind: "info", message: "Opening Rundown root TUI..." });
       expect(emitOutput).toHaveBeenCalledWith({
         kind: "info",
         message: "- workers.default = [\"opencode\",\"run\",\"$bootstrap\"]",
@@ -2040,12 +1890,14 @@ describe("createWithCommandAction", () => {
     }
   });
 
-  it("reuses root TUI worker-pattern resolution when separator worker is present", async () => {
+  it("does not resolve separator worker when applying provider preset", async () => {
     const emitOutput = vi.fn<(event: ApplicationOutputEvent) => void>();
     const runRootTuiSpy = vi.spyOn(tuiModule, "runRootTui").mockResolvedValue(0);
+    const getWorkerFromSeparator = vi.fn(() => ["opencode", "run", "--file", "$file", "$bootstrap"]);
+    const getInvocationArgv = vi.fn(() => ["with", "opencode"]);
     const withTask = vi.fn(async () => ({
       exitCode: 0,
-      harnessKey: "opencode",
+      providerKey: "opencode",
       source: "preset" as const,
       cancelled: false,
       changed: true,
@@ -2057,17 +1909,12 @@ describe("createWithCommandAction", () => {
           value: ["opencode", "run", "$bootstrap"],
         },
         {
-          keyPath: "workers.tui" as const,
+          keyPath: "workers.interactive" as const,
           status: "set" as const,
           value: ["opencode", "--prompt", "$bootstrap"],
         },
         {
-          keyPath: "commands.discuss" as const,
-          status: "set" as const,
-          value: ["opencode"],
-        },
-        {
-          keyPath: "workers.fallbacks" as const,
+          keyPath: "fallbacks.default" as const,
           status: "preserved" as const,
         },
       ],
@@ -2076,8 +1923,8 @@ describe("createWithCommandAction", () => {
     (app as unknown as { emitOutput: typeof emitOutput }).emitOutput = emitOutput;
     const action = createWithCommandAction({
       getApp: () => app,
-      getWorkerFromSeparator: () => ["opencode", "run", "--file", "$file", "$bootstrap"],
-      getInvocationArgv: () => ["with", "opencode"],
+      getWorkerFromSeparator,
+      getInvocationArgv,
       isInteractiveTerminal: () => true,
     });
 
@@ -2085,49 +1932,19 @@ describe("createWithCommandAction", () => {
       const exitCode = await action("opencode");
 
       expect(exitCode).toBe(0);
-      expect(runRootTuiSpy).toHaveBeenCalledTimes(1);
-      expect(runRootTuiSpy).toHaveBeenCalledWith(expect.objectContaining({
-        workerPattern: expect.objectContaining({
-          command: ["opencode", "run", "--file", "$file", "$bootstrap"],
-          usesBootstrap: true,
-          usesFile: true,
-          appendFile: false,
-        }),
-      }));
+      expect(getWorkerFromSeparator).not.toHaveBeenCalled();
+      expect(getInvocationArgv).not.toHaveBeenCalled();
+      expect(runRootTuiSpy).not.toHaveBeenCalled();
     } finally {
       runRootTuiSpy.mockRestore();
     }
   });
 
-  it("warns and reports custom source when unknown harness is configured interactively", async () => {
+  it("propagates unknown provider errors without reporting custom mappings", async () => {
     const emitOutput = vi.fn<(event: ApplicationOutputEvent) => void>();
-    const withTask = vi.fn(async () => ({
-      exitCode: 0,
-      harnessKey: "mytool",
-      source: "custom" as const,
-      cancelled: false,
-      changed: true,
-      configPath: "/workspace/.rundown/config.json",
-      configuredKeys: [
-        {
-          keyPath: "workers.default" as const,
-          status: "set" as const,
-          value: ["mytool", "run", "--file", "$file", "$bootstrap"],
-        },
-        {
-          keyPath: "workers.tui" as const,
-          status: "removed" as const,
-        },
-        {
-          keyPath: "commands.discuss" as const,
-          status: "removed" as const,
-        },
-        {
-          keyPath: "workers.fallbacks" as const,
-          status: "preserved" as const,
-        },
-      ],
-    }));
+    const withTask = vi.fn(async () => {
+      throw new Error("Unknown provider preset: mytool.");
+    });
 
     const runRootTuiSpy = vi.spyOn(tuiModule, "runRootTui").mockResolvedValue(0);
     const app = { withTask } as unknown as CliApp;
@@ -2139,30 +1956,21 @@ describe("createWithCommandAction", () => {
     });
 
     try {
-      const exitCode = await action("mytool");
-
-      expect(exitCode).toBe(0);
-      expect(withTask).toHaveBeenCalledWith({ harness: "mytool" });
-      expect(emitOutput).toHaveBeenCalledWith({
-        kind: "warn",
-        message: "Harness \"mytool\" is not in the preset registry. Saved custom invocation mapping.",
-      });
-      expect(emitOutput).toHaveBeenCalledWith({
-        kind: "success",
-        message: "Applied custom harness mapping: mytool",
-      });
+      await expect(action("mytool")).rejects.toThrow("Unknown provider preset: mytool.");
+      expect(withTask).toHaveBeenCalledWith({ provider: "mytool" });
+      expect(emitOutput).not.toHaveBeenCalled();
       expect(runRootTuiSpy).not.toHaveBeenCalled();
     } finally {
       runRootTuiSpy.mockRestore();
     }
   });
 
-  it("opens root TUI even when opencode preset application is a no-op", async () => {
+  it("does not open root TUI when opencode preset application is a no-op", async () => {
     const emitOutput = vi.fn<(event: ApplicationOutputEvent) => void>();
     const runRootTuiSpy = vi.spyOn(tuiModule, "runRootTui").mockResolvedValue(0);
     const withTask = vi.fn(async () => ({
       exitCode: 0,
-      harnessKey: "opencode",
+      providerKey: "opencode",
       source: "preset" as const,
       cancelled: false,
       changed: false,
@@ -2174,17 +1982,12 @@ describe("createWithCommandAction", () => {
           value: ["opencode", "run", "$bootstrap"],
         },
         {
-          keyPath: "workers.tui" as const,
+          keyPath: "workers.interactive" as const,
           status: "set" as const,
           value: ["opencode", "--prompt", "$bootstrap"],
         },
         {
-          keyPath: "commands.discuss" as const,
-          status: "set" as const,
-          value: ["opencode"],
-        },
-        {
-          keyPath: "workers.fallbacks" as const,
+          keyPath: "fallbacks.default" as const,
           status: "preserved" as const,
         },
       ],
@@ -2202,12 +2005,12 @@ describe("createWithCommandAction", () => {
       const exitCode = await action("opencode");
 
       expect(exitCode).toBe(0);
-      expect(runRootTuiSpy).toHaveBeenCalledTimes(1);
+      expect(runRootTuiSpy).not.toHaveBeenCalled();
       expect(emitOutput).toHaveBeenCalledWith({
         kind: "info",
-        message: "No change: harness preset opencode is already configured.",
+        message: "No change: provider preset opencode is already configured.",
       });
-      expect(emitOutput).toHaveBeenCalledWith({ kind: "info", message: "Opening Rundown root TUI..." });
+      expect(emitOutput).not.toHaveBeenCalledWith({ kind: "info", message: "Opening Rundown root TUI..." });
     } finally {
       runRootTuiSpy.mockRestore();
     }
@@ -2218,7 +2021,7 @@ describe("createWithCommandAction", () => {
     const runRootTuiSpy = vi.spyOn(tuiModule, "runRootTui").mockResolvedValue(0);
     const withTask = vi.fn(async () => ({
       exitCode: 9,
-      harnessKey: "opencode",
+      providerKey: "opencode",
       source: "preset" as const,
       cancelled: false,
       changed: true,
@@ -2230,17 +2033,12 @@ describe("createWithCommandAction", () => {
           value: ["opencode", "run", "$bootstrap"],
         },
         {
-          keyPath: "workers.tui" as const,
+          keyPath: "workers.interactive" as const,
           status: "set" as const,
           value: ["opencode", "--prompt", "$bootstrap"],
         },
         {
-          keyPath: "commands.discuss" as const,
-          status: "set" as const,
-          value: ["opencode"],
-        },
-        {
-          keyPath: "workers.fallbacks" as const,
+          keyPath: "fallbacks.default" as const,
           status: "preserved" as const,
         },
       ],
@@ -2268,13 +2066,13 @@ describe("createWithCommandAction", () => {
     }
   });
 
-  it("returns with-task exit code and skips tui launch when no interactive worker is configured", async () => {
+  it("returns with-task exit code and skips tui launch when preset has no interactive worker", async () => {
     const emitOutput = vi.fn<(event: ApplicationOutputEvent) => void>();
     const runRootTuiSpy = vi.spyOn(tuiModule, "runRootTui").mockResolvedValue(0);
     const withTask = vi.fn(async () => ({
       exitCode: 7,
-      harnessKey: "custom-only",
-      source: "custom" as const,
+      providerKey: "preset-only",
+      source: "preset" as const,
       cancelled: false,
       changed: false,
       configPath: "/workspace/.rundown/config.json",
@@ -2282,18 +2080,14 @@ describe("createWithCommandAction", () => {
         {
           keyPath: "workers.default" as const,
           status: "set" as const,
-          value: ["custom-only", "run", "--file", "$file", "$bootstrap"],
+          value: ["preset-only", "run", "--file", "$file", "$bootstrap"],
         },
         {
-          keyPath: "workers.tui" as const,
+          keyPath: "workers.interactive" as const,
           status: "removed" as const,
         },
         {
-          keyPath: "commands.discuss" as const,
-          status: "removed" as const,
-        },
-        {
-          keyPath: "workers.fallbacks" as const,
+          keyPath: "fallbacks.default" as const,
           status: "preserved" as const,
         },
       ],
@@ -2308,7 +2102,7 @@ describe("createWithCommandAction", () => {
     });
 
     try {
-      const exitCode = await action("custom-only");
+      const exitCode = await action("preset-only");
 
       expect(exitCode).toBe(7);
       expect(runRootTuiSpy).not.toHaveBeenCalled();
@@ -2326,7 +2120,7 @@ describe("createWithCommandAction", () => {
     const runRootTuiSpy = vi.spyOn(tuiModule, "runRootTui").mockResolvedValue(0);
     const withTask = vi.fn(async () => ({
       exitCode: 0,
-      harnessKey: "opencode",
+      providerKey: "opencode",
       source: "preset" as const,
       cancelled: false,
       changed: true,
@@ -2338,17 +2132,12 @@ describe("createWithCommandAction", () => {
           value: ["opencode", "run", "$bootstrap"],
         },
         {
-          keyPath: "workers.tui" as const,
+          keyPath: "workers.interactive" as const,
           status: "set" as const,
           value: ["opencode", "--prompt", "$bootstrap"],
         },
         {
-          keyPath: "commands.discuss" as const,
-          status: "set" as const,
-          value: ["opencode"],
-        },
-        {
-          keyPath: "workers.fallbacks" as const,
+          keyPath: "fallbacks.default" as const,
           status: "preserved" as const,
         },
       ],
@@ -2381,7 +2170,7 @@ describe("createWithCommandAction", () => {
     const runRootTuiSpy = vi.spyOn(tuiModule, "runRootTui").mockResolvedValue(0);
     const withTask = vi.fn(async () => ({
       exitCode: 0,
-      harnessKey: "opencode",
+      providerKey: "opencode",
       source: "preset" as const,
       cancelled: true,
       changed: false,
@@ -2405,7 +2194,7 @@ describe("createWithCommandAction", () => {
       expect(runRootTuiSpy).not.toHaveBeenCalled();
       expect(emitOutput).toHaveBeenCalledWith({
         kind: "info",
-        message: "Cancelled: kept existing worker config unchanged for harness opencode.",
+        message: "Cancelled: kept existing worker config unchanged for provider opencode.",
       });
       expect(emitOutput).not.toHaveBeenCalledWith({
         kind: "info",

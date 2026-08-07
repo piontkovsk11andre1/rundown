@@ -483,7 +483,7 @@ async function captureSemanticResetGitCycleMetadata(params: {
   if (!inGitRepo) {
     return {
       errorMessage: "Semantic reset requires a git repository so rundown can safely restore the failed cycle. "
-        + "Initialize git for this workspace and retry, or remove run.workerRouting.reset to keep current stop-on-failure behavior.",
+        + "Initialize git for this workspace and retry.",
     };
   }
 
@@ -861,7 +861,7 @@ export function createRunTaskExecution(
     const healthPolicy = loadedWorkerConfig?.healthPolicy;
     const maxFailoverAttemptsPerTask = resolvePerTaskFailoverAttemptLimit(
       healthPolicy,
-      loadedWorkerConfig?.workers?.fallbacks?.length ?? 0,
+      loadedWorkerConfig?.fallbacks?.default?.length ?? 0,
     );
     const maxFailoverAttemptsPerRun = healthPolicy?.maxFailoverAttemptsPerRun;
     emitStartupUnhealthyWorkerWarnings({
@@ -1251,8 +1251,8 @@ export function createRunTaskExecution(
             let selectedTaskResult = batchSelection;
             let activeForceExtraction = initialForceExtraction;
             let attempt = 0;
-            const hasSemanticResetRoute = (loadedWorkerConfig?.run?.workerRouting?.reset?.worker?.length ?? 0) > 0;
-            const maxSemanticResetAttemptsPerTask = hasSemanticResetRoute ? 1 : 0;
+            const hasSemanticResetRoute = false;
+            const maxSemanticResetAttemptsPerTask = 0;
             let taskSemanticResetAttemptsUsed = 0;
             let usingSemanticResetRoute = false;
             const shouldTrackRetryBoundaryBaseline = deferCommitUntilPostRun
@@ -1494,7 +1494,6 @@ export function createRunTaskExecution(
                   loadedWorkerConfig,
                   workerHealthEntries,
                   evaluateWorkerHealthAtMs: Date.now(),
-                  runWorkerPhaseOverride: usingSemanticResetRoute ? "reset" : undefined,
                 },
                 verifyConfig: {
                   configuredOnlyVerify,

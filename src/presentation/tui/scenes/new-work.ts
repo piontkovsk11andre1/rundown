@@ -92,7 +92,7 @@ export function renderNewWorkSceneLines({ state, sectionGap = 1 } = {}) {
     lines.push("No worker is configured.");
     withSectionGap(lines, sectionGap);
     lines.push("Configure a worker to run agent sessions:");
-    lines.push("  rundown init --worker <command>");
+    lines.push("  rundown init --default-worker <command>");
     withSectionGap(lines, sectionGap);
     lines.push(pc.dim("[Esc] Back to menu"));
     return lines;
@@ -346,13 +346,13 @@ async function resolveNewWorkReadiness({ currentWorkingDirectory, cliWorkerComma
   const config = safeObject(safeObject(configPayload).config);
   const workers = safeObject(config.workers);
   const hasDefaultWorker = Array.isArray(workers.default) && workers.default.length > 0;
-  const hasTuiWorker = Array.isArray(workers.tui) && workers.tui.length > 0;
+  const hasInteractiveWorker = Array.isArray(workers.interactive) && workers.interactive.length > 0;
   const hasCliWorker = Array.isArray(cliWorkerCommand) && cliWorkerCommand.length > 0;
 
-  if (!hasDefaultWorker && !hasTuiWorker && !hasCliWorker) {
+  if (!hasDefaultWorker && !hasInteractiveWorker && !hasCliWorker) {
     return {
       route: NEW_WORK_READINESS.missingWorker,
-      hint: "Run `rundown init --worker <command>` to configure a worker.",
+      hint: "Run `rundown init --default-worker <command>` to configure a worker.",
     };
   }
 

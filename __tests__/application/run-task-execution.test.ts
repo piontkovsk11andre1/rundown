@@ -31,7 +31,7 @@ import {
 } from "./run-task-test-helpers.js";
 
 describe("run-task-execution helpers", () => {
-  it("normalizes opencode tui worker commands", () => {
+  it("normalizes opencode interactive worker commands", () => {
     expect(getAutomationWorkerCommand(["opencode"], "tui")).toEqual(["opencode", "run"]);
     expect(getAutomationWorkerCommand(["opencode", "run"], "tui")).toEqual(["opencode", "run"]);
     expect(getAutomationWorkerCommand(["agent"], "tui")).toEqual(["agent"]);
@@ -681,7 +681,9 @@ describe("run-task-execution helpers", () => {
       workerConfig: {
         workers: {
           default: ["primary", "worker"],
-          fallbacks: [["fallback", "worker"]],
+        },
+        fallbacks: {
+          default: [["fallback", "worker"]],
         },
         profiles: {
           fast: ["primary", "worker"],
@@ -1842,7 +1844,9 @@ describe("run-task-execution helpers", () => {
       workerConfig: {
         workers: {
           default: ["primary", "worker"],
-          fallbacks: [["fallback", "worker"]],
+        },
+        fallbacks: {
+          default: [["fallback", "worker"]],
         },
       },
     });
@@ -2014,7 +2018,9 @@ describe("run-task-execution helpers", () => {
       workerConfig: {
         workers: {
           default: ["primary", "worker"],
-          fallbacks: [["fallback", "worker"]],
+        },
+        fallbacks: {
+          default: [["fallback", "worker"]],
         },
       },
     });
@@ -2120,7 +2126,9 @@ describe("run-task-execution helpers", () => {
       workerConfig: {
         workers: {
           default: ["primary", "worker"],
-          fallbacks: [["fallback", "worker"]],
+        },
+        fallbacks: {
+          default: [["fallback", "worker"]],
         },
       },
     });
@@ -2249,7 +2257,9 @@ describe("run-task-execution helpers", () => {
       workerConfig: {
         workers: {
           default: ["primary", "worker"],
-          fallbacks: [["fallback", "worker"]],
+        },
+        fallbacks: {
+          default: [["fallback", "worker"]],
         },
         profiles: {
           fast: ["primary", "worker"],
@@ -2305,7 +2315,9 @@ describe("run-task-execution helpers", () => {
       workerConfig: {
         workers: {
           default: ["primary", "worker"],
-          fallbacks: [
+        },
+        fallbacks: {
+          default: [
             ["fallback", "one"],
             ["fallback", "two"],
           ],
@@ -2351,7 +2363,9 @@ describe("run-task-execution helpers", () => {
       workerConfig: {
         workers: {
           default: ["primary", "worker"],
-          fallbacks: [["fallback", "worker"]],
+        },
+        fallbacks: {
+          default: [["fallback", "worker"]],
         },
         healthPolicy: {
           maxFailoverAttemptsPerTask: 2,
@@ -2395,443 +2409,6 @@ describe("run-task-execution helpers", () => {
     }));
   });
 
-  it("tracks semantic reset retries independently from failover budgets", async () => {
-    const cwd = "/workspace";
-    const taskFile = `${cwd}/tasks.md`;
-    const { dependencies, events } = createDependencies({
-      cwd,
-      task: createTask(taskFile, "task with reset route"),
-      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] task with reset route\n" }),
-      gitClient: createGitClientMock(),
-      workerConfig: {
-        workers: {
-          default: ["primary", "worker"],
-          fallbacks: [["fallback", "worker"]],
-        },
-        healthPolicy: {
-          maxFailoverAttemptsPerTask: 1,
-        },
-        run: {
-          workerRouting: {
-            reset: {
-              worker: ["reset", "worker"],
-            },
-          },
-        },
-      },
-    });
-
-    dependencies.workerExecutor.runWorker = vi
-      .fn()
-      .mockResolvedValueOnce({ exitCode: null, stdout: "", stderr: "timed out" })
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "" })
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "" });
-    dependencies.taskVerification.verify = vi
-      .fn()
-      .mockResolvedValueOnce({ valid: false, formatWarning: undefined })
-      .mockResolvedValueOnce({ valid: true, formatWarning: undefined });
-
-    const runTask = createRunTaskExecution(dependencies);
-    const code = await runTask(createOptions({
-      verify: true,
-      noRepair: true,
-      workerCommand: [],
-    }));
-
-    expect(code).toBe(0);
-    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(3);
-    expect(dependencies.workerExecutor.runWorker).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      workerPattern: expect.objectContaining({ command: ["primary", "worker"] }),
-    }));
-    expect(dependencies.workerExecutor.runWorker).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      workerPattern: expect.objectContaining({ command: ["fallback", "worker"] }),
-    }));
-    expect(dependencies.workerExecutor.runWorker).toHaveBeenNthCalledWith(3, expect.objectContaining({
-      workerPattern: expect.objectContaining({ command: ["reset", "worker"] }),
-    }));
-    expect(events).toContainEqual(expect.objectContaining({
-      kind: "warn",
-      message: expect.stringContaining("retrying with next eligible fallback"),
-    }));
-    expect(events).toContainEqual(expect.objectContaining({
-      kind: "warn",
-      message: expect.stringContaining("Verification/repair exhausted; retrying with configured reset worker"),
-    }));
-  });
-
-  it("allows semantic reset retry when failover attempts are disabled", async () => {
-    const cwd = "/workspace";
-    const taskFile = `${cwd}/tasks.md`;
-    const { dependencies, events } = createDependencies({
-      cwd,
-      task: createTask(taskFile, "verification failure with reset"),
-      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] verification failure with reset\n" }),
-      gitClient: createGitClientMock(),
-      workerConfig: {
-        workers: {
-          default: ["default", "worker"],
-          fallbacks: [["fallback", "worker"]],
-        },
-        healthPolicy: {
-          maxFailoverAttemptsPerTask: 0,
-        },
-        run: {
-          workerRouting: {
-            reset: {
-              worker: ["reset", "worker"],
-            },
-          },
-        },
-      },
-    });
-
-    dependencies.workerExecutor.runWorker = vi
-      .fn()
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "" })
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "" });
-    dependencies.taskVerification.verify = vi
-      .fn()
-      .mockResolvedValueOnce({ valid: false, formatWarning: undefined })
-      .mockResolvedValueOnce({ valid: true, formatWarning: undefined });
-
-    const runTask = createRunTaskExecution(dependencies);
-    const code = await runTask(createOptions({
-      verify: true,
-      noRepair: true,
-      workerCommand: [],
-    }));
-
-    expect(code).toBe(0);
-    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(2);
-    expect(dependencies.workerExecutor.runWorker).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      workerPattern: expect.objectContaining({ command: ["default", "worker"] }),
-    }));
-    expect(dependencies.workerExecutor.runWorker).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      workerPattern: expect.objectContaining({ command: ["reset", "worker"] }),
-    }));
-    expect(events.some((event) => event.kind === "error"
-      && event.message.includes("Failover exhausted"))).toBe(false);
-    expect(events).toContainEqual(expect.objectContaining({
-      kind: "warn",
-      message: expect.stringContaining("Verification/repair exhausted; retrying with configured reset worker"),
-    }));
-  });
-
-  it("keeps reset worker deterministic without fallback inheritance", async () => {
-    const cwd = "/workspace";
-    const taskFile = `${cwd}/tasks.md`;
-    const { dependencies, events } = createDependencies({
-      cwd,
-      task: createTask(taskFile, "verification failure with deterministic reset"),
-      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] verification failure with deterministic reset\n" }),
-      gitClient: createGitClientMock(),
-      workerConfig: {
-        workers: {
-          default: ["default", "worker"],
-          fallbacks: [["fallback", "worker"]],
-        },
-        healthPolicy: {
-          maxFailoverAttemptsPerTask: 0,
-        },
-        run: {
-          workerRouting: {
-            reset: {
-              worker: ["reset", "worker"],
-            },
-          },
-        },
-      },
-    });
-
-    dependencies.workerExecutor.runWorker = vi
-      .fn()
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "" })
-      .mockResolvedValueOnce({ exitCode: null, stdout: "", stderr: "connection reset by peer" });
-    dependencies.taskVerification.verify = vi
-      .fn()
-      .mockResolvedValueOnce({ valid: false, formatWarning: undefined });
-
-    const runTask = createRunTaskExecution(dependencies);
-    const code = await runTask(createOptions({
-      verify: true,
-      noRepair: true,
-      workerCommand: [],
-    }));
-
-    expect(code).toBe(1);
-    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(2);
-    expect(dependencies.workerExecutor.runWorker).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      workerPattern: expect.objectContaining({ command: ["default", "worker"] }),
-    }));
-    expect(dependencies.workerExecutor.runWorker).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      workerPattern: expect.objectContaining({ command: ["reset", "worker"] }),
-    }));
-    expect(vi.mocked(dependencies.workerExecutor.runWorker).mock.calls.some((call) => {
-      const invocation = call[0] as { workerPattern?: { command?: string[] } };
-      return invocation.workerPattern?.command?.join(" ") === "fallback worker";
-    })).toBe(false);
-    expect(events).toContainEqual(expect.objectContaining({
-      kind: "error",
-      message: expect.stringContaining("Failover exhausted: per-task failover attempt limit reached"),
-    }));
-  });
-
-  it("fails semantic reset with actionable guidance when git repository metadata is unavailable", async () => {
-    const cwd = "/workspace";
-    const taskFile = `${cwd}/tasks.md`;
-    const gitClient = createGitClientMock();
-    gitClient.run = vi.fn(async (args: string[]) => {
-      if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
-        return "false";
-      }
-      if (args[0] === "status" && args[1] === "--porcelain") {
-        return "";
-      }
-      return "";
-    });
-    const { dependencies, events } = createDependencies({
-      cwd,
-      task: createTask(taskFile, "semantic reset requires git metadata"),
-      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] semantic reset requires git metadata\n" }),
-      gitClient,
-      workerConfig: {
-        workers: {
-          default: ["default", "worker"],
-        },
-        run: {
-          workerRouting: {
-            reset: {
-              worker: ["reset", "worker"],
-            },
-          },
-        },
-      },
-    });
-
-    dependencies.workerExecutor.runWorker = vi
-      .fn()
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "" });
-    dependencies.taskVerification.verify = vi
-      .fn()
-      .mockResolvedValueOnce({ valid: false, formatWarning: undefined });
-
-    const runTask = createRunTaskExecution(dependencies);
-    const code = await runTask(createOptions({
-      verify: true,
-      noRepair: true,
-      workerCommand: [],
-    }));
-
-    expect(code).toBe(2);
-    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(1);
-    expect(events).toContainEqual(expect.objectContaining({
-      kind: "error",
-      message: expect.stringContaining("Semantic reset requires a git repository"),
-    }));
-    expect(events).toContainEqual(expect.objectContaining({
-      kind: "error",
-      message: expect.stringContaining("remove run.workerRouting.reset"),
-    }));
-  });
-
-  it("fails semantic reset with actionable guidance when cycle commit metadata is missing", async () => {
-    const cwd = "/workspace";
-    const taskFile = `${cwd}/tasks.md`;
-    const gitClient = createGitClientMock();
-    gitClient.run = vi.fn(async (args: string[]) => {
-      if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
-        return "true";
-      }
-      if (args[0] === "rev-parse" && args[1] === "HEAD") {
-        return "";
-      }
-      if (args[0] === "status" && args[1] === "--porcelain") {
-        return "";
-      }
-      return "";
-    });
-    const { dependencies, events } = createDependencies({
-      cwd,
-      task: createTask(taskFile, "semantic reset missing cycle commit"),
-      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] semantic reset missing cycle commit\n" }),
-      gitClient,
-      workerConfig: {
-        workers: {
-          default: ["default", "worker"],
-        },
-        run: {
-          workerRouting: {
-            reset: {
-              worker: ["reset", "worker"],
-            },
-          },
-        },
-      },
-    });
-
-    dependencies.workerExecutor.runWorker = vi
-      .fn()
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "" });
-    dependencies.taskVerification.verify = vi
-      .fn()
-      .mockResolvedValueOnce({ valid: false, formatWarning: undefined });
-
-    const runTask = createRunTaskExecution(dependencies);
-    const code = await runTask(createOptions({
-      verify: true,
-      noRepair: true,
-      workerCommand: [],
-    }));
-
-    expect(code).toBe(2);
-    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(1);
-    expect(events).toContainEqual(expect.objectContaining({
-      kind: "error",
-      message: expect.stringContaining("could not capture a pre-cycle commit reference"),
-    }));
-    expect(events).toContainEqual(expect.objectContaining({
-      kind: "error",
-      message: expect.stringContaining("Retry with --keep-artifacts"),
-    }));
-  });
-
-  it("captures semantic reset git baseline before failed-cycle mutations", async () => {
-    const cwd = "/workspace";
-    const taskFile = `${cwd}/tasks.md`;
-    const gitClient = createGitClientMock();
-    let headReads = 0;
-    const resetTargets: string[] = [];
-    gitClient.run = vi.fn(async (args: string[]) => {
-      if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
-        return "true";
-      }
-      if (args[0] === "rev-parse" && args[1] === "HEAD") {
-        headReads += 1;
-        return headReads === 1 ? "pre-cycle-head" : "post-cycle-head";
-      }
-      if (args[0] === "status" && args[1] === "--porcelain") {
-        return "";
-      }
-      if (args[0] === "reset" && args[1] === "--hard") {
-        if (args[2]) {
-          resetTargets.push(args[2]);
-        }
-        return "";
-      }
-      if (args[0] === "clean" && args[1] === "-fd") {
-        return "";
-      }
-      return "";
-    });
-    const { dependencies } = createDependencies({
-      cwd,
-      task: createTask(taskFile, "semantic reset preflight capture"),
-      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] semantic reset preflight capture\n" }),
-      gitClient,
-      workerConfig: {
-        workers: {
-          default: ["default", "worker"],
-        },
-        run: {
-          workerRouting: {
-            reset: {
-              worker: ["reset", "worker"],
-            },
-          },
-        },
-      },
-    });
-
-    dependencies.workerExecutor.runWorker = vi
-      .fn()
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "" })
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "" });
-    dependencies.taskVerification.verify = vi
-      .fn()
-      .mockResolvedValueOnce({ valid: false, formatWarning: undefined })
-      .mockResolvedValueOnce({ valid: true, formatWarning: undefined });
-
-    const runTask = createRunTaskExecution(dependencies);
-    const code = await runTask(createOptions({
-      verify: true,
-      noRepair: true,
-      workerCommand: [],
-    }));
-
-    expect(code).toBe(0);
-    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(2);
-    expect(resetTargets).toContain("pre-cycle-head");
-    const headCallCount = vi.mocked(gitClient.run).mock.calls
-      .filter(([args]) => args[0] === "rev-parse" && args[1] === "HEAD").length;
-    expect(headCallCount).toBe(1);
-  });
-
-  it("fails semantic reset with actionable guidance when failed-cycle run metadata is unavailable", async () => {
-    const cwd = "/workspace";
-    const taskFile = `${cwd}/tasks.md`;
-    const gitClient = createGitClientMock();
-    gitClient.run = vi.fn(async (args: string[]) => {
-      if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
-        return "true";
-      }
-      if (args[0] === "rev-parse" && args[1] === "HEAD") {
-        return "baseline-head";
-      }
-      if (args[0] === "status" && args[1] === "--porcelain") {
-        return "";
-      }
-      return "";
-    });
-    const { dependencies, events } = createDependencies({
-      cwd,
-      task: createTask(taskFile, "semantic reset requires run metadata"),
-      fileSystem: createInMemoryFileSystem({ [taskFile]: "- [ ] semantic reset requires run metadata\n" }),
-      gitClient,
-      workerConfig: {
-        workers: {
-          default: ["default", "worker"],
-        },
-        run: {
-          workerRouting: {
-            reset: {
-              worker: ["reset", "worker"],
-            },
-          },
-        },
-      },
-    });
-    const baseCreateContext = dependencies.artifactStore.createContext;
-    dependencies.artifactStore.createContext = vi.fn((contextOptions) => ({
-      ...baseCreateContext(contextOptions),
-      runId: "",
-    }));
-
-    dependencies.workerExecutor.runWorker = vi
-      .fn()
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "" });
-    dependencies.taskVerification.verify = vi
-      .fn()
-      .mockResolvedValueOnce({ valid: false, formatWarning: undefined });
-
-    const runTask = createRunTaskExecution(dependencies);
-    const code = await runTask(createOptions({
-      verify: true,
-      noRepair: true,
-      workerCommand: [],
-    }));
-
-    expect(code).toBe(2);
-    expect(dependencies.workerExecutor.runWorker).toHaveBeenCalledTimes(1);
-    expect(events).toContainEqual(expect.objectContaining({
-      kind: "error",
-      message: expect.stringContaining("run id is unavailable"),
-    }));
-    expect(events).toContainEqual(expect.objectContaining({
-      kind: "error",
-      message: expect.stringContaining("--keep-artifacts"),
-    }));
-  });
-
   it("does not create retry-boundary stash entries when commit-mode retries start clean", async () => {
     const cwd = "/workspace";
     const taskFile = `${cwd}/tasks.md`;
@@ -2866,7 +2443,9 @@ describe("run-task-execution helpers", () => {
       workerConfig: {
         workers: {
           default: ["primary", "worker"],
-          fallbacks: [["fallback", "worker"]],
+        },
+        fallbacks: {
+          default: [["fallback", "worker"]],
         },
       },
     });

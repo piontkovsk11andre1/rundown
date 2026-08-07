@@ -143,12 +143,13 @@ function buildFallbackOrderIndex(state) {
   // rows can render as `default` / `fallback#N` like the migration mockup.
   const config = safeObject(state?.config);
   const workers = safeObject(config.workers);
+  const fallbackConfig = safeObject(config.fallbacks);
   const order = new Map();
 
   if (Array.isArray(workers.default)) {
     order.set(workers.default.join(" "), 0);
   }
-  const fallbacks = Array.isArray(workers.fallbacks) ? workers.fallbacks : [];
+  const fallbacks = Array.isArray(fallbackConfig.default) ? fallbackConfig.default : [];
   for (let index = 0; index < fallbacks.length; index += 1) {
     const command = fallbacks[index];
     if (Array.isArray(command)) {

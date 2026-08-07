@@ -6,12 +6,6 @@ import {
   DEFAULT_HELP_TEMPLATE,
   DEFAULT_MIGRATE_TEMPLATE,
   DEFAULT_PLAN_LOOP_TEMPLATE,
-  DEFAULT_QUERY_AGGREGATION_TEMPLATE,
-  DEFAULT_QUERY_EXECUTION_TEMPLATE,
-  DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
-  DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
-  DEFAULT_QUERY_SEED_TEMPLATE,
-  DEFAULT_QUERY_YN_SEED_TEMPLATE,
   DEFAULT_RESEARCH_REPAIR_TEMPLATE,
   DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
   DEFAULT_RESEARCH_OUTPUT_CONTRACT_TEMPLATE,
@@ -40,7 +34,7 @@ import type { PathOperationsPort } from "../domain/ports/path-operations-port.js
 
 export interface InitProjectOptions {
   defaultWorker?: string;
-  tuiWorker?: string;
+  interactiveWorker?: string;
   gitignore?: boolean;
   overwriteConfig?: boolean;
   silent?: boolean;
@@ -215,21 +209,15 @@ export function createInitProject(
     write("test-future.md", DEFAULT_TEST_FUTURE_TEMPLATE);
     write("test-materialized.md", DEFAULT_TEST_MATERIALIZED_TEMPLATE);
     write("migrate.md", DEFAULT_MIGRATE_TEMPLATE);
-    write("query-seed.md", DEFAULT_QUERY_SEED_TEMPLATE);
-    write("query-seed-yn.md", DEFAULT_QUERY_YN_SEED_TEMPLATE);
-    write("query-seed-success-error.md", DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE);
-    write("query-execute.md", DEFAULT_QUERY_EXECUTION_TEMPLATE);
-    write("query-stream-execute.md", DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE);
-    write("query-aggregate.md", DEFAULT_QUERY_AGGREGATION_TEMPLATE);
     writeConfigArtifact("vars.json", DEFAULT_VARS_FILE_CONTENT);
 
     // Generate config content: embed worker(s) when provided, otherwise use default.
-    const hasWorkerOptions = options.defaultWorker || options.tuiWorker;
+    const hasWorkerOptions = options.defaultWorker || options.interactiveWorker;
     const configContent = hasWorkerOptions
       ? JSON.stringify({
         workers: {
           ...(options.defaultWorker ? { default: options.defaultWorker.split(/\s+/) } : {}),
-          ...(options.tuiWorker ? { tui: options.tuiWorker.split(/\s+/) } : {}),
+          ...(options.interactiveWorker ? { interactive: options.interactiveWorker.split(/\s+/) } : {}),
         },
       }, null, 2) + "\n"
       : DEFAULT_CONFIG_CONTENT;

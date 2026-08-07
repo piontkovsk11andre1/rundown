@@ -17,19 +17,6 @@ type JsonRecord = Record<string, unknown>;
 type PagerState = ReturnType<typeof createPagerState>;
 type LaunchEditorResult = ReturnType<typeof defaultLaunchEditor>;
 
-type CommandsToolsOverride = {
-  configuredName: string;
-  worker: string[];
-};
-
-type OverrideAnnotation = {
-  key: string;
-  configuredName: string;
-  worker: string[];
-  workerSummary: string;
-  description: string;
-};
-
 type ToolFileEntry = {
   name: string;
   extension: typeof TOOL_JS_EXTENSION | typeof TOOL_TEMPLATE_EXTENSION;
@@ -49,7 +36,6 @@ type ShadowedToolEntry = ToolFileEntry & {
 type WinningToolEntry = ToolFileEntry & {
   shadowed: false;
   shadows: ShadowedToolEntry[];
-  override?: OverrideAnnotation;
 };
 
 type ToolsDiscoveryResult = {
@@ -212,65 +198,6 @@ function listToolFiles(directoryPath: string): ToolFileEntry[] {
   return files;
 }
 
-function readCommandsToolsOverrides(config: unknown): Map<string, CommandsToolsOverride> {
-  if (!config || typeof config !== "object" || Array.isArray(config)) {
-    return new Map();
-  }
-  const configRecord = config as JsonRecord;
-  const commands = configRecord.commands;
-  if (!commands || typeof commands !== "object" || Array.isArray(commands)) {
-    return new Map();
-  }
-  const tools = commands.tools;
-  if (!tools || typeof tools !== "object" || Array.isArray(tools)) {
-    return new Map();
-  }
-
-  const overrides = new Map();
-  for (const [rawName, rawValue] of Object.entries(tools)) {
-    if (typeof rawName !== "string") {
-      continue;
-    }
-    const trimmedName = rawName.trim();
-    if (trimmedName.length === 0) {
-      continue;
-    }
-    const normalized = trimmedName.toLowerCase();
-    const tokens = Array.isArray(rawValue)
-      ? rawValue.filter((token) => typeof token === "string")
-      : [];
-    overrides.set(normalized, {
-      configuredName: trimmedName,
-      worker: tokens,
-    });
-  }
-  return overrides;
-}
-
-function summarizeWorkerTokens(tokens: string[]): string {
-  if (!Array.isArray(tokens) || tokens.length === 0) {
-    return "";
-  }
-  return tokens.join(" ");
-}
-
-function buildOverrideAnnotation(toolName: string, overrideEntry?: CommandsToolsOverride): OverrideAnnotation | undefined {
-  if (!overrideEntry) {
-    return undefined;
-  }
-  const configuredName = overrideEntry.configuredName ?? toolName;
-  const overrideKey = `commands.tools.${configuredName}`;
-  const description = `${overrideKey} overrides worker for this prefix`;
-  const workerSummary = summarizeWorkerTokens(overrideEntry.worker);
-  return {
-    key: overrideKey,
-    configuredName,
-    worker: overrideEntry.worker.slice(),
-    workerSummary,
-    description,
-  };
-}
-
 /**
  * Discovers custom tools across the resolved tool directories, in configured
  * order. Each `.md` and `.js` file becomes an entry whose `name` is the file
@@ -286,11 +213,6 @@ function buildOverrideAnnotation(toolName: string, overrideEntry?: CommandsTools
  * The result also exposes a `tools` array containing only winning entries in
  * discovery order, suitable for direct rendering of the custom tool list.
  *
- * Each winning entry that has a matching `commands.tools.<name>` worker
- * override in the configuration is annotated with an `override` object
- * containing the override key, configured tool name, worker tokens, a
- * concise space-joined `workerSummary`, and a human-readable `description`
- * sub-line ("commands.tools.<name> overrides worker for this prefix").
  */
 export function discoverCustomTools({
   configDirPath,
@@ -303,11 +225,6 @@ export function discoverCustomTools({
     return { directories: [], entries: [], tools: [] };
   }
 
-  const effectiveConfig = config && typeof config === "object" && !Array.isArray(config)
-    ? (config as JsonRecord)
-    : readConfigJson(configDirPath);
-  const overrides = readCommandsToolsOverrides(effectiveConfig);
-
   const directories = resolveToolDirectories(configDirPath, config);
   const entries = [];
   const winnersByName = new Map();
@@ -318,12 +235,10 @@ export function discoverCustomTools({
     for (const file of files) {
       const winner = winnersByName.get(file.name);
       if (winner === undefined) {
-        const overrideAnnotation = buildOverrideAnnotation(file.name, overrides.get(file.name));
         const winningEntry = {
           ...file,
           shadowed: false,
           shadows: [],
-          override: overrideAnnotation,
         };
         winnersByName.set(file.name, winningEntry);
         entries.push(winningEntry);
@@ -1138,12 +1053,6 @@ export function renderToolsSceneLines({
       const namePart = paddedName(tool.name, nameColumnWidth);
       const pathPart = formatToolPath(tool.filePath, sceneState.configDirPath);
       lines.push(`  ${namePart} ${pathPart}`);
-      if (tool.override && typeof tool.override.description === "string") {
-        const overrideLine = tool.override.workerSummary
-          ? `${tool.override.description} (${tool.override.workerSummary})`
-          : tool.override.description;
-        lines.push(pc.cyan(`      ${overrideLine}`));
-      }
       if (Array.isArray(tool.shadows) && tool.shadows.length > 0) {
         for (const shadow of tool.shadows) {
           const shadowPath = formatToolPath(shadow.filePath, sceneState.configDirPath);

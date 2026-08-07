@@ -11,9 +11,6 @@ import path from "node:path";
 
 type CliOptionMap = Record<string, string | string[] | boolean>;
 
-export const QUERY_OUTPUT_FORMATS = ["markdown", "json", "yn", "success-error"] as const;
-export type QueryOutputFormatOption = (typeof QUERY_OUTPUT_FORMATS)[number];
-
 export interface SharedWorkerRuntimeOptions {
   keepArtifacts: boolean;
   showAgentOutput: boolean;
@@ -326,55 +323,6 @@ export function resolvePlanMarkdownFile(markdownFiles: string[]): string {
     invalidPathLabel: "plan",
     markdownFiles,
   });
-}
-
-/**
- * Validates and resolves the single Markdown file expected by the `research` command.
- */
-export function resolveResearchMarkdownFile(markdownFiles: string[]): string {
-  const markdownFile = resolveSingleMarkdownFile({
-    commandName: "research",
-    usage: "rundown research <source> [options]",
-    invalidPathLabel: "research",
-    markdownFiles,
-  });
-
-  if (containsGlobPattern(markdownFile)) {
-    throw new Error(
-      "Invalid research document path: "
-        + markdownFile
-        + ". The `research` command requires exactly one existing Markdown file and does not accept directory or glob inputs.",
-    );
-  }
-
-  if (!fs.existsSync(markdownFile)) {
-    throw new Error(
-      "Invalid research document path: "
-        + markdownFile
-        + ". The `research` command requires exactly one existing Markdown file; the provided path does not exist.",
-    );
-  }
-
-  let stats: fs.Stats;
-  try {
-    stats = fs.statSync(markdownFile);
-  } catch {
-    throw new Error(
-      "Invalid research document path: "
-        + markdownFile
-        + ". The `research` command requires exactly one existing Markdown file and cannot read this path.",
-    );
-  }
-
-  if (!stats.isFile()) {
-    throw new Error(
-      "Invalid research document path: "
-        + markdownFile
-        + ". The `research` command requires exactly one existing Markdown file and does not accept directory or glob inputs.",
-    );
-  }
-
-  return markdownFile;
 }
 
 /**
@@ -784,13 +732,6 @@ export function parseRevertMethod(value: string | undefined): "revert" | "reset"
  */
 export function parseCommitMode(value: string | undefined): "per-task" | "file-done" {
   return parseEnumOption(value, "commit-mode", COMMIT_MODES, "per-task");
-}
-
-/**
- * Parses output format for the `query` command.
- */
-export function parseQueryOutputFormat(value: string | undefined): QueryOutputFormatOption {
-  return parseEnumOption(value, "format", QUERY_OUTPUT_FORMATS, "markdown");
 }
 
 /**

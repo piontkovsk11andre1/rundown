@@ -65,14 +65,6 @@ export interface WorkerCommandInvocationOptions {
 }
 
 /**
- * Normalized invocation payload for the `research` command.
- */
-export interface ResearchCommandInvocationOptions extends WorkerCommandInvocationOptions {
-  source: string;
-  verbose?: boolean;
-}
-
-/**
  * Normalized invocation payload for the `plan` command.
  */
 export interface PlanCommandInvocationOptions extends WorkerCommandInvocationOptions {
@@ -81,21 +73,6 @@ export interface PlanCommandInvocationOptions extends WorkerCommandInvocationOpt
   maxItems?: number;
   deep?: number;
   loop: boolean;
-  verbose?: boolean;
-}
-
-/**
- * Normalized invocation payload for the `query` command.
- */
-export interface QueryCommandInvocationOptions extends WorkerCommandInvocationOptions {
-  queryText: string;
-  dir: string;
-  format: "markdown" | "json" | "yn" | "success-error";
-  output?: string;
-  skipResearch: boolean;
-  scanCount?: number;
-  maxItems?: number;
-  deep?: number;
   verbose?: boolean;
 }
 

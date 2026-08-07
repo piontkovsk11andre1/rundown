@@ -98,30 +98,6 @@ describe("init-project", () => {
       "/workspace/.rundown/migrate.md",
       expect.any(String),
     );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/.rundown/query-seed.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/.rundown/query-seed-yn.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/.rundown/query-seed-success-error.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/.rundown/query-execute.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/.rundown/query-stream-execute.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/.rundown/query-aggregate.md",
-      expect.any(String),
-    );
   });
 
   it("creates templates inside explicit --config-dir target", async () => {
@@ -219,30 +195,6 @@ describe("init-project", () => {
     );
     expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
       "/workspace/config/.rundown-custom/migrate.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/config/.rundown-custom/query-seed.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/config/.rundown-custom/query-seed-yn.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/config/.rundown-custom/query-seed-success-error.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/config/.rundown-custom/query-execute.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/config/.rundown-custom/query-stream-execute.md",
-      expect.any(String),
-    );
-    expect(vi.mocked(fileSystem.writeText)).toHaveBeenCalledWith(
-      "/workspace/config/.rundown-custom/query-aggregate.md",
       expect.any(String),
     );
   });

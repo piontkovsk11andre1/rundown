@@ -7,11 +7,6 @@ describe("tui tools integration", () => {
       initialScene: "workers",
       configJson: {
         toolDirs: ["tools", "shared-tools"],
-        commands: {
-          tools: {
-            "post-on-gitea": ["opencode", "run", "--model", "gpt-5.3-mini", "--no-approval"],
-          },
-        },
       },
       workspaceFiles: {
         ".rundown/tools/post-on-gitea.md": "# Primary post\n",
@@ -28,7 +23,6 @@ describe("tui tools integration", () => {
     expect(frame).toContain("toolDirs: [tools, shared-tools]");
     expect(frame).toContain("post-on-gitea");
     expect(frame).toMatch(/tools[\\/]post-on-gitea\.md/);
-    expect(frame).toContain("commands.tools.post-on-gitea overrides worker for this prefix");
     expect(frame).toMatch(/shadowed: shared-tools[\\/]post-on-gitea\.js/);
     expect(frame).toContain("triage");
     expect(frame).toMatch(/shared-tools[\\/]triage\.js/);

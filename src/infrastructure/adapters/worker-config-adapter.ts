@@ -13,19 +13,12 @@ import {
   WORKER_HEALTH_POLICY_FALLBACK_STRATEGY_STRICT_ORDER,
   WORKER_HEALTH_POLICY_UNAVAILABLE_REEVALUATION_COOLDOWN,
   WORKER_HEALTH_POLICY_UNAVAILABLE_REEVALUATION_MANUAL,
-  WORKER_CONFIG_COMMAND_NAMES,
   type WorkerHealthPolicyConfig,
   type AutoCompactDefaultsConfig,
   type RunDefaultsConfig,
-  type RunAttemptScopedWorkerRoutingConfig,
-  type RunWorkerAttemptRouteConfig,
-  type RunWorkerAttemptSelector,
-  type RunWorkerRouteConfig,
-  type RunWorkerRoutingConfig,
-  RUN_WORKER_ROUTING_PHASES,
   type TraceStatisticsConfig,
+  type FallbacksConfig,
   type WorkerCommand,
-  type WorkerCommandProfiles,
   type WorkerConfig,
   type WorkerConfigLoadWithSourcesResult,
   type WorkerConfigMutationResult,
@@ -36,7 +29,6 @@ import {
   type WorkerConfigValueSource,
   type WorkerConfigValueSourceMap,
   type WorkerConfigWritableScope,
-  type WorkerConfigCommandName,
   type WorkersConfig,
 } from "../../domain/worker-config.js";
 
@@ -48,6 +40,8 @@ interface CreateWorkerConfigAdapterOptions {
     canonicalPath?: string | undefined;
   };
 }
+
+const FALLBACKS_DEFAULT_KEY = "default";
 
 function normalizeGlobalResolution(
   resolution: {
@@ -100,7 +94,7 @@ function validateWorkerCommand(value: unknown, keyPath: string): WorkerCommand {
 }
 
 /**
- * Validates the `workers` section: { default?, tui?, fallbacks? }.
+ * Validates the `workers` section: { default?, interactive? }.
  */
 function validateWorkers(value: unknown, keyPath: string): WorkersConfig {
   if (!isPlainObject(value)) {
@@ -113,21 +107,58 @@ function validateWorkers(value: unknown, keyPath: string): WorkersConfig {
     result.default = validateWorkerCommand(value.default, `${keyPath}.default`);
   }
 
-  if (value.tui !== undefined) {
-    result.tui = validateWorkerCommand(value.tui, `${keyPath}.tui`);
-  }
-
-  if (value.fallbacks !== undefined) {
-    if (!Array.isArray(value.fallbacks)) {
-      throw new Error(`Invalid worker config at ${keyPath}.fallbacks: expected array.`);
-    }
-
-    result.fallbacks = (value.fallbacks as unknown[]).map((entry, index) =>
-      validateWorkerCommand(entry, `${keyPath}.fallbacks[${index}]`),
-    );
+  if (value.interactive !== undefined) {
+    result.interactive = validateWorkerCommand(value.interactive, `${keyPath}.interactive`);
+  } else if (value.tui !== undefined) {
+    result.interactive = validateWorkerCommand(value.tui, `${keyPath}.tui`);
   }
 
   return result;
+}
+
+function validateWorkerCommandList(value: unknown, keyPath: string): WorkerCommand[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid worker config at ${keyPath}: expected array.`);
+  }
+
+  return value.map((entry, index) => validateWorkerCommand(entry, `${keyPath}[${index}]`));
+}
+
+function validateFallbacks(value: unknown, keyPath: string): FallbacksConfig {
+  if (Array.isArray(value)) {
+    return { default: validateWorkerCommandList(value, keyPath) };
+  }
+
+  if (!isPlainObject(value)) {
+    throw new Error(`Invalid worker config at ${keyPath}: expected object.`);
+  }
+
+  const result: FallbacksConfig = {};
+  for (const [profileName, commands] of Object.entries(value)) {
+    if (profileName === "profiles" && isPlainObject(commands)) {
+      for (const [nestedProfileName, nestedCommands] of Object.entries(commands)) {
+        result[nestedProfileName] = validateWorkerCommandList(nestedCommands, `${keyPath}.profiles.${nestedProfileName}`);
+      }
+      continue;
+    }
+
+    result[profileName] = validateWorkerCommandList(commands, `${keyPath}.${profileName}`);
+  }
+
+  return result;
+}
+
+function resolveRawFallbacks(value: Record<string, unknown>): unknown {
+  if (value.fallbacks !== undefined) {
+    return value.fallbacks;
+  }
+
+  const workers = value.workers;
+  if (isPlainObject(workers) && workers.fallbacks !== undefined) {
+    return workers.fallbacks;
+  }
+
+  return undefined;
 }
 
 /**
@@ -141,37 +172,6 @@ function validateProfileMap(value: unknown, keyPath: string): Record<string, Wor
   const result: Record<string, WorkerCommand> = {};
   for (const [key, command] of Object.entries(value)) {
     result[key] = validateWorkerCommand(command, `${keyPath}.${key}`);
-  }
-
-  return result;
-}
-
-/**
- * Returns true when a config key matches the `tools.{toolName}` pattern.
- */
-function isToolsKey(key: string): key is `tools.${string}` {
-  return key.startsWith("tools.") && key.length > "tools.".length;
-}
-
-/**
- * Validates `commands` config and accepts known command keys and `tools.*` keys.
- */
-function validateCommandProfiles(value: unknown, keyPath: string): WorkerCommandProfiles {
-  if (!isPlainObject(value)) {
-    throw new Error(`Invalid worker config at ${keyPath}: expected object.`);
-  }
-
-  const allowedNames = new Set<string>(WORKER_CONFIG_COMMAND_NAMES);
-  const result: WorkerCommandProfiles = {};
-
-  for (const [key, command] of Object.entries(value)) {
-    if (!allowedNames.has(key) && !isToolsKey(key)) {
-      throw new Error(
-        `Invalid worker config at ${keyPath}.${key}: unknown command. Allowed: ${WORKER_CONFIG_COMMAND_NAMES.join(", ")}, or tools.{toolName}.`,
-      );
-    }
-
-    result[key as WorkerConfigCommandName] = validateWorkerCommand(command, `${keyPath}.${key}`);
   }
 
   return result;
@@ -250,10 +250,6 @@ function validateRunDefaults(value: unknown, keyPath: string): RunDefaultsConfig
     result.commitMode = commitMode as RunDefaultsConfig["commitMode"];
   }
 
-  if (value.workerRouting !== undefined) {
-    result.workerRouting = validateRunWorkerRouting(value.workerRouting, `${keyPath}.workerRouting`);
-  }
-
   return result;
 }
 
@@ -268,157 +264,6 @@ function validateAutoCompactDefaults(value: unknown, keyPath: string): AutoCompa
   }
   if (typeof value.beforeExit === "boolean") {
     result.beforeExit = value.beforeExit;
-  }
-
-  return result;
-}
-
-function validateOptionalBoolean(value: unknown, keyPath: string): boolean | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (typeof value !== "boolean") {
-    throw new Error(`Invalid worker config at ${keyPath}: expected boolean.`);
-  }
-
-  return value;
-}
-
-function validateRunWorkerRouteConfig(value: unknown, keyPath: string): RunWorkerRouteConfig {
-  if (!isPlainObject(value)) {
-    throw new Error(`Invalid worker config at ${keyPath}: expected object.`);
-  }
-
-  if (value.worker === undefined) {
-    throw new Error(`Invalid worker config at ${keyPath}.worker: expected string array.`);
-  }
-
-  return {
-    worker: validateWorkerCommand(value.worker, `${keyPath}.worker`),
-    useFallbacks: validateOptionalBoolean(value.useFallbacks, `${keyPath}.useFallbacks`),
-  };
-}
-
-function validateRunWorkerAttemptSelector(value: unknown, keyPath: string): RunWorkerAttemptSelector {
-  if (!isPlainObject(value)) {
-    throw new Error(`Invalid worker config at ${keyPath}: expected object.`);
-  }
-
-  const attempt = value.attempt;
-  const fromAttempt = value.fromAttempt;
-  const toAttempt = value.toAttempt;
-
-  const hasAttempt = attempt !== undefined;
-  const hasFromAttempt = fromAttempt !== undefined;
-  const hasToAttempt = toAttempt !== undefined;
-
-  if (!hasAttempt && !hasFromAttempt && !hasToAttempt) {
-    throw new Error(
-      `Invalid worker config at ${keyPath}: expected attempt or fromAttempt/toAttempt selector bounds.`,
-    );
-  }
-
-  if (hasAttempt && (hasFromAttempt || hasToAttempt)) {
-    throw new Error(`Invalid worker config at ${keyPath}: cannot combine attempt with fromAttempt/toAttempt.`);
-  }
-
-  const validatedAttempt = hasAttempt ? validatePositiveInteger(attempt, `${keyPath}.attempt`) : undefined;
-  const validatedFromAttempt = hasFromAttempt
-    ? validatePositiveInteger(fromAttempt, `${keyPath}.fromAttempt`)
-    : undefined;
-  const validatedToAttempt = hasToAttempt
-    ? validatePositiveInteger(toAttempt, `${keyPath}.toAttempt`)
-    : undefined;
-
-  if (
-    validatedFromAttempt !== undefined
-    && validatedToAttempt !== undefined
-    && validatedFromAttempt > validatedToAttempt
-  ) {
-    throw new Error(`Invalid worker config at ${keyPath}: fromAttempt cannot be greater than toAttempt.`);
-  }
-
-  return {
-    ...(validatedAttempt !== undefined ? { attempt: validatedAttempt } : {}),
-    ...(validatedFromAttempt !== undefined ? { fromAttempt: validatedFromAttempt } : {}),
-    ...(validatedToAttempt !== undefined ? { toAttempt: validatedToAttempt } : {}),
-  };
-}
-
-function validateRunWorkerAttemptRouteConfig(value: unknown, keyPath: string): RunWorkerAttemptRouteConfig {
-  if (!isPlainObject(value)) {
-    throw new Error(`Invalid worker config at ${keyPath}: expected object.`);
-  }
-
-  if (value.selector === undefined) {
-    throw new Error(`Invalid worker config at ${keyPath}.selector: expected object.`);
-  }
-
-  return {
-    ...validateRunWorkerRouteConfig(value, keyPath),
-    selector: validateRunWorkerAttemptSelector(value.selector, `${keyPath}.selector`),
-  };
-}
-
-function validateRunAttemptScopedWorkerRoutingConfig(
-  value: unknown,
-  keyPath: string,
-): RunAttemptScopedWorkerRoutingConfig {
-  if (!isPlainObject(value)) {
-    throw new Error(`Invalid worker config at ${keyPath}: expected object.`);
-  }
-
-  const result: RunAttemptScopedWorkerRoutingConfig = {};
-
-  if (value.default !== undefined) {
-    result.default = validateRunWorkerRouteConfig(value.default, `${keyPath}.default`);
-  }
-
-  if (value.attempts !== undefined) {
-    if (!Array.isArray(value.attempts)) {
-      throw new Error(`Invalid worker config at ${keyPath}.attempts: expected array.`);
-    }
-
-    result.attempts = value.attempts.map((entry, index) =>
-      validateRunWorkerAttemptRouteConfig(entry, `${keyPath}.attempts[${index}]`));
-  }
-
-  return result;
-}
-
-function validateRunWorkerRouting(value: unknown, keyPath: string): RunWorkerRoutingConfig {
-  if (!isPlainObject(value)) {
-    throw new Error(`Invalid worker config at ${keyPath}: expected object.`);
-  }
-
-  const result: RunWorkerRoutingConfig = {};
-
-  for (const phase of Object.keys(value)) {
-    if (!RUN_WORKER_ROUTING_PHASES.includes(phase as (typeof RUN_WORKER_ROUTING_PHASES)[number])) {
-      throw new Error(
-        `Invalid worker config at ${keyPath}.${phase}: unknown phase. Allowed: ${RUN_WORKER_ROUTING_PHASES.join(", ")}.`,
-      );
-    }
-  }
-
-  if (value.execute !== undefined) {
-    result.execute = validateRunWorkerRouteConfig(value.execute, `${keyPath}.execute`);
-  }
-  if (value.verify !== undefined) {
-    result.verify = validateRunWorkerRouteConfig(value.verify, `${keyPath}.verify`);
-  }
-  if (value.repair !== undefined) {
-    result.repair = validateRunAttemptScopedWorkerRoutingConfig(value.repair, `${keyPath}.repair`);
-  }
-  if (value.resolve !== undefined) {
-    result.resolve = validateRunWorkerRouteConfig(value.resolve, `${keyPath}.resolve`);
-  }
-  if (value.resolveRepair !== undefined) {
-    result.resolveRepair = validateRunAttemptScopedWorkerRoutingConfig(value.resolveRepair, `${keyPath}.resolveRepair`);
-  }
-  if (value.reset !== undefined) {
-    result.reset = validateRunWorkerRouteConfig(value.reset, `${keyPath}.reset`);
   }
 
   return result;
@@ -562,17 +407,17 @@ function validateWorkerConfig(value: unknown): WorkerConfig {
   }
 
   const workers = value.workers;
+  const fallbacks = resolveRawFallbacks(value);
   const workerTimeoutMs = value.workerTimeoutMs;
-  const commands = value.commands;
   const profiles = value.profiles;
   const autoCompact = value.autoCompact;
 
   return {
     workers: workers === undefined ? undefined : validateWorkers(workers, "workers"),
+    fallbacks: fallbacks === undefined ? undefined : validateFallbacks(fallbacks, "fallbacks"),
     workerTimeoutMs: workerTimeoutMs === undefined
       ? undefined
       : validateNonNegativeInteger(workerTimeoutMs, "workerTimeoutMs"),
-    commands: commands === undefined ? undefined : validateCommandProfiles(commands, "commands"),
     profiles: profiles === undefined ? undefined : validateProfileMap(profiles, "profiles"),
     traceStatistics: value.traceStatistics === undefined
       ? undefined
@@ -602,17 +447,34 @@ function cloneWorkers(value: WorkersConfig | undefined): WorkersConfig | undefin
   if (value.default) {
     cloned.default = cloneWorkerCommand(value.default);
   }
-  if (value.tui) {
-    cloned.tui = cloneWorkerCommand(value.tui);
-  }
-  if (value.fallbacks) {
-    cloned.fallbacks = cloneWorkerCommands(value.fallbacks);
+  if (value.interactive) {
+    cloned.interactive = cloneWorkerCommand(value.interactive);
   }
   return cloned;
 }
 
+function cloneFallbacks(value: FallbacksConfig | undefined): FallbacksConfig | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const cloned: FallbacksConfig = {};
+  for (const [key, commands] of Object.entries(value)) {
+    const clonedCommands = cloneWorkerCommands(commands);
+    if (clonedCommands !== undefined) {
+      cloned[key] = clonedCommands;
+    }
+  }
+
+  if (Object.keys(cloned).length === 0) {
+    return undefined;
+  }
+
+  return cloned;
+}
+
 function cloneCommandProfiles(
-  value: WorkerCommandProfiles | Record<string, WorkerCommand> | undefined,
+  value: Record<string, WorkerCommand> | undefined,
 ): Record<string, WorkerCommand> | undefined {
   if (!value) {
     return undefined;
@@ -624,21 +486,6 @@ function cloneCommandProfiles(
       continue;
     }
     cloned[key] = [...command];
-  }
-  return cloned;
-}
-
-function cloneWorkerCommandProfiles(value: WorkerCommandProfiles | undefined): WorkerCommandProfiles | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const cloned: WorkerCommandProfiles = {};
-  for (const [key, command] of Object.entries(value)) {
-    if (!command) {
-      continue;
-    }
-    cloned[key as WorkerConfigCommandName] = [...command];
   }
   return cloned;
 }
@@ -694,7 +541,6 @@ function cloneRunDefaults(value: RunDefaultsConfig | undefined): RunDefaultsConf
     commit: value.commit,
     commitMessage: value.commitMessage,
     commitMode: value.commitMode,
-    workerRouting: cloneRunWorkerRouting(value.workerRouting),
   };
 
   if (
@@ -702,7 +548,6 @@ function cloneRunDefaults(value: RunDefaultsConfig | undefined): RunDefaultsConf
     && cloned.commit === undefined
     && cloned.commitMessage === undefined
     && cloned.commitMode === undefined
-    && cloned.workerRouting === undefined
   ) {
     return undefined;
   }
@@ -726,163 +571,6 @@ function cloneAutoCompactDefaults(value: AutoCompactDefaultsConfig | undefined):
   return cloned;
 }
 
-function cloneRunWorkerRoute(value: RunWorkerRouteConfig | undefined): RunWorkerRouteConfig | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  return {
-    worker: cloneWorkerCommand(value.worker),
-    useFallbacks: value.useFallbacks,
-  };
-}
-
-function cloneRunWorkerAttemptSelector(value: RunWorkerAttemptSelector | undefined): RunWorkerAttemptSelector | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  return {
-    ...(value.attempt !== undefined ? { attempt: value.attempt } : {}),
-    ...(value.fromAttempt !== undefined ? { fromAttempt: value.fromAttempt } : {}),
-    ...(value.toAttempt !== undefined ? { toAttempt: value.toAttempt } : {}),
-  };
-}
-
-function cloneRunWorkerAttemptRoute(value: RunWorkerAttemptRouteConfig | undefined): RunWorkerAttemptRouteConfig | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const clonedRoute = cloneRunWorkerRoute(value);
-  const clonedSelector = cloneRunWorkerAttemptSelector(value.selector);
-  if (!clonedRoute || !clonedSelector) {
-    return undefined;
-  }
-
-  return {
-    ...clonedRoute,
-    selector: clonedSelector,
-  };
-}
-
-function cloneRunAttemptScopedWorkerRouting(
-  value: RunAttemptScopedWorkerRoutingConfig | undefined,
-): RunAttemptScopedWorkerRoutingConfig | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const cloned: RunAttemptScopedWorkerRoutingConfig = {
-    default: cloneRunWorkerRoute(value.default),
-    attempts: value.attempts?.map((attemptRoute) => cloneRunWorkerAttemptRoute(attemptRoute)).filter(
-      (attemptRoute): attemptRoute is RunWorkerAttemptRouteConfig => attemptRoute !== undefined,
-    ),
-  };
-
-  if (cloned.default === undefined && cloned.attempts === undefined) {
-    return undefined;
-  }
-
-  return cloned;
-}
-
-function cloneRunWorkerRouting(value: RunWorkerRoutingConfig | undefined): RunWorkerRoutingConfig | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const cloned: RunWorkerRoutingConfig = {
-    execute: cloneRunWorkerRoute(value.execute),
-    verify: cloneRunWorkerRoute(value.verify),
-    repair: cloneRunAttemptScopedWorkerRouting(value.repair),
-    resolve: cloneRunWorkerRoute(value.resolve),
-    resolveRepair: cloneRunAttemptScopedWorkerRouting(value.resolveRepair),
-    reset: cloneRunWorkerRoute(value.reset),
-  };
-
-  if (
-    cloned.execute === undefined
-    && cloned.verify === undefined
-    && cloned.repair === undefined
-    && cloned.resolve === undefined
-    && cloned.resolveRepair === undefined
-    && cloned.reset === undefined
-  ) {
-    return undefined;
-  }
-
-  return cloned;
-}
-
-function mergeRunWorkerRoute(
-  base: RunWorkerRouteConfig | undefined,
-  override: RunWorkerRouteConfig | undefined,
-): RunWorkerRouteConfig | undefined {
-  if (!base && !override) {
-    return undefined;
-  }
-
-  return cloneRunWorkerRoute(override ?? base);
-}
-
-function mergeRunAttemptScopedWorkerRouting(
-  base: RunAttemptScopedWorkerRoutingConfig | undefined,
-  override: RunAttemptScopedWorkerRoutingConfig | undefined,
-): RunAttemptScopedWorkerRoutingConfig | undefined {
-  if (!base && !override) {
-    return undefined;
-  }
-
-  const merged: RunAttemptScopedWorkerRoutingConfig = {
-    default: mergeRunWorkerRoute(base?.default, override?.default),
-    attempts: override?.attempts !== undefined
-      ? override.attempts.map((attemptRoute) => cloneRunWorkerAttemptRoute(attemptRoute)).filter(
-        (attemptRoute): attemptRoute is RunWorkerAttemptRouteConfig => attemptRoute !== undefined,
-      )
-      : base?.attempts?.map((attemptRoute) => cloneRunWorkerAttemptRoute(attemptRoute)).filter(
-        (attemptRoute): attemptRoute is RunWorkerAttemptRouteConfig => attemptRoute !== undefined,
-      ),
-  };
-
-  if (merged.default === undefined && merged.attempts === undefined) {
-    return undefined;
-  }
-
-  return merged;
-}
-
-function mergeRunWorkerRouting(
-  base: RunWorkerRoutingConfig | undefined,
-  override: RunWorkerRoutingConfig | undefined,
-): RunWorkerRoutingConfig | undefined {
-  if (!base && !override) {
-    return undefined;
-  }
-
-  const merged: RunWorkerRoutingConfig = {
-    execute: mergeRunWorkerRoute(base?.execute, override?.execute),
-    verify: mergeRunWorkerRoute(base?.verify, override?.verify),
-    repair: mergeRunAttemptScopedWorkerRouting(base?.repair, override?.repair),
-    resolve: mergeRunWorkerRoute(base?.resolve, override?.resolve),
-    resolveRepair: mergeRunAttemptScopedWorkerRouting(base?.resolveRepair, override?.resolveRepair),
-    reset: mergeRunWorkerRoute(base?.reset, override?.reset),
-  };
-
-  if (
-    merged.execute === undefined
-    && merged.verify === undefined
-    && merged.repair === undefined
-    && merged.resolve === undefined
-    && merged.resolveRepair === undefined
-    && merged.reset === undefined
-  ) {
-    return undefined;
-  }
-
-  return merged;
-}
-
 function mergeRunDefaults(
   base: RunDefaultsConfig | undefined,
   override: RunDefaultsConfig | undefined,
@@ -896,7 +584,6 @@ function mergeRunDefaults(
     commit: override?.commit ?? base?.commit,
     commitMessage: override?.commitMessage ?? base?.commitMessage,
     commitMode: override?.commitMode ?? base?.commitMode,
-    workerRouting: mergeRunWorkerRouting(base?.workerRouting, override?.workerRouting),
   };
 
   if (
@@ -904,7 +591,6 @@ function mergeRunDefaults(
     && merged.commit === undefined
     && merged.commitMessage === undefined
     && merged.commitMode === undefined
-    && merged.workerRouting === undefined
   ) {
     return undefined;
   }
@@ -938,15 +624,36 @@ function mergeWorkers(base: WorkersConfig | undefined, override: WorkersConfig |
 
   const merged: WorkersConfig = {
     default: override?.default !== undefined ? cloneWorkerCommand(override.default) : cloneWorkerCommand(base?.default),
-    tui: override?.tui !== undefined ? cloneWorkerCommand(override.tui) : cloneWorkerCommand(base?.tui),
-    fallbacks: override?.fallbacks !== undefined ? cloneWorkerCommands(override.fallbacks) : cloneWorkerCommands(base?.fallbacks),
+    interactive: override?.interactive !== undefined ? cloneWorkerCommand(override.interactive) : cloneWorkerCommand(base?.interactive),
   };
 
-  if (!merged.default && !merged.tui && !merged.fallbacks) {
+  if (!merged.default && !merged.interactive) {
     return undefined;
   }
 
   return merged;
+}
+
+function mergeFallbacks(base: FallbacksConfig | undefined, override: FallbacksConfig | undefined): FallbacksConfig | undefined {
+  if (!base && !override) {
+    return undefined;
+  }
+
+  const merged: FallbacksConfig = {
+    ...(cloneFallbacks(base) ?? {}),
+    ...(cloneFallbacks(override) ?? {}),
+  };
+  const defaultFallbacks = override?.[FALLBACKS_DEFAULT_KEY] !== undefined
+    ? cloneWorkerCommands(override[FALLBACKS_DEFAULT_KEY])
+    : cloneWorkerCommands(base?.[FALLBACKS_DEFAULT_KEY]);
+
+  if (defaultFallbacks !== undefined) {
+    merged[FALLBACKS_DEFAULT_KEY] = defaultFallbacks;
+  } else {
+    delete merged[FALLBACKS_DEFAULT_KEY];
+  }
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 function mergeProfileMaps(
@@ -961,31 +668,6 @@ function mergeProfileMaps(
     ...(cloneCommandProfiles(base) ?? {}),
     ...(cloneCommandProfiles(override) ?? {}),
   };
-
-  return Object.keys(merged).length > 0 ? merged : undefined;
-}
-
-function mergeCommandProfiles(
-  base: WorkerCommandProfiles | undefined,
-  override: WorkerCommandProfiles | undefined,
-): WorkerCommandProfiles | undefined {
-  if (!base && !override) {
-    return undefined;
-  }
-
-  const merged: WorkerCommandProfiles = {};
-  for (const [key, command] of Object.entries(base ?? {})) {
-    if (!command) {
-      continue;
-    }
-    merged[key as WorkerConfigCommandName] = [...command];
-  }
-  for (const [key, command] of Object.entries(override ?? {})) {
-    if (!command) {
-      continue;
-    }
-    merged[key as WorkerConfigCommandName] = [...command];
-  }
 
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
@@ -1045,8 +727,8 @@ function mergeWorkerConfig(
 
   return {
     workers: mergeWorkers(base?.workers, override?.workers),
+    fallbacks: mergeFallbacks(base?.fallbacks, override?.fallbacks),
     workerTimeoutMs: override?.workerTimeoutMs ?? base?.workerTimeoutMs,
-    commands: mergeCommandProfiles(base?.commands, override?.commands),
     profiles: mergeProfileMaps(base?.profiles, override?.profiles),
     traceStatistics: override?.traceStatistics !== undefined
       ? cloneTraceStatistics(override.traceStatistics)
@@ -1064,8 +746,8 @@ function applyBuiltInDefaults(config: WorkerConfig | undefined): WorkerConfig | 
 
   return {
     workers: cloneWorkers(config.workers),
+    fallbacks: cloneFallbacks(config.fallbacks),
     workerTimeoutMs: config.workerTimeoutMs,
-    commands: cloneWorkerCommandProfiles(config.commands),
     profiles: cloneCommandProfiles(config.profiles),
     traceStatistics: config.traceStatistics
       ? cloneTraceStatistics(config.traceStatistics)

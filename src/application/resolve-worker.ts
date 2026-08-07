@@ -1,10 +1,8 @@
 import { extractFrontmatter, type Task } from "../domain/parser.js";
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import {
+  commandPrefersInteractiveWorker,
   extractProfileFromSubItems,
-  type RunAttemptScopedWorkerRoutingConfig,
-  type RunWorkerRouteConfig,
-  type RunWorkerRoutingPhase,
   resolveWorkerConfig,
   type WorkerConfig,
   type WorkerConfigCommandName,
@@ -42,8 +40,6 @@ interface ResolveWorkerForInvocationInput {
   mode?: ProcessRunMode;
   workerHealthEntries?: readonly WorkerHealthEntry[];
   evaluateWorkerHealthAtMs?: number;
-  runWorkerPhase?: RunWorkerRoutingPhase;
-  runWorkerAttempt?: number;
 }
 
 interface ResolveWorkerPatternForInvocationInput {
@@ -61,19 +57,13 @@ interface ResolveWorkerPatternForInvocationInput {
   mode?: ProcessRunMode;
   workerHealthEntries?: readonly WorkerHealthEntry[];
   evaluateWorkerHealthAtMs?: number;
-  runWorkerPhase?: RunWorkerRoutingPhase;
-  runWorkerAttempt?: number;
-}
-
-interface ResolvedPhaseRoute {
-  route: RunWorkerRouteConfig;
-  sourceDescription: string;
 }
 
 interface ResolvedWorkerCandidate {
   workerCommand: string[];
-  source: "primary" | "configured-fallback" | "runtime-fallback";
+  source: "primary" | "default-fallback" | "configured-fallback" | "runtime-fallback";
   fallbackIndex?: number;
+  fallbackKey?: string;
   eligibility: WorkerProfileEligibilityEvaluation;
 }
 
@@ -88,6 +78,7 @@ export interface WorkerResolutionCandidateSnapshot {
   workerCommand: string[];
   source: ResolvedWorkerCandidate["source"];
   fallbackIndex?: number;
+  fallbackKey?: string;
   eligibility: WorkerProfileEligibilityEvaluation;
 }
 
@@ -160,11 +151,13 @@ function buildWorkerCandidates(
   primaryWorkerCommand: string[],
   input: ResolveWorkerForInvocationInput,
   options?: {
+    includeDefaultWorkerFallback?: boolean;
     includeConfiguredFallbacks?: boolean;
     includeRuntimeFallback?: boolean;
+    fallbackProfileName?: string;
   },
-): Array<Pick<ResolvedWorkerCandidate, "workerCommand" | "source" | "fallbackIndex">> {
-  const candidates: Array<Pick<ResolvedWorkerCandidate, "workerCommand" | "source" | "fallbackIndex">> = [];
+): Array<Pick<ResolvedWorkerCandidate, "workerCommand" | "source" | "fallbackIndex" | "fallbackKey">> {
+  const candidates: Array<Pick<ResolvedWorkerCandidate, "workerCommand" | "source" | "fallbackIndex" | "fallbackKey">> = [];
   const seenKeys = new Set<string>();
   const includeConfiguredFallbacks = options?.includeConfiguredFallbacks ?? true;
   const includeRuntimeFallback = options?.includeRuntimeFallback ?? true;
@@ -173,6 +166,7 @@ function buildWorkerCandidates(
     workerCommand: string[] | undefined,
     source: ResolvedWorkerCandidate["source"],
     fallbackIndex?: number,
+    fallbackKey?: string,
   ): void => {
     if (!workerCommand || workerCommand.length === 0) {
       return;
@@ -188,13 +182,20 @@ function buildWorkerCandidates(
       workerCommand: [...workerCommand],
       source,
       fallbackIndex,
+      fallbackKey,
     });
   };
 
   pushCandidate(primaryWorkerCommand, "primary");
+  if (options?.includeDefaultWorkerFallback) {
+    pushCandidate(input.workerConfig?.workers?.default, "default-fallback");
+  }
   if (includeConfiguredFallbacks) {
-    input.workerConfig?.workers?.fallbacks?.forEach((fallbackCommand, index) => {
-      pushCandidate(fallbackCommand, "configured-fallback", index + 1);
+    const fallbackKey = options?.fallbackProfileName && input.workerConfig?.fallbacks?.[options.fallbackProfileName]
+      ? options.fallbackProfileName
+      : "default";
+    input.workerConfig?.fallbacks?.[fallbackKey]?.forEach((fallbackCommand, index) => {
+      pushCandidate(fallbackCommand, "configured-fallback", index + 1, fallbackKey);
     });
   }
 
@@ -224,12 +225,8 @@ function describeConfigResolutionSource(input: ResolveWorkerForInvocationInput, 
     return `profile=${normalizedFrontmatterProfile} via frontmatter`;
   }
 
-  if (hasWorkerCommandValues(input.workerConfig?.commands?.[input.commandName])) {
-    return `from config commands.${input.commandName}`;
-  }
-
-  if (input.mode === "tui" && hasWorkerCommandValues(input.workerConfig?.workers?.tui)) {
-    return "from config workers.tui";
+  if (commandPrefersInteractiveWorker(input.commandName) && hasWorkerCommandValues(input.workerConfig?.workers?.interactive)) {
+    return "from config workers.interactive";
   }
 
   if (hasWorkerCommandValues(input.workerConfig?.workers?.default)) {
@@ -237,92 +234,6 @@ function describeConfigResolutionSource(input: ResolveWorkerForInvocationInput, 
   }
 
   return undefined;
-}
-
-function normalizePositiveInteger(value: number | undefined): number | undefined {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-    return undefined;
-  }
-
-  return value;
-}
-
-function selectAttemptScopedRoute(
-  routeConfig: RunAttemptScopedWorkerRoutingConfig | undefined,
-  attempt: number | undefined,
-  sourcePrefix: string,
-): ResolvedPhaseRoute | undefined {
-  if (!routeConfig) {
-    return undefined;
-  }
-
-  const normalizedAttempt = normalizePositiveInteger(attempt);
-  for (let index = 0; index < (routeConfig.attempts?.length ?? 0); index += 1) {
-    const attemptRoute = routeConfig.attempts?.[index];
-    if (!attemptRoute) {
-      continue;
-    }
-
-    const selector = attemptRoute.selector;
-    const match = selector.attempt !== undefined
-      ? normalizedAttempt !== undefined && selector.attempt === normalizedAttempt
-      : normalizedAttempt !== undefined
-      && (selector.fromAttempt === undefined || normalizedAttempt >= selector.fromAttempt)
-      && (selector.toAttempt === undefined || normalizedAttempt <= selector.toAttempt);
-
-    if (match) {
-      return {
-        route: attemptRoute,
-        sourceDescription: `${sourcePrefix}.attempts[${index}]`,
-      };
-    }
-  }
-
-  if (routeConfig.default) {
-    return {
-      route: routeConfig.default,
-      sourceDescription: `${sourcePrefix}.default`,
-    };
-  }
-
-  return undefined;
-}
-
-function resolveRunWorkerPhaseRoute(input: ResolveWorkerForInvocationInput): ResolvedPhaseRoute | undefined {
-  const phase = input.runWorkerPhase;
-  if (!phase) {
-    return undefined;
-  }
-
-  const workerRouting = input.workerConfig?.run?.workerRouting;
-  if (!workerRouting) {
-    return undefined;
-  }
-
-  if (phase === "repair") {
-    return selectAttemptScopedRoute(workerRouting.repair, input.runWorkerAttempt, "run.workerRouting.repair");
-  }
-
-  if (phase === "resolveRepair") {
-    return selectAttemptScopedRoute(workerRouting.resolveRepair, input.runWorkerAttempt, "run.workerRouting.resolveRepair");
-  }
-
-  const route = phase === "execute"
-    ? workerRouting.execute
-    : phase === "verify"
-    ? workerRouting.verify
-    : phase === "resolve"
-    ? workerRouting.resolve
-    : workerRouting.reset;
-
-  if (!route) {
-    return undefined;
-  }
-
-  return {
-    route,
-    sourceDescription: `run.workerRouting.${phase}`,
-  };
 }
 
 /**
@@ -354,57 +265,29 @@ function resolveWorkerSelectionForInvocation(input: ResolveWorkerForInvocationIn
     });
   }
 
-  // Map task intent to the corresponding commands.{intent} config key, when applicable.
-  const intentCommandName: WorkerConfigCommandName | undefined = input.taskIntent === "verify-only"
-    ? "verify"
-    : input.taskIntent === "memory-capture"
-    ? "memory"
-    : input.taskIntent === "tool-expansion" && input.toolName
-    ? `tools.${input.toolName}`
-    : undefined;
-
-  const resolvedPhaseRoute = resolveRunWorkerPhaseRoute(input);
-  const hasExplicitPhaseWorker = (resolvedPhaseRoute?.route.worker?.length ?? 0) > 0;
-  const usesExplicitPhaseWorker = hasExplicitPhaseWorker && !hasCliWorkerCommand;
-  const includeConfiguredFallbacks = usesExplicitPhaseWorker
-    ? resolvedPhaseRoute?.route.useFallbacks === true
-    : true;
-
   // Resolve worker/profile configuration with CLI override precedence.
-  const resolvedWorkerCommand = hasCliWorkerCommand
-    ? resolveWorkerConfig(
-      input.workerConfig,
-      input.commandName,
-      frontmatterProfile,
-      input.task?.directiveProfile,
-      normalizeProfileName(input.modifierProfile)
-        ?? (supportsInlineTaskProfile ? input.task?.taskProfile : undefined),
-      input.cliWorkerCommand,
-      intentCommandName,
-      input.mode,
-    )
-    : hasExplicitPhaseWorker
-    ? [...(resolvedPhaseRoute?.route.worker ?? [])]
-    : resolveWorkerConfig(
-      input.workerConfig,
-      input.commandName,
-      frontmatterProfile,
-      input.task?.directiveProfile,
-      normalizeProfileName(input.modifierProfile)
-        ?? (supportsInlineTaskProfile ? input.task?.taskProfile : undefined),
-      undefined,
-      intentCommandName,
-      input.mode,
-    );
+  const resolvedWorkerCommand = resolveWorkerConfig(
+    input.workerConfig,
+    input.commandName,
+    frontmatterProfile,
+    input.task?.directiveProfile,
+    normalizeProfileName(input.modifierProfile)
+      ?? (supportsInlineTaskProfile ? input.task?.taskProfile : undefined),
+    hasCliWorkerCommand ? input.cliWorkerCommand : undefined,
+    undefined,
+    input.mode,
+  );
 
+  const effectiveProfileName = resolveEffectiveProfileName(input, frontmatterProfile, supportsInlineTaskProfile);
   const candidates = buildWorkerCandidates(resolvedWorkerCommand, input, {
-    includeConfiguredFallbacks,
-    includeRuntimeFallback: !usesExplicitPhaseWorker,
+    includeDefaultWorkerFallback: commandPrefersInteractiveWorker(input.commandName)
+      && !hasCliWorkerCommand
+      && !effectiveProfileName,
+    includeConfiguredFallbacks: true,
+    includeRuntimeFallback: true,
+    fallbackProfileName: effectiveProfileName,
   });
   const healthIndex = buildWorkerHealthIndex(input.workerHealthEntries);
-  const effectiveProfileName = usesExplicitPhaseWorker
-    ? undefined
-    : resolveEffectiveProfileName(input, frontmatterProfile, supportsInlineTaskProfile);
   const profileHealthEntry = effectiveProfileName
     ? healthIndex.get(buildWorkerHealthProfileKey(effectiveProfileName))
     : undefined;
@@ -420,10 +303,7 @@ function resolveWorkerSelectionForInvocation(input: ResolveWorkerForInvocationIn
     };
   });
 
-  const forcePrimarySelection = usesExplicitPhaseWorker && !includeConfiguredFallbacks;
-  const selectedCandidateIndex = forcePrimarySelection && evaluatedCandidates.length > 0
-    ? 0
-    : evaluatedCandidates.findIndex((candidate) => candidate.eligibility.eligible);
+  const selectedCandidateIndex = evaluatedCandidates.findIndex((candidate) => candidate.eligibility.eligible);
   const selectedCandidate = selectedCandidateIndex >= 0
     ? evaluatedCandidates[selectedCandidateIndex]
     : undefined;
@@ -433,23 +313,26 @@ function resolveWorkerSelectionForInvocation(input: ResolveWorkerForInvocationIn
 
   if (input.verbose && input.emit && selectedCandidate) {
     const sourceDescription = describeConfigResolutionSource(input, frontmatterProfile);
-    const resolvedSourceDescription = usesExplicitPhaseWorker
-      ? `from ${resolvedPhaseRoute?.sourceDescription}`
-      : sourceDescription;
     const selectedCommandLabel = selectedCandidate.workerCommand.join(" ");
     if (selectedCommandLabel.length > 0) {
       if (selectedCandidate.source === "primary" && !hasCliWorkerCommand) {
-        const verboseSourceDescription = resolvedSourceDescription
-          ? ` (${resolvedSourceDescription})`
+        const verboseSourceDescription = sourceDescription
+          ? ` (${sourceDescription})`
           : "";
         input.emit({
           kind: "info",
           message: `${selectedCommandLabel}${verboseSourceDescription}`,
         });
-      } else if (selectedCandidate.source === "configured-fallback") {
+      } else if (selectedCandidate.source === "default-fallback") {
         input.emit({
           kind: "info",
-          message: `${selectedCommandLabel} (fallback #${selectedCandidate.fallbackIndex ?? 1} from config workers.fallbacks)`,
+          message: `${selectedCommandLabel} (fallback from config workers.default)`,
+        });
+      } else if (selectedCandidate.source === "configured-fallback") {
+        const fallbackKey = selectedCandidate.fallbackKey ?? "default";
+        input.emit({
+          kind: "info",
+          message: `${selectedCommandLabel} (fallback #${selectedCandidate.fallbackIndex ?? 1} from config fallbacks.${fallbackKey})`,
         });
       }
     }
@@ -492,6 +375,7 @@ export function resolveWorkerSelectionSnapshotForInvocation(
       workerCommand: [...candidate.workerCommand],
       source: candidate.source,
       fallbackIndex: candidate.fallbackIndex,
+      fallbackKey: candidate.fallbackKey,
       eligibility: candidate.eligibility,
     })),
     ...(selection.effectiveProfileName ? { effectiveProfileName: selection.effectiveProfileName } : {}),
@@ -531,8 +415,6 @@ export function resolveWorkerPatternForInvocation(
     mode: input.mode,
     workerHealthEntries: input.workerHealthEntries,
     evaluateWorkerHealthAtMs: input.evaluateWorkerHealthAtMs,
-    runWorkerPhase: input.runWorkerPhase,
-    runWorkerAttempt: input.runWorkerAttempt,
   });
   const resolvedWorkerCommand = selection.workerCommand;
   const selectedProfileName = selection.effectiveProfileName;

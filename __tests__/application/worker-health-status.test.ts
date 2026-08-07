@@ -45,7 +45,9 @@ describe("worker-health-status", () => {
       workerConfig: {
         workers: {
           default: ["primary", "worker"],
-          fallbacks: [
+        },
+        fallbacks: {
+          default: [
             ["fallback", "one"],
             ["fallback", "two"],
           ],
@@ -101,7 +103,9 @@ describe("worker-health-status", () => {
       workerConfig: {
         workers: {
           default: ["primary", "worker"],
-          fallbacks: [["fallback", "one"]],
+        },
+        fallbacks: {
+          default: [["fallback", "one"]],
         },
       },
     });

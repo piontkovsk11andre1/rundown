@@ -64,7 +64,7 @@ describe("createWorkerConfigAdapter", () => {
     const adapter = createWorkerConfigAdapter();
     const result = adapter.setValue?.(configDir, {
       scope: "local",
-      keyPath: "commands.plan",
+      keyPath: "profiles.plan",
       value: ["opencode", "run", "--model", "local-plan"],
     });
 
@@ -76,7 +76,7 @@ describe("createWorkerConfigAdapter", () => {
       workers: {
         default: ["opencode", "run", "--model", "local-default"],
       },
-      commands: {
+      profiles: {
         plan: ["opencode", "run", "--model", "local-plan"],
       },
     });
@@ -119,7 +119,7 @@ describe("createWorkerConfigAdapter", () => {
 
     const result = adapter.setValue?.(configDir, {
       scope: "global",
-      keyPath: "commands.research",
+      keyPath: "profiles.research",
       value: ["opencode", "run", "--model", "global-research"],
     });
 
@@ -135,7 +135,7 @@ describe("createWorkerConfigAdapter", () => {
     const configPath = writeConfig(
       configDir,
       JSON.stringify({
-        commands: {
+        profiles: {
           plan: ["opencode", "run", "--model", "local-plan"],
         },
       }),
@@ -144,7 +144,7 @@ describe("createWorkerConfigAdapter", () => {
     const adapter = createWorkerConfigAdapter();
     const result = adapter.unsetValue?.(configDir, {
       scope: "local",
-      keyPath: "commands.plan",
+      keyPath: "profiles.plan",
     });
 
     expect(result).toEqual({
@@ -188,7 +188,7 @@ describe("createWorkerConfigAdapter", () => {
     const adapter = createWorkerConfigAdapter();
     const result = adapter.unsetValue?.(configDir, {
       scope: "local",
-      keyPath: "commands.plan",
+      keyPath: "profiles.plan",
     });
 
     expect(result).toEqual({
@@ -248,9 +248,9 @@ describe("createWorkerConfigAdapter", () => {
       configDir,
       JSON.stringify({
         workers: {
-          tui: ["opencode", "run", "--model", "local-tui"],
+          interactive: ["opencode", "run", "--model", "local-interactive"],
         },
-        commands: {
+        profiles: {
           plan: ["opencode", "run", "--model", "local-plan"],
         },
       }),
@@ -260,7 +260,7 @@ describe("createWorkerConfigAdapter", () => {
         workers: {
           default: ["opencode", "run", "--model", "global-default"],
         },
-        commands: {
+        profiles: {
           plan: ["opencode", "run", "--model", "global-plan"],
           research: ["opencode", "run", "--model", "global-research"],
         },
@@ -278,9 +278,9 @@ describe("createWorkerConfigAdapter", () => {
     expect(loaded?.localConfigPath).toBe(path.join(configDir, "config.json"));
     expect(loaded?.valueSources).toMatchObject({
       "workers.default": "global",
-      "workers.tui": "local",
-      "commands.plan": "mixed",
-      "commands.research": "global",
+      "workers.interactive": "local",
+      "profiles.plan": "mixed",
+      "profiles.research": "global",
       "traceStatistics.enabled": "built-in",
       "traceStatistics.fields": "built-in",
     });
@@ -387,7 +387,7 @@ describe("createWorkerConfigAdapter", () => {
       JSON.stringify({
         workers: {
           default: ["opencode", "run", "--model", "global"],
-          tui: ["opencode", "run", "--model", "global-tui"],
+          interactive: ["opencode", "run", "--model", "global-interactive"],
         },
       }),
     );
@@ -414,11 +414,11 @@ describe("createWorkerConfigAdapter", () => {
       "--model",
       "local",
     ]);
-    expect(adapter.readValue?.(configDir, "effective", "workers.tui")).toEqual([
+    expect(adapter.readValue?.(configDir, "effective", "workers.interactive")).toEqual([
       "opencode",
       "run",
       "--model",
-      "global-tui",
+      "global-interactive",
     ]);
   });
 
@@ -427,7 +427,7 @@ describe("createWorkerConfigAdapter", () => {
     writeConfig(
       configDir,
       JSON.stringify({
-        commands: {
+        profiles: {
           plan: ["opencode", "run", "--model", "local-plan"],
         },
       }),
@@ -450,7 +450,7 @@ describe("createWorkerConfigAdapter", () => {
       },
     });
     expect(adapter.listValues?.(configDir, "local")).toEqual({
-      commands: {
+      profiles: {
         plan: ["opencode", "run", "--model", "local-plan"],
       },
     });
@@ -458,7 +458,7 @@ describe("createWorkerConfigAdapter", () => {
       workers: {
         default: ["opencode", "run", "--model", "global-default"],
       },
-      commands: {
+      profiles: {
         plan: ["opencode", "run", "--model", "local-plan"],
       },
       traceStatistics: {
@@ -567,12 +567,10 @@ describe("createWorkerConfigAdapter", () => {
       configDir,
       JSON.stringify({
         workers: {
-          tui: ["opencode", "run", "--model", "local-tui"],
-        },
-        commands: {
-          plan: ["opencode", "run", "--model", "local-plan"],
+          interactive: ["opencode", "run", "--model", "local-interactive"],
         },
         profiles: {
+          plan: ["opencode", "run", "--model", "local-plan"],
           fast: ["opencode", "run", "--model", "local-fast"],
         },
       }),
@@ -582,11 +580,9 @@ describe("createWorkerConfigAdapter", () => {
         workers: {
           default: ["opencode", "run", "--model", "global-default"],
         },
-        commands: {
+        profiles: {
           plan: ["opencode", "run", "--model", "global-plan"],
           research: ["opencode", "run", "--model", "global-research"],
-        },
-        profiles: {
           fast: ["opencode", "run", "--model", "global-fast"],
           deep: ["opencode", "run", "--model", "global-deep"],
         },
@@ -603,13 +599,11 @@ describe("createWorkerConfigAdapter", () => {
     expect(adapter.load(configDir)).toEqual({
       workers: {
         default: ["opencode", "run", "--model", "global-default"],
-        tui: ["opencode", "run", "--model", "local-tui"],
-      },
-      commands: {
-        plan: ["opencode", "run", "--model", "local-plan"],
-        research: ["opencode", "run", "--model", "global-research"],
+        interactive: ["opencode", "run", "--model", "local-interactive"],
       },
       profiles: {
+        plan: ["opencode", "run", "--model", "local-plan"],
+        research: ["opencode", "run", "--model", "global-research"],
         fast: ["opencode", "run", "--model", "local-fast"],
         deep: ["opencode", "run", "--model", "global-deep"],
       },
@@ -660,7 +654,6 @@ describe("createWorkerConfigAdapter", () => {
 
     expect(adapter.load(configDir)).toEqual({
       workers: undefined,
-      commands: undefined,
       profiles: undefined,
       traceStatistics: {
         enabled: false,
@@ -711,7 +704,6 @@ describe("createWorkerConfigAdapter", () => {
 
     expect(adapter.load(configDir)).toEqual({
       workers: undefined,
-      commands: undefined,
       profiles: undefined,
       traceStatistics: {
         enabled: false,
@@ -746,7 +738,6 @@ describe("createWorkerConfigAdapter", () => {
 
     expect(adapter.load(configDir)).toEqual({
       workers: undefined,
-      commands: undefined,
       profiles: undefined,
       traceStatistics: {
         enabled: false,
@@ -789,7 +780,6 @@ describe("createWorkerConfigAdapter", () => {
 
     expect(adapter.load(configDir)).toEqual({
       workers: undefined,
-      commands: undefined,
       profiles: undefined,
       traceStatistics: {
         enabled: false,
@@ -819,7 +809,6 @@ describe("createWorkerConfigAdapter", () => {
 
     expect(adapter.load(configDir)).toEqual({
       workers: undefined,
-      commands: undefined,
       profiles: undefined,
       traceStatistics: {
         enabled: false,
@@ -855,7 +844,6 @@ describe("createWorkerConfigAdapter", () => {
 
     expect(adapter.load(configDir)).toEqual({
       workers: undefined,
-      commands: undefined,
       profiles: undefined,
       traceStatistics: {
         enabled: false,
@@ -935,42 +923,20 @@ describe("createWorkerConfigAdapter", () => {
     );
   });
 
-  it("loads run.workerRouting with phase and attempt-scoped routes", () => {
+  it("drops legacy command routing config from loaded config", () => {
     const configDir = makeTempConfigDir();
     writeConfig(
       configDir,
       JSON.stringify({
         run: {
           workerRouting: {
-            verify: {
-              worker: ["opencode", "run", "--model", "verify-model"],
-            },
-            repair: {
-              default: {
-                worker: ["opencode", "run", "--model", "repair-default"],
-                useFallbacks: true,
-              },
-              attempts: [
-                {
-                  selector: {
-                    attempt: 2,
-                  },
-                  worker: ["opencode", "run", "--model", "repair-strong"],
-                },
-              ],
-            },
-            resolveRepair: {
-              attempts: [
-                {
-                  selector: {
-                    fromAttempt: 2,
-                    toAttempt: 4,
-                  },
-                  worker: ["opencode", "run", "--model", "resolve-repair-strong"],
-                  useFallbacks: false,
-                },
-              ],
-            },
+            verify: { worker: ["opencode", "run", "--model", "verify-model"] },
+          },
+          commit: true,
+        },
+        commands: {
+          plan: {
+            worker: ["opencode", "run", "--model", "plan-model"],
           },
         },
       }),
@@ -980,252 +946,61 @@ describe("createWorkerConfigAdapter", () => {
 
     expect(adapter.load(configDir)).toEqual({
       workers: undefined,
-      commands: undefined,
       profiles: undefined,
       traceStatistics: {
         enabled: false,
         fields: ["total_time", "tokens_estimated"],
       },
       run: {
-        workerRouting: {
-          verify: {
-            worker: ["opencode", "run", "--model", "verify-model"],
-            useFallbacks: undefined,
-          },
-          repair: {
-            default: {
-              worker: ["opencode", "run", "--model", "repair-default"],
-              useFallbacks: true,
-            },
-            attempts: [
-              {
-                selector: {
-                  attempt: 2,
-                },
-                worker: ["opencode", "run", "--model", "repair-strong"],
-                useFallbacks: undefined,
-              },
-            ],
-          },
-          resolveRepair: {
-            attempts: [
-              {
-                selector: {
-                  fromAttempt: 2,
-                  toAttempt: 4,
-                },
-                worker: ["opencode", "run", "--model", "resolve-repair-strong"],
-                useFallbacks: false,
-              },
-            ],
-          },
-        },
+        commit: true,
       },
     });
   });
 
-  it("merges run.workerRouting and preserves array replace semantics", () => {
+  it("migrates legacy workers.tui to workers.interactive while loading", () => {
     const configDir = makeTempConfigDir();
     writeConfig(
       configDir,
       JSON.stringify({
-        run: {
-          workerRouting: {
-            verify: {
-              worker: ["opencode", "run", "--model", "local-verify"],
-            },
-            repair: {
-              attempts: [
-                {
-                  selector: {
-                    attempt: 3,
-                  },
-                  worker: ["opencode", "run", "--model", "local-repair-3"],
-                },
-              ],
-            },
-          },
-        },
-      }),
-    );
-    const globalConfigPath = writeGlobalConfig(
-      JSON.stringify({
-        run: {
-          workerRouting: {
-            execute: {
-              worker: ["opencode", "run", "--model", "global-execute"],
-            },
-            verify: {
-              worker: ["opencode", "run", "--model", "global-verify"],
-            },
-            repair: {
-              default: {
-                worker: ["opencode", "run", "--model", "global-repair-default"],
-              },
-              attempts: [
-                {
-                  selector: {
-                    attempt: 1,
-                  },
-                  worker: ["opencode", "run", "--model", "global-repair-1"],
-                },
-                {
-                  selector: {
-                    fromAttempt: 2,
-                  },
-                  worker: ["opencode", "run", "--model", "global-repair-2plus"],
-                },
-              ],
-            },
-          },
+        workers: {
+          default: ["opencode", "run"],
+          tui: ["opencode"],
         },
       }),
     );
 
-    const adapter = createWorkerConfigAdapter({
-      resolveGlobalConfigPath: () => ({ discoveredPath: globalConfigPath }),
-    });
+    const adapter = createWorkerConfigAdapter();
 
     expect(adapter.load(configDir)).toEqual({
-      workers: undefined,
-      commands: undefined,
+      workers: {
+        default: ["opencode", "run"],
+        interactive: ["opencode"],
+      },
       profiles: undefined,
       traceStatistics: {
         enabled: false,
         fields: ["total_time", "tokens_estimated"],
       },
-      run: {
-        workerRouting: {
-          execute: {
-            worker: ["opencode", "run", "--model", "global-execute"],
-            useFallbacks: undefined,
-          },
-          verify: {
-            worker: ["opencode", "run", "--model", "local-verify"],
-            useFallbacks: undefined,
-          },
-          repair: {
-            default: {
-              worker: ["opencode", "run", "--model", "global-repair-default"],
-              useFallbacks: undefined,
-            },
-            attempts: [
-              {
-                selector: {
-                  attempt: 3,
-                },
-                worker: ["opencode", "run", "--model", "local-repair-3"],
-                useFallbacks: undefined,
-              },
-            ],
-          },
-        },
-      },
     });
   });
 
-  it("rejects unknown run.workerRouting phases", () => {
+  it("prefers workers.interactive over legacy workers.tui when both are present", () => {
     const configDir = makeTempConfigDir();
-    const configPath = writeConfig(
+    writeConfig(
       configDir,
       JSON.stringify({
-        run: {
-          workerRouting: {
-            verifyAgain: {
-              worker: ["opencode", "run"],
-            },
-          },
+        workers: {
+          tui: ["legacy", "worker"],
+          interactive: ["interactive", "worker"],
         },
       }),
     );
 
     const adapter = createWorkerConfigAdapter();
 
-    expect(() => adapter.load(configDir)).toThrow(
-      `Invalid worker config at "${configPath}": Invalid worker config at run.workerRouting.verifyAgain: unknown phase. Allowed: execute, verify, repair, resolve, resolveRepair, reset.`,
-    );
-  });
-
-  it("rejects run.workerRouting routes with missing worker commands", () => {
-    const configDir = makeTempConfigDir();
-    const configPath = writeConfig(
-      configDir,
-      JSON.stringify({
-        run: {
-          workerRouting: {
-            verify: {
-              useFallbacks: true,
-            },
-          },
-        },
-      }),
-    );
-
-    const adapter = createWorkerConfigAdapter();
-
-    expect(() => adapter.load(configDir)).toThrow(
-      `Invalid worker config at "${configPath}": Invalid worker config at run.workerRouting.verify.worker: expected string array.`,
-    );
-  });
-
-  it("rejects invalid run.workerRouting attempt selector shapes", () => {
-    const configDir = makeTempConfigDir();
-    const configPath = writeConfig(
-      configDir,
-      JSON.stringify({
-        run: {
-          workerRouting: {
-            repair: {
-              attempts: [
-                {
-                  selector: {
-                    attempt: 2,
-                    fromAttempt: 2,
-                  },
-                  worker: ["opencode", "run", "--model", "repair-strong"],
-                },
-              ],
-            },
-          },
-        },
-      }),
-    );
-
-    const adapter = createWorkerConfigAdapter();
-
-    expect(() => adapter.load(configDir)).toThrow(
-      `Invalid worker config at "${configPath}": Invalid worker config at run.workerRouting.repair.attempts[0].selector: cannot combine attempt with fromAttempt/toAttempt.`,
-    );
-  });
-
-  it("rejects run.workerRouting attempt selectors where fromAttempt is greater than toAttempt", () => {
-    const configDir = makeTempConfigDir();
-    const configPath = writeConfig(
-      configDir,
-      JSON.stringify({
-        run: {
-          workerRouting: {
-            resolveRepair: {
-              attempts: [
-                {
-                  selector: {
-                    fromAttempt: 5,
-                    toAttempt: 3,
-                  },
-                  worker: ["opencode", "run", "--model", "resolve-repair"],
-                },
-              ],
-            },
-          },
-        },
-      }),
-    );
-
-    const adapter = createWorkerConfigAdapter();
-
-    expect(() => adapter.load(configDir)).toThrow(
-      `Invalid worker config at "${configPath}": Invalid worker config at run.workerRouting.resolveRepair.attempts[0].selector: fromAttempt cannot be greater than toAttempt.`,
-    );
+    expect(adapter.load(configDir)?.workers).toEqual({
+      interactive: ["interactive", "worker"],
+    });
   });
 
   it("uses replace semantics for arrays and map entries during layering", () => {
@@ -1235,12 +1010,13 @@ describe("createWorkerConfigAdapter", () => {
       JSON.stringify({
         workers: {
           default: ["opencode", "run", "--model", "local-default"],
-          fallbacks: [["codex", "exec"]],
         },
-        commands: {
-          plan: ["opencode", "run", "--model", "local-plan"],
+        fallbacks: {
+          default: [["codex", "exec"]],
+          fast: [["local", "fast", "fallback"]],
         },
         profiles: {
+          plan: ["opencode", "run", "--model", "local-plan"],
           fast: ["opencode", "run", "--model", "local-fast"],
         },
       }),
@@ -1249,13 +1025,15 @@ describe("createWorkerConfigAdapter", () => {
       JSON.stringify({
         workers: {
           default: ["opencode", "run", "--model", "global-default"],
-          fallbacks: [["claude", "-p", "$bootstrap"], ["aider", "--message-file", "$file"]],
         },
-        commands: {
-          plan: ["opencode", "run", "--model", "global-plan"],
-          research: ["opencode", "run", "--model", "global-research"],
+        fallbacks: {
+          default: [["claude", "-p", "$bootstrap"], ["aider", "--message-file", "$file"]],
+          fast: [["global", "fast", "fallback"]],
+          deep: [["global", "deep", "fallback"]],
         },
         profiles: {
+          plan: ["opencode", "run", "--model", "global-plan"],
+          research: ["opencode", "run", "--model", "global-research"],
           fast: ["opencode", "run", "--model", "global-fast"],
           deep: ["opencode", "run", "--model", "global-deep"],
         },
@@ -1269,13 +1047,15 @@ describe("createWorkerConfigAdapter", () => {
     expect(adapter.load(configDir)).toEqual({
       workers: {
         default: ["opencode", "run", "--model", "local-default"],
-        fallbacks: [["codex", "exec"]],
       },
-      commands: {
-        plan: ["opencode", "run", "--model", "local-plan"],
-        research: ["opencode", "run", "--model", "global-research"],
+      fallbacks: {
+        default: [["codex", "exec"]],
+        fast: [["local", "fast", "fallback"]],
+        deep: [["global", "deep", "fallback"]],
       },
       profiles: {
+        plan: ["opencode", "run", "--model", "local-plan"],
+        research: ["opencode", "run", "--model", "global-research"],
         fast: ["opencode", "run", "--model", "local-fast"],
         deep: ["opencode", "run", "--model", "global-deep"],
       },
@@ -1357,7 +1137,6 @@ describe("createWorkerConfigAdapter", () => {
       workers: {
         default: ["opencode", "run"],
       },
-      commands: undefined,
       profiles: undefined,
       traceStatistics: {
         enabled: false,
@@ -1366,17 +1145,22 @@ describe("createWorkerConfigAdapter", () => {
     });
   });
 
-  it("loads config with workers.tui and workers.fallbacks", () => {
+  it("loads config with workers.interactive and explicit fallbacks", () => {
     const configDir = makeTempConfigDir();
     writeConfig(
       configDir,
       JSON.stringify({
         workers: {
           default: ["opencode", "run", "$bootstrap"],
-          tui: ["opencode", "$bootstrap"],
-          fallbacks: [
+          interactive: ["opencode", "$bootstrap"],
+        },
+        fallbacks: {
+          default: [
             ["claude", "-p", "$bootstrap"],
             ["aider", "--message-file", "$file"],
+          ],
+          fast: [
+            ["codex", "exec", "$bootstrap"],
           ],
         },
       }),
@@ -1387,13 +1171,17 @@ describe("createWorkerConfigAdapter", () => {
     expect(adapter.load(configDir)).toEqual({
       workers: {
         default: ["opencode", "run", "$bootstrap"],
-        tui: ["opencode", "$bootstrap"],
-        fallbacks: [
+        interactive: ["opencode", "$bootstrap"],
+      },
+      fallbacks: {
+        default: [
           ["claude", "-p", "$bootstrap"],
           ["aider", "--message-file", "$file"],
         ],
+        fast: [
+          ["codex", "exec", "$bootstrap"],
+        ],
       },
-      commands: undefined,
       profiles: undefined,
       traceStatistics: {
         enabled: false,
@@ -1402,7 +1190,30 @@ describe("createWorkerConfigAdapter", () => {
     });
   });
 
-  it("loads full config with workers, commands, and profiles", () => {
+  it("migrates legacy workers.fallbacks into fallbacks.default on load", () => {
+    const configDir = makeTempConfigDir();
+    writeConfig(
+      configDir,
+      JSON.stringify({
+        workers: {
+          default: ["opencode", "run", "$bootstrap"],
+          fallbacks: [
+            ["claude", "-p", "$bootstrap"],
+          ],
+        },
+      }),
+    );
+
+    const adapter = createWorkerConfigAdapter();
+
+    expect(adapter.load(configDir)?.fallbacks).toEqual({
+      default: [
+        ["claude", "-p", "$bootstrap"],
+      ],
+    });
+  });
+
+  it("loads full config with workers and profiles", () => {
     const configDir = makeTempConfigDir();
     writeConfig(
       configDir,
@@ -1410,12 +1221,9 @@ describe("createWorkerConfigAdapter", () => {
         workers: {
           default: ["opencode", "run", "--color", "always"],
         },
-        commands: {
+        profiles: {
           plan: ["opencode", "run", "--model", "opus-4.6"],
           research: ["opencode", "run", "--model", "opus-4.6"],
-          discuss: ["opencode", "run", "--model", "gpt-5.3-codex"],
-        },
-        profiles: {
           complex: ["opencode", "run", "--model", "opus-4.6"],
           fast: ["opencode", "run", "--model", "gpt-5.3-codex"],
         },
@@ -1428,12 +1236,9 @@ describe("createWorkerConfigAdapter", () => {
       workers: {
         default: ["opencode", "run", "--color", "always"],
       },
-      commands: {
+      profiles: {
         plan: ["opencode", "run", "--model", "opus-4.6"],
         research: ["opencode", "run", "--model", "opus-4.6"],
-        discuss: ["opencode", "run", "--model", "gpt-5.3-codex"],
-      },
-      profiles: {
         complex: ["opencode", "run", "--model", "opus-4.6"],
         fast: ["opencode", "run", "--model", "gpt-5.3-codex"],
       },
@@ -1460,7 +1265,6 @@ describe("createWorkerConfigAdapter", () => {
 
     expect(adapter.load(configDir)).toEqual({
       workers: undefined,
-      commands: undefined,
       profiles: undefined,
       traceStatistics: {
         enabled: true,
@@ -1517,53 +1321,6 @@ describe("createWorkerConfigAdapter", () => {
     }
   });
 
-  it("rejects unknown command keys in commands config", () => {
-    const configDir = makeTempConfigDir();
-    const configPath = writeConfig(
-      configDir,
-      JSON.stringify({
-        commands: {
-          execute: ["opencode", "run"],
-        },
-      }),
-    );
-
-    const adapter = createWorkerConfigAdapter();
-
-    try {
-      adapter.load(configDir);
-      throw new Error("Expected adapter.load to throw for unknown command key.");
-    } catch (error) {
-      const message = (error as Error).message;
-      expect(message).toContain(`Invalid worker config at \"${configPath}\"`);
-      expect(message).toContain("Invalid worker config at commands.execute: unknown command.");
-      expect(message).toContain("Allowed:");
-      expect(message).toContain("help");
-      expect(message).toContain("run");
-      expect(message).toContain("migrate-slug");
-      expect(message).toContain("plan");
-      expect(message).toContain("tools.{toolName}");
-    }
-  });
-
-  it("rejects non-array command values", () => {
-    const configDir = makeTempConfigDir();
-    const configPath = writeConfig(
-      configDir,
-      JSON.stringify({
-        commands: {
-          run: { worker: ["opencode"] },
-        },
-      }),
-    );
-
-    const adapter = createWorkerConfigAdapter();
-
-    expect(() => adapter.load(configDir)).toThrow(
-      `Invalid worker config at \"${configPath}\": Invalid worker config at commands.run: expected string array.`,
-    );
-  });
-
   it("rejects non-array profile values", () => {
     const configDir = makeTempConfigDir();
     const configPath = writeConfig(
@@ -1608,7 +1365,6 @@ describe("createWorkerConfigAdapter", () => {
 
     expect(adapter.load(configDir)).toEqual({
       workers: undefined,
-      commands: undefined,
       profiles: undefined,
       traceStatistics: {
         enabled: false,

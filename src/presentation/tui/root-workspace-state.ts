@@ -121,9 +121,13 @@ function detectWorkersConfigured(configDocument: Record<string, unknown> | undef
     return false;
   }
   const workerConfig = workers as Record<string, unknown>;
+  const fallbacks = configDocument.fallbacks;
+  const fallbackConfig = fallbacks && typeof fallbacks === "object" && !Array.isArray(fallbacks)
+    ? fallbacks as Record<string, unknown>
+    : {};
   return hasWorkerList(workerConfig.default)
-    || hasWorkerList(workerConfig.tui)
-    || hasWorkerList(workerConfig.fallbacks);
+    || hasWorkerList(workerConfig.interactive)
+    || hasWorkerList(fallbackConfig.default);
 }
 
 export function detectRootWorkspaceState(cwd: string): RootWorkspaceState {

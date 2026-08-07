@@ -8,17 +8,11 @@ import {
   DEFAULT_HELP_TEMPLATE,
   DEFAULT_MIGRATE_TEMPLATE,
   DEFAULT_PLAN_TEMPLATE,
-  DEFAULT_QUERY_AGGREGATION_TEMPLATE,
-  DEFAULT_QUERY_EXECUTION_TEMPLATE,
-  DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
-  DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
-  DEFAULT_QUERY_YN_SEED_TEMPLATE,
   DEFAULT_TRANSLATE_TEMPLATE,
   DEFAULT_RESEARCH_REPAIR_TEMPLATE,
   DEFAULT_RESEARCH_RESOLVE_TEMPLATE,
   DEFAULT_RESEARCH_OUTPUT_CONTRACT_TEMPLATE,
   DEFAULT_RESEARCH_VERIFY_TEMPLATE,
-  DEFAULT_QUERY_SEED_TEMPLATE,
   DEFAULT_RESEARCH_TEMPLATE,
   DEFAULT_REPAIR_TEMPLATE,
   DEFAULT_RESOLVE_TEMPLATE,
@@ -71,12 +65,6 @@ describe("project-templates", () => {
       testFuture: DEFAULT_TEST_FUTURE_TEMPLATE,
       testMaterialized: DEFAULT_TEST_MATERIALIZED_TEMPLATE,
       migrate: DEFAULT_MIGRATE_TEMPLATE,
-      querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
-      querySeedYn: DEFAULT_QUERY_YN_SEED_TEMPLATE,
-      querySeedSuccessError: DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
-      queryExecute: DEFAULT_QUERY_EXECUTION_TEMPLATE,
-      queryStreamExecute: DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
-      queryAggregate: DEFAULT_QUERY_AGGREGATION_TEMPLATE,
       translate: DEFAULT_TRANSLATE_TEMPLATE,
     });
     expect(templateLoader.load).not.toHaveBeenCalled();
@@ -86,12 +74,6 @@ describe("project-templates", () => {
     const configDir = "/workspace/.rundown";
     const templateLoader: TemplateLoader = {
       load: vi.fn((filePath: string) => {
-        if (filePath.endsWith("query-stream-execute.md")) {
-          return null;
-        }
-        if (filePath.endsWith("query-execute.md")) {
-          return null;
-        }
         if (filePath.endsWith("/execute.md") || filePath.endsWith("\\execute.md")) {
           return "TASK";
         }
@@ -130,12 +112,6 @@ describe("project-templates", () => {
       testFuture: DEFAULT_TEST_FUTURE_TEMPLATE,
       testMaterialized: DEFAULT_TEST_MATERIALIZED_TEMPLATE,
       migrate: DEFAULT_MIGRATE_TEMPLATE,
-      querySeed: DEFAULT_QUERY_SEED_TEMPLATE,
-      querySeedYn: DEFAULT_QUERY_YN_SEED_TEMPLATE,
-      querySeedSuccessError: DEFAULT_QUERY_SUCCESS_ERROR_SEED_TEMPLATE,
-      queryExecute: DEFAULT_QUERY_EXECUTION_TEMPLATE,
-      queryStreamExecute: DEFAULT_QUERY_STREAM_EXECUTION_TEMPLATE,
-      queryAggregate: DEFAULT_QUERY_AGGREGATION_TEMPLATE,
       translate: DEFAULT_TRANSLATE_TEMPLATE,
     });
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "execute.md"));
@@ -155,12 +131,6 @@ describe("project-templates", () => {
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "test-future.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "test-materialized.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "migrate.md"));
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed.md"));
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed-yn.md"));
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed-success-error.md"));
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-execute.md"));
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-stream-execute.md"));
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-aggregate.md"));
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "translate.md"));
   });
 
@@ -306,52 +276,6 @@ describe("project-templates", () => {
     expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "resolve.md"));
   });
 
-  it("loads query template overrides from query-*.md files", () => {
-    const configDir = "/workspace/.rundown";
-    const templateLoader: TemplateLoader = {
-      load: vi.fn((filePath: string) => {
-        if (filePath.endsWith("query-seed.md")) {
-          return "QUERY_SEED";
-        }
-        if (filePath.endsWith("query-seed-yn.md")) {
-          return "QUERY_SEED_YN";
-        }
-        if (filePath.endsWith("query-seed-success-error.md")) {
-          return "QUERY_SEED_SUCCESS_ERROR";
-        }
-        if (filePath.endsWith("query-execute.md")) {
-          return "QUERY_EXECUTE";
-        }
-        if (filePath.endsWith("query-stream-execute.md")) {
-          return "QUERY_STREAM_EXECUTE";
-        }
-        if (filePath.endsWith("query-aggregate.md")) {
-          return "QUERY_AGGREGATE";
-        }
-        return null;
-      }),
-    };
-
-    const templates = loadProjectTemplatesFromPorts(
-      { configDir, isExplicit: false },
-      templateLoader,
-      path,
-    );
-
-    expect(templates.querySeed).toBe("QUERY_SEED");
-    expect(templates.querySeedYn).toBe("QUERY_SEED_YN");
-    expect(templates.querySeedSuccessError).toBe("QUERY_SEED_SUCCESS_ERROR");
-    expect(templates.queryExecute).toBe("QUERY_EXECUTE");
-    expect(templates.queryStreamExecute).toBe("QUERY_STREAM_EXECUTE");
-    expect(templates.queryAggregate).toBe("QUERY_AGGREGATE");
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed.md"));
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed-yn.md"));
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-seed-success-error.md"));
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-execute.md"));
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-stream-execute.md"));
-    expect(templateLoader.load).toHaveBeenCalledWith(path.join(configDir, "query-aggregate.md"));
-  });
-
   it("loads agent warmup template override from agent.md", () => {
     const configDir = "/workspace/.rundown";
     const templateLoader: TemplateLoader = {
@@ -417,9 +341,6 @@ describe("project-templates", () => {
         if (filePath.endsWith("help.md")) {
           return "\n\n";
         }
-        if (filePath.endsWith("query-execute.md")) {
-          return "\t";
-        }
         return null;
       }),
     };
@@ -432,7 +353,6 @@ describe("project-templates", () => {
 
     expect(templates.task).toBe(DEFAULT_TASK_TEMPLATE);
     expect(templates.help).toBe(DEFAULT_HELP_TEMPLATE);
-    expect(templates.queryExecute).toBe(DEFAULT_QUERY_EXECUTION_TEMPLATE);
   });
 
   it("keeps full override behavior when default placeholder is not present", () => {

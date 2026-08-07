@@ -940,7 +940,7 @@ describe("CLI run option normalization", () => {
     });
   });
 
-  it("shows skip-research make options in help text", async () => {
+  it("does not show removed skip-research make options in help text", async () => {
     const runTask = vi.fn(async () => 0);
     const result = await invokeRunAndCaptureHelpOutput([
       "make",
@@ -950,7 +950,8 @@ describe("CLI run option normalization", () => {
     expect(runTask).not.toHaveBeenCalled();
 
     const compactHelpOutput = stripAnsi(result.output).replace(/\s+/g, " ");
-    expect(compactHelpOutput).toContain("--skip-research, --raw Skip phase 1 research and start from planning");
+    expect(compactHelpOutput).not.toContain("--skip-research");
+    expect(compactHelpOutput).not.toContain("--raw");
     expect(compactHelpOutput).toContain("--mode <mode> Make mode: wait");
   });
 
@@ -3006,24 +3007,15 @@ describe("CLI plan and utility command normalization", () => {
     }
   });
 
-  it("make creates file then runs research and plan with forwarded options", async () => {
+  it("make creates file then runs plan with forwarded options", async () => {
     const researchTask = vi.fn(async () => 0);
     const planTask = vi.fn(async () => 0);
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-success-"));
     const markdownFile = path.join(tempRoot, "8. Do something.md");
-    const callOrder: string[] = [];
-
-    researchTask.mockImplementationOnce(async (...args: unknown[]) => {
-      const call = args[0] as { source: string };
-      callOrder.push("research");
-      expect(call.source).toBe(markdownFile);
-      expect(fs.readFileSync(markdownFile, "utf8")).toBe("please do something");
-      return 0;
-    });
     planTask.mockImplementationOnce(async (...args: unknown[]) => {
       const call = args[0] as { source: string };
-      callOrder.push("plan");
       expect(call.source).toBe(markdownFile);
+      expect(fs.readFileSync(markdownFile, "utf8")).toBe("please do something");
       return 0;
     });
 
@@ -3053,28 +3045,9 @@ describe("CLI plan and utility command normalization", () => {
       ], researchTask, planTask);
 
       expect(result.exitCode).toBe(0);
-      expect(callOrder).toEqual(["research", "plan"]);
       expect(fs.readFileSync(markdownFile, "utf8")).toBe("please do something");
 
-      expect(researchTask).toHaveBeenCalledTimes(1);
-      expect(researchTask).toHaveBeenCalledWith(expect.objectContaining({
-        source: markdownFile,
-        mode: "wait",
-        dryRun: true,
-        printPrompt: true,
-        keepArtifacts: true,
-        showAgentOutput: true,
-        trace: true,
-        forceUnlock: true,
-        ignoreCliBlock: true,
-        cliBlockTimeoutMs: 1234,
-        varsFileOption: "custom-vars.json",
-        cliTemplateVarArgs: ["env=prod"],
-        workerPattern: expect.objectContaining({
-          command: ["opencode", "run"],
-        }),
-      }));
-
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
       expect(planTask).toHaveBeenCalledWith(expect.objectContaining({
         source: markdownFile,
@@ -3125,7 +3098,7 @@ describe("CLI plan and utility command normalization", () => {
       ], researchTask, planTask);
 
       expect(result.exitCode).toBe(0);
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
       expect(fs.readFileSync(absoluteMarkdownFile, "utf8")).toBe("relative path seed text");
     } finally {
@@ -3158,7 +3131,7 @@ describe("CLI plan and utility command normalization", () => {
       ], researchTask, planTask);
 
       expect(result.exitCode).toBe(0);
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
       expect(fs.readFileSync(absoluteMarkdownFile, "utf8")).toBe("absolute path seed text");
     } finally {
@@ -3166,17 +3139,10 @@ describe("CLI plan and utility command normalization", () => {
     }
   });
 
-  it("make accepts .markdown extension and runs research then plan", async () => {
-    const callOrder: string[] = [];
-    const researchTask = vi.fn(async (...args: unknown[]) => {
-      const call = args[0] as { source: string };
-      callOrder.push("research");
-      expect(call.source.endsWith(".markdown")).toBe(true);
-      return 0;
-    });
+  it("make accepts .markdown extension and runs plan", async () => {
+    const researchTask = vi.fn(async () => 0);
     const planTask = vi.fn(async (...args: unknown[]) => {
       const call = args[0] as { source: string };
-      callOrder.push("plan");
       expect(call.source.endsWith(".markdown")).toBe(true);
       return 0;
     });
@@ -3195,15 +3161,14 @@ describe("CLI plan and utility command normalization", () => {
 
       expect(result.exitCode).toBe(0);
       expect(fs.readFileSync(markdownFile, "utf8")).toBe("please do something");
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
-      expect(callOrder).toEqual(["research", "plan"]);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
   });
 
-  it("make defaults mode to wait for both research and plan", async () => {
+  it("make defaults mode to wait for plan", async () => {
     const researchTask = vi.fn(async () => 0);
     const planTask = vi.fn(async () => 0);
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-mode-default-"));
@@ -3220,16 +3185,15 @@ describe("CLI plan and utility command normalization", () => {
       ], researchTask, planTask);
 
       expect(result.exitCode).toBe(0);
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
-      expect(researchTask).toHaveBeenCalledWith(expect.objectContaining({ mode: "wait" }));
       expect(planTask).toHaveBeenCalledWith(expect.objectContaining({ mode: "wait" }));
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
   });
 
-  it("make forwards shared runtime and worker options to both research and plan", async () => {
+  it("make forwards shared runtime and worker options to plan", async () => {
     const researchTask = vi.fn(async () => 0);
     const planTask = vi.fn(async () => 0);
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-shared-forwarding-"));
@@ -3261,24 +3225,8 @@ describe("CLI plan and utility command normalization", () => {
       ], researchTask, planTask);
 
       expect(result.exitCode).toBe(0);
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
-
-      expect(researchTask).toHaveBeenCalledWith(expect.objectContaining({
-        source: markdownFile,
-        mode: "wait",
-        keepArtifacts: true,
-        showAgentOutput: true,
-        trace: true,
-        forceUnlock: true,
-        ignoreCliBlock: true,
-        cliBlockTimeoutMs: 5678,
-        varsFileOption: "vars.local.json",
-        cliTemplateVarArgs: ["env=prod", "region=eu"],
-        workerPattern: expect.objectContaining({
-          command: ["opencode", "run", "--model", "gpt-5"],
-        }),
-      }));
 
       expect(planTask).toHaveBeenCalledWith(expect.objectContaining({
         source: markdownFile,
@@ -3300,7 +3248,7 @@ describe("CLI plan and utility command normalization", () => {
     }
   });
 
-  it("make --raw alias bypasses research and runs plan directly", async () => {
+  it("make rejects removed --raw alias", async () => {
     const researchTask = vi.fn(async () => 0);
     const planTask = vi.fn(async () => 0);
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-raw-skip-"));
@@ -3312,18 +3260,12 @@ describe("CLI plan and utility command normalization", () => {
         "please do something",
         markdownFile,
         "--raw",
-        "--worker",
-        "opencode",
-        "run",
       ], researchTask, planTask);
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(1);
       expect(researchTask).not.toHaveBeenCalled();
-      expect(planTask).toHaveBeenCalledTimes(1);
-      expect(planTask).toHaveBeenCalledWith(expect.objectContaining({
-        source: markdownFile,
-      }));
-      expect(fs.readFileSync(markdownFile, "utf8")).toBe("please do something");
+      expect(planTask).not.toHaveBeenCalled();
+      expect(fs.existsSync(markdownFile)).toBe(false);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
@@ -3374,10 +3316,9 @@ describe("CLI plan and utility command normalization", () => {
       ], runTask, researchTask, planTask);
 
       expect(result.exitCode).toBe(0);
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
       expect(runTask).toHaveBeenCalledTimes(1);
-      expect(researchTask).toHaveBeenCalledWith(expect.objectContaining({ mode: "wait", source: markdownFile }));
       expect(planTask).toHaveBeenCalledWith(expect.objectContaining({ mode: "wait", source: markdownFile }));
       expect(runTask).toHaveBeenCalledWith(expect.objectContaining({
         source: markdownFile,
@@ -3418,9 +3359,9 @@ describe("CLI plan and utility command normalization", () => {
     }
   });
 
-  it("do fails fast when bootstrap research fails and does not run execution phase", async () => {
-    const researchTask = vi.fn(async () => 2);
-    const planTask = vi.fn(async () => 0);
+  it("do fails fast when bootstrap plan fails and does not run execution phase", async () => {
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 2);
     const runTask = vi.fn(async () => 0);
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-do-bootstrap-fail-"));
     const markdownFile = path.join(tempRoot, "8. Do something.md");
@@ -3436,8 +3377,8 @@ describe("CLI plan and utility command normalization", () => {
       ], runTask, researchTask, planTask);
 
       expect(result.exitCode).toBe(2);
-      expect(researchTask).toHaveBeenCalledTimes(1);
-      expect(planTask).not.toHaveBeenCalled();
+      expect(researchTask).not.toHaveBeenCalled();
+      expect(planTask).toHaveBeenCalledTimes(1);
       expect(runTask).not.toHaveBeenCalled();
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -3557,21 +3498,17 @@ describe("CLI plan and utility command normalization", () => {
 
       expect(result.exitCode).toBe(0);
       expect(fs.readFileSync(markdownFile, "utf8")).toBe(seedText);
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
   });
 
-  it("make fails fast when research fails and does not run plan", async () => {
-    const callOrder: string[] = [];
-    const researchTask = vi.fn(async () => {
-      callOrder.push("research");
-      return 2;
-    });
-    const planTask = vi.fn(async () => 0);
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-research-fail-"));
+  it("make propagates plan failure exit codes", async () => {
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => 2);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-plan-fail-"));
     const markdownFile = path.join(tempRoot, "8. Do something.md");
 
     try {
@@ -3586,37 +3523,18 @@ describe("CLI plan and utility command normalization", () => {
 
       expect(result.exitCode).toBe(2);
       expect(fs.readFileSync(markdownFile, "utf8")).toBe("please do something");
-      expect(researchTask).toHaveBeenCalledTimes(1);
-      expect(planTask).not.toHaveBeenCalled();
-      expect(callOrder).toEqual(["research"]);
+      expect(researchTask).not.toHaveBeenCalled();
+      expect(planTask).toHaveBeenCalledTimes(1);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
   });
 
-  it("make propagates plan failure exit codes and preserves research outputs", async () => {
-    const researchOutputContent = [
-      "please do something",
-      "",
-      "## Research Notes",
-      "- collected constraints",
-    ].join("\n");
+  it("make preserves seed text when plan fails", async () => {
     const planTask = vi.fn(async () => 3);
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-plan-fail-"));
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-plan-fail-preserve-seed-"));
     const markdownFile = path.join(tempRoot, "8. Do something.md");
-    const researchOutputArtifact = path.join(tempRoot, "research-output.txt");
-    const callOrder: string[] = [];
-    const researchTask = vi.fn(async () => {
-      callOrder.push("research");
-      fs.writeFileSync(markdownFile, researchOutputContent, "utf8");
-      fs.writeFileSync(researchOutputArtifact, "research artifact", "utf8");
-      return 0;
-    });
-
-    planTask.mockImplementationOnce(async () => {
-      callOrder.push("plan");
-      return 3;
-    });
+    const researchTask = vi.fn(async () => 0);
 
     try {
       const result = await invokeMakeAndCaptureCalls([
@@ -3629,10 +3547,8 @@ describe("CLI plan and utility command normalization", () => {
       ], researchTask, planTask);
 
       expect(result.exitCode).toBe(3);
-      expect(callOrder).toEqual(["research", "plan"]);
-      expect(fs.readFileSync(markdownFile, "utf8")).toBe(researchOutputContent);
-      expect(fs.readFileSync(researchOutputArtifact, "utf8")).toBe("research artifact");
-      expect(researchTask).toHaveBeenCalledTimes(1);
+      expect(fs.readFileSync(markdownFile, "utf8")).toBe("please do something");
+      expect(researchTask).not.toHaveBeenCalled();
       expect(planTask).toHaveBeenCalledTimes(1);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -3640,8 +3556,8 @@ describe("CLI plan and utility command normalization", () => {
   });
 
   it("make falls back to exit code 1 for non-integer subcommand exit values", async () => {
-    const researchTask = vi.fn(async () => Number.NaN as unknown as number);
-    const planTask = vi.fn(async () => 0);
+    const researchTask = vi.fn(async () => 0);
+    const planTask = vi.fn(async () => Number.NaN as unknown as number);
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rundown-make-non-integer-code-"));
     const markdownFile = path.join(tempRoot, "8. Do something.md");
 
@@ -3656,8 +3572,8 @@ describe("CLI plan and utility command normalization", () => {
       ], researchTask, planTask);
 
       expect(result.exitCode).toBe(1);
-      expect(researchTask).toHaveBeenCalledTimes(1);
-      expect(planTask).not.toHaveBeenCalled();
+      expect(researchTask).not.toHaveBeenCalled();
+      expect(planTask).toHaveBeenCalledTimes(1);
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }

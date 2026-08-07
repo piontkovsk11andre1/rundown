@@ -143,6 +143,7 @@ export interface WorkerConfigSetValueInput {
   scope: WorkerConfigWritableScope;
   keyPath: string;
   value: unknown;
+  unsafe?: boolean;
 }
 
 export interface WorkerConfigUnsetValueInput {

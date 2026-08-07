@@ -82,6 +82,51 @@ describe("createWorkerConfigAdapter", () => {
     });
   });
 
+  it("setValue rejects unknown config key paths unless unsafe is explicit", () => {
+    const configDir = makeTempConfigDir();
+    const adapter = createWorkerConfigAdapter();
+
+    expect(() => adapter.setValue?.(configDir, {
+      scope: "local",
+      keyPath: "agent.notes",
+      value: "enabled",
+    })).toThrow('Unknown config key path "agent.notes". Use --unsafe to write arbitrary keys.');
+
+    expect(fs.existsSync(path.join(configDir, "config.json"))).toBe(false);
+  });
+
+  it("setValue allows arbitrary key paths in unsafe mode", () => {
+    const configDir = makeTempConfigDir();
+    const adapter = createWorkerConfigAdapter();
+
+    const result = adapter.setValue?.(configDir, {
+      scope: "local",
+      keyPath: "agent.notes",
+      value: "enabled",
+      unsafe: true,
+    });
+
+    expect(result?.changed).toBe(true);
+    expect(JSON.parse(fs.readFileSync(path.join(configDir, "config.json"), "utf-8"))).toEqual({
+      agent: {
+        notes: "enabled",
+      },
+    });
+  });
+
+  it("setValue validates resulting schema before writing", () => {
+    const configDir = makeTempConfigDir();
+    const adapter = createWorkerConfigAdapter();
+
+    expect(() => adapter.setValue?.(configDir, {
+      scope: "local",
+      keyPath: "workers.default",
+      value: "opencode run",
+    })).toThrow("Invalid worker config at workers.default: expected string array.");
+
+    expect(fs.existsSync(path.join(configDir, "config.json"))).toBe(false);
+  });
+
   it("setValue writes global scope to discovered global path", () => {
     const configDir = makeTempConfigDir();
     const globalConfigPath = writeGlobalConfig("{}\n");
@@ -228,6 +273,7 @@ describe("createWorkerConfigAdapter", () => {
       scope: "local",
       keyPath: "workers.default.command",
       value: ["impossible"],
+      unsafe: true,
     })).toThrow("Cannot set config key \"workers.default.command\": \"workers.default\" is not an object.");
   });
 

@@ -5,6 +5,7 @@ import {
   createConfigPath,
   createConfigSet,
   createConfigUnset,
+  createConfigValidate,
   type ConfigMutationDependencies,
 } from "../../src/application/config-mutation.js";
 import type { ApplicationOutputEvent } from "../../src/domain/ports/output-port.js";
@@ -26,6 +27,7 @@ describe("config-mutation", () => {
       scope: "local",
       keyPath: "workers.default",
       value: true,
+      unsafe: false,
     });
     expect(events).toContainEqual({ kind: "success", message: "Updated local config: workers.default" });
   });
@@ -45,6 +47,27 @@ describe("config-mutation", () => {
       scope: "global",
       keyPath: "workers.default",
       value: ["opencode", "run"],
+      unsafe: false,
+    });
+  });
+
+  it("passes unsafe config set mode to the worker config port", () => {
+    const { dependencies } = createDependencies();
+    const setConfig = createConfigSet(dependencies);
+
+    setConfig({
+      scope: "local",
+      key: "agent.notes",
+      value: "enabled",
+      valueType: "string",
+      unsafe: true,
+    });
+
+    expect(dependencies.workerConfigPort.setValue).toHaveBeenCalledWith("/workspace/.rundown", {
+      scope: "local",
+      keyPath: "agent.notes",
+      value: "enabled",
+      unsafe: true,
     });
   });
 
@@ -205,6 +228,30 @@ describe("config-mutation", () => {
         scope: "global",
         path: "/home/test/.config/rundown/config.json",
       }, null, 2),
+    });
+  });
+
+  it("validates config scope and emits success", () => {
+    const { dependencies, events } = createDependencies();
+    const validateConfig = createConfigValidate(dependencies);
+
+    const code = validateConfig({ scope: "effective", json: false });
+
+    expect(code).toBe(0);
+    expect(dependencies.workerConfigPort.listValues).toHaveBeenCalledWith("/workspace/.rundown", "effective");
+    expect(events).toContainEqual({ kind: "success", message: "Config is valid for effective scope." });
+  });
+
+  it("validates config scope with json output", () => {
+    const { dependencies, events } = createDependencies();
+    const validateConfig = createConfigValidate(dependencies);
+
+    const code = validateConfig({ scope: "local", json: true });
+
+    expect(code).toBe(0);
+    expect(events).toContainEqual({
+      kind: "text",
+      text: JSON.stringify({ scope: "local", valid: true }, null, 2),
     });
   });
 });

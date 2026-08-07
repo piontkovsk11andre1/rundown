@@ -50,6 +50,7 @@ import {
   createConfigPathCommandAction,
   createConfigSetCommandAction,
   createConfigUnsetCommandAction,
+  createConfigValidateCommandAction,
   createWithCommandAction,
   createWorkerHealthCommandAction,
   createWorkerResetCommandAction,
@@ -389,6 +390,7 @@ configCommand
   .argument("<value>", "Value to set")
   .option("--scope <local|global>", "Writable config scope", "local")
   .option("--type <auto|string|number|boolean|json>", "Value parsing mode", "auto")
+  .option("--unsafe", "Allow arbitrary config key paths without schema validation", false)
   .allowUnknownOption(false)
   .action(withCliAction(createConfigSetCommandAction({ getApp })));
 
@@ -399,6 +401,14 @@ configCommand
   .option("--scope <local|global>", "Writable config scope", "local")
   .allowUnknownOption(false)
   .action(withCliAction(createConfigUnsetCommandAction({ getApp })));
+
+configCommand
+  .command("validate")
+  .description("Validate config JSON and known rundown config values for a scope.")
+  .option("--scope <effective|local|global>", "Config scope", "effective")
+  .option("--json", "Emit machine-readable JSON output", false)
+  .allowUnknownOption(false)
+  .action(withCliAction(createConfigValidateCommandAction({ getApp })));
 
 configCommand
   .command("path")

@@ -13864,6 +13864,65 @@ describe.sequential("CLI integration", () => {
     expect(result.logs.some((line) => stripAnsi(line).includes("Updated local config: workers.default"))).toBe(true);
   });
 
+  it("config set rejects arbitrary keys unless --unsafe is used", async () => {
+    const workspace = makeTempWorkspace();
+
+    const rejected = await runCli([
+      "config",
+      "set",
+      "agent.notes",
+      "enabled",
+      "--scope",
+      "local",
+    ], workspace);
+
+    expect(rejected.code).toBe(1);
+    expect(rejected.errors.some((line) => stripAnsi(line).includes(
+      'Unknown config key path "agent.notes". Use --unsafe to write arbitrary keys.',
+    ))).toBe(true);
+
+    const allowed = await runCli([
+      "config",
+      "set",
+      "agent.notes",
+      "enabled",
+      "--scope",
+      "local",
+      "--unsafe",
+    ], workspace);
+
+    expect(allowed.code).toBe(0);
+    expect(JSON.parse(fs.readFileSync(path.join(workspace, ".rundown", "config.json"), "utf-8"))).toEqual({
+      agent: {
+        notes: "enabled",
+      },
+    });
+  });
+
+  it("config validate reports valid scoped config", async () => {
+    const workspace = makeTempWorkspace();
+    fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, ".rundown", "config.json"), JSON.stringify({
+      workers: {
+        default: ["opencode", "run"],
+      },
+    }, null, 2) + "\n", "utf-8");
+
+    const result = await runCli([
+      "config",
+      "validate",
+      "--scope",
+      "local",
+      "--json",
+    ], workspace);
+
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.logs.map(stripAnsi).join("\n"))).toEqual({
+      scope: "local",
+      valid: true,
+    });
+  });
+
   it("config get reads effective scope values", async () => {
     const workspace = makeTempWorkspace();
     fs.mkdirSync(path.join(workspace, ".rundown"), { recursive: true });

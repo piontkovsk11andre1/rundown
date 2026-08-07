@@ -907,6 +907,83 @@ function parseKeyPath(keyPath: string): string[] {
   return segments;
 }
 
+function validateSchemaKeyPath(pathSegments: readonly string[], keyPath: string): void {
+  const [root, second, third, fourth] = pathSegments;
+
+  const fail = (): never => {
+    throw new Error(
+      `Unknown config key path "${keyPath}". Use --unsafe to write arbitrary keys.`,
+    );
+  };
+
+  if (root === "workers") {
+    if (pathSegments.length === 1 || (pathSegments.length === 2 && (second === "default" || second === "interactive" || second === "tui"))) {
+      return;
+    }
+    fail();
+  }
+
+  if (root === "fallbacks") {
+    if (pathSegments.length === 1 || pathSegments.length === 2 || (pathSegments.length === 3 && second === "profiles")) {
+      return;
+    }
+    fail();
+  }
+
+  if (root === "profiles") {
+    if (pathSegments.length === 1 || pathSegments.length === 2) {
+      return;
+    }
+    fail();
+  }
+
+  if (root === "workerTimeoutMs") {
+    if (pathSegments.length === 1) {
+      return;
+    }
+    fail();
+  }
+
+  if (root === "traceStatistics") {
+    if (pathSegments.length === 1 || (pathSegments.length === 2 && (second === "enabled" || second === "fields"))) {
+      return;
+    }
+    fail();
+  }
+
+  if (root === "healthPolicy") {
+    if (
+      pathSegments.length === 1
+      || (pathSegments.length === 2 && (second === "cooldownSecondsByFailureClass" || second === "maxFailoverAttemptsPerTask" || second === "maxFailoverAttemptsPerRun" || second === "fallbackStrategy" || second === "unavailableReevaluation"))
+      || (pathSegments.length === 3 && second === "cooldownSecondsByFailureClass" && (third === "usage_limit" || third === "transport_unavailable" || third === "execution_failure_other"))
+      || (pathSegments.length === 3 && second === "unavailableReevaluation" && (third === "mode" || third === "probeCooldownSeconds"))
+    ) {
+      return;
+    }
+    fail();
+  }
+
+  if (root === "run") {
+    if (pathSegments.length === 1 || (pathSegments.length === 2 && (second === "revertable" || second === "commit" || second === "commitMessage" || second === "commitMode"))) {
+      return;
+    }
+    fail();
+  }
+
+  if (root === "autoCompact") {
+    if (pathSegments.length === 1 || (pathSegments.length === 2 && second === "beforeExit")) {
+      return;
+    }
+    fail();
+  }
+
+  if (fourth !== undefined) {
+    fail();
+  }
+
+  fail();
+}
+
 function isJsonObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -1098,6 +1175,9 @@ function applyConfigMutation(
   input: WorkerConfigSetValueInput | WorkerConfigUnsetValueInput,
 ): WorkerConfigMutationResult {
   const keySegments = parseKeyPath(input.keyPath);
+  if ("value" in input && input.unsafe !== true) {
+    validateSchemaKeyPath(keySegments, input.keyPath);
+  }
   const document = readWritableConfigDocument(configPath, scope);
   const changed = "value" in input
     ? setPathValue(document, keySegments, input.value)
@@ -1108,6 +1188,10 @@ function applyConfigMutation(
       configPath,
       changed: false,
     };
+  }
+
+  if ("value" in input && input.unsafe !== true) {
+    validateWorkerConfig(document);
   }
 
   writeConfigDocument(configPath, scope, document);

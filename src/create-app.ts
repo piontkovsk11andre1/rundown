@@ -66,11 +66,13 @@ import {
   createConfigPath,
   createConfigSet,
   createConfigUnset,
+  createConfigValidate,
   type ConfigGetOptions,
   type ConfigListOptions,
   type ConfigPathOptions,
   type ConfigSetOptions,
   type ConfigUnsetOptions,
+  type ConfigValidateOptions,
 } from "./application/config-mutation.js";
 import {
   createWithTask,
@@ -200,6 +202,7 @@ export type App = {
   configPath: (options: ConfigPathOptions) => number;
   configSet: (options: ConfigSetOptions) => number;
   configUnset: (options: ConfigUnsetOptions) => number;
+  configValidate: (options: ConfigValidateOptions) => number;
   withTask: (options: WithTaskOptions) => Promise<WithTaskResult>;
   workspaceUnlinkTask: (options: WorkspaceUnlinkOptions) => Promise<number>;
   workspaceRemoveTask: (options: WorkspaceRemoveOptions) => Promise<number>;
@@ -798,6 +801,11 @@ function createDefaultUseCaseFactories(): AppUseCaseFactories {
       configDir: ports.configDir,
       output: ports.output,
     }),
+    configValidate: (ports) => createConfigValidate({
+      workerConfigPort: ports.workerConfigPort,
+      configDir: ports.configDir,
+      output: ports.output,
+    }),
     withTask: (ports) => createWithTask({
       workerConfigPort: ports.workerConfigPort,
       configDir: ports.configDir,
@@ -861,6 +869,7 @@ function createAppFromFactories(
   const configPath = factories.configPath(ports);
   const configSet = factories.configSet(ports);
   const configUnset = factories.configUnset(ports);
+  const configValidate = factories.configValidate(ports);
   const withTask = factories.withTask(ports);
   const workspaceUnlinkTask = factories.workspaceUnlinkTask(ports);
   const workspaceRemoveTask = factories.workspaceRemoveTask(ports);
@@ -997,6 +1006,7 @@ function createAppFromFactories(
     configPath,
     configSet,
     configUnset,
+    configValidate,
     withTask,
     workspaceUnlinkTask,
     workspaceRemoveTask,

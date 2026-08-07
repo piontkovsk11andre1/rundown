@@ -2635,6 +2635,18 @@ export function createConfigSetCommandAction({
       key,
       value,
       valueType: parseConfigValueType(opts.type as string | undefined),
+      unsafe: Boolean(opts.unsafe as boolean | undefined),
+    });
+  };
+}
+
+export function createConfigValidateCommandAction({
+  getApp,
+}: Pick<WorkerActionDependencies, "getApp">): (opts: CliOpts) => CliActionResult {
+  return (opts: CliOpts) => {
+    return getApp().configValidate({
+      scope: parseConfigReadScope(opts.scope as string | undefined),
+      json: Boolean(opts.json as boolean | undefined),
     });
   };
 }

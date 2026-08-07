@@ -13,6 +13,7 @@ export interface ConfigSetOptions {
   key: string;
   value: string;
   valueType: ConfigValueType;
+  unsafe?: boolean;
 }
 
 export interface ConfigUnsetOptions {
@@ -37,6 +38,11 @@ export interface ConfigPathOptions {
   scope: ConfigReadScope;
 }
 
+export interface ConfigValidateOptions {
+  scope: ConfigReadScope;
+  json: boolean;
+}
+
 export interface ConfigMutationDependencies {
   workerConfigPort: WorkerConfigPort;
   configDir: ConfigDirResult | undefined;
@@ -58,6 +64,11 @@ interface ConfigListEnvelope {
 interface ConfigPathEnvelope {
   scope: ConfigReadScope;
   path: string;
+}
+
+interface ConfigValidateEnvelope {
+  scope: ConfigReadScope;
+  valid: boolean;
 }
 
 function parseConfigValue(raw: string, valueType: ConfigValueType): unknown {
@@ -166,6 +177,7 @@ export function createConfigSet(
       scope: options.scope,
       keyPath: options.key,
       value: parsedValue,
+      unsafe: options.unsafe === true,
     });
 
     if (result.changed) {
@@ -174,6 +186,32 @@ export function createConfigSet(
     } else {
       emit({ kind: "info", message: `No change: ${options.key} already has the requested value.` });
       emit({ kind: "info", message: `Path: ${result.configPath}` });
+    }
+
+    return EXIT_CODE_SUCCESS;
+  };
+}
+
+export function createConfigValidate(
+  dependencies: ConfigMutationDependencies,
+): (options: ConfigValidateOptions) => number {
+  const emit = dependencies.output.emit.bind(dependencies.output);
+
+  return (options: ConfigValidateOptions): number => {
+    if (!dependencies.workerConfigPort.listValues) {
+      throw new Error("The `config validate` command is not available in this build.");
+    }
+
+    dependencies.workerConfigPort.listValues(resolveConfigDirPath(dependencies.configDir), options.scope);
+
+    if (options.json) {
+      const envelope: ConfigValidateEnvelope = {
+        scope: options.scope,
+        valid: true,
+      };
+      emit({ kind: "text", text: JSON.stringify(envelope, null, 2) });
+    } else {
+      emit({ kind: "success", message: `Config is valid for ${options.scope} scope.` });
     }
 
     return EXIT_CODE_SUCCESS;

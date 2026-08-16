@@ -150,6 +150,58 @@ describe("resolve-worker", () => {
     expect(command).toEqual(["custom", "worker", "--model", "gpt-5.3-codex"]);
   });
 
+  it("uses a prompt default profile below explicit item profiles", () => {
+    const command = resolveWorkerForInvocation({
+      commandName: "run",
+      workerConfig: {
+        workers: {
+          default: ["default", "worker"],
+        },
+        profiles: {
+          executeDefault: ["execute", "profile"],
+          itemOverride: ["item", "profile"],
+        },
+      },
+      source: "- [ ] profile=itemOverride Do work\n",
+      task: {
+        directiveProfile: "itemOverride",
+        subItems: [],
+      },
+      defaultProfile: "executeDefault",
+      cliWorkerCommand: [],
+    });
+
+    expect(command).toEqual(["item", "profile"]);
+  });
+
+  it("uses tool config profile as a default for tool-expansion tasks", () => {
+    const command = resolveWorkerForInvocation({
+      commandName: "run",
+      workerConfig: {
+        workers: {
+          default: ["default", "worker"],
+        },
+        profiles: {
+          executeDefault: ["execute", "profile"],
+          postTool: ["tool", "profile"],
+        },
+        tools: {
+          "post-on-gitea": { profile: "postTool" },
+        },
+      },
+      source: "- [ ] post-on-gitea: payload\n",
+      task: {
+        subItems: [],
+      },
+      defaultProfile: "executeDefault",
+      cliWorkerCommand: [],
+      taskIntent: "tool-expansion",
+      toolName: "post-on-gitea",
+    });
+
+    expect(command).toEqual(["tool", "profile"]);
+  });
+
   it("applies taskProfile after directiveProfile for verify-only prefix tasks", () => {
     const command = resolveWorkerForInvocation({
       commandName: "run",

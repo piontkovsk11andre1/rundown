@@ -30,6 +30,7 @@ interface ResolveWorkerForInvocationInput {
   workerConfig: WorkerConfig | undefined;
   source?: string;
   task?: Pick<Task, "directiveProfile" | "taskProfile" | "subItems">;
+  defaultProfile?: string;
   modifierProfile?: string;
   cliWorkerCommand: string[];
   fallbackWorkerCommand?: string[];
@@ -47,6 +48,7 @@ interface ResolveWorkerPatternForInvocationInput {
   workerConfig: WorkerConfig | undefined;
   source?: string;
   task?: Pick<Task, "directiveProfile" | "taskProfile" | "subItems">;
+  defaultProfile?: string;
   modifierProfile?: string;
   cliWorkerPattern?: ParsedWorkerPattern;
   fallbackWorkerCommand?: string[];
@@ -144,7 +146,15 @@ function resolveEffectiveProfileName(
   return normalizeProfileName(input.modifierProfile)
     ?? (supportsInlineTaskProfile ? normalizeProfileName(input.task?.taskProfile) : undefined)
     ?? normalizeProfileName(input.task?.directiveProfile)
-    ?? normalizeProfileName(frontmatterProfile);
+    ?? normalizeProfileName(frontmatterProfile)
+    ?? normalizeProfileName(resolveDefaultProfile(input));
+}
+
+function resolveDefaultProfile(input: ResolveWorkerForInvocationInput): string | undefined {
+  const toolProfile = input.toolName
+    ? input.workerConfig?.tools?.[input.toolName.trim().toLowerCase()]?.profile
+    : undefined;
+  return normalizeProfileName(toolProfile) ?? normalizeProfileName(input.defaultProfile);
 }
 
 function buildWorkerCandidates(
@@ -225,6 +235,11 @@ function describeConfigResolutionSource(input: ResolveWorkerForInvocationInput, 
     return `profile=${normalizedFrontmatterProfile} via frontmatter`;
   }
 
+  const defaultProfile = normalizeProfileName(resolveDefaultProfile(input));
+  if (defaultProfile) {
+    return `profile=${defaultProfile} via default profile`;
+  }
+
   if (commandPrefersInteractiveWorker(input.commandName) && hasWorkerCommandValues(input.workerConfig?.workers?.interactive)) {
     return "from config workers.interactive";
   }
@@ -269,6 +284,7 @@ function resolveWorkerSelectionForInvocation(input: ResolveWorkerForInvocationIn
   const resolvedWorkerCommand = resolveWorkerConfig(
     input.workerConfig,
     input.commandName,
+    resolveDefaultProfile(input),
     frontmatterProfile,
     input.task?.directiveProfile,
     normalizeProfileName(input.modifierProfile)
@@ -405,6 +421,7 @@ export function resolveWorkerPatternForInvocation(
     workerConfig: input.workerConfig,
     source: input.source,
     task: input.task,
+    defaultProfile: input.defaultProfile,
     modifierProfile: input.modifierProfile,
     cliWorkerCommand: input.cliWorkerPattern?.command ?? [],
     fallbackWorkerCommand: input.fallbackWorkerCommand,

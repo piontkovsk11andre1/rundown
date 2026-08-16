@@ -35,7 +35,7 @@ import type {
 import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import type { ExtraTemplateVars } from "../domain/template-vars.js";
 import type { RunTaskDependencies } from "./run-task-execution.js";
-import type { TraceStatisticsConfig } from "../domain/worker-config.js";
+import type { TraceStatisticsConfig, WorkerConfig } from "../domain/worker-config.js";
 import type { WorkerFailureClass, WorkerHealthEntry } from "../domain/worker-health.js";
 import { classifyWorkerFailure } from "./worker-failure-classification.js";
 import { RUN_REASON_USAGE_LIMIT_DETECTED } from "../domain/run-reasons.js";
@@ -296,6 +296,14 @@ function extractPrefixModifierProfile(prefixChain: ReturnType<typeof resolveIter
   return resolvedProfile;
 }
 
+function resolvePromptDefaultProfile(
+  workerConfig: WorkerConfig | undefined,
+  promptName: string,
+): string | undefined {
+  const profile = workerConfig?.prompts?.[promptName]?.profile;
+  return typeof profile === "string" && profile.trim().length > 0 ? profile.trim() : undefined;
+}
+
 /**
  * Emits execution failure details, runs failure hooks, and finalizes the run as failed.
  */
@@ -474,6 +482,7 @@ export async function runTaskIteration(params: {
       workerConfig: worker.loadedWorkerConfig,
       source: fileSource,
       task: taskForExecution,
+      defaultProfile: resolvePromptDefaultProfile(worker.loadedWorkerConfig, "execute"),
       modifierProfile,
       cliWorkerPattern: worker.workerPattern,
       taskIntent: taskIntentDecision.intent,
@@ -489,6 +498,7 @@ export async function runTaskIteration(params: {
       workerConfig: worker.loadedWorkerConfig,
       source: fileSource,
       task: taskForExecution,
+      defaultProfile: resolvePromptDefaultProfile(worker.loadedWorkerConfig, "execute"),
       modifierProfile,
       cliWorkerCommand: worker.workerPattern.command,
       taskIntent: taskIntentDecision.intent,
@@ -500,25 +510,22 @@ export async function runTaskIteration(params: {
     });
 
     // Build the automation command variant used for verification-only execution.
-    // Verification always runs in "wait" mode, so when the execution mode is "tui"
-    // the worker must be re-resolved with mode "wait" to pick workers.default
-    // instead of workers.interactive.
-    const verificationWorker = execution.mode === "tui"
-      ? resolveWorkerPatternForInvocation({
-        commandName: "run",
-        workerConfig: worker.loadedWorkerConfig,
-        source: fileSource,
-        task: taskForExecution,
-        modifierProfile,
-        cliWorkerPattern: worker.workerPattern,
-        taskIntent: taskIntentDecision.intent,
-        toolName: taskIntentDecision.toolName,
-        emit,
-        mode: "wait",
-        workerHealthEntries: worker.workerHealthEntries,
-        evaluateWorkerHealthAtMs,
-      })
-      : resolvedWorker;
+    // Verification always runs in "wait" mode and may use prompts.verify.profile.
+    const verificationWorker = resolveWorkerPatternForInvocation({
+      commandName: "run",
+      workerConfig: worker.loadedWorkerConfig,
+      source: fileSource,
+      task: taskForExecution,
+      defaultProfile: resolvePromptDefaultProfile(worker.loadedWorkerConfig, "verify"),
+      modifierProfile,
+      cliWorkerPattern: worker.workerPattern,
+      taskIntent: taskIntentDecision.intent,
+      toolName: taskIntentDecision.toolName,
+      emit,
+      mode: "wait",
+      workerHealthEntries: worker.workerHealthEntries,
+      evaluateWorkerHealthAtMs,
+    });
 
     return {
       resolvedWorker,
@@ -540,11 +547,13 @@ export async function runTaskIteration(params: {
     phase: "verify" | "repair" | "resolve" | "resolveRepair";
     attempt?: number;
   }): ParsedWorkerPattern => {
+    const promptName = resolveInput.phase === "resolveRepair" ? "repair" : resolveInput.phase;
     const resolvedPhaseWorker = resolveWorkerPatternForInvocation({
       commandName: "run",
       workerConfig: worker.loadedWorkerConfig,
       source: fileSource,
       task: taskForExecution,
+      defaultProfile: resolvePromptDefaultProfile(worker.loadedWorkerConfig, promptName),
       modifierProfile,
       cliWorkerPattern: worker.workerPattern,
       taskIntent: taskIntentDecision.intent,

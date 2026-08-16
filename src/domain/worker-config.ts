@@ -95,6 +95,14 @@ export interface RunDefaultsConfig {
   commitMode?: RunCommitMode;
 }
 
+export interface PromptProfileConfig {
+  profile?: string;
+}
+
+export interface ToolProfileConfig {
+  profile?: string;
+}
+
 export interface AutoCompactDefaultsConfig {
   beforeExit?: boolean;
 }
@@ -112,6 +120,10 @@ export interface WorkerConfig {
   workerTimeoutMs?: number;
   // Named reusable profiles referenced by directive or file metadata.
   profiles?: Record<string, WorkerCommand>;
+  // Optional default profiles for prompt phases, keyed by prompt name.
+  prompts?: Record<string, PromptProfileConfig>;
+  // Optional default profiles for tool handlers, keyed by tool name.
+  tools?: Record<string, ToolProfileConfig>;
   // Optional trace statistics output configuration.
   traceStatistics?: TraceStatisticsConfig;
   // Optional worker failover and health policy configuration.
@@ -278,12 +290,14 @@ function resolveBaseWorkerCommand(
  * Resolution order is deterministic:
  * 1) CLI worker (if provided) short-circuits all config.
  * 2) Config workers.default or workers.interactive (based on mode).
- * 3) File-level named profile.
- * 4) Directive-level named profile.
- * 5) Task-level named profile.
+ * 3) Prompt/tool default named profile.
+ * 4) File-level named profile.
+ * 5) Directive-level named profile.
+ * 6) Task-level named profile.
  *
  * @param config Optional worker configuration source.
  * @param commandName Command currently being executed.
+ * @param defaultProfile Profile name derived from prompt/tool defaults.
  * @param fileProfile Profile name derived from file-level metadata.
  * @param directiveProfile Profile name derived from task/directive metadata.
  * @param taskProfile Profile name derived from task-level inline metadata.
@@ -294,6 +308,7 @@ function resolveBaseWorkerCommand(
 export function resolveWorkerConfig(
   config: WorkerConfig | undefined,
   commandName: WorkerConfigCommandName,
+  defaultProfile: string | undefined,
   fileProfile: string | undefined,
   directiveProfile: string | undefined,
   taskProfile: string | undefined,
@@ -309,6 +324,12 @@ export function resolveWorkerConfig(
   // Select the base worker from explicit command routing, falling back to legacy TUI behavior for non-retained commands.
   const workers = config?.workers;
   let resolved: WorkerCommand = resolveBaseWorkerCommand(workers, commandName, mode);
+
+  const normalizedDefaultProfile = normalizeProfileName(defaultProfile);
+  if (normalizedDefaultProfile) {
+    const profile = resolveNamedProfile(config ?? {}, normalizedDefaultProfile);
+    resolved = pickCommand(resolved, profile);
+  }
 
   const normalizedFileProfile = normalizeProfileName(fileProfile);
   if (normalizedFileProfile) {

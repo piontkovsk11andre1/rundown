@@ -15,7 +15,9 @@ import {
   WORKER_HEALTH_POLICY_UNAVAILABLE_REEVALUATION_MANUAL,
   type WorkerHealthPolicyConfig,
   type AutoCompactDefaultsConfig,
+  type PromptProfileConfig,
   type RunDefaultsConfig,
+  type ToolProfileConfig,
   type TraceStatisticsConfig,
   type FallbacksConfig,
   type WorkerCommand,
@@ -172,6 +174,56 @@ function validateProfileMap(value: unknown, keyPath: string): Record<string, Wor
   const result: Record<string, WorkerCommand> = {};
   for (const [key, command] of Object.entries(value)) {
     result[key] = validateWorkerCommand(command, `${keyPath}.${key}`);
+  }
+
+  return result;
+}
+
+function validatePromptProfileConfig(value: unknown, keyPath: string): PromptProfileConfig {
+  if (!isPlainObject(value)) {
+    throw new Error(`Invalid worker config at ${keyPath}: expected object.`);
+  }
+
+  const result: PromptProfileConfig = {};
+  if (value.profile !== undefined && typeof value.profile !== "string") {
+    throw new Error(`Invalid worker config at ${keyPath}.profile: expected string.`);
+  }
+  if (typeof value.profile === "string" && value.profile.trim().length > 0) {
+    result.profile = value.profile.trim();
+  }
+
+  return result;
+}
+
+function validatePromptProfileMap(value: unknown, keyPath: string): Record<string, PromptProfileConfig> {
+  if (!isPlainObject(value)) {
+    throw new Error(`Invalid worker config at ${keyPath}: expected object.`);
+  }
+
+  const result: Record<string, PromptProfileConfig> = {};
+  for (const [key, config] of Object.entries(value)) {
+    result[key] = validatePromptProfileConfig(config, `${keyPath}.${key}`);
+  }
+
+  return result;
+}
+
+function validateToolProfileMap(value: unknown, keyPath: string): Record<string, ToolProfileConfig> {
+  if (!isPlainObject(value)) {
+    throw new Error(`Invalid worker config at ${keyPath}: expected object.`);
+  }
+
+  const result: Record<string, ToolProfileConfig> = {};
+  for (const [key, config] of Object.entries(value)) {
+    if (!isPlainObject(config)) {
+      throw new Error(`Invalid worker config at ${keyPath}.${key}: expected object.`);
+    }
+    if (config.profile !== undefined && typeof config.profile !== "string") {
+      throw new Error(`Invalid worker config at ${keyPath}.${key}.profile: expected string.`);
+    }
+    if (typeof config.profile === "string" && config.profile.trim().length > 0) {
+      result[key.trim().toLowerCase()] = { profile: config.profile.trim() };
+    }
   }
 
   return result;
@@ -410,6 +462,8 @@ function validateWorkerConfig(value: unknown): WorkerConfig {
   const fallbacks = resolveRawFallbacks(value);
   const workerTimeoutMs = value.workerTimeoutMs;
   const profiles = value.profiles;
+  const prompts = value.prompts;
+  const tools = value.tools;
   const autoCompact = value.autoCompact;
 
   return {
@@ -419,6 +473,8 @@ function validateWorkerConfig(value: unknown): WorkerConfig {
       ? undefined
       : validateNonNegativeInteger(workerTimeoutMs, "workerTimeoutMs"),
     profiles: profiles === undefined ? undefined : validateProfileMap(profiles, "profiles"),
+    prompts: prompts === undefined ? undefined : validatePromptProfileMap(prompts, "prompts"),
+    tools: tools === undefined ? undefined : validateToolProfileMap(tools, "tools"),
     traceStatistics: value.traceStatistics === undefined
       ? undefined
       : validateTraceStatisticsConfig(value.traceStatistics, "traceStatistics"),
@@ -488,6 +544,40 @@ function cloneCommandProfiles(
     cloned[key] = [...command];
   }
   return cloned;
+}
+
+function clonePromptProfiles(
+  value: Record<string, PromptProfileConfig> | undefined,
+): Record<string, PromptProfileConfig> | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const cloned: Record<string, PromptProfileConfig> = {};
+  for (const [key, config] of Object.entries(value)) {
+    if (config.profile !== undefined) {
+      cloned[key] = { profile: config.profile };
+    }
+  }
+
+  return Object.keys(cloned).length > 0 ? cloned : undefined;
+}
+
+function cloneToolProfiles(
+  value: Record<string, ToolProfileConfig> | undefined,
+): Record<string, ToolProfileConfig> | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const cloned: Record<string, ToolProfileConfig> = {};
+  for (const [key, config] of Object.entries(value)) {
+    if (config.profile !== undefined) {
+      cloned[key.trim().toLowerCase()] = { profile: config.profile };
+    }
+  }
+
+  return Object.keys(cloned).length > 0 ? cloned : undefined;
 }
 
 function cloneTraceStatistics(value: TraceStatisticsConfig | undefined): TraceStatisticsConfig | undefined {
@@ -672,6 +762,38 @@ function mergeProfileMaps(
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
+function mergePromptProfileMaps(
+  base: Record<string, PromptProfileConfig> | undefined,
+  override: Record<string, PromptProfileConfig> | undefined,
+): Record<string, PromptProfileConfig> | undefined {
+  if (!base && !override) {
+    return undefined;
+  }
+
+  const merged = {
+    ...(clonePromptProfiles(base) ?? {}),
+    ...(clonePromptProfiles(override) ?? {}),
+  };
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function mergeToolProfileMaps(
+  base: Record<string, ToolProfileConfig> | undefined,
+  override: Record<string, ToolProfileConfig> | undefined,
+): Record<string, ToolProfileConfig> | undefined {
+  if (!base && !override) {
+    return undefined;
+  }
+
+  const merged = {
+    ...(cloneToolProfiles(base) ?? {}),
+    ...(cloneToolProfiles(override) ?? {}),
+  };
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 function mergeHealthPolicy(
   base: WorkerHealthPolicyConfig | undefined,
   override: WorkerHealthPolicyConfig | undefined,
@@ -730,6 +852,8 @@ function mergeWorkerConfig(
     fallbacks: mergeFallbacks(base?.fallbacks, override?.fallbacks),
     workerTimeoutMs: override?.workerTimeoutMs ?? base?.workerTimeoutMs,
     profiles: mergeProfileMaps(base?.profiles, override?.profiles),
+    prompts: mergePromptProfileMaps(base?.prompts, override?.prompts),
+    tools: mergeToolProfileMaps(base?.tools, override?.tools),
     traceStatistics: override?.traceStatistics !== undefined
       ? cloneTraceStatistics(override.traceStatistics)
       : cloneTraceStatistics(base?.traceStatistics),
@@ -749,6 +873,8 @@ function applyBuiltInDefaults(config: WorkerConfig | undefined): WorkerConfig | 
     fallbacks: cloneFallbacks(config.fallbacks),
     workerTimeoutMs: config.workerTimeoutMs,
     profiles: cloneCommandProfiles(config.profiles),
+    prompts: clonePromptProfiles(config.prompts),
+    tools: cloneToolProfiles(config.tools),
     traceStatistics: config.traceStatistics
       ? cloneTraceStatistics(config.traceStatistics)
       : {
@@ -932,6 +1058,20 @@ function validateSchemaKeyPath(pathSegments: readonly string[], keyPath: string)
 
   if (root === "profiles") {
     if (pathSegments.length === 1 || pathSegments.length === 2) {
+      return;
+    }
+    fail();
+  }
+
+  if (root === "prompts") {
+    if (pathSegments.length === 1 || pathSegments.length === 2 || (pathSegments.length === 3 && third === "profile")) {
+      return;
+    }
+    fail();
+  }
+
+  if (root === "tools") {
+    if (pathSegments.length === 1 || pathSegments.length === 2 || (pathSegments.length === 3 && third === "profile")) {
       return;
     }
     fail();

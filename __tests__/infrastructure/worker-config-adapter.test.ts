@@ -95,6 +95,31 @@ describe("createWorkerConfigAdapter", () => {
     expect(fs.existsSync(path.join(configDir, "config.json"))).toBe(false);
   });
 
+  it("setValue accepts prompt and tool profile defaults", () => {
+    const configDir = makeTempConfigDir();
+    const adapter = createWorkerConfigAdapter();
+
+    adapter.setValue?.(configDir, {
+      scope: "local",
+      keyPath: "prompts.execute.profile",
+      value: "executeDefault",
+    });
+    adapter.setValue?.(configDir, {
+      scope: "local",
+      keyPath: "tools.post-on-gitea.profile",
+      value: "postTool",
+    });
+
+    expect(adapter.load(configDir)).toMatchObject({
+      prompts: {
+        execute: { profile: "executeDefault" },
+      },
+      tools: {
+        "post-on-gitea": { profile: "postTool" },
+      },
+    });
+  });
+
   it("setValue allows arbitrary key paths in unsafe mode", () => {
     const configDir = makeTempConfigDir();
     const adapter = createWorkerConfigAdapter();
@@ -148,6 +173,41 @@ describe("createWorkerConfigAdapter", () => {
     expect(adapter.load(configDir)).toMatchObject({
       workers: {
         default: ["opencode", "run", "--model", "global-default"],
+      },
+    });
+  });
+
+  it("merges global and local prompt/tool defaults", () => {
+    const configDir = makeTempConfigDir();
+    const globalConfigPath = writeGlobalConfig(JSON.stringify({
+      prompts: {
+        execute: { profile: "globalExecute" },
+        verify: { profile: "globalVerify" },
+      },
+      tools: {
+        "post-on-gitea": { profile: "globalTool" },
+      },
+    }));
+    writeConfig(configDir, JSON.stringify({
+      prompts: {
+        execute: { profile: "localExecute" },
+      },
+      tools: {
+        "post-on-gitea": { profile: "localTool" },
+      },
+    }));
+
+    const adapter = createWorkerConfigAdapter({
+      resolveGlobalConfigPath: () => ({ discoveredPath: globalConfigPath }),
+    });
+
+    expect(adapter.load(configDir)).toMatchObject({
+      prompts: {
+        execute: { profile: "localExecute" },
+        verify: { profile: "globalVerify" },
+      },
+      tools: {
+        "post-on-gitea": { profile: "localTool" },
       },
     });
   });

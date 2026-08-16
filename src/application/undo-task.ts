@@ -30,6 +30,7 @@ import type { ApplicationOutputPort } from "../domain/ports/output-port.js";
 import { findTaskByFallback } from "./task-context-resolution.js";
 import { parseTasks, type Task } from "../domain/parser.js";
 import {
+  commitCheckedTaskWithGitClient,
   isGitRepoWithGitClient,
   isWorkingDirectoryClean,
 } from "./git-operations.js";
@@ -56,6 +57,7 @@ export interface UndoTaskOptions {
   dryRun?: boolean;
   keepArtifacts?: boolean;
   showAgentOutput?: boolean;
+  commit?: boolean;
 }
 
 export function createUndoTask(
@@ -72,6 +74,7 @@ export function createUndoTask(
       dryRun = false,
       keepArtifacts = false,
       showAgentOutput = false,
+      commit = false,
     } = options;
 
     if (last !== undefined && (!Number.isInteger(last) || last < 1)) {
@@ -182,6 +185,7 @@ export function createUndoTask(
           source: sourceBeforeUndo,
           taskText: run.task.text,
           executionOutput: readExecutionOutput(run),
+          traceInstructions: "",
         };
         const prompt = renderTemplate(undoTemplate, promptVars);
         const workerResult = await dependencies.workerExecutor.runWorker({
@@ -229,6 +233,22 @@ export function createUndoTask(
         }
 
         undoneRunIds.push(run.runId);
+
+        if (commit) {
+          const commitResult = await commitCheckedTaskWithGitClient(
+            dependencies.gitClient,
+            resolvedTask,
+            cwd,
+            "rundown: undo \"" + run.task.text + "\" in " + run.task.file,
+            dependencies.configDir,
+            dependencies.pathOperations,
+          );
+          if (commitResult.kind === "committed") {
+            emit({ kind: "info", message: "Committed undo changes for run " + run.runId + "." });
+          } else {
+            emit({ kind: "info", message: "No undo changes to commit for run " + run.runId + "." });
+          }
+        }
       }
 
       dependencies.artifactStore.finalize(artifactContext, {

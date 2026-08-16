@@ -84,6 +84,43 @@ describe("undo-task", () => {
     );
   });
 
+  it("uses reversal-specific default undo prompt", async () => {
+    const taskFile = "/workspace/tasks.md";
+    const run = createRunMetadata({
+      runId: "run-1",
+      text: "Apply schema migration",
+      line: 1,
+      index: 0,
+      executionOutput: "created table users",
+    });
+    const { undoTask, workerExecutor } = createDependencies({
+      files: {
+        [taskFile]: "- [x] Apply schema migration\n",
+      },
+      runs: [run],
+      verifyValid: true,
+    });
+
+    const code = await undoTask(createOptions({ runId: "latest" }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(workerExecutor.runWorker)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("Undo the selected completed task"),
+      }),
+    );
+    expect(vi.mocked(workerExecutor.runWorker)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("Do not re-execute"),
+      }),
+    );
+    expect(vi.mocked(workerExecutor.runWorker)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.not.stringContaining("{{traceInstructions}}"),
+      }),
+    );
+  });
+
   it("fails and restores checkbox when verification fails", async () => {
     const taskFile = "/workspace/tasks.md";
     const run = createRunMetadata({ runId: "run-1", text: "Rollback flag", line: 1, index: 0 });
@@ -165,6 +202,32 @@ describe("undo-task", () => {
     expect(fileSystem.readText(taskFile)).toBe("- [ ] Cleanup migration\n");
     expect(events.some((event) => event.kind === "info" && event.message.includes("--force enabled"))).toBe(true);
   });
+
+  it("commits undo changes when --commit is set", async () => {
+    const taskFile = "/workspace/tasks.md";
+    const run = createRunMetadata({ runId: "run-1", text: "Cleanup migration", line: 1, index: 0 });
+    const { undoTask, gitClient, events } = createDependencies({
+      files: {
+        [taskFile]: "- [x] Cleanup migration\n",
+      },
+      runs: [run],
+      verifyValid: true,
+      gitStatusOutputs: ["", " M tasks.md\n"],
+    });
+
+    const code = await undoTask(createOptions({ runId: "latest", commit: true }));
+
+    expect(code).toBe(0);
+    expect(vi.mocked(gitClient.run)).toHaveBeenCalledWith(
+      expect.arrayContaining(["add", "-A"]),
+      "/workspace",
+    );
+    expect(vi.mocked(gitClient.run)).toHaveBeenCalledWith(
+      ["commit", "-m", "rundown: undo \"Cleanup migration\" in /workspace/tasks.md"],
+      "/workspace",
+    );
+    expect(events.some((event) => event.kind === "info" && event.message.includes("Committed undo changes"))).toBe(true);
+  });
 });
 
 function createDependencies(options: {
@@ -173,12 +236,14 @@ function createDependencies(options: {
   template?: string;
   verifyValid: boolean;
   gitStatusOutput?: string;
+  gitStatusOutputs?: string[];
 }): {
   undoTask: (options: UndoTaskOptions) => Promise<number>;
   fileSystem: FileSystem;
   workerExecutor: WorkerExecutorPort;
   taskVerification: TaskVerificationPort;
   artifactStore: ArtifactStore;
+  gitClient: GitClient;
   events: ApplicationOutputEvent[];
 } {
   const events: ApplicationOutputEvent[] = [];
@@ -231,12 +296,16 @@ function createDependencies(options: {
     verify: vi.fn(async () => ({ valid: options.verifyValid })),
   };
 
+  const gitStatusOutputs = [...(options.gitStatusOutputs ?? [])];
   const gitClient: GitClient = {
     run: vi.fn(async (args: string[]) => {
       if (args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
         return "true\n";
       }
       if (args[0] === "status" && args[1] === "--porcelain") {
+        if (gitStatusOutputs.length > 0) {
+          return gitStatusOutputs.shift() ?? "";
+        }
         return options.gitStatusOutput ?? "";
       }
       return "";
@@ -273,6 +342,7 @@ function createDependencies(options: {
     workerExecutor,
     taskVerification,
     artifactStore,
+    gitClient,
     events,
   };
 }

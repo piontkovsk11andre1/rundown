@@ -1392,6 +1392,7 @@ export function createUndoCommandAction({
     const keepArtifacts = Boolean(opts.keepArtifacts as boolean | undefined);
     const showAgentOutput = resolveShowAgentOutputOption(opts);
     const force = Boolean(opts.force as boolean | undefined);
+    const commit = Boolean(opts.commit as boolean | undefined);
     const workerPattern = resolveWorkerPattern(opts.worker, getWorkerFromSeparator);
 
     return getApp().undoTask({
@@ -1402,6 +1403,7 @@ export function createUndoCommandAction({
       dryRun,
       keepArtifacts,
       showAgentOutput,
+      commit,
     });
   };
 }

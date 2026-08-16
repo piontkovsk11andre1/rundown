@@ -28,6 +28,7 @@ import {
   createRunCommandAction,
   createStartCommandAction,
   createTestCommandAction,
+  createUndoCommandAction,
   createWorkspaceRemoveCommandAction,
   createWorkspaceUnlinkCommandAction,
   createWorkerHealthCommandAction,
@@ -85,6 +86,28 @@ function createLoopHarness(runTaskImpl: RunTaskFn = async () => 0): LoopHarness 
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
+});
+
+describe("undo command action", () => {
+  it("forwards --commit to undoTask", async () => {
+    const undoTask = vi.fn(async () => 0);
+    const app = { undoTask } as unknown as CliApp;
+    const action = createUndoCommandAction({
+      getApp: () => app,
+      getWorkerFromSeparator: () => undefined,
+    });
+
+    await action({
+      run: "latest",
+      commit: true,
+      worker: "opencode run",
+    });
+
+    expect(undoTask).toHaveBeenCalledWith(expect.objectContaining({
+      runId: "latest",
+      commit: true,
+    }));
+  });
 });
 
 describe("createLoopCommandAction", () => {

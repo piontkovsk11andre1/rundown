@@ -728,7 +728,39 @@ Filename and content rules:
 /**
  * Default undo prompt template used by the undo command.
  */
-export const DEFAULT_UNDO_TEMPLATE = DEFAULT_TASK_TEMPLATE;
+export const DEFAULT_UNDO_TEMPLATE = `\
+${DEFAULT_TEMPLATE_SHARED_PREFIX}
+${DEFAULT_TEMPLATE_MEMORY_SECTION}
+${DEFAULT_TEMPLATE_VARS_SECTION}
+
+## Phase
+
+Undo the selected completed task.
+
+Reverse only the project changes made to complete the task. Do not re-execute
+the task and do not implement new forward work.
+
+Use the current project state, task text, source context, and captured execution
+output to identify files or content that should be removed, restored, or edited
+back to the pre-task state.
+
+Task text:
+
+{{taskText}}
+
+Captured execution output, if available:
+
+{{executionOutput}}
+
+Rules:
+
+- Apply the smallest safe inverse change for the completed task.
+- Remove generated files only when they were created by that task.
+- Restore edited files only for changes attributable to that task.
+- Do not modify the source Markdown task file checkbox; rundown will mark the task unchecked after undo verification succeeds.
+- If there is not enough information to safely reverse a change, leave it untouched and explain the blocker on stdout.
+{{traceInstructions}}
+`;
 
 /**
  * Default test verification prompt template used by the test command.

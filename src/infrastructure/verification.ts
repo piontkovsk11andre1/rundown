@@ -57,6 +57,33 @@ function extractVerdictLine(stdout: string): { verdict: string; hasPreamble: boo
 }
 
 /**
+ * Extract the last standalone verification protocol verdict from stdout.
+ *
+ * Trace mode can append a fenced trace block after the verifier's verdict, and
+ * some workers emit preamble before it. Treat only standalone `OK` or `NOT_OK:`
+ * lines as protocol verdicts so incidental text does not create false passes.
+ */
+function extractProtocolVerdict(stdout: string): { verdict: string; hasExtraOutput: boolean } {
+  const lines = stdout.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
+  let verdictIndex = -1;
+  let verdict = "";
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const candidate = stripBackticks(lines[index]!);
+    if (candidate.toUpperCase() === "OK" || /^NOT_OK\s*:/i.test(candidate)) {
+      verdictIndex = index;
+      verdict = candidate;
+      break;
+    }
+  }
+
+  return {
+    verdict,
+    hasExtraOutput: verdictIndex !== -1 && lines.length > 1,
+  };
+}
+
+/**
  * Parse resolve worker stdout into a structured diagnosis verdict.
  *
  * Accepts either:
@@ -138,7 +165,7 @@ function extractFailureDetails(stdout: string): string {
   return stripBackticks(lines.at(-1)!);
 }
 
-const FORMAT_WARNING = "Verification worker produced extra output before the verdict. Only the last line was used. Reinforce output format in your verify prompt.";
+const FORMAT_WARNING = "Verification worker produced extra output around the verdict. Only the protocol verdict line was used. Reinforce output format in your verify prompt.";
 
 /**
  * Normalize worker output into the canonical verification result shape.
@@ -146,9 +173,9 @@ const FORMAT_WARNING = "Verification worker produced extra output before the ver
  * Accepts explicit success output (`OK`) and various failure formats,
  * then returns a deterministic payload for sidecar persistence.
  *
- * The verdict is extracted from the **last non-empty line** of stdout so
- * that models which emit preamble text before the final `OK` / `NOT_OK`
- * line are handled gracefully.  When preamble is detected the result
+ * The verdict is extracted from the last standalone protocol line in stdout so
+ * that models which emit preamble text before the verdict, or trace output
+ * after it, are handled gracefully. When extra output is detected the result
  * carries a `formatWarning` so callers can surface it.
  */
 function parseVerificationResult(output: { exitCode: number | null; stdout: string; stderr: string }): VerificationResult {
@@ -163,9 +190,9 @@ function parseVerificationResult(output: { exitCode: number | null; stdout: stri
     return { ok: false, sidecarContent: reason, stdout: rawStdout };
   }
 
-  // Extract the last non-empty line as the verdict.
-  const { verdict, hasPreamble } = extractVerdictLine(stdout);
-  const formatWarning = hasPreamble ? FORMAT_WARNING : undefined;
+  // Extract the last standalone protocol verdict, ignoring preamble/trace text.
+  const { verdict, hasExtraOutput } = extractProtocolVerdict(stdout);
+  const formatWarning = hasExtraOutput ? FORMAT_WARNING : undefined;
 
   // `OK` is the only accepted success token.
   if (verdict.toUpperCase() === "OK") {

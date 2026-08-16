@@ -354,6 +354,78 @@ describe("verify", () => {
     expect(verificationStore.write).toHaveBeenCalledWith(task, "OK");
   });
 
+  it("accepts OK before trace output when extra reasoning is present", async () => {
+    const file = "Tasks.md";
+    const task = makeTask(file);
+    const verificationStore = createVerificationStore();
+
+    runWorkerMock.mockResolvedValue({
+      exitCode: 0,
+      stdout: [
+        "Thinking: I checked that Hello.md exists.",
+        "OK",
+        "```rundown-trace",
+        "confidence: 90",
+        "files_read: Hello.md",
+        "files_written: none",
+        "tools_used: ls",
+        "approach: checked requested file",
+        "blockers: none",
+        "```",
+      ].join("\n"),
+      stderr: "",
+    });
+
+    const result = await verify({
+      task,
+      source: file,
+      contextBefore: "",
+      template: "{{task}}",
+      command: ["worker"],
+      verificationStore,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.formatWarning).toBeDefined();
+    expect(verificationStore.write).toHaveBeenCalledWith(task, "OK");
+  });
+
+  it("uses the last standalone protocol verdict when trace output follows", async () => {
+    const file = "Tasks.md";
+    const task = makeTask(file);
+    const verificationStore = createVerificationStore();
+
+    runWorkerMock.mockResolvedValue({
+      exitCode: 0,
+      stdout: [
+        "OK",
+        "NOT_OK: checkbox remains unchecked",
+        "```rundown-trace",
+        "confidence: 80",
+        "files_read: Tasks.md",
+        "files_written: none",
+        "tools_used: none",
+        "approach: reviewed task state",
+        "blockers: none",
+        "```",
+      ].join("\n"),
+      stderr: "",
+    });
+
+    const result = await verify({
+      task,
+      source: file,
+      contextBefore: "",
+      template: "{{task}}",
+      command: ["worker"],
+      verificationStore,
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.formatWarning).toBeDefined();
+    expect(verificationStore.write).toHaveBeenCalledWith(task, "checkbox remains unchecked");
+  });
+
   it("accepts NOT_OK on the last line when preamble is present", async () => {
     const file = "Tasks.md";
     const task = makeTask(file);

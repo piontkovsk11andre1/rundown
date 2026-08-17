@@ -15,6 +15,13 @@ import spawn from "cross-spawn";
 import { expandWorkerPattern } from "../domain/worker-pattern.js";
 import type { ParsedWorkerPattern } from "../domain/worker-pattern.js";
 import type { ProcessRunMode as RunnerMode } from "../domain/ports/index.js";
+import type { TraceWriterPort } from "../domain/ports/trace-writer-port.js";
+import {
+  createWorkerEventEvent,
+  createWorkerOutputEvent,
+  type TracePhase,
+} from "../domain/trace.js";
+import { parseWorkerJsonEventsFromChunk } from "../domain/worker-event-normalizer.js";
 import {
   beginRuntimePhase,
   completeRuntimePhase,
@@ -22,6 +29,7 @@ import {
   finalizeRuntimeArtifacts,
   type RuntimeArtifactsContext,
   type RuntimePhase,
+  type RuntimePhaseHandle,
 } from "./runtime-artifacts.js";
 
 /** Re-exported runner mode type for infrastructure callers. */
@@ -41,6 +49,8 @@ export interface RunnerOptions {
   mode?: RunnerMode;
   /** Enable trace-aware runner behavior. */
   trace?: boolean;
+  /** Optional writer for timestamped worker stream and structured provider events. */
+  traceWriter?: TraceWriterPort;
   /** Capture stdout/stderr even for interactive runs. */
   captureOutput?: boolean;
   /** Optional worker timeout in milliseconds; 0 disables timeout. */
@@ -83,6 +93,10 @@ export interface RunnerResult {
   stderr: string;
   /** True when execution exceeded configured timeout and was terminated. */
   timedOut?: boolean;
+}
+
+interface WorkerTraceSink {
+  recordChunk(stream: "stdout" | "stderr", chunk: Buffer): void;
 }
 
 /**
@@ -149,6 +163,7 @@ export async function runWorker(options: RunnerOptions): Promise<RunnerResult> {
       options.captureOutput ?? false,
       options.timeoutMs,
       options.env,
+      buildWorkerTraceSink(options, artifactContext, phase),
     );
     const outputCaptured = options.captureOutput ?? mode === "wait";
     const timeoutMs = normalizeTimeoutMs(options.timeoutMs);
@@ -208,6 +223,84 @@ function buildWorkerArgs(
   return expandWorkerPattern(parsed, buildBootstrapPrompt(promptFile, cwd), promptFile);
 }
 
+function buildWorkerTraceSink(
+  options: RunnerOptions,
+  artifactContext: RuntimeArtifactsContext,
+  phase: RuntimePhaseHandle,
+): WorkerTraceSink | undefined {
+  if (options.trace !== true || !options.traceWriter) {
+    return undefined;
+  }
+
+  const tracePhase = toTraceWorkerPhase(options.artifactPhase ?? "worker");
+  return {
+    recordChunk(stream, chunk) {
+      const timestamp = new Date().toISOString();
+      const text = chunk.toString("utf-8");
+      options.traceWriter?.write(createWorkerOutputEvent({
+        timestamp,
+        run_id: artifactContext.runId,
+        payload: {
+          phase: tracePhase,
+          sequence: phase.sequence,
+          stream,
+          byte_length: chunk.byteLength,
+          line_count: countLines(text),
+        },
+      }));
+
+      for (const event of parseWorkerJsonEventsFromChunk(text)) {
+        options.traceWriter?.write(createWorkerEventEvent({
+          timestamp,
+          run_id: artifactContext.runId,
+          payload: {
+            phase: tracePhase,
+            sequence: phase.sequence,
+            provider: event.provider,
+            kind: event.kind,
+            action: event.action,
+            name: event.name,
+            file_path: event.file_path,
+            command: event.command,
+            duration_ms: event.duration_ms,
+            status: event.status,
+            confidence: "exact",
+            raw_event: event.raw_event,
+          },
+        }));
+      }
+    },
+  };
+}
+
+function toTraceWorkerPhase(phase: RuntimePhase): TracePhase | "worker" | "translate" | "help" {
+  if (
+    phase === "execute"
+    || phase === "verify"
+    || phase === "repair"
+    || phase === "resolve"
+    || phase === "plan"
+    || phase === "discuss"
+    || phase === "rundown-delegate"
+  ) {
+    return phase;
+  }
+
+  if (phase === "translate" || phase === "help") {
+    return phase;
+  }
+
+  return "worker";
+}
+
+function countLines(text: string): number {
+  if (text.length === 0) {
+    return 0;
+  }
+
+  return text.split(/\r\n|\r|\n/).length - (text.endsWith("\n") || text.endsWith("\r") ? 1 : 0);
+}
+
 /**
  * Build a universal bootstrap prompt that points the worker to the staged prompt file.
  */
@@ -229,6 +322,7 @@ function executeCommand(
   captureOutput: boolean,
   timeoutMs: number | undefined,
   env?: Record<string, string>,
+  traceSink?: WorkerTraceSink,
 ): Promise<RunnerResult> {
   const normalizedTimeoutMs = normalizeTimeoutMs(timeoutMs);
 
@@ -253,10 +347,12 @@ function executeCommand(
 
         child.stdout?.on("data", (chunk: Buffer) => {
           stdout.push(chunk);
+          traceSink?.recordChunk("stdout", chunk);
           mirrorWorkerChunkToTerminal("stdout", chunk);
         });
         child.stderr?.on("data", (chunk: Buffer) => {
           stderr.push(chunk);
+          traceSink?.recordChunk("stderr", chunk);
           mirrorWorkerChunkToTerminal("stderr", chunk);
         });
 
@@ -385,8 +481,14 @@ function executeCommand(
       timedOut = true;
     });
 
-    child.stdout?.on("data", (chunk: Buffer) => stdout.push(chunk));
-    child.stderr?.on("data", (chunk: Buffer) => stderr.push(chunk));
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdout.push(chunk);
+      traceSink?.recordChunk("stdout", chunk);
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr.push(chunk);
+      traceSink?.recordChunk("stderr", chunk);
+    });
 
     child.on("close", (code: number | null) => {
       if (settled) {

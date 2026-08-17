@@ -7,6 +7,7 @@
 import type { Task } from "../domain/parser.js";
 import type { VerificationStore } from "../domain/ports/verification-store.js";
 import type { CommandExecutionOptions, CommandExecutor } from "../domain/ports/command-executor.js";
+import type { TraceWriterPort } from "../domain/ports/trace-writer-port.js";
 import { expandCliBlocks } from "../domain/cli-block.js";
 import {
   buildTaskHierarchyTemplateVars,
@@ -254,6 +255,7 @@ export interface VerifyOptions {
   mode?: RunnerMode;
   onWorkerOutput?: (stdout: string, stderr: string) => void;
   trace?: boolean;
+  traceWriter?: TraceWriterPort;
   cwd?: string;
   configDir?: string;
   templateVars?: ExtraTemplateVars;
@@ -332,6 +334,7 @@ export async function verify(options: VerifyOptions): Promise<VerifyResult> {
     prompt,
     mode: options.mode ?? "wait",
     trace: options.trace,
+    traceWriter: options.traceWriter,
     cwd: options.cwd,
     configDir: options.configDir,
     artifactContext: options.artifactContext,

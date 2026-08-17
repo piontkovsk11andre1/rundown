@@ -2,6 +2,7 @@ import type { Task } from "../parser.js";
 import type { ParsedWorkerPattern } from "../worker-pattern.js";
 import type { CommandExecutionOptions, CommandExecutor } from "./command-executor.js";
 import type { ProcessRunMode } from "./process-runner.js";
+import type { TraceWriterPort } from "./trace-writer-port.js";
 
 /**
  * Defines the complete input required to verify a single migration task.
@@ -26,6 +27,8 @@ export interface TaskVerificationOptions {
   onWorkerOutput?: (stdout: string, stderr: string) => void;
   // Enables verbose tracing output when true.
   trace?: boolean;
+  // Optional trace writer used to persist worker-internal stream events.
+  traceWriter?: TraceWriterPort;
   // Working directory for worker execution.
   cwd?: string;
   // Directory containing configuration files used during verification.

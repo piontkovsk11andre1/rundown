@@ -1,5 +1,6 @@
 import type { ProcessRunMode } from "./process-runner.js";
 import type { ArtifactStorePhase } from "./artifact-store.js";
+import type { TraceWriterPort } from "./trace-writer-port.js";
 import type { ParsedWorkerPattern } from "../worker-pattern.js";
 
 /**
@@ -29,6 +30,8 @@ export interface WorkerExecutionOptions {
   mode: ProcessRunMode;
   // Enables trace collection when true.
   trace?: boolean;
+  // Optional trace writer used to persist worker-internal stream events.
+  traceWriter?: TraceWriterPort;
   // Captures worker stdout and stderr for later consumption.
   captureOutput?: boolean;
   // Working directory used for command execution.

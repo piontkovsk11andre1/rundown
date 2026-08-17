@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TraceEvent } from "../../src/domain/trace.js";
 import { parseWorkerPattern } from "../../src/domain/worker-pattern.js";
 
 const spawnMock = vi.fn();
@@ -71,6 +72,54 @@ describe("runWorker", () => {
     expect(args.at(-1)).toBe(capturedPromptFile);
     expect(args).not.toContain(prompt);
     expect(fs.existsSync(capturedPromptFile)).toBe(false);
+  });
+
+  it("emits timestamped worker output and parsed JSON worker events when tracing is enabled", async () => {
+    const traceEvents: TraceEvent[] = [];
+    spawnMock.mockImplementation(() => {
+      const child = new EventEmitter() as EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+      };
+
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+
+      queueMicrotask(() => {
+        child.stdout.emit("data", Buffer.from('{"type":"tool.started","tool":"Read","path":"src/index.ts"}\n'));
+        child.stderr.emit("data", Buffer.from("diagnostic\n"));
+        child.emit("close", 0);
+      });
+
+      return child;
+    });
+
+    const { runWorker } = await import("../../src/infrastructure/runner.js");
+
+    await runWorker({
+      command: ["opencode", "run"],
+      prompt: "prompt body",
+      mode: "wait",
+      trace: true,
+      traceWriter: {
+        write: (event) => traceEvents.push(event),
+        flush: () => undefined,
+      },
+      cwd: workspace,
+    });
+
+    expect(traceEvents.some((event) => event.event_type === "worker.output"
+      && event.payload.stream === "stdout"
+      && event.payload.byte_length > 0)).toBe(true);
+    expect(traceEvents.some((event) => event.event_type === "worker.output"
+      && event.payload.stream === "stderr"
+      && event.payload.line_count === 1)).toBe(true);
+    expect(traceEvents.some((event) => event.event_type === "worker.event"
+      && event.payload.kind === "file"
+      && event.payload.action === "started"
+      && event.payload.name === "Read"
+      && event.payload.file_path === "src/index.ts"
+      && event.payload.confidence === "exact")).toBe(true);
   });
 
   it("keeps pre-merged worker args before the prompt file for implicit file append", async () => {

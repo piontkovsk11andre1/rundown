@@ -1,6 +1,6 @@
 {
   "name": "@p10i/rundown",
-  "version": "1.0.0-rc.21",
+  "version": "1.0.0-rc.22",
   "description": "A Markdown-native task runtime for agentic workflows. Execute, verify, and repair work directly from Markdown TODOs.",
   "type": "module",
   "bin": {

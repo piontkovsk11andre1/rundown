@@ -7,6 +7,7 @@
 import type { Task } from "../domain/parser.js";
 import type { VerificationStore } from "../domain/ports/verification-store.js";
 import type { CommandExecutionOptions, CommandExecutor } from "../domain/ports/command-executor.js";
+import type { TraceWriterPort } from "../domain/ports/trace-writer-port.js";
 import { expandCliBlocks } from "../domain/cli-block.js";
 import {
   buildTaskHierarchyTemplateVars,
@@ -43,6 +44,7 @@ export interface RepairOptions {
   onWorkerOutput?: (stdout: string, stderr: string) => void;
   /** Enables verbose worker diagnostics when true. */
   trace?: boolean;
+  traceWriter?: TraceWriterPort;
   /** Working directory for worker and CLI block execution. */
   cwd?: string;
   /** Optional config directory passed to the worker process. */
@@ -104,6 +106,7 @@ export interface ResolveOptions {
   mode?: RunnerMode;
   onWorkerOutput?: (stdout: string, stderr: string) => void;
   trace?: boolean;
+  traceWriter?: TraceWriterPort;
   cwd?: string;
   configDir?: string;
   templateVars?: ExtraTemplateVars;
@@ -185,6 +188,7 @@ export async function resolve(options: ResolveOptions): Promise<ResolveResult> {
     prompt,
     mode: options.mode ?? "wait",
     trace: options.trace,
+    traceWriter: options.traceWriter,
     cwd: options.cwd,
     env: options.executionEnv,
     configDir: options.configDir,
@@ -269,6 +273,7 @@ export async function repair(options: RepairOptions): Promise<RepairResult> {
       prompt,
       mode: options.mode ?? "wait",
       trace: options.trace,
+      traceWriter: options.traceWriter,
       cwd: options.cwd,
       env: options.executionEnv,
       configDir: options.configDir,
@@ -293,6 +298,7 @@ export async function repair(options: RepairOptions): Promise<RepairResult> {
       verificationStore: options.verificationStore,
       mode: options.mode,
       trace: options.trace,
+      traceWriter: options.traceWriter,
       cwd: options.cwd,
       configDir: options.configDir,
       templateVars: options.templateVars,

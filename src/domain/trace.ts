@@ -35,6 +35,8 @@ export type TraceEventType =
   | "agent.signals"
   | "agent.thinking"
   | "agent.tool_usage"
+  | "worker.output"
+  | "worker.event"
   | "analysis.summary"
   | "verification.result"
   | "verification.efficiency"
@@ -318,6 +320,35 @@ export interface AgentToolUsagePayload {
   tools: string[];
 }
 
+export type WorkerEventKind = "thinking" | "tool" | "file" | "command" | "message" | "unknown";
+
+export type WorkerEventAction = "started" | "finished" | "read" | "write" | "called" | "emitted" | "unknown";
+
+export type WorkerEventConfidence = "exact" | "inferred";
+
+export interface WorkerOutputPayload {
+  phase: TracePhase | "worker" | "translate" | "help";
+  sequence: number;
+  stream: "stdout" | "stderr";
+  byte_length: number;
+  line_count: number;
+}
+
+export interface WorkerEventPayload {
+  phase: TracePhase | "worker" | "translate" | "help";
+  sequence: number;
+  provider: "opencode" | "claude" | "codex" | "unknown";
+  kind: WorkerEventKind;
+  action: WorkerEventAction;
+  name: string | null;
+  file_path: string | null;
+  command: string | null;
+  duration_ms: number | null;
+  status: string | null;
+  confidence: WorkerEventConfidence;
+  raw_event?: unknown;
+}
+
 /**
  * Classification levels used to report perceived task complexity.
  */
@@ -560,6 +591,8 @@ export type AgentThinkingEvent = TraceEventBase<"agent.thinking", AgentThinkingP
  * Strongly typed event shape for `agent.tool_usage`.
  */
 export type AgentToolUsageEvent = TraceEventBase<"agent.tool_usage", AgentToolUsagePayload>;
+export type WorkerOutputEvent = TraceEventBase<"worker.output", WorkerOutputPayload>;
+export type WorkerEventEvent = TraceEventBase<"worker.event", WorkerEventPayload>;
 /**
  * Strongly typed event shape for `analysis.summary`.
  */
@@ -629,6 +662,8 @@ export type TraceEvent =
   | AgentSignalsEvent
   | AgentThinkingEvent
   | AgentToolUsageEvent
+  | WorkerOutputEvent
+  | WorkerEventEvent
   | AnalysisSummaryEvent
   | VerificationResultEvent
   | VerificationEfficiencyEvent
@@ -1051,6 +1086,32 @@ export function createAgentToolUsageEvent(input: {
     timestamp: input.timestamp,
     run_id: input.run_id,
     event_type: "agent.tool_usage",
+    payload: input.payload,
+  });
+}
+
+export function createWorkerOutputEvent(input: {
+  timestamp: string;
+  run_id: string;
+  payload: WorkerOutputPayload;
+}): WorkerOutputEvent {
+  return createTraceEvent({
+    timestamp: input.timestamp,
+    run_id: input.run_id,
+    event_type: "worker.output",
+    payload: input.payload,
+  });
+}
+
+export function createWorkerEventEvent(input: {
+  timestamp: string;
+  run_id: string;
+  payload: WorkerEventPayload;
+}): WorkerEventEvent {
+  return createTraceEvent({
+    timestamp: input.timestamp,
+    run_id: input.run_id,
+    event_type: "worker.event",
     payload: input.payload,
   });
 }

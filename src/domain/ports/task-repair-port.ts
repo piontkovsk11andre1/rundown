@@ -2,6 +2,7 @@ import type { Task } from "../parser.js";
 import type { ParsedWorkerPattern } from "../worker-pattern.js";
 import type { CommandExecutionOptions, CommandExecutor } from "./command-executor.js";
 import type { ProcessRunMode } from "./process-runner.js";
+import type { TraceWriterPort } from "./trace-writer-port.js";
 
 /**
  * Defines all inputs required to run a task repair cycle.
@@ -30,6 +31,8 @@ export interface TaskRepairOptions {
   onWorkerOutput?: (stdout: string, stderr: string) => void;
   /** Enables verbose trace output for debugging repair behavior. */
   trace?: boolean;
+  /** Optional trace writer used to persist worker-internal stream events. */
+  traceWriter?: TraceWriterPort;
   /** Working directory used when executing repair and verification steps. */
   cwd?: string;
   /** Directory that contains configuration files needed by the workflow. */
@@ -89,6 +92,7 @@ export interface TaskResolveOptions {
   mode?: ProcessRunMode;
   onWorkerOutput?: (stdout: string, stderr: string) => void;
   trace?: boolean;
+  traceWriter?: TraceWriterPort;
   cwd?: string;
   configDir?: string;
   templateVars?: Record<string, unknown>;

@@ -15,8 +15,11 @@ interface PackageLockFile {
 }
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
-const EXPECTED_CLI_ENTRYPOINT = "dist/cli.js";
-const EXPECTED_BIN_NAMES = ["rundown", "rndn"] as const;
+const EXPECTED_BIN_ENTRYPOINTS = {
+  rundown: "dist/cli.js",
+  rndn: "dist/rndn.js",
+  "rundown-mcp": "dist/mcp.js",
+} as const;
 
 describe("packaged bin aliases", () => {
   it("exposes rndn and rundown in package.json for npm/pnpm/yarn/bun shims", () => {
@@ -24,8 +27,8 @@ describe("packaged bin aliases", () => {
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as PackageManifest;
     const bin = packageJson.bin ?? {};
 
-    for (const name of EXPECTED_BIN_NAMES) {
-      expect(bin[name]).toBe(EXPECTED_CLI_ENTRYPOINT);
+    for (const [name, entrypoint] of Object.entries(EXPECTED_BIN_ENTRYPOINTS)) {
+      expect(bin[name]).toBe(entrypoint);
     }
   });
 
@@ -34,8 +37,8 @@ describe("packaged bin aliases", () => {
     const packageLock = JSON.parse(fs.readFileSync(packageLockPath, "utf-8")) as PackageLockFile;
     const rootBin = packageLock.packages?.[""]?.bin ?? {};
 
-    for (const name of EXPECTED_BIN_NAMES) {
-      expect(rootBin[name]).toBe(EXPECTED_CLI_ENTRYPOINT);
+    for (const [name, entrypoint] of Object.entries(EXPECTED_BIN_ENTRYPOINTS)) {
+      expect(rootBin[name]).toBe(entrypoint);
     }
   });
 });

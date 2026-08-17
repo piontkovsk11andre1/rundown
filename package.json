@@ -1,11 +1,12 @@
 {
   "name": "@p10i/rundown",
-  "version": "1.0.0-rc.22",
+  "version": "1.0.0-rc.24",
   "description": "A Markdown-native task runtime for agentic workflows. Execute, verify, and repair work directly from Markdown TODOs.",
   "type": "module",
   "bin": {
     "rundown": "dist/cli.js",
-    "rndn": "dist/cli.js"
+    "rndn": "dist/rndn.js",
+    "rundown-mcp": "dist/mcp.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -52,16 +53,18 @@
     "url": "https://github.com/piontkovsk11andre1/rundown/issues"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
     "commander": "^13.1.0",
     "cross-spawn": "^7.0.6",
     "fast-glob": "^3.3.3",
     "mdast-util-from-markdown": "^2.0.2",
     "mdast-util-gfm-task-list-item": "^2.0.0",
     "micromark-extension-gfm-task-list-item": "^2.1.0",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "zod": "^4.4.3"
   },
   "overrides": {
     "test-exclude": "^8.0.0"

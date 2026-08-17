@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
 import {
   beginRuntimePhase,
   completeRuntimePhase,
@@ -272,7 +273,8 @@ function hasLongOptionVariant(args: string[], options: string[]): boolean {
  * Determines the executable and base arguments used to invoke rundown.
  *
  * Priority order is explicit override, current Node.js process/entrypoint, then
- * the plain `rundown` executable on PATH.
+ * the plain `rundown` executable on PATH. The `rndn` wrapper is intentionally
+ * not reused for delegation because it resolves back through `rundown`.
  */
 function resolveRundownInvocation(override: string[] | undefined): { command: string; args: string[] } {
   if (override && override.length > 0) {
@@ -285,6 +287,13 @@ function resolveRundownInvocation(override: string[] | undefined): { command: st
   const execPath = process.argv[0];
   const entrypoint = process.argv[1];
 
+  if (isRndnEntrypoint(entrypoint)) {
+    return {
+      command: "rundown",
+      args: [],
+    };
+  }
+
   if (execPath && entrypoint) {
     return {
       command: execPath,
@@ -296,4 +305,13 @@ function resolveRundownInvocation(override: string[] | undefined): { command: st
     command: "rundown",
     args: [],
   };
+}
+
+function isRndnEntrypoint(entrypoint: string | undefined): boolean {
+  if (!entrypoint) {
+    return false;
+  }
+
+  const basename = path.basename(entrypoint).toLowerCase();
+  return basename === "rndn" || basename === "rndn.js" || basename === "rndn.cmd" || basename === "rndn.ps1";
 }

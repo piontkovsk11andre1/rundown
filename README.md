@@ -125,7 +125,7 @@ Is something goes wrong:
 rundown repair
 ```
 
-`rndn` is a first-class executable alias for `rundown`; both names run the same CLI entrypoint with identical behavior.
+`rndn` is a materializing wrapper for `rundown`: it runs `rundown materialize` with the provided arguments. `rundown` remains the real CLI entrypoint used by internal delegation.
 
 …and more.
 
@@ -150,3 +150,19 @@ bun add -g @p10i/rundown
 ## Documentation
 
 Run `rundown --help` for command and option reference.
+
+## MCP
+
+Rundown ships a stdio MCP server for agent clients:
+
+```json
+{
+  "mcpServers": {
+    "rundown": {
+      "command": "rundown-mcp"
+    }
+  }
+}
+```
+
+The server exposes named tools for the CLI surface, including `rundown_next`, `rundown_list`, `rundown_run`, `rundown_all`, `rundown_call`, `rundown_loop`, `rundown_plan`, `rundown_make`, `rundown_add`, `rundown_do`, `rundown_materialize`, config, memory, worker, artifact, log, init, localization, and unlock operations. Mutating tools return the underlying `rundown` exit code plus captured stdout/stderr; use each tool's `dryRun` option where available to preview changes.

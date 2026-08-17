@@ -94,10 +94,8 @@ describe("executeRundownTask", () => {
     );
   });
 
-  it.each([
-    "/repo/node_modules/.bin/rundown",
-    "/repo/node_modules/.bin/rndn",
-  ])("uses current executable entrypoint for delegated invocations (%s)", async (entrypoint) => {
+  it("uses current rundown executable entrypoint for delegated invocations", async () => {
+    const entrypoint = "/repo/node_modules/.bin/rundown";
     process.argv = ["/usr/local/bin/node", entrypoint, "run", "Parent.md"];
     const child = createChildProcess();
     spawnMock.mockReturnValue(child);
@@ -122,27 +120,33 @@ describe("executeRundownTask", () => {
     );
   });
 
-  it("returns matching non-zero exit codes for delegated rndn and rundown entrypoints", async () => {
-    const runWithEntrypoint = async (entrypoint: string): Promise<Awaited<ReturnType<typeof executeRundownTask>>> => {
-      process.argv = ["/usr/local/bin/node", entrypoint, "run", "Parent.md"];
-      const child = createChildProcess();
-      spawnMock.mockReturnValueOnce(child);
+  it.each([
+    "/repo/node_modules/.bin/rndn",
+    "/repo/node_modules/.bin/rndn.js",
+    "/repo/node_modules/.bin/rndn.cmd",
+    "/repo/node_modules/.bin/rndn.ps1",
+  ])("delegates through rundown instead of reusing rndn wrapper (%s)", async (entrypoint) => {
+    process.argv = ["/usr/local/bin/node", entrypoint, "materialize", "Parent.md"];
+    const child = createChildProcess();
+    spawnMock.mockReturnValueOnce(child);
 
-      const promise = executeRundownTask("run", ["Child.md"], "/repo");
-      child.emit("close", 2);
+    const promise = executeRundownTask("run", ["Child.md"], "/repo");
+    child.emit("close", 2);
 
-      return await promise;
-    };
-
-    const rundownResult = await runWithEntrypoint("/repo/node_modules/.bin/rundown");
-    const rndnResult = await runWithEntrypoint("/repo/node_modules/.bin/rndn");
-
-    expect(rundownResult).toEqual({
+    await expect(promise).resolves.toEqual({
       exitCode: 2,
       stdout: "",
       stderr: "",
     });
-    expect(rndnResult).toEqual(rundownResult);
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "rundown",
+      ["run", "Child.md"],
+      expect.objectContaining({
+        cwd: "/repo",
+        shell: false,
+      }),
+    );
   });
 
   it("inherits stdin for delegated runs so nested include prompts stay interactive", async () => {

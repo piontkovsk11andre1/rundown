@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 
 // Check implementation-to-implementation contracts, not adjacent public .d.mts
 // stubs (which TypeScript normally prefers over same-basename JavaScript).
@@ -42,8 +42,9 @@ host.resolveModuleNameLiterals = (
     );
     const resolved = result.resolvedModule;
     if (
-      resolved?.resolvedFileName.startsWith(source) &&
-      resolved.resolvedFileName.endsWith(".d.mts")
+      resolved?.resolvedFileName.endsWith(".d.mts") &&
+      // TypeScript uses forward slashes even when `source` is a Windows path.
+      relative(source, dirname(resolved.resolvedFileName)) === ""
     ) {
       const implementation = resolved.resolvedFileName.replace(
         /\.d\.mts$/,

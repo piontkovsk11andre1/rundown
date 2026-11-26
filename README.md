@@ -2,7 +2,7 @@
 
 Documentation-first Markdown modules and commands, compiled through do-md into
 native ESM. Node **22.15+** is required for programmatic synchronous ESM hooks.
-This source prepares **2.0.0-rc.1**. Its canonical repository location is
+This source prepares **2.0.0-rc.2**. Its canonical repository location is
 the repository root; see the [changelog](CHANGELOG.md), [migration notes](docs/migration-2.md)
 and [release procedure](docs/releasing.md).
 

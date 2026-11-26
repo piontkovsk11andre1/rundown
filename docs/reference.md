@@ -1,6 +1,6 @@
 # Rundown reference
 
-Version 2.0.0-rc.1.
+Version 2.0.0-rc.2.
 
 ## Commands
 

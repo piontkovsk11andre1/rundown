@@ -27,7 +27,11 @@
 - Document callable authoring contracts, observability and testing through the
   shared CLI/MCP reference and Skill; simplify the callback example and ship tests.
 
-## 2.0.0-rc.1 — unreleased
+## 2.0.0-rc.2 — unreleased
+
+- Publish release candidates under npm’s `latest` tag so `npm install @p10i/rundown` installs the current candidate.
+
+## 2.0.0-rc.1
 
 - Documentation-first command and universal module formats, compiled with do-md.
 - Native ESM imports, circular dependencies, coherent cached artifacts and source maps.

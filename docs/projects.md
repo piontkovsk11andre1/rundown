@@ -9,7 +9,7 @@ dependency declarations with Rundown configuration:
   "private": true,
   "type": "module",
   "dependencies": {
-    "@p10i/rundown": "2.0.0-rc.1"
+    "@p10i/rundown": "2.0.0-rc.2"
   },
   "rundown": {
     "commands": "./automation/commands.md",

@@ -30,4 +30,4 @@ jobs:
           NODE
       - run: npm ci
       - run: npm run check
-      - run: npm publish --access public --tag rc
+      - run: npm publish --access public --tag latest

@@ -10,6 +10,7 @@ import {
   isAbsolute,
 } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
 import { Editor, NodeFilesystem, Template, Writer } from "@p10i/do-md";
 import { parseMarkdown } from "@p10i/do-md/markdown";
 import { COLUMNS } from "./Format.mjs";
@@ -420,7 +421,20 @@ async function connect(entry, catalog, description, signal, reference) {
       }
       return true;
     } catch (cause) {
-      if (diagnose(cause).code === "DO_MD_CONFLICT" && attempt < 2) continue;
+      const error = diagnose(cause);
+      if (attempt < 2 && error.code === "DO_MD_CONFLICT") continue;
+      // do-md wraps the native rename error. A Windows reader can briefly
+      // block replacement; reread and validate the merge before trying again.
+      if (
+        attempt < 2 &&
+        process.platform === "win32" &&
+        error.code === "DO_MD_IO_ERROR" &&
+        /^EPERM: .*?, rename /.test(error.message) &&
+        error.message.endsWith(` -> '${entry}'`)
+      ) {
+        await delay(25 * (attempt + 1), undefined, { signal });
+        continue;
+      }
       throw cause;
     }
   }

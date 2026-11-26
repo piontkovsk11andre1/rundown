@@ -1,7 +1,6 @@
 node_modules/
-dist/
-.rundown/
+.test-tmp/
+.debug/
+.release/
+*.tgz
 coverage/
-queries/
-.claude/
-temp/

@@ -1,0 +1,13 @@
+{
+  "name": "rundown-example-callbacks",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@p10i/rundown": "file:../..",
+    "@modelcontextprotocol/sdk": "1.32.2"
+  },
+  "rundown": {
+    "commands": "./commands.md",
+    "tests": "./tests"
+  }
+}

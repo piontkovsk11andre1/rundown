@@ -1,0 +1,3 @@
+# Build artifact
+
+{% doc.table().as("spec"); %}

@@ -1,0 +1,11 @@
+{
+  "name": "rundown-example-views",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@p10i/rundown": "file:../.."
+  },
+  "rundown": {
+    "commands": "./reports/commands.md"
+  }
+}

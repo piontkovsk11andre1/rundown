@@ -1,0 +1,12 @@
+{
+  "name": "rundown-example-greeting",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@p10i/rundown": "file:../.."
+  },
+  "rundown": {
+    "commands": "./commands.md",
+    "tests": "./tests"
+  }
+}

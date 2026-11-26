@@ -1,0 +1,6 @@
+node_modules/
+.test-tmp/
+.debug/
+.release/
+package-lock.json
+docs/reference.md

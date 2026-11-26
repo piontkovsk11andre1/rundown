@@ -1,168 +1,230 @@
-# `rundown`
+# Rundown
 
-> Markdown-native planning and execution for agentic work.
-> Use it to create art, run a business, do research, and write code.
+Documentation-first Markdown modules and commands, compiled through do-md into
+native ESM. Node **22.15+** is required for programmatic synchronous ESM hooks.
+This source prepares **2.0.0-rc.1**. Its canonical repository location is
+the repository root; see the [changelog](CHANGELOG.md), [migration notes](docs/migration-2.md)
+and [release procedure](docs/releasing.md).
 
-## Planning model
+## Run
 
-The plan of any work is a model of a future result. If the work is planned correctly, we can decompose it into deterministic steps, materialize those steps in the workspace, and verify the outcome with tests.
-
-Imagine work shaped like this:
-
-```text
-A -> B -> C
+```sh
+npm ci
+node bin/rundown.mjs --cwd examples/greeting example Ada
+node bin/rundown.mjs --cwd examples/greeting help example
+node bin/rundown.mjs --cwd examples/callbacks agent
+node bin/rundown.mjs --cwd examples/greeting --test
+node bin/rundown.mjs --cwd examples/callbacks --test
+npm run check
 ```
 
-### Planning
+The greeting returns `Hello, Ada!`. The callback example starts a temporary
+loopback listener, uses a deterministic MCP client to report logs, update a
+declared counter and deliver a completion callback, then closes everything.
+It does not call an AI provider. Its deterministic client is an ordinary Markdown
+module under `examples/callbacks/ai/harness`. Projects own any external
+CLI or service integration they need.
 
-At a sufficient scale, AI can predict `A -> C` across all domains present in its training set. But if the *materialization* is complex — potentially millions of steps — we eventually hit a limit: an insufficiently precise step (too large a group) admits too many interpretations. The chance of successfully predicting lower-level steps drops.
+After installation, `rundown` and `rndn` are equivalent executable names.
 
-And this is the level at which the plan is materialized — where we want to use AI, computers, controllers, robots. At this boundary between **plan** and **build**, predictability matters most: for automation and optimization. It is another level, `A1 -> C1`, which we only leave when the AI directly produces an `output` or triggers a `launch`. Here we care about:
+## Start a new project
 
-- **Cost** — each step should be cheap.
-- **Reusability** — steps should group into reusable tools.
+Projects declare `rundown.commands` and optional `rundown.tests` in package.json.
+Native imports use normal dependencies. See [packages and layouts](docs/projects.md)
+or `rundown --reference projects`; no hidden-directory fallback is used.
 
-When predicting *in depth*, we predict in chunks, searching for the optimal level of description at which sequential materialization and optimization remain effective.
+Use npm to create the package and install dependencies. Write or copy a command
+catalog, then register it. For a minimal empty catalog, create `commands.md`
+containing `# Project commands` before running:
 
-### Execution
-
-When materializing a prediction, at some point we touch reality. This moment of contact matters: it is where the prediction transitions into the level at which materialization directly occurs. This moment is, in effect, the **agent** between prediction and the real world.
-
-Each touch splits the prediction into *before* and *after*. We want to:
-
-- **Control** the process.
-- **Analyze** what happened.
-- **Collect metrics** to confirm that the AI is still right and that materialization remains accurate.
-
-But each action is also part of a session — a group we want to observe on its own. For all of this we need **non-probabilistic, deterministic automation** that guarantees each interaction with the real world happened in the correct order, at the correct time, and that the materialized result matches the prediction.
-
-This is what `rundown` is for.
-
----
-
-
-### The workload protocol
-
-At the **lowest level**, `rundown` defines a workload protocol:
-
-```markdown
-Context body.
-
-- [x] Finished task
-- [ ] Unfinished task
-- [ ] Another unfinished task
+```sh
+rundown --init commands.md
+rundown --new-command hello
+rundown hello "A custom message"
+rundown --new-module hello/helper.md
+rundown --check
+rundown --check hello/helper.md
 ```
 
-An empty checkbox is interpreted as an **instruction**.
+`--init` only registers existing paths in the nearest package.json. An optional
+second argument registers tests: `rundown --init commands.md tests/`. A new command gets a connected
+catalog and runnable companion module. Standalone modules are explicitly imported
+when needed. Existing files are never overwritten.
+Use `--new-command hello --out tools/greetings` for exact placement of the generated
+catalog/module pair. Installed document assets use explicit `npm:package/export`
+references; see [package exports](docs/projects.md#installed-document-exports).
 
-Each instruction is wrapped in a loop, with configurable retries, so imperfect execution predictions can be worked through:
-
-```text
-execute -> verify -> repair -> verify -> repair -> ... -> resolve -> repair -> stop or reset
+```sh
+rundown --skill
+rundown --reference modules
+rundown --reference commands --format json
 ```
 
-You can switch models on `verify -> repair` layer, using strongest on the last `repair` or `resolve`.
+Skill and reference work before a project exists; registration requires an existing
+package and catalog. `--check`
+validates reachable documents and static dependencies without evaluating user
+code, and reports dynamic loads needing runtime verification. See the
+[authoring guide](docs/authoring.md), [generated reference](docs/reference.md),
+and [executable examples](examples/README.md).
+The [first experience review](docs/experience-review.md) records the next choices
+around reusable recipes and copied catalogs.
 
-### Extensible tooling
+Copied recipes can be connected with `rundown --connect <commands.md>`; the
+combined graph is validated before its Connections row is published. The
+[resumable pipeline](examples/pipeline/README.md) demonstrates generation, a bounded
+script, verified receipts and recovery after interruption without an AI dependency.
 
-`rundown` supports a flexible, extensible tool set:
+For ordinary scripts, `@p10i/rundown/process` exposes `runProcess` and
+`ProcessAdapter`. Adapters have domain-specific input; common working-directory,
+cancellation and tracing metadata are supplied by the invocation. Harness-specific
+APIs, prompts and configuration are defined by users/agents in project Markdown
+modules, with native JavaScript dependencies as needed.
 
-Worker configuration has four concepts:
+Use `context.run(binding, input)` to supply those execution defaults to a project
+Markdown binding directly. `context.callbacks.with` scopes registrations and
+awaits cleanup. Read `rundown --reference context`, `callbacks` and `observability`
+for the author-facing contracts.
 
-- `workers.default` is the primary non-interactive worker used by execution commands such as `run`, `all`, `materialize`, `plan`, `make`, `do`, `add`, `reverify`, and `undo`.
-- `workers.interactive` is used by interactive commands such as `repair` and `discuss`, with `workers.default` as the backup when the interactive worker is unavailable.
-- `profiles.<name>` are named worker commands selected deliberately with `profile=<name>` in frontmatter, directives, or task text.
-- `fallbacks.default` and `fallbacks.<profile>` are backup workers used only when health policy blocks or fails over from the selected primary worker.
+## Test programs
 
-Use `rundown worker status` to see persisted worker/profile health, selected fallback order, and why a worker is currently eligible or blocked. Use `rundown worker reset <key>` to retry one blocked worker/profile entry, or `rundown worker reset --all` to clear all persisted worker statuses.
+Declare a test file/directory in `package.json` under `rundown.tests`. Public methods
+are tests receiving Node's `t` and a managed Rundown context; assertions come from
+`node:assert/strict`. `rundown --test` executes them in isolated Node workers.
+`@p10i/rundown/testing` supplies a managed real Runtime for command tests.
+See the [testing guide](docs/testing.md) or `rundown --reference testing`.
 
-```markdown
----
-rundown:
-  profiles:
-    local-model: "opencode run $bootstrap --model localhost/gpt"
----
-Context body.
+## Live Markdown views
 
-- profile=thinking
-  - [x] Finished task
-  - [ ] profile=local-model: Unfinished task
-  - [ ] cli: deploy now
-  - [ ] for: Each modified file
-    - [ ] quick: Do this
-    - [ ] quick: Do that
-    - [ ] verify: Tests run ok
+Commands can return a live JSON document presented through a do-md template:
+
+```js
+const view = await rundown.createView("./report.md.template", {
+  status: "Working",
+});
+view.track(async () => {
+  await worker.run(view, context);
+  view.update({ status: "Completed" });
+  view.close();
+});
+return view;
 ```
 
-### Single-file or multi-file
+Return mounts the view; explicit close completes the invocation. Terminal output
+re-renders on updates/resize, optionally in full-screen mode with shown/hidden
+logs. JSON, HTTP and MCP receive the final state or final Markdown. Templates use
+`ctx.data` and `ctx.display`, keeping terminal dimensions separate from data.
 
-A single Markdown file can seed an entire project:
-
-```markdown
-# Roadmap
-
-For each task in this file create a numbered migration file
-in current dir with seed produced from the task item.
-Then run explore on the file.
-
-- [ ] Add this feature
-- [ ] Add that feature
-- [ ] Extend something
+```sh
+node bin/rundown.mjs --cwd examples/views report
+node bin/rundown.mjs --cwd examples/views --fullscreen --logs show report
+node bin/rundown.mjs --cwd examples/views --json report
+node bin/rundown.mjs --cwd examples/views --markdown report
 ```
 
-```bash
-rundown all roadmap.md
+See [live views](docs/views.md), the [example](examples/views/reports/commands.md)
+and `rundown --reference views` for lifetime, rendering and output contracts.
+
+## Surfaces
+
+```sh
+rundown --cwd /project example Ada
+rundown --cwd /project --serve --port 4080
+rundown --cwd /project --mcp
+rundown --mcp-http http://127.0.0.1:4080/mcp
 ```
 
-This executes the TODO items, producing research and plan output — each with its own TODO items you can then execute:
+Rundown options precede the project command. Subsequent arguments belong to the
+command. Surface modes are mutually exclusive. `--mcp-http` is a stdio-to-remote
+Streamable HTTP bridge, not the deprecated HTTP+SSE transport.
 
-```bash
-rundown all .
-```
+`--serve` exposes HTTP and Streamable HTTP MCP together. Its default bind is
+loopback and default port is automatically assigned. `--bind`, `--port`, and
+`--public-url` configure exposure. `--grace-ms` sets the cleanup deadline.
+Public URL prefixes require an outer proxy
+to strip the prefix before forwarding. Embedders can configure allowed browser
+Origins through `startHttp`; unsolicited browser Origins are rejected by default.
 
-Is something goes wrong:
-```bash
-rundown repair
-```
+## Modules and commands
 
-`rndn` is a materializing wrapper for `rundown`: it runs `rundown materialize` with the provided arguments. `rundown` remains the real CLI entrypoint used by internal delegation.
+Start with [the greeting manifest](examples/greeting/package.json), its
+[catalog](examples/greeting/commands.md), [command definition](examples/greeting/example/commands.md),
+and [module](examples/greeting/example/module.md).
 
-…and more.
+The core loaders are `loadCommands` and `loadModule`. Supporting exports provide
+compilation and host integration rather than another orchestration language.
 
----
+The format is defined by separate [command](templates/commands.md.template) and
+[module](templates/module.md.template) do-md templates. They compose scoped
+bindings, optional sections and required fields; JavaScript generation consumes
+those bindings rather than scanning document blocks for executable code.
 
-## Installation
+```js
+import { loadCommands, Runtime } from "@p10i/rundown";
 
-```bash
-# npm
-npm i -g @p10i/rundown
-
-# yarn
-yarn global add @p10i/rundown
-
-# pnpm
-pnpm add -g @p10i/rundown
-
-# bun
-bun add -g @p10i/rundown
-```
-
-## Documentation
-
-Run `rundown --help` for command and option reference.
-
-## MCP
-
-Rundown ships a stdio MCP server for agent clients:
-
-```json
-{
-  "mcpServers": {
-    "rundown": {
-      "command": "rundown-mcp"
-    }
-  }
+const cwd = "/absolute/project";
+const catalog = await loadCommands(undefined, { cwd });
+const runtime = new Runtime(catalog, { cwd });
+try {
+  console.log(await runtime.invoke("example", { name: "Ada" }));
+} finally {
+  await runtime.close();
 }
 ```
 
-The server exposes named tools for the CLI surface, including `rundown_next`, `rundown_list`, `rundown_run`, `rundown_all`, `rundown_call`, `rundown_loop`, `rundown_plan`, `rundown_make`, `rundown_add`, `rundown_do`, `rundown_materialize`, config, memory, worker, artifact, log, init, localization, and unlock operations. Mutating tools return the underlying `rundown` exit code plus captured stdout/stderr; use each tool's `dryRun` option where available to preview changes.
+Command discovery stops at the nearest `package.json` and uses `rundown.commands`.
+Manifest paths resolve from that package; `--commands <catalog.md>` overrides discovery.
+There is no hidden-directory fallback and no required source layout. Connections
+load additional command definitions explicitly. Markdown dependency paths are
+document-relative or absolute; there is no implicit module search path.
+
+Markdown modules are real ESM modules: native static dependency imports, live
+bindings, circular imports and canonical file-URL caching. File changes require
+a process restart. JavaScript dependencies retain native resolution. Loading
+defines methods and constants; it does not execute method bodies or examples.
+
+The Node hook is installed once on the first load and recognizes `.md` imports.
+Its scope is the Node runtime, not an individual invocation. Source files must
+exist on the local filesystem; do-md IO adapters remain available to method code
+for processing application documents.
+
+## Debugging
+
+```sh
+rundown --compile /project/example/module.md --out ./compiled
+rundown --debug-dir ./compiled --cwd /project example Ada
+```
+
+Normal compilation stays in memory. Artifacts use a document name plus URL hash
+to avoid collisions. Maps include original source content. Compile-only reads
+only its explicit target and does not evaluate dependencies or handlers. Output
+still relies on Rundown's loader/runtime; it is not a standalone distribution.
+`RUNDOWN_DEBUG_DIR` enables artifact output for transitively loaded documents.
+
+## Observability
+
+- `RUNDOWN_LOG_FORMAT=human|json` controls console output; terminal detection is
+  the default. Logs go to stderr, leaving stdout for results or MCP messages.
+- `RUNDOWN_LOG_LEVEL=trace|debug|info|warn|error|fatal` defaults to `info`.
+- Standard `OTEL_*` exporter configuration enables the CLI-owned Node SDK.
+  Embedders may initialize their own providers or call `initializeTelemetry`.
+- Invocations, callbacks and injected adapter runs have spans. Logs carry an
+  invocation ID and active trace/span identity. Metrics do not add invocation IDs
+  as labels. OTel providers determine exemplar support.
+- HTTP extracts W3C context per request. External runs receive a `traceContext`
+  carrier; project bindings forward it to remote clients, and the generic process
+  helper supplies the child-process `RUNDOWN_TRACE_CONTEXT` JSON environment
+  variable. The remote bridge forwards
+  inherited context as well. Callback spans keep their owning command as parent
+  and link external callers, preserving invocation correlation.
+
+External reporting is explicitly enabled on a callback registration. Only exposed
+counter/histogram instruments and allowed attributes can be updated. Correlation
+fields are attached by Rundown and cannot be replaced by external reports.
+
+Cleanup expiry is explicit: unfinished callbacks are revoked and a
+`RUNDOWN_CLEANUP_TIMEOUT` diagnostic is returned. Primary errors are preserved,
+with secondary cleanup errors in `related`. Internal JavaScript is now checked
+with strict `checkJs`, independently of the public declaration consumer checks.
+
+See [format](docs/format.md), [API and lifecycle](docs/api.md), and
+[verification](docs/verification.md) for the detailed contracts.

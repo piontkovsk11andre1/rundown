@@ -1,0 +1,33 @@
+name: Publish Rundown RC to npm
+on:
+  push:
+    tags: ["v*.*.*-rc.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - name: Verify RC package and tag
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const { name, version } = JSON.parse(readFileSync('package.json', 'utf8'));
+          if (name !== '@p10i/rundown' || !/^\d+\.\d+\.\d+-rc\.\d+$/.test(version) || process.env.GITHUB_REF_NAME !== `v${version}`) {
+            throw new Error('Tag must match the Rundown release candidate version');
+          }
+          NODE
+      - run: npm ci
+      - run: npm run check
+      - run: npm publish --access public --tag rc

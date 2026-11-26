@@ -1,0 +1,4 @@
+{%
+doc.rawUntilElement("list").as("preamble");
+doc.listTree().validate(value => value?.items.every(item => typeof item.checked === "boolean" && item.children.every(block => block.type === "paragraph"))).as("tasks");
+%}

@@ -1,0 +1,12 @@
+{
+  "name": "rundown-example-pipeline",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@p10i/rundown": "file:../..",
+    "@p10i/do-md": "2.0.0-rc.2"
+  },
+  "rundown": {
+    "commands": "./automation/commands.md"
+  }
+}

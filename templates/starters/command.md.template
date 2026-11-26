@@ -1,0 +1,15 @@
+# {% doc.writeRaw(data.title); %}
+
+## Command: {% doc.writeRaw(data.name); %}
+
+{% doc.writeRaw(data.description); %}
+
+### Parameters
+
+{% doc.table().as("parameters"); %}
+### Returns
+
+{% doc.table().as("returns"); %}
+### Handler
+
+{% doc.codeBlock().as("body"); %}

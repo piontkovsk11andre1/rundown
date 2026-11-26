@@ -1,0 +1,17 @@
+# {% doc.writeRaw(data.title); %}
+
+{% doc.writeRaw(data.description); %}
+
+## Method: {% doc.writeRaw(data.method); %}
+
+{% doc.writeRaw(data.methodDescription); %}
+
+### Parameters
+
+{% doc.table().as("parameters"); %}
+### Returns
+
+{% doc.table().as("returns"); %}
+### Implementation
+
+{% doc.codeBlock().as("body"); %}

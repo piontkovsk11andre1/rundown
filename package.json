@@ -1,49 +1,6 @@
 {
   "name": "@p10i/rundown",
-  "version": "1.0.0-rc.24",
-  "description": "A Markdown-native task runtime for agentic workflows. Execute, verify, and repair work directly from Markdown TODOs.",
-  "type": "module",
-  "bin": {
-    "rundown": "dist/cli.js",
-    "rndn": "dist/rndn.js",
-    "rundown-mcp": "dist/mcp.js"
-  },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "tui-sketch": "node ./dist/presentation/tui/index.js",
-    "test": "npm run build && vitest run",
-    "test:watch": "vitest",
-    "lint": "tsc --noEmit",
-    "release:check": "npm run lint && npm run test",
-    "prepublishOnly": "npm run release:check"
-  },
-  "keywords": [
-    "markdown",
-    "todo",
-    "task-runner",
-    "agentic",
-    "cli",
-    "automation",
-    "opencode",
-    "ai-agent",
-    "workflow"
-  ],
-  "author": "Piontkovskii Andrei",
-  "license": "MIT",
+  "version": "2.0.0-rc.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/piontkovsk11andre1/rundown.git"
@@ -52,32 +9,110 @@
   "bugs": {
     "url": "https://github.com/piontkovsk11andre1/rundown/issues"
   },
+  "keywords": [
+    "markdown",
+    "automation",
+    "pipelines",
+    "esm",
+    "mcp",
+    "documentation"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "description": "Documentation-first Markdown commands and native JavaScript modules",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "examples/*"
+  ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22.15.0"
+  },
+  "bin": {
+    "rundown": "bin/rundown.mjs",
+    "rndn": "bin/rundown.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./sources/index.d.mts",
+      "import": "./sources/index.mjs"
+    },
+    "./http": {
+      "types": "./sources/Http.d.mts",
+      "import": "./sources/Http.mjs"
+    },
+    "./mcp": {
+      "types": "./sources/Mcp.d.mts",
+      "import": "./sources/Mcp.mjs"
+    },
+    "./observability": {
+      "types": "./sources/Observability.d.mts",
+      "import": "./sources/Observability.mjs"
+    },
+    "./authoring": {
+      "types": "./sources/Authoring.d.mts",
+      "import": "./sources/Authoring.mjs"
+    },
+    "./process": {
+      "types": "./sources/Process.d.mts",
+      "import": "./sources/Process.mjs"
+    },
+    "./testing": {
+      "types": "./sources/Testing.d.mts",
+      "import": "./sources/Testing.mjs"
+    },
+    "./views": {
+      "types": "./sources/Views.d.mts",
+      "import": "./sources/Views.mjs"
+    },
+    "./skills/rundown/SKILL.md": "./skills/rundown/SKILL.md",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin/",
+    "sources/",
+    "templates/",
+    "docs/",
+    "examples/",
+    "skills/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "types:check": "tsc --noEmit -p tsconfig.json",
+    "types:internal": "node scripts/check-internals.mjs",
+    "docs": "node scripts/generate-reference.mjs",
+    "docs:check": "node scripts/generate-reference.mjs --check",
+    "release:candidate": "node scripts/release-candidate.mjs",
+    "check": "npm run format:check && npm run lint && npm run types:internal && npm run types:check && npm run docs:check && npm test"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "^2.0.0",
-    "commander": "^13.1.0",
-    "cross-spawn": "^7.0.6",
-    "fast-glob": "^3.3.3",
-    "mdast-util-from-markdown": "^2.0.2",
-    "mdast-util-gfm-task-list-item": "^2.0.0",
-    "micromark-extension-gfm-task-list-item": "^2.1.0",
-    "picocolors": "^1.1.1",
-    "zod": "^4.4.3"
-  },
-  "overrides": {
-    "test-exclude": "^8.0.0"
+    "@jridgewell/gen-mapping": "^0.3.8",
+    "@jridgewell/trace-mapping": "^0.3.25",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/api-logs": "0.223.0",
+    "@opentelemetry/sdk-node": "0.223.0",
+    "@p10i/do-md": "2.0.0-rc.2",
+    "acorn": "8.15.0",
+    "ajv": "^8.17.1",
+    "import-meta-resolve": "4.2.0",
+    "string-width": "4.2.3"
   },
   "devDependencies": {
-    "@types/cross-spawn": "^6.0.6",
-    "@types/node": "^22.0.0",
-    "@vitest/coverage-v8": "^3.2.4",
-    "tsup": "^8.4.0",
-    "typescript": "^5.7.0",
-    "vitest": "^3.1.0"
-  },
-  "directories": {
-    "doc": "docs"
+    "@opentelemetry/sdk-logs": "0.223.0",
+    "@opentelemetry/sdk-metrics": "2.12.0",
+    "@opentelemetry/sdk-trace": "2.12.0",
+    "@types/node": "^24.0.0",
+    "eslint": "^10.0.0",
+    "globals": "^16.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.9.0"
   }
 }

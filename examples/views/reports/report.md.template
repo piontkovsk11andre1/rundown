@@ -1,0 +1,12 @@
+{% const { data: state, display } = ctx; %}
+# Processing report
+
+{% doc.write(state.status); %}
+
+Processed **{% doc.write(state.completed); %}** of **{% doc.write(state.total); %}** items.
+
+## Findings
+
+{% doc.list().default(state.findings).as("findings"); %}
+
+Display width: {% doc.write(display.width); %} columns.

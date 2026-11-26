@@ -1,0 +1,5 @@
+{%
+doc.heading(1).as("title");
+doc.allowNewlinesAndWhitespaces();
+doc.table().validate(value => value.headers.join("|") === "ID|Input|Status|Done|Owner" && new Set(value.rows.map(row => row[0])).size === value.rows.length && value.rows.every(row => /^[a-zA-Z0-9_-]+$/.test(row[0]) && ["pending", "running", "interrupted", "done"].includes(row[2]) && row[3] === (row[2] === "done" ? "[x]" : "[ ]") && (row[4] === "" || /^\d+:[\w-]+$/.test(row[4])))).as("jobs");
+%}

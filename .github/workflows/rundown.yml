@@ -1,0 +1,29 @@
+name: Rundown package
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ["22.15.0", "24", "26"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: node bin/rundown.mjs --cwd examples/greeting --test
+      - run: node bin/rundown.mjs --cwd examples/callbacks --test --json
+      - run: node bin/rundown.mjs --cwd examples/views --json report
+      - run: npm audit

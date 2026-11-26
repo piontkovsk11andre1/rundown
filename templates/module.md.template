@@ -1,0 +1,55 @@
+{%
+const { untilHeading, untilElement, atHeading, named, columns, code } = options.support;
+const fields = options.methodFields;
+const schema = options.columns;
+
+doc.heading(1).notEmpty().as("title");
+untilHeading(doc, 2).trim().as("description");
+
+doc.scope("sections", doc => {
+  const heading = doc.heading(2);
+  if (heading.value == null) return;
+  heading.notEmpty().as("heading");
+  doc.allowNewlinesAndWhitespaces();
+
+  if (heading.value === "Dependencies") {
+    untilElement(doc, "table", 2).as("introduction");
+    doc.table().validate(columns(schema.dependencies)).as("dependencies");
+    untilHeading(doc, 2, { stopAt: "table" }).as("documentation");
+  } else if (heading.value === "Constants") {
+    untilElement(doc, "table", 2).as("introduction");
+    doc.table().validate(columns(schema.constants)).as("constants");
+    untilHeading(doc, 2, { stopAt: "table" }).as("documentation");
+  } else if (heading.value.startsWith("Method: ")) {
+    untilHeading(doc, 3, { names: fields }).trim().notEmpty().as("description");
+
+    doc.optional(doc => {
+      if (!atHeading(doc, 3, "Options")) return;
+      doc.heading(3).validate(named("Options")).as("optionsHeading");
+      untilElement(doc, "table", 3).as("optionsIntroduction");
+      doc.table().validate(columns(schema.options)).as("options");
+      untilHeading(doc, 3, { names: fields, stopAt: "table" }).as("afterOptions");
+    });
+
+    doc.heading(3).validate(named("Parameters")).as("parametersHeading");
+    untilElement(doc, "table", 3).as("parametersIntroduction");
+    doc.table().validate(columns(schema.methodParameters)).as("parameters");
+    untilHeading(doc, 3, { names: fields, stopAt: "table" }).as("afterParameters");
+
+    doc.heading(3).validate(named("Returns")).as("returnsHeading");
+    untilElement(doc, "table", 3).as("returnsIntroduction");
+    doc.table().validate(columns(schema.returns)).as("returns");
+    untilHeading(doc, 3, { names: fields, stopAt: "table" }).as("afterReturns");
+
+    doc.heading(3).validate(named("Implementation")).as("implementationHeading");
+    doc.allowNewlinesAndWhitespaces();
+    doc.codeBlock().validate(code("js")).as("implementation");
+    untilHeading(doc, 3).trim().validate(value => value === "").as("implementationEnd");
+    untilHeading(doc, 3, { names: fields }).as("documentation");
+  } else {
+    untilHeading(doc, 2).as("documentation");
+  }
+  doc.allowNewlinesAndWhitespaces();
+});
+doc.assertConsumed();
+%}

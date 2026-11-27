@@ -17,6 +17,12 @@ analysis, administrative tools, or orchestration combining scripts, services and
 AI. Choose the application model that fits the task; an AI harness is one possible
 integration, not a required execution model.
 
+To invoke a local ACP agent, use `invokeAcp(context, connection, input)` from
+`@p10i/rundown/acp`. Supply invocation-local MCP tools and designate a terminal
+callback; check `result.status` before using its value. Session text is not a
+callback result. See [ACP invocation](../../docs/acp.md) for launch settings,
+resume, recording and cancellation.
+
 ## Think in programmable documents
 
 Distinguish the roles of the files you author:

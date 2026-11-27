@@ -1,6 +1,6 @@
 {
   "name": "@p10i/rundown",
-  "version": "2.0.0-rc.2",
+  "version": "2.0.0-rc.3",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/piontkovsk11andre1/rundown.git"
@@ -58,6 +58,10 @@
       "types": "./sources/Process.d.mts",
       "import": "./sources/Process.mjs"
     },
+    "./acp": {
+      "types": "./sources/Acp.d.mts",
+      "import": "./sources/Acp.mjs"
+    },
     "./testing": {
       "types": "./sources/Testing.d.mts",
       "import": "./sources/Testing.mjs"
@@ -93,6 +97,7 @@
     "check": "npm run format:check && npm run lint && npm run types:internal && npm run types:check && npm run docs:check && npm test"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "0.29.0",
     "@jridgewell/gen-mapping": "^0.3.8",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@modelcontextprotocol/sdk": "1.32.2",

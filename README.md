@@ -2,7 +2,7 @@
 
 Documentation-first Markdown modules and commands, compiled through do-md into
 native ESM. Node **22.15+** is required for programmatic synchronous ESM hooks.
-This source prepares **2.0.0-rc.2**. Its canonical repository location is
+This source prepares **2.0.0-rc.3**. Its canonical repository location is
 the repository root; see the [changelog](CHANGELOG.md), [migration notes](docs/migration-2.md)
 and [release procedure](docs/releasing.md).
 
@@ -226,5 +226,5 @@ Cleanup expiry is explicit: unfinished callbacks are revoked and a
 with secondary cleanup errors in `related`. Internal JavaScript is now checked
 with strict `checkJs`, independently of the public declaration consumer checks.
 
-See [format](docs/format.md), [API and lifecycle](docs/api.md), and
+See [format](docs/format.md), [invoking an ACP agent](docs/acp.md), [API and lifecycle](docs/api.md), and
 [verification](docs/verification.md) for the detailed contracts.

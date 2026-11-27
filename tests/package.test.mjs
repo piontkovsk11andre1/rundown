@@ -51,6 +51,10 @@ test(
       ),
     );
     for (const file of [
+      "sources/Acp.mjs",
+      "sources/Acp.d.mts",
+      "sources/AcpTypes.d.mts",
+      "docs/acp.md",
       "skills/rundown/SKILL.md",
       "sources/Authoring.mjs",
       "sources/Authoring.d.mts",
@@ -96,6 +100,15 @@ test(
       await readFile(join(packageRoot, "package.json"), "utf8"),
     );
     assert.equal(manifest.bin.rundown, manifest.bin.rndn);
+    await runProcess(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        'import {invokeAcp} from "@p10i/rundown/acp"; if(typeof invokeAcp !== "function")throw Error("Missing ACP export");',
+      ],
+      { cwd: directory },
+    );
     assert.ok(
       !Object.keys(manifest.exports).some((name) =>
         name.startsWith("./harness/"),

@@ -27,7 +27,11 @@
 - Document callable authoring contracts, observability and testing through the
   shared CLI/MCP reference and Skill; simplify the callback example and ship tests.
 
-## 2.0.0-rc.2 — unreleased
+## 2.0.0-rc.3 — unreleased
+
+- Add `@p10i/rundown/acp` for local agent sessions with scoped callbacks, optional transcript recording, and invocation-correlated logs, metrics and tracing.
+
+## 2.0.0-rc.2
 
 - Publish release candidates under npm’s `latest` tag so `npm install @p10i/rundown` installs the current candidate.
 

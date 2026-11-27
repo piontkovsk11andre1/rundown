@@ -18,6 +18,8 @@ import {
   initializeTelemetry,
 } from "../sources/Observability.mjs";
 import { Runtime } from "../sources/index.mjs";
+import { invokeAcp } from "@p10i/rundown/acp";
+import { fileURLToPath } from "node:url";
 
 test("OTel exports correlated logs, declared metrics and command/callback/adapter spans", async () => {
   const logExporter = new InMemoryLogRecordExporter();
@@ -78,6 +80,27 @@ test("OTel exports correlated logs, declared metrics and command/callback/adapte
       await context.adapters.worker.run({ prompt: "test" });
       await hold;
       await reg.close();
+      const reported = await invokeAcp(
+        context,
+        {
+          command: process.execPath,
+          args: [
+            fileURLToPath(new URL("./fixtures/acp-agent.mjs", import.meta.url)),
+          ],
+        },
+        {
+          prompt: "report",
+          terminal: "submit",
+          callbacks: {
+            submit: { inputSchema: { type: "object" }, handler: () => true },
+          },
+          reporting: {
+            logs: true,
+            metrics: { accepted: context.metrics.counter("agent.reports") },
+          },
+        },
+      );
+      assert.equal(reported.status, "accepted");
       return "done";
     },
   };
@@ -111,6 +134,16 @@ test("OTel exports correlated logs, declared metrics and command/callback/adapte
       commandSpan.spanContext().spanId,
     );
     assert.equal(records[0].traceId, commandSpan.spanContext().traceId);
+    const reported = records.find((r) => r.message === "Agent report");
+    assert.equal(reported.invocationId, records[0].invocationId);
+    assert.equal(reported.traceId, commandSpan.spanContext().traceId);
+    assert.ok(
+      spans.some(
+        (s) =>
+          s.name === "rundown.adapter" &&
+          reported.agentTraceparent.split("-")[2] === s.spanContext().spanId,
+      ),
+    );
     assert.notEqual(records[0].invocationId, "spoof");
     assert.ok(
       logExporter
@@ -129,6 +162,12 @@ test("OTel exports correlated logs, declared metrics and command/callback/adapte
     );
     assert.ok(
       metrics.some((metric) => metric.descriptor.name === "work.duration"),
+    );
+    assert.ok(
+      metrics.some(
+        (m) =>
+          m.descriptor.name === "agent.reports" && m.dataPoints[0].value === 3,
+      ),
     );
     assert.ok(
       metrics.every((metric) =>
